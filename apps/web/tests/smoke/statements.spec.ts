@@ -11,6 +11,7 @@ test("self-managed statements keep reports local and hide owner dispatch", async
   page,
 }) => {
   await mockLeasiumApi(page, { ownerStatementMissingRecipientInvoice: true });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const providerRequests: string[] = [];
   page.on("request", (request) => {
     if (
@@ -27,11 +28,15 @@ test("self-managed statements keep reports local and hide owner dispatch", async
     page.getByRole("heading", { name: "Statement preview" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Third-party owner dispatch off" }),
+    page.getByRole("heading", { name: "Local reporting mode" }),
   ).toBeVisible();
+  await expect(page.getByText("Local reporting", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Owner billing recipients are not required"),
+    page.getByText("Billing recipients are not required"),
   ).toBeVisible();
+  await expect(page.getByText(/dispatch-ready/i)).toHaveCount(0);
+  await expect(page.getByText(/dispatch queues/i)).toHaveCount(0);
+  await expect(page.getByText(/External email send/i)).toHaveCount(0);
   await expect(
     page.getByText("Missing recipient", { exact: true }),
   ).toHaveCount(0);
@@ -48,12 +53,190 @@ test("self-managed statements keep reports local and hide owner dispatch", async
   await expect(
     page.getByRole("button", { name: "Download dispatch draft" }),
   ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Copy checklist" }).click();
+  const checklistText = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(checklistText).toContain("Entity statements finance checklist");
+  expect(checklistText.toLowerCase()).not.toContain("owner dispatch");
+  expect(checklistText.toLowerCase()).not.toContain("dispatch approval");
+  expect(checklistText.toLowerCase()).not.toContain("owner statement");
+  expect(checklistText.toLowerCase()).not.toContain("send workflows");
+
+  await page.getByRole("button", { name: "Copy exceptions" }).click();
+  const exceptionsText = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
+  expect(exceptionsText).toContain("Entity statement finance exceptions");
+  expect(exceptionsText.toLowerCase()).not.toContain("owner dispatch");
+  expect(exceptionsText.toLowerCase()).not.toContain("dispatch approval");
+  expect(exceptionsText.toLowerCase()).not.toContain("owner statement");
   expect(providerRequests).toHaveLength(0);
+});
+
+test("self-managed statements signoff export uses entity-local framing", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, {
+    operatingMode: "self_managed_owner",
+    ownerStatementMissingRecipientInvoice: true,
+  });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.route("**/api/v1/xero/status**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        issues: [
+          {
+            id: "xero-warning-1",
+            severity: "warning",
+            message: "One reconciliation check needs review.",
+          },
+        ],
+        accounting_freshness: {
+          status: "ready",
+          readiness_blocker_count: 0,
+          readiness_warning_count: 1,
+          approved_unsynced_invoice_count: 0,
+          generated_at: "2026-05-20T01:00:00.000Z",
+          source: "local_metadata",
+          summary: "Accounting readiness has a warning.",
+          stale_after_days: 7,
+          stale_reconciliation: false,
+          readiness_issue_count: 1,
+          xero_linked_open_invoice_count: 0,
+          guardrails: [],
+        },
+      }),
+    });
+  });
+
+  const providerRequests: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/api/v1/owners/statements/dispatch") ||
+      request.url().includes("/api/v1/owners/statements/send")
+    ) {
+      providerRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  await page.goto("/statements?month=2026-05");
+  await expect(
+    page.getByRole("heading", { name: "Entity statements" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Copy signoff" }).click();
+  const signoffText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(signoffText).toContain("Entity statements month-end signoff");
+  expect(signoffText).toContain("local entity-reporting");
+  expect(signoffText).not.toContain("Owner statements");
+  expect(signoffText).not.toContain("owner email");
+  expect(signoffText).not.toContain("Dispatch approval runway");
+  expect(signoffText.toLowerCase()).not.toContain("dispatch approval");
+  expect(signoffText.toLowerCase()).not.toContain("owner send");
+  expect(signoffText.toLowerCase()).not.toContain("owner dispatch");
+  expect(signoffText.toLowerCase()).not.toContain("owner statement");
+  expect(signoffText).not.toContain("dispatch blockers");
+  expect(signoffText).not.toContain("owner statement pack");
+  expect(signoffText).not.toContain("Owner totals");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download signoff CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "entity-statement-signoff-2026-05.csv",
+  );
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const csv = await readFile(path!, "utf8");
+  expect(csv).toContain("Entity statements");
+  expect(csv).toContain("local entity-reporting");
+  expect(csv).not.toContain("owner email");
+  expect(csv).not.toContain("Dispatch approval");
+  expect(csv.toLowerCase()).not.toContain("dispatch approval");
+  expect(csv.toLowerCase()).not.toContain("owner send");
+  expect(csv.toLowerCase()).not.toContain("owner dispatch");
+  expect(csv.toLowerCase()).not.toContain("owner statement");
+  expect(csv).not.toContain("dispatch blockers");
+  expect(csv).not.toContain("owner statement pack");
+  expect(csv).not.toContain("Owner totals");
+  expect(providerRequests).toEqual([]);
+});
+
+test("self-managed statements empty pack signoff avoids owner wording", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.route("**/api/v1/xero/status**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        issues: [],
+        accounting_freshness: {
+          status: "ready",
+          readiness_blocker_count: 0,
+          readiness_warning_count: 0,
+          approved_unsynced_invoice_count: 0,
+          generated_at: "2026-05-20T01:00:00.000Z",
+          source: "local_metadata",
+          summary: "Accounting readiness is clear.",
+          stale_after_days: 7,
+          stale_reconciliation: false,
+          readiness_issue_count: 0,
+          xero_linked_open_invoice_count: 0,
+          guardrails: [],
+        },
+      }),
+    });
+  });
+  await page.route(
+    (url) =>
+      url.pathname
+        .replace(/\/$/, "")
+        .endsWith("/api/v1/owners/statements"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          entity_id: "entity-1",
+          month: "2026-05",
+          month_start: "2026-05-01",
+          month_end: "2026-05-31",
+          owners: [],
+          generated_at: "2026-05-25T00:00:00.000Z",
+        }),
+      });
+    },
+  );
+
+  await page.goto("/statements?month=2026-05");
+  await expect(
+    page.getByRole("heading", { name: "Entity statements" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Copy signoff" }).click();
+  const signoffText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(signoffText).toContain("Status: Blocked");
+  expect(signoffText).toContain("Entity statements month-end signoff");
+  expect(signoffText).toContain("local entity-reporting signoff");
+  expect(signoffText).not.toContain("owner statement signoff");
+  expect(signoffText).not.toContain("owner statement pack");
 });
 
 test("owner statement preview exposes invoice-level evidence", async ({
   page,
 }) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   await page.goto("/statements?month=2026-05");
 
   await expect(

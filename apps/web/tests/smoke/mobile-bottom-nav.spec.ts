@@ -181,3 +181,47 @@ test("mobile shortcut hint clears the fixed bottom navigation", async ({
   expect(hintBox!.y + hintBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
   expect(forbiddenProviderRequests).toEqual([]);
 });
+
+test("mobile keyboard shortcuts overlay keeps controls touch-safe above bottom nav", async ({
+  page,
+}) => {
+  const forbiddenProviderRequests = watchForbiddenProviderRequests(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/operations");
+
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await expect(mobileNav).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Operations", exact: true }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  });
+  await page.keyboard.press("?");
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(dialog).toBeVisible();
+
+  const closeShortcuts = dialog.getByRole("button", {
+    name: "Close shortcuts",
+  });
+  await page.waitForFunction(() => {
+    const button = document.querySelector(
+      'button[aria-label="Close shortcuts"]',
+    );
+    if (!button) return false;
+    const rect = button.getBoundingClientRect();
+    return rect.width >= 44 && rect.height >= 44;
+  });
+  await expectMobileTouchTarget(closeShortcuts);
+
+  const dialogBox = await dialog.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(dialogBox).toBeTruthy();
+  expect(navBox).toBeTruthy();
+  expect(dialogBox!.y + dialogBox!.height).toBeLessThan(navBox!.y);
+  expect(forbiddenProviderRequests).toEqual([]);
+});

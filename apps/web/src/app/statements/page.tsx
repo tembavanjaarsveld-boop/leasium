@@ -314,9 +314,14 @@ function invoiceEvidenceSources(invoice: {
   ].filter(Boolean);
 }
 
-function financeChecklistText(checklist: FinanceChecklist) {
+function financeChecklistText(
+  checklist: FinanceChecklist,
+  showOwnerDispatch: boolean,
+) {
   return [
-    "Owner statements finance checklist",
+    showOwnerDispatch
+      ? "Owner statements finance checklist"
+      : "Entity statements finance checklist",
     `${checklist.title}: ${checklist.detail}`,
     `${checklist.completedCount} complete / ${checklist.reviewCount} review / ${checklist.blockedCount} blocked / ${checklist.lockedCount} locked`,
     "",
@@ -325,7 +330,9 @@ function financeChecklistText(checklist: FinanceChecklist) {
         `- ${item.title}: ${checklistStatusLabel(item.status)} (${item.metric}) - ${item.detail}`,
     ),
     "",
-    "Review-only: owner dispatch remains locked until the explicit approval workflow is wired.",
+    showOwnerDispatch
+      ? "Review-only: owner dispatch remains locked until the explicit approval workflow is wired."
+      : "Review-only: local entity-reporting remains internal until finance signoff.",
   ].join("\n");
 }
 
@@ -399,11 +406,13 @@ function financeSignoffStatus({
   checklist,
   exceptions,
   dispatchRows,
+  showOwnerDispatch = true,
 }: {
   readiness: StatementPackReadiness;
   checklist: FinanceChecklist;
   exceptions: StatementExceptionRow[];
   dispatchRows: StatementDispatchReviewRow[];
+  showOwnerDispatch?: boolean;
 }) {
   const readyDispatchCount = dispatchRows.filter(
     (row) => row.status === "ready",
@@ -430,7 +439,9 @@ function financeSignoffStatus({
       label: "Blocked",
       tone: "danger" as const,
       detail:
-        "Clear blocked finance checks or missing owner recipients before month-end signoff.",
+        showOwnerDispatch
+          ? "Clear blocked finance checks or missing owner recipients before month-end signoff."
+          : "Clear blocked finance checks before local entity-reporting signoff.",
       readyDispatchCount,
       missingRecipientCount,
       paymentReviewCount,
@@ -452,7 +463,9 @@ function financeSignoffStatus({
       label: "Locked",
       tone: "neutral" as const,
       detail:
-        "Approve this month’s invoices before finance can complete the owner statement signoff.",
+        showOwnerDispatch
+          ? "Approve this month’s invoices before finance can complete the owner statement signoff."
+          : "Approve this month’s invoices before finance can complete the local entity-reporting signoff.",
       readyDispatchCount,
       missingRecipientCount,
       paymentReviewCount,
@@ -462,11 +475,30 @@ function financeSignoffStatus({
     label: "Ready",
     tone: "success" as const,
     detail:
-      "The review pack is ready for finance signoff. Owner dispatch remains a separate approval workflow.",
+      showOwnerDispatch
+        ? "The review pack is ready for finance signoff. Owner dispatch remains a separate approval workflow."
+        : "The local entity-reporting pack is ready for finance signoff.",
     readyDispatchCount,
     missingRecipientCount,
     paymentReviewCount,
   };
+}
+
+function statementPackDetail(
+  readiness: StatementPackReadiness,
+  showOwnerDispatch: boolean,
+) {
+  if (showOwnerDispatch) return readiness.detail;
+  if (readiness.status === "ready") {
+    return "Entity totals are ready to review from the closed billing run.";
+  }
+  if (readiness.status === "blocked") {
+    return "Resolve accounting blockers before relying on this local entity-reporting pack.";
+  }
+  if (readiness.status === "incomplete") {
+    return "Approve invoices for this month before the local entity-reporting pack is complete.";
+  }
+  return "Local entity-reporting can be reviewed, but outstanding or unreconciled payments remain.";
 }
 
 function financeSignoffPacketText({
@@ -475,28 +507,39 @@ function financeSignoffPacketText({
   checklist,
   exceptions,
   dispatchRows,
+  showOwnerDispatch,
 }: {
   month: string;
   readiness: StatementPackReadiness;
   checklist: FinanceChecklist;
   exceptions: StatementExceptionRow[];
   dispatchRows: StatementDispatchReviewRow[];
+  showOwnerDispatch: boolean;
 }) {
   const status = financeSignoffStatus({
     readiness,
     checklist,
     exceptions,
     dispatchRows,
+    showOwnerDispatch,
   });
   const approvalSteps = buildDispatchApprovalSteps(dispatchRows);
+  const statementLabel = showOwnerDispatch
+    ? "Owner statements"
+    : "Entity statements";
+  const audienceLabel = showOwnerDispatch ? "owners" : "entities";
+  const guardrail = showOwnerDispatch
+    ? "Review-only: this packet does not send owner email, attach PDFs to outbound messages, or update provider delivery history."
+    : "Review-only: this packet keeps local entity-reporting steps explicit and does not send email, attach PDFs to outbound messages, or update provider delivery history.";
+  const packDetail = statementPackDetail(readiness, showOwnerDispatch);
   return [
-    "Owner statements month-end signoff",
+    `${statementLabel} month-end signoff`,
     `Month: ${formatMonthLabel(month)}`,
     `Status: ${status.label} - ${status.detail}`,
     "",
     "Statement pack:",
-    `- ${readiness.title}: ${readiness.detail}`,
-    `- ${readiness.ownerCount} owners / ${readiness.statementInvoiceCount} statement invoices / ${formatMoney(readiness.outstandingCents)} outstanding`,
+    `- ${readiness.title}: ${packDetail}`,
+    `- ${readiness.ownerCount} ${audienceLabel} / ${readiness.statementInvoiceCount} statement invoices / ${formatMoney(readiness.outstandingCents)} outstanding`,
     "",
     "Finance checklist:",
     `- ${checklist.completedCount} complete / ${checklist.reviewCount} review / ${checklist.blockedCount} blocked / ${checklist.lockedCount} locked`,
@@ -513,12 +556,19 @@ function financeSignoffPacketText({
         )
       : ["- None"]),
     "",
-    "Dispatch approval runway:",
-    ...approvalSteps.map(
-      (step) => `- ${step.title}: ${step.metric} - ${step.detail}`,
-    ),
+    ...(showOwnerDispatch
+      ? [
+          "Dispatch approval runway:",
+          ...approvalSteps.map(
+            (step) => `- ${step.title}: ${step.metric} - ${step.detail}`,
+          ),
+        ]
+      : [
+          "Local reporting:",
+          "- Entity statement pack: local entity-reporting remains review-only until finance signoff.",
+        ]),
     "",
-    "Review-only: this packet does not send owner email, attach PDFs to outbound messages, or update provider delivery history.",
+    guardrail,
   ].join("\n");
 }
 
@@ -528,31 +578,45 @@ function financeSignoffPacketCsv({
   checklist,
   exceptions,
   dispatchRows,
+  showOwnerDispatch,
 }: {
   month: string;
   readiness: StatementPackReadiness;
   checklist: FinanceChecklist;
   exceptions: StatementExceptionRow[];
   dispatchRows: StatementDispatchReviewRow[];
+  showOwnerDispatch: boolean;
 }) {
   const status = financeSignoffStatus({
     readiness,
     checklist,
     exceptions,
     dispatchRows,
+    showOwnerDispatch,
   });
   const approvalSteps = buildDispatchApprovalSteps(dispatchRows);
+  const audienceLabel = showOwnerDispatch ? "owners" : "entities";
+  const guardrail = showOwnerDispatch
+    ? "This packet does not send owner email, attach PDFs to outbound messages, or update provider delivery history."
+    : "This packet keeps local entity-reporting steps explicit and does not send email, attach PDFs to outbound messages, or update provider delivery history.";
+  const packDetail = statementPackDetail(readiness, showOwnerDispatch);
   return [
     ["Section", "Item", "Status", "Metric", "Detail"].map(csvCell).join(","),
-    ["Signoff", formatMonthLabel(month), status.label, "", status.detail]
+    [
+      "Signoff",
+      showOwnerDispatch ? formatMonthLabel(month) : "Entity statements",
+      status.label,
+      "",
+      status.detail,
+    ]
       .map(csvCell)
       .join(","),
     [
       "Statement pack",
       readiness.title,
       statementPackLabel(readiness.status),
-      `${readiness.ownerCount} owners / ${readiness.statementInvoiceCount} statement invoices / ${formatMoney(readiness.outstandingCents)} outstanding`,
-      readiness.detail,
+      `${readiness.ownerCount} ${audienceLabel} / ${readiness.statementInvoiceCount} statement invoices / ${formatMoney(readiness.outstandingCents)} outstanding`,
+      packDetail,
     ]
       .map(csvCell)
       .join(","),
@@ -589,17 +653,35 @@ function financeSignoffPacketCsv({
             .join(","),
         )
       : [["Exception", "None", "Clear", "", ""].map(csvCell).join(",")]),
-    ...approvalSteps.map((step) =>
-      ["Dispatch approval", step.title, step.title, step.metric, step.detail]
-        .map(csvCell)
-        .join(","),
-    ),
+    ...(showOwnerDispatch
+      ? approvalSteps.map((step) =>
+          [
+            "Dispatch approval",
+            step.title,
+            step.title,
+            step.metric,
+            step.detail,
+          ]
+            .map(csvCell)
+            .join(","),
+        )
+      : [
+          [
+            "Local reporting",
+            "Entity statement pack",
+            "Review-only",
+            "local entity-reporting",
+            "Finance signoff stays local for this account mode.",
+          ]
+            .map(csvCell)
+            .join(","),
+        ]),
     [
       "Guardrail",
       "Review-only",
       "",
       "",
-      "This packet does not send owner email, attach PDFs to outbound messages, or update provider delivery history.",
+      guardrail,
     ]
       .map(csvCell)
       .join(","),
@@ -875,8 +957,9 @@ function buildStatementExceptionRows({
         id: `${owner.owner_identity}-payment-review`,
         kind: "payment_review",
         ownerIdentity: owner.owner_identity,
-        detail:
-          "Review outstanding or unreconciled payment state before sending this owner statement.",
+        detail: showOwnerDispatch
+          ? "Review outstanding or unreconciled payment state before sending this owner statement."
+          : "Review outstanding or unreconciled payment state before completing local entity-reporting signoff.",
         metric: `${formatMoney(owner.outstanding_cents)} outstanding`,
         outstandingCents: owner.outstanding_cents,
         propertyCount: owner.property_count,
@@ -893,16 +976,23 @@ function buildStatementExceptionRows({
   );
 }
 
-function statementExceptionsText(rows: StatementExceptionRow[], month: string) {
+function statementExceptionsText(
+  rows: StatementExceptionRow[],
+  month: string,
+  showOwnerDispatch: boolean,
+) {
+  const title = showOwnerDispatch
+    ? "Owner statement finance exceptions"
+    : "Entity statement finance exceptions";
   if (!rows.length) {
     return [
-      "Owner statement finance exceptions",
+      title,
       `Month: ${formatMonthLabel(month)}`,
       "No recipient or payment exceptions are showing for the current statement pack.",
     ].join("\n");
   }
   return [
-    "Owner statement finance exceptions",
+    title,
     `Month: ${formatMonthLabel(month)}`,
     "",
     ...rows.map(
@@ -912,7 +1002,9 @@ function statementExceptionsText(rows: StatementExceptionRow[], month: string) {
         } | ${row.invoiceCount} invoice${row.invoiceCount === 1 ? "" : "s"}`,
     ),
     "",
-    "Review-only: resolve these before owner statement dispatch approval.",
+    showOwnerDispatch
+      ? "Review-only: resolve these before owner statement dispatch approval."
+      : "Review-only: resolve these before local entity-reporting signoff.",
   ].join("\n");
 }
 
@@ -922,12 +1014,14 @@ function buildStatementPackReadiness({
   freshness,
   month,
   handoffStatus,
+  showOwnerDispatch,
 }: {
   statements: OwnerStatementsRecord | undefined;
   invoiceDrafts: InvoiceDraftRecord[];
   freshness: XeroAccountingFreshnessRecord | null;
   month: string;
   handoffStatus: StatementPackStatus | null;
+  showOwnerDispatch: boolean;
 }): StatementPackReadiness {
   const monthlyApproved = invoiceDrafts.filter(
     (draft) =>
@@ -961,20 +1055,34 @@ function buildStatementPackReadiness({
           : "ready";
   const title =
     status === "ready"
-      ? "Statement pack ready"
+      ? showOwnerDispatch
+        ? "Statement pack ready"
+        : "Entity statement pack ready"
       : status === "blocked"
-        ? "Statement pack blocked"
+        ? showOwnerDispatch
+          ? "Statement pack blocked"
+          : "Entity statement pack blocked"
         : status === "unpaid"
           ? "Payment review still open"
-          : "Statement pack incomplete";
+          : showOwnerDispatch
+            ? "Statement pack incomplete"
+            : "Entity statement pack incomplete";
   const detail =
     status === "ready"
-      ? "Owner totals are ready to review from the closed billing run."
+      ? showOwnerDispatch
+        ? "Owner totals are ready to review from the closed billing run."
+        : "Entity totals are ready to review from the closed billing run."
       : status === "blocked"
-        ? "Resolve the accounting or dispatch blockers before relying on this pack."
+        ? showOwnerDispatch
+          ? "Resolve the accounting or dispatch blockers before relying on this pack."
+          : "Resolve accounting blockers before relying on this local entity-reporting pack."
         : status === "unpaid"
-          ? "Statements can be reviewed, but outstanding or unreconciled payments remain."
-          : "Approve invoices for this month before the owner statement pack is complete.";
+          ? showOwnerDispatch
+            ? "Statements can be reviewed, but outstanding or unreconciled payments remain."
+            : "Local entity-reporting can be reviewed, but outstanding or unreconciled payments remain."
+          : showOwnerDispatch
+            ? "Approve invoices for this month before the owner statement pack is complete."
+            : "Approve invoices for this month before the local entity-reporting pack is complete.";
 
   return {
     status,
@@ -1045,7 +1153,9 @@ function buildFinanceChecklist({
         accountingBlockers > 0 || accountingStatus === "attention"
           ? "Xero readiness has blockers that should be cleared before relying on this pack."
           : accountingIssueCount > 0 || accountingStatus !== "ready"
-            ? "Xero readiness needs a finance review before dispatch approval."
+            ? showOwnerDispatch
+              ? "Xero readiness needs a finance review before dispatch approval."
+              : "Xero readiness needs a finance review before local entity-reporting signoff."
             : "Xero readiness is clear for this statement cycle.",
       status:
         accountingBlockers > 0 || accountingStatus === "attention"
@@ -1062,7 +1172,7 @@ function buildFinanceChecklist({
       id: "recipient-review",
       title: "Recipient review",
       detail: !showOwnerDispatch
-        ? "Owner billing recipients are not required for local entity statement reports."
+        ? "Billing recipients are not required for local entity statement reports."
         : ownersWithInvoices.length === 0
           ? "Recipient review unlocks once owner statements have invoices."
           : missingRecipientCount > 0
@@ -1089,7 +1199,9 @@ function buildFinanceChecklist({
           ? "Payment review unlocks once this month has approved invoices."
           : paymentReviewCount > 0 || readiness.unpaidLocalCount > 0
             ? "Outstanding or unreconciled payments remain; statements can be exported for review only."
-            : "No outstanding owner balances are showing for this statement cycle.",
+            : showOwnerDispatch
+              ? "No outstanding owner balances are showing for this statement cycle."
+              : "No outstanding balances are showing for this statement cycle.",
       status:
         ownersWithInvoices.length === 0
           ? "locked"
@@ -1118,12 +1230,12 @@ function buildFinanceChecklist({
       id: "dispatch-lock",
       title: showOwnerDispatch
         ? "Owner dispatch"
-        : "Third-party owner dispatch off",
+        : "Local reporting mode",
       detail: showOwnerDispatch
         ? readiness.status === "ready" && missingRecipientCount === 0
           ? "Send approval is ready for the next workflow slice; this page still cannot send owner emails."
           : "Owner email dispatch remains locked while finance review is incomplete."
-        : "Self-managed accounts keep entity-grouped statements local; third-party owner send workflows stay unavailable.",
+        : "Self-managed accounts keep entity-grouped statements local; external delivery workflows stay unavailable.",
       status: showOwnerDispatch ? "locked" : "complete",
       metric: showOwnerDispatch ? "No email sent" : "Local reports only",
     },
@@ -1146,10 +1258,16 @@ function buildFinanceChecklist({
         : "Finance checklist needs review";
   const detail =
     status === "ready"
-      ? "The review pack is ready for finance sign-off. Owner send still requires a separate approval workflow."
+      ? showOwnerDispatch
+        ? "The review pack is ready for finance sign-off. Owner send still requires a separate approval workflow."
+        : "The local entity-reporting pack is ready for finance sign-off."
       : status === "blocked"
-        ? "Clear the blocked checks before finance signs off the month-end statement pack."
-        : "The pack can be reviewed, but finance should resolve the highlighted checks before dispatch approval.";
+        ? showOwnerDispatch
+          ? "Clear the blocked checks before finance signs off the month-end statement pack."
+          : "Clear the blocked checks before finance signs off the local entity-reporting pack."
+        : showOwnerDispatch
+          ? "The pack can be reviewed, but finance should resolve the highlighted checks before dispatch approval."
+          : "The pack can be reviewed, but finance should resolve the highlighted checks before local entity-reporting signoff.";
 
   return {
     status,
@@ -1299,11 +1417,13 @@ function StatementsContent() {
         freshness: xeroStatusQuery.data?.accounting_freshness ?? null,
         month,
         handoffStatus,
+        showOwnerDispatch,
       }),
     [
       handoffStatus,
       invoiceDraftsQuery.data,
       month,
+      showOwnerDispatch,
       statementsQuery.data,
       xeroStatusQuery.data?.accounting_freshness,
     ],
@@ -1379,6 +1499,7 @@ function StatementsContent() {
           month={month}
           entityId={selectedEntityId}
           openedFromBilling={openedFromBilling}
+          showOwnerDispatch={showOwnerDispatch}
           loading={
             statementsQuery.isLoading ||
             invoiceDraftsQuery.isLoading ||
@@ -1393,6 +1514,7 @@ function StatementsContent() {
         <FinanceChecklistPanel
           checklist={financeChecklist}
           month={month}
+          showOwnerDispatch={showOwnerDispatch}
           loading={
             statementsQuery.isLoading ||
             invoiceDraftsQuery.isLoading ||
@@ -2189,6 +2311,7 @@ function StatementReadinessPanel({
   month,
   entityId,
   openedFromBilling,
+  showOwnerDispatch,
   loading,
   billingHref,
 }: {
@@ -2196,6 +2319,7 @@ function StatementReadinessPanel({
   month: string;
   entityId: string;
   openedFromBilling: boolean;
+  showOwnerDispatch: boolean;
   loading: boolean;
   billingHref: string;
 }) {
@@ -2218,13 +2342,17 @@ function StatementReadinessPanel({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `owner-statement-pack-${month}.zip`;
+      anchor.download = showOwnerDispatch
+        ? `owner-statement-pack-${month}.zip`
+        : `entity-statement-pack-${month}.zip`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
       setPackReceipt(
-        "Accountant review pack prepared with PDFs and manifest. No owner email sent.",
+        showOwnerDispatch
+          ? "Accountant review pack prepared with PDFs and manifest. No owner email sent."
+          : "Accountant review pack prepared with PDFs and manifest for local reporting.",
       );
     } catch (error) {
       setPackReceipt(friendlyError(error));
@@ -2238,7 +2366,9 @@ function StatementReadinessPanel({
       description={
         openedFromBilling
           ? "Opened from the Billing Readiness month-end checklist."
-          : "Owner statement readiness for the selected month."
+          : showOwnerDispatch
+            ? "Owner statement readiness for the selected month."
+            : "Entity statement readiness for the selected month."
       }
       icon={<span className="text-primary">{icon}</span>}
       actions={
@@ -2257,7 +2387,13 @@ function StatementReadinessPanel({
             <StatusBadge tone="neutral">Month {month}</StatusBadge>
             <StatusBadge tone="neutral">
               {readiness.ownerCount}{" "}
-              {readiness.ownerCount === 1 ? "owner" : "owners"}
+              {showOwnerDispatch
+                ? readiness.ownerCount === 1
+                  ? "owner"
+                  : "owners"
+                : readiness.ownerCount === 1
+                  ? "entity"
+                  : "entities"}
             </StatusBadge>
             <StatusBadge tone="primary">
               {readiness.statementInvoiceCount} statement{" "}
@@ -2317,10 +2453,12 @@ function StatementReadinessPanel({
 function FinanceChecklistPanel({
   checklist,
   month,
+  showOwnerDispatch,
   loading,
 }: {
   checklist: FinanceChecklist;
   month: string;
+  showOwnerDispatch: boolean;
   loading: boolean;
 }) {
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
@@ -2330,7 +2468,9 @@ function FinanceChecklistPanel({
       setCopyReceipt("Copy unavailable in this browser.");
       return;
     }
-    await navigator.clipboard.writeText(financeChecklistText(checklist));
+    await navigator.clipboard.writeText(
+      financeChecklistText(checklist, showOwnerDispatch),
+    );
     setCopyReceipt("Finance checklist copied.");
   };
   const downloadChecklist = () => {
@@ -2338,14 +2478,20 @@ function FinanceChecklistPanel({
       new Blob([financeChecklistCsv(checklist)], {
         type: "text/csv;charset=utf-8",
       }),
-      `owner-statement-checklist-${month}.csv`,
+      showOwnerDispatch
+        ? `owner-statement-checklist-${month}.csv`
+        : `entity-statement-checklist-${month}.csv`,
     );
   };
 
   return (
     <SectionPanel
       title="Finance checklist"
-      description="Automated month-end checks for the owner statement pack."
+      description={
+        showOwnerDispatch
+          ? "Automated month-end checks for the owner statement pack."
+          : "Automated month-end checks for the local entity-reporting pack."
+      }
       icon={<ListChecks size={17} className="text-primary" />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -2475,6 +2621,7 @@ function FinanceSignoffPanel({
     checklist,
     exceptions,
     dispatchRows,
+    showOwnerDispatch,
   });
   const copySignoff = async () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) {
@@ -2488,6 +2635,7 @@ function FinanceSignoffPanel({
         checklist,
         exceptions,
         dispatchRows,
+        showOwnerDispatch,
       }),
     );
     setCopyReceipt("Month-end signoff packet copied.");
@@ -2502,13 +2650,16 @@ function FinanceSignoffPanel({
             checklist,
             exceptions,
             dispatchRows,
+            showOwnerDispatch,
           }),
         ],
         {
           type: "text/csv;charset=utf-8",
         },
       ),
-      `owner-statement-signoff-${month}.csv`,
+      showOwnerDispatch
+        ? `owner-statement-signoff-${month}.csv`
+        : `entity-statement-signoff-${month}.csv`,
     );
   };
 
@@ -2562,19 +2713,27 @@ function FinanceSignoffPanel({
           </div>
           <div className="flex flex-wrap items-start gap-2 lg:justify-end">
             <StatusBadge tone="primary">
-              {readiness.ownerCount} owner
-              {readiness.ownerCount === 1 ? "" : "s"}
+              {readiness.ownerCount}{" "}
+              {showOwnerDispatch
+                ? `owner${readiness.ownerCount === 1 ? "" : "s"}`
+                : `entit${readiness.ownerCount === 1 ? "y" : "ies"}`}
             </StatusBadge>
-            <StatusBadge
-              tone={status.readyDispatchCount ? "success" : "neutral"}
-            >
-              {status.readyDispatchCount} dispatch-ready
-            </StatusBadge>
-            <StatusBadge
-              tone={status.missingRecipientCount ? "danger" : "success"}
-            >
-              {status.missingRecipientCount} missing recipient
-            </StatusBadge>
+            {showOwnerDispatch ? (
+              <>
+                <StatusBadge
+                  tone={status.readyDispatchCount ? "success" : "neutral"}
+                >
+                  {status.readyDispatchCount} dispatch-ready
+                </StatusBadge>
+                <StatusBadge
+                  tone={status.missingRecipientCount ? "danger" : "success"}
+                >
+                  {status.missingRecipientCount} missing recipient
+                </StatusBadge>
+              </>
+            ) : (
+              <StatusBadge tone="neutral">Local reporting</StatusBadge>
+            )}
             <StatusBadge
               tone={status.paymentReviewCount ? "warning" : "success"}
             >
@@ -2676,7 +2835,9 @@ function StatementExceptionsPanel({
       setCopyReceipt("Copy unavailable in this browser.");
       return;
     }
-    await navigator.clipboard.writeText(statementExceptionsText(rows, month));
+    await navigator.clipboard.writeText(
+      statementExceptionsText(rows, month, showOwnerDispatch),
+    );
     setCopyReceipt("Finance exceptions copied.");
   };
 
@@ -2796,7 +2957,7 @@ function StatementExceptionsPanel({
 function SelfManagedDispatchGuardrailPanel() {
   return (
     <SectionPanel
-      title="Third-party owner dispatch off"
+      title="Local reporting mode"
       description="Self-managed accounts keep entity-grouped statements local to finance review."
       icon={<ShieldCheck size={17} className="text-primary" />}
       actions={<StatusBadge tone="neutral">Local reports only</StatusBadge>}
@@ -2804,8 +2965,8 @@ function SelfManagedDispatchGuardrailPanel() {
       <div className="grid gap-3 p-4">
         <p className="text-sm text-muted-foreground">
           Statement PDFs, accountant packs, and invoice evidence stay available
-          for internal reporting. Owner email send controls and dispatch queues
-          are only shown for managing-agent or hybrid accounts.
+          for internal reporting. External delivery controls are only shown for
+          managing-agent or hybrid accounts.
         </p>
       </div>
     </SectionPanel>

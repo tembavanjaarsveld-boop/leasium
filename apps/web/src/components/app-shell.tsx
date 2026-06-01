@@ -872,7 +872,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <div
             onPointerDown={() => setCheatsheetOpen(false)}
             className={cn(
-              "fixed inset-0 z-50 bg-leasium-navy-900/30 px-4 py-20 backdrop-blur-sm",
+              "fixed inset-0 z-50 overflow-y-auto bg-leasium-navy-900/30 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-20 backdrop-blur-sm md:py-20",
               cheatsheetRender.isClosing
                 ? "animate-leasium-backdrop-out"
                 : "animate-leasium-backdrop-in",
@@ -884,7 +884,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               aria-labelledby="keyboard-shortcuts-title"
               onPointerDown={(event) => event.stopPropagation()}
               className={cn(
-                "mx-auto max-w-lg overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumLg",
+                "mx-auto max-h-[calc(100vh-11rem-env(safe-area-inset-bottom))] max-w-lg overflow-y-auto rounded-2xl border border-border bg-white shadow-leasiumLg md:max-h-[calc(100vh-10rem)]",
                 cheatsheetRender.isClosing
                   ? "animate-leasium-modal-out"
                   : "animate-leasium-modal-in",
@@ -901,7 +901,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setCheatsheetOpen(false)}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  className="grid h-[44px] w-[44px] place-items-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   aria-label="Close shortcuts"
                 >
                   <X size={16} />

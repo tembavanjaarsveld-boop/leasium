@@ -7,6 +7,28 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Mobile overlays and entity signoff parity
+- Mobile keyboard-shortcuts overlay controls now meet the 44px touch target
+  baseline, and the shortcuts dialog is constrained to the safe area above the
+  fixed mobile bottom nav with internal scrolling for long shortcut lists.
+- `/statements` month-end readiness, finance checklist, finance exceptions, and
+  signoff copy/export paths are now mode-aware: self-managed accounts use
+  entity/local-reporting guardrails, omit dispatch approval/send-workflow
+  framing, and download signoff/checklist files with `entity-statement-*`
+  filenames; managing-agent accounts keep the owner signoff/checklist filenames
+  and dispatch framing.
+- Owner account mobile coverage now includes populated shared-document rows with
+  very long filenames, proving the existing portal layout keeps account
+  download controls and document content inside a 390px viewport.
+- Guardrails: mobile shell smoke covers shortcuts overlay touch safety and
+  bottom-nav clearance without provider calls; statements smoke covers local
+  entity checklist, exceptions, signoff copy/CSV, and empty-pack wording without
+  owner-statement dispatch/send framing; owner portal account smoke covers
+  populated shared documents without overflow.
+- Verification: touched mobile nav, statements, and owner account smokes passed
+  **17 passed / 4 skipped**; targeted frontend eslint, `tsc --noEmit`, and
+  `git diff --check` passed.
+
 ### Mobile shortcut and maintenance handoff polish
 - The global `G` shortcut hint now survives the shortcut listener rebind
   instead of being cleared immediately, while still clearing its timer on

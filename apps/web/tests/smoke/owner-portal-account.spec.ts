@@ -1183,6 +1183,65 @@ test("owner account entry renders mobile empty states without overflow", async (
   expect(unsafeRequests).toEqual([]);
 });
 
+test("owner account entry keeps populated shared documents inside mobile viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const longFilename =
+    "owner-visible-settlement-reconciliation-and-capex-approval-evidence-with-a-very-long-file-name-2026-05.pdf";
+
+  await page.route("**/api/v1/owner-portal/account/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "active",
+        owner_id: "owner-1",
+        owner_name: "Owner Portal Pty Ltd",
+        email: "owner@example.test",
+        linked_at: "2026-05-31T00:00:00.000Z",
+        last_seen_at: "2026-05-31T00:00:00.000Z",
+        revoked_at: null,
+        recovery_hint:
+          "This owner login can open the owner portal without the original claim link.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...OWNER_PORTAL_ACCOUNT_RESPONSE,
+        documents: [
+          {
+            ...OWNER_PORTAL_ACCOUNT_RESPONSE.documents[0],
+            filename: longFilename,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/owner-portal?month=2026-05");
+
+  const downloadButton = page.getByRole("button", {
+    name: `Download ${longFilename} for Owner Portal Plaza`,
+  });
+  await expect(downloadButton).toBeVisible({ timeout: 15_000 });
+  expect(
+    await downloadButton.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= window.innerWidth;
+    }),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("owner account entry guides unlinked or revoked logins without data", async ({
   page,
 }) => {
