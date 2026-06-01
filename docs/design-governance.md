@@ -163,6 +163,13 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   retaining the previous owner name, property, statement totals, shared
   documents, or maintenance rows. This is a privacy/safety hardening slice, not
   a visual redesign.
+- **Owner portal bearer-action follow-through** (`/owner-portal`,
+  `/owner-portal/invite/[token]`): invite claim and account shared-document
+  downloads now request fresh Clerk bearer tokens at action time. Clerk-required
+  downloads fail closed if no fresh token is available instead of falling back to
+  cached ambient auth, while local no-Clerk dev/test mode keeps the existing
+  token-only fallback. Runtime Authorization-header smoke coverage remains a
+  follow-up for a signed-in Clerk smoke environment.
 - **Owner portal preview error/cache parity** (`/owner-portal/[ownerId]`):
   operator-preview reads now match the tenant preview freshness pattern with
   no stale cache, no retry delay, and refetch-on-return. 404s must use

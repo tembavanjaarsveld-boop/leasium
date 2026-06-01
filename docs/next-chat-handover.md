@@ -7,6 +7,28 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner portal bearer-action follow-through
+- `/owner-portal/invite/[token]` now splits Clerk-enabled and local no-Clerk
+  modes, fetching a fresh Clerk bearer with `getToken({ skipCache: true })`
+  before claiming an owner invite and passing it to
+  `claimOwnerPortalAccount(token, authToken)`.
+- Owner account document downloads now receive the same fresh-auth callback
+  through the shared owner portal dashboard and call the account document
+  download API with the explicit bearer. If Clerk mode requires auth but no
+  fresh token is available, the download fails closed instead of falling back to
+  ambient cached auth.
+- The local no-Clerk path remains available for dev/smoke runs: invite claim
+  still uses the token-only API call and account document downloads keep the
+  existing request fallback when auth is disabled.
+- Guardrails: the owner account smoke preserves the safe invite preview,
+  no-provider/no-statement-send traps, packet copy/CSV local-only behavior,
+  mobile empty states, and account-session failure clearing. A source guard now
+  keeps the fresh-bearer wiring in place until a signed-in Clerk smoke session
+  is available for runtime Authorization-header assertions.
+- Verification: owner portal account bearer guard passed **1 passed**; full
+  owner account smoke passed **6 passed**; targeted frontend eslint,
+  `tsc --noEmit`, and `git diff --check` passed.
+
 ### Owner statement ZIP CSV hardening
 - Backend owner statement ZIP packs now formula-harden both included CSVs:
   `MANIFEST-{month}.csv` and `INVOICE-EVIDENCE-{month}.csv`.

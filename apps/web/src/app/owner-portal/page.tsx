@@ -174,7 +174,14 @@ function OwnerPortalAccountQueries({ auth }: { auth: OwnerAccountAuthContext }) 
     return null;
   }
 
-  return <OwnerPortalAccountView portal={accountSession} selectedMonth={month} />;
+  return (
+    <OwnerPortalAccountView
+      portal={accountSession}
+      selectedMonth={month}
+      getAuthToken={auth.getAuthToken}
+      requiresAuthToken={auth.requiresAuthToken}
+    />
+  );
 }
 
 function OwnerPortalEntryContentWithAuth() {

@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import { expect, type Page, test } from "@playwright/test";
+
+const appRoot = path.resolve(__dirname, "../..");
+
+async function source(relativePath: string) {
+  return readFile(path.join(appRoot, relativePath), "utf8");
+}
 
 const OWNER_INVITE_PREVIEW = {
   owner_display_name: "Owner Portal Pty Ltd",
@@ -130,6 +137,41 @@ const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
     items: [],
   },
 };
+
+test("owner account claim and document actions use fresh bearer tokens", async () => {
+  const invitePage = await source("src/app/owner-portal/invite/[token]/page.tsx");
+  const accountPage = await source("src/app/owner-portal/page.tsx");
+  const accountUi = await source(
+    "src/app/owner-portal/owner-portal-account-ui.tsx",
+  );
+  const dashboardSections = await source(
+    "src/app/owner-portal/owner-portal-dashboard-sections.tsx",
+  );
+
+  expect(invitePage).toContain("getToken({ skipCache: true })");
+  expect(invitePage).toContain("claimOwnerPortalAccount(token, authToken)");
+  expect(invitePage).toContain("OwnerPortalInviteContentWithAuth");
+  expect(invitePage).toContain("requiresAuthToken={auth.requiresAuthToken}");
+  expect(accountPage).toContain(
+    "getAuthToken: () => getToken({ skipCache: true })",
+  );
+  expect(accountPage).toContain("requiresAuthToken={auth.requiresAuthToken}");
+  expect(accountUi).toContain("getAuthToken={getAuthToken}");
+  expect(accountUi).toContain("requiresAuthToken={requiresAuthToken}");
+  expect(dashboardSections).toContain(
+    "getAuthToken?: () => Promise<string | null>",
+  );
+  expect(dashboardSections).toContain("requiresAuthToken?: boolean");
+  expect(dashboardSections).toContain(
+    'throw new Error("Sign in before downloading owner documents.")',
+  );
+  expect(dashboardSections).toContain(
+    "const authToken = getAuthToken ? await getAuthToken() : null",
+  );
+  expect(dashboardSections).toContain("downloadOwnerPortalAccountDocument(");
+  expect(dashboardSections).toContain("document.id,");
+  expect(dashboardSections).toContain("authToken,");
+});
 
 async function navigateWithAppRouter(page: Page, href: string) {
   await page.evaluate((targetHref) => {

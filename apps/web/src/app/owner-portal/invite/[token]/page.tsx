@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, LogIn, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -24,7 +25,18 @@ function accountHref(path: string, token: string) {
   return `${path}?redirect_url=${encodeURIComponent(returnTo)}`;
 }
 
-function OwnerPortalInviteContent() {
+type OwnerPortalInviteAuthContext = {
+  authLoaded: boolean;
+  isSignedIn: boolean;
+  requiresAuthToken: boolean;
+  getAuthToken: () => Promise<string | null>;
+};
+
+function OwnerPortalInviteContent({
+  auth,
+}: {
+  auth: OwnerPortalInviteAuthContext;
+}) {
   const params = useParams<{ token?: string | string[] }>();
   const token = Array.isArray(params.token) ? params.token[0] : params.token;
   const previewQuery = useQuery({
@@ -34,9 +46,19 @@ function OwnerPortalInviteContent() {
     retry: false,
   });
   const claimMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!token) {
         throw new Error("Owner portal token is required.");
+      }
+      if (auth.requiresAuthToken) {
+        if (!auth.authLoaded || !auth.isSignedIn) {
+          throw new Error("Sign in before claiming the owner portal invite.");
+        }
+        const authToken = await auth.getAuthToken();
+        if (!authToken) {
+          throw new Error("Sign in before claiming the owner portal invite.");
+        }
+        return claimOwnerPortalAccount(token, authToken);
       }
       return claimOwnerPortalAccount(token);
     },
@@ -51,7 +73,13 @@ function OwnerPortalInviteContent() {
   }
 
   if (claimMutation.data) {
-    return <OwnerPortalAccountView portal={claimMutation.data} />;
+    return (
+      <OwnerPortalAccountView
+        portal={claimMutation.data}
+        getAuthToken={auth.getAuthToken}
+        requiresAuthToken={auth.requiresAuthToken}
+      />
+    );
   }
 
   if (previewQuery.isLoading) {
@@ -178,6 +206,41 @@ function OwnerPortalInviteContent() {
   );
 }
 
+function OwnerPortalInviteContentWithAuth() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  return (
+    <OwnerPortalInviteContent
+      auth={{
+        authLoaded: isLoaded,
+        isSignedIn: Boolean(isSignedIn),
+        requiresAuthToken: true,
+        getAuthToken: () => getToken({ skipCache: true }),
+      }}
+    />
+  );
+}
+
+function OwnerPortalInviteContentWithoutAuth() {
+  return (
+    <OwnerPortalInviteContent
+      auth={{
+        authLoaded: true,
+        isSignedIn: true,
+        requiresAuthToken: false,
+        getAuthToken: async () => null,
+      }}
+    />
+  );
+}
+
 export default function OwnerPortalInvitePage() {
-  return <OwnerPortalInviteContent />;
+  const ownerAccountAuthEnabled = Boolean(
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  );
+
+  return ownerAccountAuthEnabled ? (
+    <OwnerPortalInviteContentWithAuth />
+  ) : (
+    <OwnerPortalInviteContentWithoutAuth />
+  );
 }

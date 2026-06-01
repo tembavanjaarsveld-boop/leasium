@@ -596,9 +596,13 @@ export function OwnerVisibleReviewPacketPanel({
 export function OwnerPortalAccountView({
   portal,
   selectedMonth,
+  getAuthToken,
+  requiresAuthToken = false,
 }: {
   portal: OwnerPortalRecord;
   selectedMonth?: string | null;
+  getAuthToken?: () => Promise<string | null>;
+  requiresAuthToken?: boolean;
 }) {
   const statement = portal.statement;
   const periodMonth = statement?.month ?? selectedMonth;
@@ -714,6 +718,8 @@ export function OwnerPortalAccountView({
             <OwnerPortalDocumentsPanel
               accountMode={portal.auth.mode === "owner_portal_account"}
               documents={portal.documents}
+              getAuthToken={getAuthToken}
+              requiresAuthToken={requiresAuthToken}
             />
 
             <GuardrailPanel guardrails={portal.guardrails} />

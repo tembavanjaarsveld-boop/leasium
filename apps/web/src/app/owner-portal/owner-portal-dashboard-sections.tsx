@@ -166,13 +166,24 @@ export function OwnerPortalMaintenancePanel({
 export function OwnerPortalDocumentsPanel({
   documents,
   accountMode,
+  getAuthToken,
+  requiresAuthToken = false,
 }: {
   documents: OwnerPortalDocumentRecord[];
   accountMode: boolean;
+  getAuthToken?: () => Promise<string | null>;
+  requiresAuthToken?: boolean;
 }) {
   const downloadMutation = useMutation({
     mutationFn: async (document: OwnerPortalDocumentRecord) => {
-      const blob = await downloadOwnerPortalAccountDocument(document.id);
+      const authToken = getAuthToken ? await getAuthToken() : null;
+      if (requiresAuthToken && !authToken) {
+        throw new Error("Sign in before downloading owner documents.");
+      }
+      const blob = await downloadOwnerPortalAccountDocument(
+        document.id,
+        authToken,
+      );
       saveBlob(blob, document.filename);
     },
   });
