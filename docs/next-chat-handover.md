@@ -7,6 +7,31 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Operations, notifications, and tenant export parity
+- `/operations` queue now has a local `Copy queue CSV` action beside
+  `Download queue CSV`; both actions use the same filtered queue CSV builder,
+  and the queue export controls meet the 44px mobile touch baseline.
+- Operations queue smoke copies and downloads the queue CSV, compares both
+  outputs, keeps the local-only guardrail and formula-neutralization checks,
+  and traps provider, Comms, maintenance, arrears, assignment, billing/invoice,
+  Xero/Basiq, payment, reconciliation, SendGrid, and Twilio boundaries.
+- `/notifications` now has `Copy readiness CSV` beside `Download readiness
+  CSV`; both share the provider-readiness CSV data path and show a local copy
+  receipt without marking notifications reviewed or running digests.
+- Notifications smoke runs the readiness export on mobile, proves
+  copy/download parity, verifies provider readiness guardrails, and keeps the
+  review-packet export regression in the touched suite.
+- Tenant detail `Download correspondence CSV` now inherits the shared
+  touch-safe secondary button sizing. The new mobile smoke verifies the
+  correspondence export filename/content, review-only guardrail, formula-safe
+  counterparty data, no document-byte fetch, and no tenant/Comms/provider,
+  Xero/Basiq, onboarding, or portal mutations during CSV export.
+- Agents scouted and implemented the slices independently; final review found
+  no blocking P1/P2 issues.
+- Verification: focused Operations + Notifications + tenant smokes passed
+  **3 passed**; touched smoke files passed **14 passed**; targeted frontend
+  eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Comms and tenant preview export parity
 - `/comms` now has a local `Copy review CSV` action beside `Download review
   CSV`; both use the same review-queue CSV builder and keep the queue export

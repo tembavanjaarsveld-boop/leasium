@@ -1281,6 +1281,8 @@ function NotificationsWorkspace() {
   const [digestChannelFilter, setDigestChannelFilter] =
     useState<DeliveryChannelFilter>("all");
   const [reviewPacketCopied, setReviewPacketCopied] = useState(false);
+  const [providerReadinessCsvCopied, setProviderReadinessCsvCopied] =
+    useState(false);
 
   const entitiesQuery = useQuery({
     queryKey: ["notifications-entities"],
@@ -1439,20 +1441,45 @@ function NotificationsWorkspace() {
       ) ?? [],
     [center?.digest_receipts, digestChannelFilter, digestFilter],
   );
-  const downloadProviderReadinessCsv = () => {
+  const providerReadinessCsvText = () => {
     if (!center) {
+      return "";
+    }
+    return providerReadinessCsv({
+      channels: centerChannels,
+      guardrails: center.guardrails,
+    });
+  };
+  const copyCsvToClipboard = async (csv: string) => {
+    try {
+      await navigator.clipboard.writeText(csv);
+    } catch {
+      const textArea = document.createElement("textarea");
+      textArea.value = csv;
+      textArea.setAttribute("readonly", "true");
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+  };
+  const copyProviderReadinessCsv = async () => {
+    const csv = providerReadinessCsvText();
+    if (!csv) {
+      return;
+    }
+    await copyCsvToClipboard(csv);
+    setProviderReadinessCsvCopied(true);
+  };
+  const downloadProviderReadinessCsv = () => {
+    const csv = providerReadinessCsvText();
+    if (!csv) {
       return;
     }
     saveBlob(
-      new Blob(
-        [
-          providerReadinessCsv({
-            channels: centerChannels,
-            guardrails: center.guardrails,
-          }),
-        ],
-        { type: "text/csv;charset=utf-8" },
-      ),
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
       "work-notification-provider-readiness.csv",
     );
   };
@@ -1473,19 +1500,7 @@ function NotificationsWorkspace() {
     if (!csv) {
       return;
     }
-    try {
-      await navigator.clipboard.writeText(csv);
-    } catch {
-      const textArea = document.createElement("textarea");
-      textArea.value = csv;
-      textArea.setAttribute("readonly", "true");
-      textArea.style.position = "fixed";
-      textArea.style.left = "-9999px";
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textArea);
-    }
+    await copyCsvToClipboard(csv);
     setReviewPacketCopied(true);
   };
   const downloadReviewPacketCsv = () => {
@@ -1640,6 +1655,14 @@ function NotificationsWorkspace() {
                 <SecondaryButton
                   type="button"
                   className="min-h-11 rounded-lg px-3 text-xs"
+                  onClick={() => void copyProviderReadinessCsv()}
+                >
+                  <ClipboardCopy size={14} />
+                  Copy readiness CSV
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  className="min-h-11 rounded-lg px-3 text-xs"
                   onClick={downloadProviderReadinessCsv}
                 >
                   <Download size={14} />
@@ -1655,6 +1678,14 @@ function NotificationsWorkspace() {
               className="border-b border-border bg-success-soft px-4 py-2 text-xs font-semibold text-success"
             >
               Review packet copied
+            </div>
+          ) : null}
+          {providerReadinessCsvCopied ? (
+            <div
+              role="status"
+              className="border-b border-border bg-success-soft px-4 py-2 text-xs font-semibold text-success"
+            >
+              Readiness CSV copied
             </div>
           ) : null}
           {center?.guardrails.length ? (

@@ -19,26 +19,38 @@ test("mobile operations loading and queue actions stay readable", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page);
-  const forbiddenMutationPaths: string[] = [];
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as Window & { __copiedQueueCsv?: string }).__copiedQueueCsv =
+            text;
+        },
+      },
+    });
+  });
+  const forbiddenLocalExportCalls: string[] = [];
   const forbiddenPathPatterns = [
     "/providers",
     "/provider-dispatch",
     "/provider-history",
+    "/comms",
+    "/maintenance",
+    "/arrears",
+    "/obligations",
+    "/work-assignments",
+    "/tenant-onboarding",
     "/billing",
     "/invoice",
     "/xero",
     "/basiq",
     "/payment",
     "/reconciliation",
-    "/comms",
     "/tenants",
-    "/tenant-onboarding",
     "/contractors",
-    "/maintenance",
-    "/arrears",
-    "/obligations",
-    "/work-assignments",
   ];
+  const forbiddenSendPathPattern = /email|sms|sendgrid|twilio/i;
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -129,10 +141,11 @@ test("mobile operations loading and queue actions stay readable", async ({
       return;
     }
     if (
-      request.method() !== "GET" &&
-      forbiddenPathPatterns.some((pattern) => apiPath.startsWith(pattern))
+      (request.method() !== "GET" &&
+        forbiddenPathPatterns.some((pattern) => apiPath.startsWith(pattern))) ||
+      forbiddenSendPathPattern.test(apiPath)
     ) {
-      forbiddenMutationPaths.push(`${request.method()} ${apiPath}`);
+      forbiddenLocalExportCalls.push(`${request.method()} ${apiPath}`);
     }
     if (!path.endsWith("/entities")) {
       await page.waitForTimeout(1200);
@@ -162,12 +175,39 @@ test("mobile operations loading and queue actions stay readable", async ({
   const downloadQueueCsv = queueActions.getByRole("button", {
     name: "Download queue CSV",
   });
+  const copyQueueCsv = queueActions.getByRole("button", {
+    name: "Copy queue CSV",
+  });
 
+  await expect(copyQueueCsv).toBeVisible();
   await expect(downloadQueueCsv).toBeVisible();
-  const actionBox = await downloadQueueCsv.boundingBox();
-  expect(actionBox).not.toBeNull();
-  expect(actionBox?.width).toBeGreaterThanOrEqual(300);
+  const copyBox = await copyQueueCsv.boundingBox();
+  const downloadBox = await downloadQueueCsv.boundingBox();
+  expect(copyBox).not.toBeNull();
+  expect(downloadBox).not.toBeNull();
+  for (const box of [copyBox!, downloadBox!]) {
+    expect(box.width).toBeGreaterThanOrEqual(300);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(Math.abs(copyBox!.x - downloadBox!.x)).toBeLessThanOrEqual(4);
+  expect(copyBox!.y).toBeGreaterThanOrEqual(downloadBox!.y);
+  expect(copyBox!.y - (downloadBox!.y + downloadBox!.height)).toBeLessThanOrEqual(
+    12,
+  );
 
+  forbiddenLocalExportCalls.length = 0;
+  await copyQueueCsv.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __copiedQueueCsv?: string }).__copiedQueueCsv,
+      ),
+    )
+    .toBeTruthy();
+  const copiedCsv = await page.evaluate(
+    () => (window as Window & { __copiedQueueCsv?: string }).__copiedQueueCsv,
+  );
   const downloadPromise = page.waitForEvent("download");
   await downloadQueueCsv.click();
   const download = await downloadPromise;
@@ -177,6 +217,7 @@ test("mobile operations loading and queue actions stay readable", async ({
   const downloadPath = await download.path();
   expect(downloadPath).not.toBeNull();
   const csv = await readFile(downloadPath!, "utf8");
+  expect(copiedCsv).toBe(csv);
   const rows = parseCsvRows(csv);
 
   expect(rows[0]).toEqual([
@@ -210,7 +251,7 @@ test("mobile operations loading and queue actions stay readable", async ({
       .filter((cell) => /^[=+\-@]/.test(cell)),
   ).toEqual([]);
   expect(csv).not.toMatch(/(?:^|,)"[=+\-@]/m);
-  expect(forbiddenMutationPaths).toEqual([]);
+  expect(forbiddenLocalExportCalls).toEqual([]);
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

@@ -4341,7 +4341,6 @@ function TenantDetail() {
                   </StatusBadge>
                   <SecondaryButton
                     type="button"
-                    className="h-8"
                     onClick={downloadCorrespondenceCsv}
                     disabled={
                       !correspondenceQuery.data ||

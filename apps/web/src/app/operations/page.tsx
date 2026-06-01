@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Copy,
   Download,
   FileWarning,
   HandCoins,
@@ -2338,9 +2339,14 @@ function OperationsWorkspace() {
       done: 0,
     } satisfies Record<AssignmentNoticeGroup, number>,
   );
+  const queueReviewCsv = () =>
+    operationsQueueReviewCsv(filteredOpenQueueItems);
+  const copyQueueCsv = async () => {
+    await copyTextToClipboard(queueReviewCsv());
+  };
   const downloadQueueCsv = () => {
     saveBlob(
-      new Blob([operationsQueueReviewCsv(filteredOpenQueueItems)], {
+      new Blob([queueReviewCsv()], {
         type: "text/csv;charset=utf-8",
       }),
       "operations-work-queue-review.csv",
@@ -3153,12 +3159,21 @@ function OperationsWorkspace() {
                   <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end xl:w-auto">
                     <SecondaryButton
                       type="button"
-                      className="h-10 w-full px-3 sm:w-auto"
+                      className="min-h-11 w-full px-3 sm:w-auto"
                       disabled={!selectedEntityId || operationsLoading}
                       onClick={downloadQueueCsv}
                     >
                       <Download size={15} />
                       Download queue CSV
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-11 w-full px-3 sm:w-auto"
+                      disabled={!selectedEntityId || operationsLoading}
+                      onClick={copyQueueCsv}
+                    >
+                      <Copy size={15} />
+                      Copy queue CSV
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"

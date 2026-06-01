@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -106,6 +107,102 @@ test("mobile tenant rows expose invite actions without raw loading placeholders"
   expect(cancelBox?.height).toBeGreaterThanOrEqual(44);
   await cancel.click();
   await expect.poll(() => cancelCalled).toBe(true);
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("tenant detail correspondence export is touch-safe and local-only on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+
+  let downloadStarted = false;
+  const forbiddenApiCalls: string[] = [];
+  const forbiddenMutationPrefixes = [
+    "/tenants",
+    "/comms/dispatch",
+    "/comms/dismiss",
+    "/providers",
+    "/provider-history",
+    "/provider-refresh",
+    "/sendgrid",
+    "/twilio",
+    "/xero",
+    "/basiq",
+    "/tenant-onboarding",
+    "/tenant-portal",
+  ];
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+    const method = request.method();
+    const documentByteDownload =
+      path.includes("/documents/") && path.includes("/download");
+    const forbiddenMutation =
+      method !== "GET" &&
+      forbiddenMutationPrefixes.some((prefix) => path.startsWith(prefix));
+
+    if (downloadStarted && (forbiddenMutation || documentByteDownload)) {
+      forbiddenApiCalls.push(`${method} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "tenant correspondence CSV export must stay local-only",
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/tenants/tenant-1");
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
+
+  const downloadCorrespondenceCsv = page.getByRole("button", {
+    name: "Download correspondence CSV",
+  });
+  await expect(downloadCorrespondenceCsv).toBeVisible();
+  await expect(downloadCorrespondenceCsv).toBeEnabled();
+  const actionBox = await downloadCorrespondenceCsv.boundingBox();
+  expect(actionBox).not.toBeNull();
+  expect(actionBox!.width).toBeGreaterThanOrEqual(44);
+  expect(actionBox!.height).toBeGreaterThanOrEqual(44);
+  await expect(downloadCorrespondenceCsv).not.toHaveClass(
+    /(?:^|\s)h-8(?:\s|$)/,
+  );
+
+  downloadStarted = true;
+  const downloadPromise = page.waitForEvent("download");
+  await downloadCorrespondenceCsv.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "tenant-correspondence-bright-cafe.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const correspondenceCsv = await readFile(downloadPath!, "utf8");
+
+  expect(correspondenceCsv).toContain("Tenant correspondence");
+  expect(correspondenceCsv).toContain("Inbound email");
+  expect(correspondenceCsv).toContain("Broken tap");
+  expect(correspondenceCsv).toContain("comms draft email queued");
+  expect(correspondenceCsv).toContain("arrears_case:arrears-1");
+  expect(correspondenceCsv).toContain("inbound_message:inbound-message-1");
+  expect(correspondenceCsv).toContain(
+    '"\'=HYPERLINK(""https://example.invalid"",""Mia"")"',
+  );
+  expect(correspondenceCsv).not.toMatch(/(?:^|,)"[=+\-@]/m);
+  expect(correspondenceCsv).toContain(
+    "Review-only export: downloading this file does not send email or SMS",
+  );
+  expect(correspondenceCsv).toContain("fetch document bytes.");
+  expect(forbiddenApiCalls).toEqual([]);
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

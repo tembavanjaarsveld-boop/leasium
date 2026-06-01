@@ -8,6 +8,40 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("notifications exports provider readiness review CSV", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as Window & { __copiedProviderReadinessCsv?: string })
+            .__copiedProviderReadinessCsv = text;
+        },
+      },
+    });
+  });
+
+  let readinessExportStarted = false;
+  const readinessExportApiCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (readinessExportStarted) {
+      readinessExportApiCalls.push(`${request.method()} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "provider readiness CSV copy/download must stay local-only",
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
   await page.goto("/notifications");
 
   await expect(
@@ -15,10 +49,32 @@ test("notifications exports provider readiness review CSV", async ({ page }) => 
   ).toBeVisible();
   await expect(page.getByText("Provider setup checks")).toBeVisible();
 
+  const copyButton = page.getByRole("button", {
+    name: "Copy readiness CSV",
+  });
   const downloadButton = page.getByRole("button", {
     name: "Download readiness CSV",
   });
+  await expect(copyButton).toBeVisible();
   await expect(downloadButton).toBeVisible();
+  for (const control of [copyButton, downloadButton]) {
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  readinessExportStarted = true;
+
+  await copyButton.click();
+  await expect(page.getByText("Readiness CSV copied")).toBeVisible();
+  const copiedCsv = await page.evaluate(
+    () =>
+      (window as Window & { __copiedProviderReadinessCsv?: string })
+        .__copiedProviderReadinessCsv ?? "",
+  );
+  expect(copiedCsv).toBeTruthy();
+
   const downloadPromise = page.waitForEvent("download");
   await downloadButton.click();
   const download = await downloadPromise;
@@ -29,6 +85,7 @@ test("notifications exports provider readiness review CSV", async ({ page }) => 
   expect(downloadPath).not.toBeNull();
   const csv = await readFile(downloadPath!, "utf8");
 
+  expect(copiedCsv).toBe(csv);
   expect(csv).toContain("Email");
   expect(csv).toContain("Sendgrid");
   expect(csv).toContain("SMS");
@@ -40,8 +97,12 @@ test("notifications exports provider readiness review CSV", async ({ page }) => 
   expect(csv).toContain("Configure SendGrid to queue provider emails");
   expect(csv).toContain("Configure Twilio to queue provider SMS");
   expect(csv).toContain(
+    "Notification center is read-only; sending still requires explicit operator action.",
+  );
+  expect(csv).toContain(
     "Review-only export: downloading this file does not send email, send SMS, run digests, mark notifications read, dispatch providers, refresh provider tokens, or mutate provider history.",
   );
+  expect(readinessExportApiCalls).toEqual([]);
 });
 
 test("notifications exports work notification review packet without provider calls", async ({
