@@ -7,6 +7,27 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Comms and tenant preview export parity
+- `/comms` now has a local `Copy review CSV` action beside `Download review
+  CSV`; both use the same review-queue CSV builder and keep the queue export
+  review-only with a local copy receipt.
+- Comms export smoke stubs clipboard, copies and downloads the review CSV,
+  compares both outputs, injects formula-looking draft fields, verifies the
+  shared CSV formatter neutralizes them, and traps send/dismiss/provider,
+  SendGrid/Twilio, Xero/Basiq, billing/invoice, payment, reconciliation, and
+  refresh boundaries.
+- Tenant operator preview now has a local `Copy preview CSV` beside `Download
+  preview CSV`; both use the same tenant preview CSV data, and the preview
+  export controls meet the 44px mobile touch baseline.
+- Tenant preview smoke runs at 390px, proves copy/download parity, formula-safe
+  tenant-visible fields, no tenant account/invite/contact/document/provider,
+  Xero/Basiq, payment, reconciliation, email, SMS, or Comms mutations, and
+  touch-safe export controls.
+- Agents implemented the two slices independently; final review found no
+  blocking P1/P2 issues.
+- Verification: touched Comms + tenant preview smokes passed **2 passed**;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Contractor export parity and Portfolio QA mobile actions
 - `/contractors` now has a local `Copy directory CSV` action beside
   `Download directory CSV`; both use the same readiness CSV and show a local

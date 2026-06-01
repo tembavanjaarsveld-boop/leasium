@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Download,
   ExternalLink,
   Inbox,
@@ -585,24 +586,41 @@ function CommsContent() {
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
   const outboundLogEvents = outboundLogQuery.data?.events ?? [];
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
-  const downloadReviewCsv = () => {
+  const [reviewCsvCopyReceipt, setReviewCsvCopyReceipt] = useState<string | null>(
+    null,
+  );
+  const reviewCsv = () => {
     if (!queueQuery.data) {
+      return null;
+    }
+    return commsQueueReviewCsv({
+      candidates,
+      generatedAt: queueQuery.data.generated_at,
+      filterSummaryLabel,
+      progressSummaryLabel,
+      settledCount,
+      remainingCount,
+    });
+  };
+  const copyReviewCsv = async () => {
+    const csv = reviewCsv();
+    if (!csv) {
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setReviewCsvCopyReceipt("Clipboard is not available.");
+      return;
+    }
+    await navigator.clipboard.writeText(csv);
+    setReviewCsvCopyReceipt("Review CSV copied.");
+  };
+  const downloadReviewCsv = () => {
+    const csv = reviewCsv();
+    if (!queueQuery.data || !csv) {
       return;
     }
     saveBlob(
-      new Blob(
-        [
-          commsQueueReviewCsv({
-            candidates,
-            generatedAt: queueQuery.data.generated_at,
-            filterSummaryLabel,
-            progressSummaryLabel,
-            settledCount,
-            remainingCount,
-          }),
-        ],
-        { type: "text/csv;charset=utf-8" },
-      ),
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
       `comms-queue-review-${commsQueueReviewDate(queueQuery.data.generated_at)}.csv`,
     );
   };
@@ -661,12 +679,25 @@ function CommsContent() {
               ) : null}
               <SecondaryButton
                 type="button"
+                onClick={() => {
+                  void copyReviewCsv();
+                }}
+                disabled={!queueQuery.data || candidates.length === 0}
+              >
+                <Copy size={15} />
+                Copy review CSV
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
                 onClick={downloadReviewCsv}
                 disabled={!queueQuery.data || candidates.length === 0}
               >
                 <Download size={15} />
                 Download review CSV
               </SecondaryButton>
+              {reviewCsvCopyReceipt ? (
+                <StatusBadge tone="success">{reviewCsvCopyReceipt}</StatusBadge>
+              ) : null}
               <SecondaryButton
                 type="button"
                 onClick={() => {

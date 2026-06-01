@@ -606,10 +606,17 @@ function PreviewLoaded({
   const tenantName = portal.tenant.trading_name || portal.tenant.legal_name;
   const latestContactRequest = portal.contact_change_requests[0] ?? null;
   const recentActivity = buildTenantPortalPreviewActivity(portal);
+  const previewCsv = tenantPortalPreviewCsv(portal);
+  const copyPreviewCsv = () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    void navigator.clipboard.writeText(previewCsv);
+  };
   const downloadPreviewCsv = () => {
     const filenameName = slugifyFilename(tenantName || "tenant");
     saveBlob(
-      new Blob([tenantPortalPreviewCsv(portal)], {
+      new Blob([previewCsv], {
         type: "text/csv;charset=utf-8",
       }),
       `tenant-portal-preview-${filenameName}.csv`,
@@ -638,8 +645,16 @@ function PreviewLoaded({
           <div className="flex flex-wrap gap-2">
             <SecondaryButton
               type="button"
+              onClick={copyPreviewCsv}
+              className="min-h-11 rounded-xl px-3"
+            >
+              <Copy size={15} />
+              Copy preview CSV
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
               onClick={downloadPreviewCsv}
-              className="min-h-10 rounded-xl px-3"
+              className="min-h-11 rounded-xl px-3"
             >
               <Download size={15} />
               Download preview CSV
