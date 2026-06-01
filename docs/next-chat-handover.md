@@ -7,6 +7,24 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Mobile shortcut and maintenance handoff polish
+- The global `G` shortcut hint now survives the shortcut listener rebind
+  instead of being cleared immediately, while still clearing its timer on
+  unmount.
+- On mobile, the `G` shortcut hint sits above the fixed bottom navigation and
+  safe-area inset, preserving the existing desktop placement.
+- Maintenance review packet copied text now includes the same handoff links as
+  the CSV export, so operators get Comms/tenant/property/invoice navigation in
+  both local packet formats.
+- Guardrails: mobile nav smoke covers the shortcut hint clearing the fixed
+  bottom nav without provider calls; Operations UX smoke covers copied
+  maintenance packet handoff links without maintenance/provider/Comms/billing
+  mutations.
+- Verification: focused mobile shortcut smoke passed **1 passed**; focused
+  maintenance handoff smoke passed **1 passed**; touched mobile nav and
+  Operations UX smokes passed **12 passed**; targeted frontend eslint,
+  `tsc --noEmit`, and `git diff --check` passed.
+
 ### Self-managed statement handoff and entity records
 - `/billing-readiness` now reads the organisation operating mode and only treats
   missing owner billing recipients as statement-dispatch blockers for managing

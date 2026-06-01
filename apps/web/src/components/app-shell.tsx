@@ -490,6 +490,15 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (shortcutTimeoutRef.current !== null) {
+        window.clearTimeout(shortcutTimeoutRef.current);
+        shortcutTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     function clearShortcutWindow() {
       if (shortcutTimeoutRef.current !== null) {
         window.clearTimeout(shortcutTimeoutRef.current);
@@ -566,7 +575,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      clearShortcutWindow();
     };
   }, [commandOpen, router, shortcutPending, gatedShortcutNav]);
 
@@ -856,7 +864,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           </div>
         </div>
         {shortcutPending ? (
-          <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-leasiumSm">
+          <div className="pointer-events-none fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 rounded-full border border-border bg-white px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-leasiumSm md:bottom-6">
             G… press a letter to jump ({shortcutLegend})
           </div>
         ) : null}

@@ -499,6 +499,74 @@ test("maintenance detail exports vendor exposure packet without portal or provid
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("maintenance review packet copy includes handoff links without mutations", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (
+            window as Window & { __copiedMaintenancePacket?: string }
+          ).__copiedMaintenancePacket = text;
+        },
+      },
+    });
+  });
+
+  const forbiddenMutationPaths: string[] = [];
+  const forbiddenPathPatterns = [
+    "/maintenance/work-orders/work-order-1/contractor-delivery/send-email",
+    "/maintenance/work-orders/work-order-1/contractor-delivery/send-sms",
+    "/maintenance/work-orders/work-order-1/vendor-portal",
+    "/maintenance/work-orders/work-order-1/comments",
+    "/invoice",
+    "/comms",
+    "/xero",
+    "/basiq",
+    "/providers",
+    "/dispatch",
+    "/payment",
+    "/reconciliation",
+  ];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      forbiddenPathPatterns.some((pattern) => path.startsWith(pattern))
+    ) {
+      forbiddenMutationPaths.push(`${request.method()} ${path}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations/maintenance/work-order-1");
+
+  const packet = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Review packet" }) });
+  await expect(packet).toBeVisible({ timeout: 15_000 });
+
+  await packet.getByRole("button", { name: "Copy packet" }).click();
+  await expect(
+    packet.getByText("Maintenance review packet copied."),
+  ).toBeVisible();
+
+  const copied = await page.evaluate(
+    () =>
+      (window as Window & { __copiedMaintenancePacket?: string })
+        .__copiedMaintenancePacket,
+  );
+  expect(copied).toContain("Handoff links:");
+  expect(copied).toContain("Open Comms: /comms");
+  expect(copied).toContain("Open tenant: /tenants/tenant-1");
+  expect(forbiddenMutationPaths).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("maintenance detail hides stale work-order data after a not-found refresh", async ({
   page,
 }) => {

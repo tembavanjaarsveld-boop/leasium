@@ -2366,6 +2366,15 @@ function maintenanceReviewPacketText({
   workOrder: MaintenanceWorkOrderRecord;
   packet: MaintenanceReviewPacket;
 }) {
+  const handoffLinkLines =
+    packet.links.length > 0
+      ? [
+          "",
+          "Handoff links:",
+          ...packet.links.map((link) => `- ${link.label}: ${link.href}`),
+        ]
+      : [];
+
   return [
     "Maintenance review packet",
     `Work order: ${workOrder.title}`,
@@ -2377,6 +2386,7 @@ function maintenanceReviewPacketText({
     ...packet.evidenceRows.map(
       (row) => `- ${row.label}: ${row.statusLabel} - ${row.detail}`,
     ),
+    ...handoffLinkLines,
     "",
     MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
   ].join("\n");

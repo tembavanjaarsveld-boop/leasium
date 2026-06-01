@@ -142,3 +142,42 @@ test("desktop keeps the bottom navigation out of the shell", async ({
     page.getByRole("navigation", { name: "Mobile primary" }),
   ).toHaveCount(0);
 });
+
+test("mobile shortcut hint clears the fixed bottom navigation", async ({
+  page,
+}) => {
+  const forbiddenProviderRequests = watchForbiddenProviderRequests(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/operations");
+
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await expect(mobileNav).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Operations", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(
+    page.getByRole("button", { name: "Close navigation" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close navigation" }).click();
+  await expect(
+    page.getByRole("button", { name: "Close navigation" }),
+  ).toBeHidden();
+
+  await page.evaluate(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  });
+  await page.keyboard.press("g");
+  const shortcutHint = page.getByText(/^G.*press a letter to jump/);
+  await expect(shortcutHint).toBeVisible();
+
+  const hintBox = await shortcutHint.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(hintBox).toBeTruthy();
+  expect(navBox).toBeTruthy();
+  expect(hintBox!.y + hintBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
+  expect(forbiddenProviderRequests).toEqual([]);
+});
