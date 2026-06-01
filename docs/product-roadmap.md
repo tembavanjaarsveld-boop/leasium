@@ -355,7 +355,9 @@ Equifax/illion; RTBA/state RTAs).
   Billing Readiness, Comms, Contractors, Insights, Notifications, Operations,
   maintenance detail, Owner portal, Portfolio QA, Settings, Statements, tenant
   detail, and tenant portal preview now import the shared helper, with smoke
-  coverage preventing local unsafe `csvCell` drift.
+  coverage preventing local unsafe `csvCell` drift. Backend owner statement ZIP
+  packs now apply the same formula-hardening to `MANIFEST-{month}.csv` and
+  `INVOICE-EVIDENCE-{month}.csv`.
 - [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first
   through the existing Basiq/Xero engine. DoorLoop's #1 value driver, AU-correct.

@@ -1,7 +1,8 @@
 """Owner statements API tests."""
 
+import csv
 from datetime import date
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import Any, TypedDict
 from uuid import UUID, uuid4
 from zipfile import ZipFile
@@ -1339,6 +1340,98 @@ def test_owner_statement_pdf_pack_downloads_all_review_pdfs(
     assert "Owners included: 2" in readme
     assert "Missing owner billing emails: 2" in readme
     assert first_pdf.startswith(b"%PDF-1.4")
+
+
+def test_owner_statement_pdf_pack_csvs_escape_spreadsheet_formulas(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    doc = StoredDocument(
+        entity_id=entity.id,
+        filename="formula-evidence.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.invoice,
+    )
+    session.add(doc)
+    session.flush()
+    bd = BillingDraft(
+        entity_id=entity.id,
+        document_id=doc.id,
+        title="Formula Evidence Billing",
+        currency="AUD",
+        status=BillingDraftStatus.approved,
+    )
+    session.add(bd)
+    session.flush()
+    prop = Property(
+        entity_id=entity.id,
+        name="  -Formula Property",
+        street_address="3 Formula Lane",
+        property_type=PropertyType.commercial_retail,
+        owner_legal_name="@Formula Trustee Pty Ltd",
+        trustee_name="@Formula Trustee Pty Ltd",
+        trust_name="=Formula Trust",
+        invoice_issuer_name="=Formula Trust via @Formula Trustee Pty Ltd",
+        billing_email="+owner@example.test",
+    )
+    session.add(prop)
+    session.flush()
+    _link_owner_from_property_fields(session, prop)
+    session.add(
+        InvoiceDraft(
+            entity_id=entity.id,
+            billing_draft_id=bd.id,
+            property_id=prop.id,
+            document_id=doc.id,
+            status=InvoiceDraftStatus.approved,
+            invoice_number="+INV-FORMULA-1",
+            title="@Formula evidence invoice",
+            currency="AUD",
+            issue_date=date(2026, 4, 12),
+            due_date=date(2026, 4, 26),
+            subtotal_cents=120_000,
+            gst_cents=0,
+            total_cents=120_000,
+            invoice_metadata={
+                "payment_status": {
+                    "status": "paid",
+                    "paid_cents": 120_000,
+                    "outstanding_cents": 0,
+                },
+                "xero_sync": {"xero_invoice_id": "=xero-formula-id"},
+                "xero_payment_reconciliation": {
+                    "reference": "  =BANK FORMULA REF",
+                    "match_confidence": "high",
+                    "bank_transaction_id": "-bank-formula-id",
+                },
+            },
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/owners/statements/pdf-pack",
+        params={"entity_id": str(entity.id), "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    with ZipFile(BytesIO(response.content)) as archive:
+        manifest_csv = archive.read("MANIFEST-2026-04.csv").decode()
+        evidence_csv = archive.read("INVOICE-EVIDENCE-2026-04.csv").decode()
+    manifest_row = next(csv.DictReader(StringIO(manifest_csv)))
+    evidence_row = next(csv.DictReader(StringIO(evidence_csv)))
+
+    assert manifest_row["owner_identity"].startswith("'=Formula Trust")
+    assert manifest_row["billing_email"] == "'+owner@example.test"
+    assert evidence_row["owner_identity"].startswith("'=Formula Trust")
+    assert evidence_row["property_name"] == "'  -Formula Property"
+    assert evidence_row["invoice_number"] == "'+INV-FORMULA-1"
+    assert evidence_row["title"] == "'@Formula evidence invoice"
+    assert evidence_row["xero_invoice_id"] == "'=xero-formula-id"
+    assert evidence_row["reconciliation_reference"] == "'=BANK FORMULA REF"
+    assert evidence_row["reconciliation_bank_transaction_id"] == "'-bank-formula-id"
 
 
 def test_owner_statement_exports_include_invoice_evidence(

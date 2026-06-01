@@ -750,7 +750,8 @@ def _statement_pack_filename(month: str) -> str:
 
 def _csv_cell(value: object) -> str:
     text = "" if value is None else str(value)
-    return '"' + text.replace('"', '""') + '"'
+    safe_text = f"'{text}" if re.match(r"\s*[=+\-@]", text) else text
+    return '"' + safe_text.replace('"', '""') + '"'
 
 
 def _statement_pack_manifest_csv(statements: OwnerStatementsRead) -> str:

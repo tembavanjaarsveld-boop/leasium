@@ -149,6 +149,13 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   download shared document files, call Comms/Xero/Basiq/payment/reconciliation
   paths, or mutate owner-portal/provider history; smoke coverage now proves the
   operator-preview copy/download path and spreadsheet formula escaping too.
+- **Owner statement ZIP CSV hardening** (`/owners/statements/pdf-pack`):
+  accountant review packs now formula-harden the backend `MANIFEST` and
+  `INVOICE-EVIDENCE` CSV files as well as the browser-side review exports. Any
+  owner, property, invoice, Xero, or reconciliation value beginning with `=`,
+  `+`, `-`, or `@` after whitespace must be prefixed before it reaches the
+  downloadable CSV, while the ZIP pack remains review-only and must not send
+  owner email, post to Xero, reconcile payments, or mutate provider history.
 - **Owner portal account cache hardening** (`/owner-portal`): account-scoped
   owner status/session reads now use auth-user and owner-context query keys,
   fresh Clerk bearer tokens, and no-stale-cache settings. If the private account

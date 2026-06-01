@@ -7,6 +7,19 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner statement ZIP CSV hardening
+- Backend owner statement ZIP packs now formula-harden both included CSVs:
+  `MANIFEST-{month}.csv` and `INVOICE-EVIDENCE-{month}.csv`.
+- The shared backend pack cell formatter still quotes every value and doubles
+  embedded quotes, but now prefixes spreadsheet formula-looking values (`=`,
+  `+`, `-`, `@`, including whitespace-leading values) before writing the ZIP.
+- Guardrails: the integration test reads the ZIP CSVs with `csv.DictReader`
+  and proves unsafe owner identity, billing email, property name, invoice
+  number/title, Xero invoice id, reconciliation reference, and bank transaction
+  id values are neutralised.
+- Verification: owner statements integration tests passed **25 passed**;
+  targeted backend ruff and `git diff --check` passed.
+
 ### Owner portal preview error/cache parity
 - `/owner-portal/[ownerId]` now follows the tenant operator-preview freshness
   pattern: preview reads use `retry: false`, `staleTime: 0`, and
