@@ -6,6 +6,17 @@ Last updated: 2026-06-01
 
 Continuation from the tenant portal account cache hardening slice.
 
+### Maintenance review packet v1
+- Work-order detail now has a read-only Review packet near the top of the page,
+  deriving next action, evidence rows, safe links, copy summary, and CSV export
+  from already-loaded work-order, document, invoice, correspondence, and vendor
+  portal state.
+- Guardrails: copy/download do not send email/SMS, mutate vendor portal state,
+  prepare/approve invoices, upload documents, refresh providers, write
+  Xero/Basiq data, reconcile payments, or mutate maintenance records.
+- Verification: focused maintenance detail smoke passed; targeted frontend
+  eslint, `tsc --noEmit`, and `git diff --check` passed.
+
 ### Installable PWA mobile runway v1
 - Web now exposes a typed App Router manifest at `/manifest.webmanifest` with
   `display: standalone`, root `start_url`/`scope`, Leasium theme/background

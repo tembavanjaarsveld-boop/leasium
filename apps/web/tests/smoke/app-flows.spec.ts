@@ -2027,6 +2027,7 @@ test("notification center shows work notices and digest receipts", async ({
 
 test("maintenance detail route shows quote evidence", async ({ page }) => {
   let commsCorrespondenceMutationRequests = 0;
+  const reviewPacketMutationPaths: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (
@@ -2035,6 +2036,22 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
         url.pathname.endsWith("/api/v1/comms/dismiss"))
     ) {
       commsCorrespondenceMutationRequests += 1;
+    }
+    if (
+      request.method() !== "GET" &&
+      (url.pathname.includes(
+        "/api/v1/maintenance/work-orders/work-order-1/contractor-",
+      ) ||
+        url.pathname.includes(
+          "/api/v1/maintenance/work-orders/work-order-1/vendor-portal",
+        ) ||
+        url.pathname.includes("/api/v1/invoice-drafts/") ||
+        url.pathname.includes("/api/v1/comms/dispatch") ||
+        url.pathname.includes("/api/v1/comms/dismiss") ||
+        url.pathname.includes("/api/v1/xero") ||
+        url.pathname.includes("/api/v1/basiq"))
+    ) {
+      reviewPacketMutationPaths.push(`${request.method()} ${url.pathname}`);
     }
   });
   await page.goto("/operations/maintenance/work-order-1");
@@ -2065,6 +2082,47 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Template maintenance_contractor_update v1").first(),
   ).toBeVisible();
+  const reviewPacket = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Review packet" }) });
+  await expect(reviewPacket).toBeVisible();
+  await expect(
+    reviewPacket.getByText("Review and approve quote").first(),
+  ).toBeVisible();
+  await expect(reviewPacket.getByText("Quote evidence").first()).toBeVisible();
+  await expect(reviewPacket.getByText(/\d+ linked/).first()).toBeVisible();
+  await expect(reviewPacket.getByText("Invoice handoff").first()).toBeVisible();
+  await expect(
+    reviewPacket.getByText("No linked invoice").first(),
+  ).toBeVisible();
+  await expect(reviewPacket.getByText("Vendor portal").first()).toBeVisible();
+  await expect(reviewPacket.getByText("Hidden").first()).toBeVisible();
+  await expect(
+    reviewPacket.getByRole("link", { name: "Open Comms" }),
+  ).toHaveAttribute("href", "/comms");
+  await expect(
+    reviewPacket.getByRole("link", { name: "Open tenant" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
+  await reviewPacket.getByRole("button", { name: "Copy packet" }).click();
+  await expect(
+    reviewPacket.getByText("Maintenance review packet copied."),
+  ).toBeVisible();
+
+  const reviewPacketDownloadPromise = page.waitForEvent("download");
+  await reviewPacket.getByRole("button", { name: "Download packet CSV" }).click();
+  const reviewPacketDownload = await reviewPacketDownloadPromise;
+  expect(reviewPacketDownload.suggestedFilename()).toBe(
+    "maintenance-review-packet-work-order-1.csv",
+  );
+  const reviewPacketPath = await reviewPacketDownload.path();
+  expect(reviewPacketPath).not.toBeNull();
+  const reviewPacketCsv = await readFile(reviewPacketPath!, "utf8");
+  expect(reviewPacketCsv).toContain("Air conditioning fault");
+  expect(reviewPacketCsv).toContain("Review and approve quote");
+  expect(reviewPacketCsv).toContain(
+    "Review-only packet: downloading or copying this file does not send email, SMS, portal messages, provider dispatch, invoice updates, Xero/Basiq writes, payment reconciliation, document uploads, or maintenance mutations.",
+  );
+  expect(reviewPacketMutationPaths).toEqual([]);
   const workOrderCorrespondencePanel = page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Correspondence" }) });
@@ -2289,7 +2347,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Recover in Billing" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Preview" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Preview", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "PDF" })).toBeVisible();
   await page.getByRole("button", { name: "Approve quote" }).click();
   await expect(page.getByText("Operations completion ready")).toBeVisible();
@@ -2399,8 +2459,11 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Contractor follow-up copy reviewed before sending."),
   ).toBeVisible();
+  const completionHandoff = page.locator("#job-completion-handoff");
   const completionPacketDownloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download packet CSV" }).click();
+  await completionHandoff
+    .getByRole("button", { name: "Download packet CSV" })
+    .click();
   const completionPacketDownload = await completionPacketDownloadPromise;
   expect(completionPacketDownload.suggestedFilename()).toBe(
     "maintenance-completion-review-work-order-1.csv",

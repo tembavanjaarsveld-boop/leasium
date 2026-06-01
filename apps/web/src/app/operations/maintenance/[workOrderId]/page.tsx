@@ -200,7 +200,30 @@ type LiveReviewHandoffStep = {
   href?: string | null;
 };
 
+type MaintenanceReviewPacketEvidenceRow = {
+  label: string;
+  statusLabel: string;
+  detail: string;
+  tone: StatusTone;
+};
+
+type MaintenanceReviewPacketLink = {
+  label: string;
+  href: string;
+};
+
+type MaintenanceReviewPacket = {
+  nextAction: string;
+  nextActionDetail: string;
+  nextActionTone: StatusTone;
+  evidenceRows: MaintenanceReviewPacketEvidenceRow[];
+  links: MaintenanceReviewPacketLink[];
+};
+
 const EMPTY_CONTRACTORS: ContractorRecord[] = [];
+
+const MAINTENANCE_REVIEW_PACKET_GUARDRAIL =
+  "Review-only packet: downloading or copying this file does not send email, SMS, portal messages, provider dispatch, invoice updates, Xero/Basiq writes, payment reconciliation, document uploads, or maintenance mutations.";
 
 const emptyCompletionReviewNotes: Record<CompletionReviewAudience, string> = {
   owner: "",
@@ -2101,6 +2124,267 @@ function liveActionDockText(items: LiveActionReviewItem[]) {
   ].join("\n");
 }
 
+function maintenanceReviewNextAction({
+  workOrder,
+  quoteDocumentCount,
+  linkedInvoiceDraft,
+  linkedInvoiceRecoveryReasons,
+  vendorPortalIsVisible,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  quoteDocumentCount: number;
+  linkedInvoiceDraft: InvoiceDraftRecord | null;
+  linkedInvoiceRecoveryReasons: string[];
+  vendorPortalIsVisible: boolean;
+}) {
+  if (workOrder.status === "completed" || workOrder.status === "cancelled") {
+    return {
+      label: "Closed - audit only",
+      detail:
+        "Use this packet for review history; reopen the job before changing operational state.",
+      tone: "neutral" as StatusTone,
+    };
+  }
+  if (workOrder.approval_status === "pending" && quoteDocumentCount === 0) {
+    return {
+      label: "Attach quote evidence before approval",
+      detail:
+        "Approval is pending and no quote/supporting document is linked yet.",
+      tone: "warning" as StatusTone,
+    };
+  }
+  if (workOrder.approval_status === "pending") {
+    return {
+      label: "Review and approve quote",
+      detail:
+        "Quote evidence is present; review the approval panel before approving.",
+      tone: "warning" as StatusTone,
+    };
+  }
+  if (
+    (workOrder.status === "approved" || workOrder.status === "in_progress") &&
+    !linkedInvoiceDraft
+  ) {
+    return {
+      label: "Link or prepare billing handoff",
+      detail:
+        "Operations can continue, but Billing has no linked invoice draft yet.",
+      tone: "primary" as StatusTone,
+    };
+  }
+  if (linkedInvoiceRecoveryReasons.length > 0) {
+    return {
+      label: "Recover in Billing Readiness",
+      detail: linkedInvoiceRecoveryReasons.join(" "),
+      tone: "danger" as StatusTone,
+    };
+  }
+  if (vendorPortalIsVisible) {
+    return {
+      label: "Monitor vendor portal visibility",
+      detail:
+        "This job is visible to the selected vendor through the read-only portal preview.",
+      tone: "primary" as StatusTone,
+    };
+  }
+  return {
+    label: "Monitor work order",
+    detail:
+      "No urgent review-packet blocker is showing. Continue normal operations review.",
+    tone: "neutral" as StatusTone,
+  };
+}
+
+function buildMaintenanceReviewPacket({
+  workOrder,
+  quoteDocumentCount,
+  linkedInvoiceDraft,
+  linkedInvoiceHandoff,
+  linkedInvoiceRecoveryReasons,
+  correspondenceCount,
+  correspondenceTenantId,
+  completionReviewRows,
+  channelReceiptCount,
+  vendorPortalIsVisible,
+  vendorPortalPreviewHref,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  quoteDocumentCount: number;
+  linkedInvoiceDraft: InvoiceDraftRecord | null;
+  linkedInvoiceHandoff: ReturnType<typeof invoiceBillingHandoff> | null;
+  linkedInvoiceRecoveryReasons: string[];
+  correspondenceCount: number;
+  correspondenceTenantId: string | null;
+  completionReviewRows: CompletionReviewRow[];
+  channelReceiptCount: number;
+  vendorPortalIsVisible: boolean;
+  vendorPortalPreviewHref: string | null;
+}): MaintenanceReviewPacket {
+  const nextAction = maintenanceReviewNextAction({
+    workOrder,
+    quoteDocumentCount,
+    linkedInvoiceDraft,
+    linkedInvoiceRecoveryReasons,
+    vendorPortalIsVisible,
+  });
+  const reviewedCompletionCount = completionReviewRows.filter(
+    (row) => row.reviewedAt,
+  ).length;
+  const evidenceRows: MaintenanceReviewPacketEvidenceRow[] = [
+    {
+      label: "Quote evidence",
+      statusLabel: `${quoteDocumentCount} linked`,
+      detail:
+        quoteDocumentCount > 0
+          ? "Quote/supporting documents are linked below."
+          : "No quote/supporting documents are linked yet.",
+      tone: quoteDocumentCount > 0 ? "success" : "warning",
+    },
+    {
+      label: "Invoice handoff",
+      statusLabel: linkedInvoiceDraft
+        ? label(linkedInvoiceDraft.status)
+        : "No linked invoice",
+      detail:
+        linkedInvoiceHandoff?.message ??
+        "No Billing Readiness invoice draft is linked to this job.",
+      tone: linkedInvoiceHandoff?.tone ?? "neutral",
+    },
+    {
+      label: "Correspondence",
+      statusLabel: `${correspondenceCount} event${
+        correspondenceCount === 1 ? "" : "s"
+      }`,
+      detail:
+        correspondenceCount > 0
+          ? "Linked Comms receipts are available below."
+          : "No linked Comms receipts are recorded yet.",
+      tone: correspondenceCount > 0 ? "primary" : "neutral",
+    },
+    {
+      label: "Completion reviews",
+      statusLabel: completionReviewRows.length
+        ? `${reviewedCompletionCount}/${completionReviewRows.length} reviewed`
+        : "Not ready",
+      detail: completionReviewRows.length
+        ? "Owner, tenant, and contractor completion copy can be reviewed below."
+        : "Completion copy unlocks after job closeout.",
+      tone:
+        completionReviewRows.length === 0
+          ? "neutral"
+          : reviewedCompletionCount === completionReviewRows.length
+            ? "success"
+            : "warning",
+    },
+    {
+      label: "Contractor receipts",
+      statusLabel: `${channelReceiptCount} receipt${
+        channelReceiptCount === 1 ? "" : "s"
+      }`,
+      detail:
+        channelReceiptCount > 0
+          ? "Contractor email/SMS receipt evidence is attached."
+          : "No contractor provider receipt evidence is attached.",
+      tone: channelReceiptCount > 0 ? "success" : "neutral",
+    },
+    {
+      label: "Vendor portal",
+      statusLabel: vendorPortalIsVisible ? "Visible" : "Hidden",
+      detail: vendorPortalIsVisible
+        ? "This job is visible in the read-only vendor portal preview."
+        : "This job is not shared to the vendor portal.",
+      tone: vendorPortalIsVisible ? "success" : "neutral",
+    },
+  ];
+  const links: MaintenanceReviewPacketLink[] = [
+    linkedInvoiceHandoff
+      ? { label: "Open Billing", href: linkedInvoiceHandoff.href }
+      : null,
+    { label: "Open Comms", href: "/comms" },
+    correspondenceTenantId
+      ? {
+          label: "Open tenant",
+          href: `/tenants/${encodeURIComponent(correspondenceTenantId)}`,
+        }
+      : null,
+    vendorPortalPreviewHref
+      ? { label: "Open vendor preview", href: vendorPortalPreviewHref }
+      : null,
+  ].filter((link): link is MaintenanceReviewPacketLink => Boolean(link));
+
+  return {
+    nextAction: nextAction.label,
+    nextActionDetail: nextAction.detail,
+    nextActionTone: nextAction.tone,
+    evidenceRows,
+    links,
+  };
+}
+
+function maintenanceReviewPacketText({
+  workOrder,
+  packet,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  packet: MaintenanceReviewPacket;
+}) {
+  return [
+    "Maintenance review packet",
+    `Work order: ${workOrder.title}`,
+    `Status: ${label(workOrder.status)} / ${label(workOrder.priority)}`,
+    `Next action: ${packet.nextAction}`,
+    packet.nextActionDetail,
+    "",
+    "Evidence:",
+    ...packet.evidenceRows.map(
+      (row) => `- ${row.label}: ${row.statusLabel} - ${row.detail}`,
+    ),
+    "",
+    MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
+  ].join("\n");
+}
+
+function maintenanceReviewPacketCsv({
+  workOrder,
+  packet,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  packet: MaintenanceReviewPacket;
+}) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Category", "Item", "Status", "Detail", "Guardrail"],
+    [
+      "Work order",
+      workOrder.title,
+      `${label(workOrder.status)} / ${label(workOrder.priority)}`,
+      `Next action: ${packet.nextAction}. ${packet.nextActionDetail}`,
+      MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    ...packet.evidenceRows.map((row) => [
+      "Evidence",
+      row.label,
+      row.statusLabel,
+      row.detail,
+      MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    ...packet.links.map((link) => [
+      "Handoff link",
+      link.label,
+      link.href,
+      "Safe navigation only.",
+      MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "Review-only",
+      MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
+      MAINTENANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function activityAuditText({
   workOrder,
   cards,
@@ -2330,6 +2614,105 @@ function completionReviewPacketCsv({
   ];
 
   return csvRows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function MaintenanceReviewPacketPanel({
+  workOrder,
+  packet,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  packet: MaintenanceReviewPacket;
+}) {
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const copyPacket = async () => {
+    const copied = await copyTextToClipboard(
+      maintenanceReviewPacketText({ workOrder, packet }),
+    );
+    setReceipt(
+      copied
+        ? "Maintenance review packet copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+  const downloadPacketCsv = () => {
+    saveBlob(
+      new Blob([maintenanceReviewPacketCsv({ workOrder, packet })], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `maintenance-review-packet-${workOrder.id}.csv`,
+    );
+    setReceipt("Maintenance review packet CSV downloaded.");
+  };
+
+  return (
+    <SectionPanel
+      title="Review packet"
+      description="Read-only handoff summary for this maintenance job."
+      icon={<ClipboardCheck size={17} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={packet.nextActionTone}>
+            {packet.nextAction}
+          </StatusBadge>
+          <SecondaryButton type="button" onClick={copyPacket}>
+            <ClipboardCheck size={15} />
+            Copy packet
+          </SecondaryButton>
+          <SecondaryButton type="button" onClick={downloadPacketCsv}>
+            <Download size={15} />
+            Download packet CSV
+          </SecondaryButton>
+        </div>
+      }
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        {receipt ? (
+          <p className="font-medium text-success">{receipt}</p>
+        ) : null}
+        <div className="rounded-md border border-border bg-muted/30 p-3">
+          <div className="font-semibold text-foreground">
+            {packet.nextAction}
+          </div>
+          <div className="text-muted-foreground">
+            {packet.nextActionDetail}
+          </div>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          {packet.evidenceRows.map((row) => (
+            <div
+              key={row.label}
+              className="grid gap-1 rounded-md border border-border bg-white px-3 py-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-foreground">
+                  {row.label}
+                </span>
+                <StatusBadge tone={row.tone}>{row.statusLabel}</StatusBadge>
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {row.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {packet.links.map((link) => (
+            <Link
+              key={`${link.label}-${link.href}`}
+              href={link.href}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+            >
+              <ArrowUpRight size={14} />
+              {link.label}
+            </Link>
+          ))}
+        </div>
+        <p className="rounded-md bg-muted/30 p-3 text-xs text-muted-foreground">
+          {MAINTENANCE_REVIEW_PACKET_GUARDRAIL}
+        </p>
+      </div>
+    </SectionPanel>
+  );
 }
 
 function CompletionReviewPacketPanel({
@@ -2998,6 +3381,27 @@ function MaintenanceDetailRoute() {
     : [];
   const linkedInvoiceRecoveryPath = linkedInvoiceDraft
     ? invoiceRecoveryPath(linkedInvoiceDraft)
+    : null;
+  const reviewPacketTenantId =
+    correspondenceQuery.data?.events
+      .map((event) => correspondenceMetadataString(event, "tenant_id"))
+      .find((value): value is string => Boolean(value)) ??
+    workOrder?.tenant_id ??
+    null;
+  const maintenanceReviewPacket = workOrder
+    ? buildMaintenanceReviewPacket({
+        workOrder,
+        quoteDocumentCount: quoteDocuments.length,
+        linkedInvoiceDraft,
+        linkedInvoiceHandoff,
+        linkedInvoiceRecoveryReasons,
+        correspondenceCount: correspondenceQuery.data?.events.length ?? 0,
+        correspondenceTenantId: reviewPacketTenantId,
+        completionReviewRows,
+        channelReceiptCount: workOrder.channel_receipts.length,
+        vendorPortalIsVisible,
+        vendorPortalPreviewHref,
+      })
     : null;
   const completionReadiness = workOrder
     ? maintenanceCompletionReadiness(
@@ -3809,6 +4213,12 @@ function MaintenanceDetailRoute() {
             <LiveReviewHandoffPanel steps={liveReviewHandoff} />
             <LiveReviewStrip cards={liveReviewCards} />
             <LiveActionDock items={liveActionReviewItems} />
+            {maintenanceReviewPacket ? (
+              <MaintenanceReviewPacketPanel
+                workOrder={workOrder}
+                packet={maintenanceReviewPacket}
+              />
+            ) : null}
 
             <div className="grid gap-3 md:grid-cols-4">
               <SectionPanel title="Status" icon={<Wrench size={17} />}>

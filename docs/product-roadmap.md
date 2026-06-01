@@ -489,6 +489,14 @@ Official Re-Leased pages position their product around a few mature modules that
 ## Later Modules
 
 - [ ] Maintenance and arrears workflow depth: tenant-submitted requests, contractor coordination, approval history, invoice linking, legal/escalation notes, and portal-visible status where appropriate.
+  - [~] Maintenance review packet v1: work-order detail now has a read-only
+    Review packet summarising next action, status/approval, quote evidence,
+    invoice handoff, correspondence, completion review, contractor receipt
+    evidence, vendor portal visibility, safe links, copy summary, and local CSV
+    export. Copy/export uses already-loaded page data only and does not send
+    email/SMS, mutate vendor portal state, prepare/approve invoices, upload
+    documents, refresh providers, write Xero/Basiq data, reconcile payments, or
+    mutate maintenance records.
   - [x] Vendor portal read-only preview v1: `GET /api/v1/vendor-portal/{contractor_id}` and `/vendor-portal/[contractorId]` show only explicitly `vendor_portal_visible` work tied to `vendor_portal_contractor_id`, with safe vendor summary fields, contractor-visible comments, and no tenant identity, raw work-order body, provider delivery/history, invoice/source ids, email/SMS dispatch, Xero/Basiq write, or payment reconciliation.
   - [x] Vendor portal operator visibility controls v1: maintenance work-order detail now lets an operator choose a contractor-directory vendor, enter an explicit vendor-safe title, optionally add a vendor-visible note, and share/hide the work order from the read-only vendor portal through local metadata only. Backend share/unshare commands audit the local visibility change and do not send contractor email/SMS, dispatch work, touch provider history, write Xero/Basiq data, or reconcile payments.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.

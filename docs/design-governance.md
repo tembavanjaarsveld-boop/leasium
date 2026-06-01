@@ -167,6 +167,11 @@ scale, typography) and the provider-mutation guardrail.
   textareas, selects, links, and buttons so review shortcuts never steal
   message editing. No dispatch, dismiss, provider call, or local queue mutation
   runs from keyboard movement alone.
+- Maintenance review packet on work-order detail: a compact read-only summary
+  for next action, status/approval, quote evidence, correspondence, billing
+  handoff, completion review, contractor receipt evidence, and portal
+  visibility. It uses existing page data, copy/CSV export only, and no provider
+  or record mutation.
 - Dashboard list-row motion token normalization: command-center, Upcoming lease
   events, and activity-feed rows now use the shared 200ms `ease-leasium`
   transition timing. The secondary Upcoming/Activity rows also share the

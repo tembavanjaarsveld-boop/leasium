@@ -84,10 +84,8 @@ Use deterministic rules in priority order:
 4. Approved or in progress with no linked invoice: `Link or prepare billing
    handoff`.
 5. Linked invoice with recovery blockers: `Recover in Billing Readiness`.
-6. Completed with unreviewed completion copy: `Review completion
-   communications`.
-7. Vendor portal visible: `Monitor vendor portal visibility`.
-8. Otherwise: `Monitor work order`.
+6. Vendor portal visible: `Monitor vendor portal visibility`.
+7. Otherwise: `Monitor work order`.
 
 These rules are intentionally simple and explainable. They can be refined later
 with real SKJ usage.
