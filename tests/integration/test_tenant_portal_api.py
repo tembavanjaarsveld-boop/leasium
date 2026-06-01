@@ -299,6 +299,53 @@ def _seed_portal_scope(session: Session) -> dict[str, str]:
     }
 
 
+def _add_portal_work_order(
+    session: Session,
+    scope: dict[str, str],
+    *,
+    title: str,
+    tenant: str = "primary",
+    onboarding_id: str | None = None,
+) -> MaintenanceWorkOrder:
+    prefix = "other_" if tenant == "other" else ""
+    work_order = MaintenanceWorkOrder(
+        entity_id=UUID(scope["entity_id"]),
+        property_id=UUID(scope["property_id"]),
+        tenancy_unit_id=UUID(scope[f"{prefix}unit_id"]),
+        tenant_id=UUID(scope[f"{prefix}tenant_id"]),
+        lease_id=UUID(scope[f"{prefix}lease_id"]),
+        title=title,
+        description=f"{title} submitted through the tenant portal.",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.normal,
+        attachments={
+            "document_ids": [scope[f"{prefix}document_id"]],
+            "photo_document_ids": [],
+        },
+        work_order_metadata={
+            "source": "tenant_portal",
+            "auth_boundary": "tenant_portal_account",
+            "auth_mode": "tenant_portal_account",
+            "tenant_onboarding_id": onboarding_id or scope[f"{prefix}onboarding_id"],
+            "portal_token_source": "bearer",
+            "submitted_at": "2026-05-20T08:30:00+00:00",
+            "activity_history": [
+                {
+                    "timestamp": "2026-05-20T08:30:00+00:00",
+                    "actor": "tenant-portal:bearer:tenant-subject",
+                    "source": "tenant_portal",
+                    "event": "tenant_submitted",
+                    "summary": "Tenant submitted maintenance request.",
+                    "status": "requested",
+                }
+            ],
+        },
+    )
+    session.add(work_order)
+    session.commit()
+    return work_order
+
+
 def test_tenant_portal_session_is_scoped_to_token_tenant(
     client: TestClient,
     session: Session,
@@ -769,6 +816,39 @@ def test_tenant_portal_account_write_prefers_bearer_over_stale_token(
     assert work_order.work_order_metadata["tenant_onboarding_id"] == scope["onboarding_id"]
 
 
+def test_tenant_portal_account_maintenance_create_rejects_other_tenant_documents(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    title = "Blocked bearer cross-scope document"
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+
+    response = client.post(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={
+            "title": title,
+            "description": "This should not attach another tenant's document.",
+            "priority": "high",
+            "document_ids": [scope["other_document_id"]],
+        },
+    )
+
+    assert response.status_code == 404
+    work_order = session.scalar(
+        select(MaintenanceWorkOrder).where(MaintenanceWorkOrder.title == title)
+    )
+    assert work_order is None
+
+
 def test_tenant_portal_account_session_excludes_same_tenant_other_lease_artifacts(
     client: TestClient,
     session: Session,
@@ -984,6 +1064,17 @@ def test_tenant_portal_account_claim_consumed_old_invite_does_not_repoint_relink
     )
     session.add(fresh_onboarding)
     session.commit()
+    old_work_order = _add_portal_work_order(
+        session,
+        scope,
+        title="Old same-tenant onboarding issue",
+    )
+    fresh_work_order = _add_portal_work_order(
+        session,
+        scope,
+        title="Fresh same-tenant onboarding issue",
+        onboarding_id=str(fresh_onboarding.id),
+    )
 
     old_claim = client.post(
         "/api/v1/tenant-portal/account/claim",
@@ -1013,6 +1104,16 @@ def test_tenant_portal_account_claim_consumed_old_invite_does_not_repoint_relink
     session.refresh(account)
     assert account.tenant_onboarding_id == fresh_onboarding.id
     assert account.account_metadata["tenant_onboarding_id"] == str(fresh_onboarding.id)
+    session_response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    assert session_response.status_code == 200
+    maintenance_ids = {
+        item["id"] for item in session_response.json()["maintenance_requests"]
+    }
+    assert str(fresh_work_order.id) in maintenance_ids
+    assert str(old_work_order.id) not in maintenance_ids
 
 
 def test_tenant_portal_account_session_falls_forward_from_cancelled_onboarding(
@@ -1365,6 +1466,88 @@ def test_deleted_tenant_portal_link_does_not_block_fresh_invite_claim(
     assert fresh_account.tenant_id == UUID(scope["other_tenant_id"])
 
 
+def test_relinked_tenant_portal_account_session_stays_scoped_to_fresh_tenant(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+    old_work_order = _add_portal_work_order(
+        session,
+        scope,
+        title="Deleted tenant account issue",
+    )
+    fresh_work_order = _add_portal_work_order(
+        session,
+        scope,
+        tenant="other",
+        title="Fresh tenant account issue",
+    )
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    original_account = _account_by_provider(session, provider_id)
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    tenant.deleted_at = datetime.now(UTC)
+    session.commit()
+
+    fresh_claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["other_token"]},
+    )
+    assert fresh_claim_response.status_code == 200
+    session.refresh(original_account)
+    fresh_account = _account_by_provider(session, provider_id)
+
+    session_response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    list_response = client.get(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    old_document_response = client.get(
+        f"/api/v1/tenant-portal/documents/{scope['document_id']}/download",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    old_invoice_response = client.get(
+        f"/api/v1/tenant-portal/documents/{scope['invoice_document_id']}/download",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+
+    assert original_account.deleted_at is not None
+    assert fresh_account.id != original_account.id
+    assert fresh_account.tenant_id == UUID(scope["other_tenant_id"])
+    assert session_response.status_code == 200
+    body = session_response.json()
+    assert body["tenant"]["id"] == scope["other_tenant_id"]
+    assert body["onboarding"]["id"] == scope["other_onboarding_id"]
+    assert [document["id"] for document in body["compliance"]["uploaded_documents"]] == [
+        scope["other_document_id"]
+    ]
+    invoice_ids = {invoice["id"] for invoice in body["invoices"]}
+    assert [invoice["invoice_number"] for invoice in body["invoices"]] == ["INV-OTHER"]
+    assert scope["invoice_id"] not in invoice_ids
+    assert [item["id"] for item in body["maintenance_requests"]] == [
+        str(fresh_work_order.id)
+    ]
+    assert str(old_work_order.id) not in {
+        item["id"] for item in body["maintenance_requests"]
+    }
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == [str(fresh_work_order.id)]
+    assert old_document_response.status_code == 404
+    assert old_invoice_response.status_code == 404
+
+
 def test_delete_tenant_unlinks_active_portal_accounts(
     client: TestClient,
     session: Session,
@@ -1517,6 +1700,75 @@ def test_operator_can_revoke_tenant_portal_account(
         headers={"Authorization": f"Bearer {provider_id}"},
     )
     assert restored_session.status_code == 200
+
+
+def test_restored_tenant_portal_account_session_stays_scoped_to_original_tenant(
+    client: TestClient,
+    session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    provider_id = "tenant-subject-one"
+    visible_work_order = _add_portal_work_order(
+        session,
+        scope,
+        title="Primary tenant restored account issue",
+    )
+    other_work_order = _add_portal_work_order(
+        session,
+        scope,
+        tenant="other",
+        title="Other tenant restored account issue",
+    )
+
+    claim_response = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": f"Bearer {provider_id}"},
+        json={"portal_token": scope["token"]},
+    )
+    assert claim_response.status_code == 200
+    account = _account_by_provider(session, provider_id)
+    revoke_response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/portal-accounts/{account.id}/revoke",
+        json={"reason": "Login safety check."},
+    )
+    assert revoke_response.status_code == 200
+    restore_response = client.post(
+        f"/api/v1/tenants/{scope['tenant_id']}/portal-accounts/{account.id}/restore",
+        json={"reason": "Tenant confirmed the login."},
+    )
+    assert restore_response.status_code == 200
+
+    session_response = client.get(
+        "/api/v1/tenant-portal/account/session",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    list_response = client.get(
+        "/api/v1/tenant-portal/maintenance-requests",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+    cross_document_response = client.get(
+        f"/api/v1/tenant-portal/documents/{scope['other_document_id']}/download",
+        headers={"Authorization": f"Bearer {provider_id}"},
+    )
+
+    assert session_response.status_code == 200
+    body = session_response.json()
+    assert body["tenant"]["id"] == scope["tenant_id"]
+    assert body["onboarding"]["id"] == scope["onboarding_id"]
+    assert [document["id"] for document in body["compliance"]["uploaded_documents"]] == [
+        scope["document_id"]
+    ]
+    assert [invoice["id"] for invoice in body["invoices"]] == [scope["invoice_id"]]
+    assert [item["id"] for item in body["maintenance_requests"]] == [
+        str(visible_work_order.id)
+    ]
+    assert str(other_work_order.id) not in {
+        item["id"] for item in body["maintenance_requests"]
+    }
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == [str(visible_work_order.id)]
+    assert cross_document_response.status_code == 404
 
 
 def test_operator_can_unlink_tenant_portal_account_without_blocking_relink(
