@@ -5058,6 +5058,15 @@ export type CommsMaintenanceWorkOrderCorrespondenceRecord = {
   generated_at: string;
 };
 
+export type CommsContractorCorrespondenceRecord = {
+  entity_id: string;
+  contractor_id: string;
+  contractor_name: string;
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  generated_at: string;
+};
+
 export type CommsOutboundLogRecord = {
   entity_id: string;
   events: CommsCorrespondenceEventRecord[];
@@ -5096,6 +5105,12 @@ export function getMaintenanceWorkOrderCommsCorrespondence(
 ) {
   return request<CommsMaintenanceWorkOrderCorrespondenceRecord>(
     `/comms/correspondence/maintenance-work-orders/${workOrderId}`,
+  );
+}
+
+export function getContractorCommsCorrespondence(contractorId: string) {
+  return request<CommsContractorCorrespondenceRecord>(
+    `/comms/correspondence/contractors/${contractorId}`,
   );
 }
 

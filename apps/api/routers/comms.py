@@ -35,6 +35,7 @@ from stewart.core.models import (
     ArrearsCaseStatus,
     AuditAction,
     AuditOutcome,
+    Contractor,
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -58,6 +59,7 @@ from stewart.core.settings import Settings, get_settings
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.comms import (
     CommsCandidate,
+    CommsContractorCorrespondenceRead,
     CommsCorrespondenceEvent,
     CommsDismissCreate,
     CommsDismissRead,
@@ -2156,6 +2158,7 @@ MAINTENANCE_CORRESPONDENCE_KINDS = {
     "maintenance_contractor_forward",
     "maintenance_tenant_forward",
 }
+CONTRACTOR_CORRESPONDENCE_KINDS = {"maintenance_contractor_forward"}
 
 
 def _is_maintenance_correspondence_audit(row: AuditAction) -> bool:
@@ -2163,6 +2166,91 @@ def _is_maintenance_correspondence_audit(row: AuditAction) -> bool:
         return False
     tool_input = _primitive_metadata(row.tool_input)
     return tool_input.get("kind") in MAINTENANCE_CORRESPONDENCE_KINDS
+
+
+def _normalised_text(value: str | None) -> str | None:
+    cleaned = (value or "").strip().casefold()
+    return cleaned or None
+
+
+def _normalised_phone(value: str | None) -> str | None:
+    cleaned = "".join(
+        char for char in (value or "").strip() if char.isdigit() or char == "+"
+    )
+    return cleaned or None
+
+
+def _contractor_correspondence_work_order_ids(
+    contractor: Contractor,
+    session: Session,
+) -> set[UUID]:
+    contractor_email = _normalised_text(contractor.email)
+    contractor_phone = _normalised_phone(contractor.phone)
+    work_orders = session.scalars(
+        select(MaintenanceWorkOrder).where(
+            MaintenanceWorkOrder.entity_id == contractor.entity_id,
+            MaintenanceWorkOrder.deleted_at.is_(None),
+        )
+    ).all()
+    matched_ids: set[UUID] = set()
+    for work_order in work_orders:
+        metadata = _primitive_metadata(work_order.work_order_metadata)
+        if metadata.get("vendor_portal_contractor_id") == str(contractor.id):
+            matched_ids.add(work_order.id)
+            continue
+        if (
+            contractor_email is not None
+            and _normalised_text(work_order.contractor_email) == contractor_email
+        ):
+            matched_ids.add(work_order.id)
+            continue
+        if (
+            contractor_phone is not None
+            and _normalised_phone(work_order.contractor_phone) == contractor_phone
+        ):
+            matched_ids.add(work_order.id)
+            continue
+    return matched_ids
+
+
+def _contractor_correspondence_recipient_matches(
+    row: AuditAction,
+    contractor: Contractor,
+) -> bool:
+    tool_input = _primitive_metadata(row.tool_input)
+    recipient = tool_input.get("recipient")
+    if not isinstance(recipient, str) or not recipient.strip():
+        return False
+    contractor_email = _normalised_text(contractor.email)
+    if (
+        contractor_email is not None
+        and _normalised_text(recipient) == contractor_email
+    ):
+        return True
+    contractor_phone = _normalised_phone(contractor.phone)
+    return (
+        contractor_phone is not None
+        and _normalised_phone(recipient) == contractor_phone
+    )
+
+
+def _is_contractor_correspondence_audit(
+    row: AuditAction,
+    contractor: Contractor,
+    work_order_ids: set[UUID],
+) -> bool:
+    if not _is_comms_correspondence_audit(row):
+        return False
+    tool_input = _primitive_metadata(row.tool_input)
+    if tool_input.get("kind") not in CONTRACTOR_CORRESPONDENCE_KINDS:
+        return False
+    if row.target_table == "contractor":
+        return row.target_id == contractor.id
+    if row.target_table == "maintenance_work_order":
+        return row.target_id in work_order_ids and (
+            _contractor_correspondence_recipient_matches(row, contractor)
+        )
+    return False
 
 
 @router.get(
@@ -2216,6 +2304,66 @@ def get_maintenance_work_order_correspondence(
             (
                 "Opening this panel does not send email, send SMS, change "
                 "queue state, refresh providers, or mutate maintenance records."
+            ),
+        ],
+        generated_at=utcnow(),
+    )
+
+
+@router.get(
+    "/correspondence/contractors/{contractor_id}",
+    response_model=CommsContractorCorrespondenceRead,
+)
+def get_contractor_correspondence(
+    contractor_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsContractorCorrespondenceRead:
+    """Return stored contractor-facing comms receipts for one vendor.
+
+    This is read-only. It projects already stored comms dispatch/dismiss audit
+    receipts linked to work orders assigned or explicitly shared to the
+    contractor, and never sends providers, regenerates drafts, changes queue
+    state, or mutates vendor/maintenance records.
+    """
+
+    contractor = session.get(Contractor, contractor_id)
+    if contractor is None or contractor.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found.",
+        )
+    assert_entity_role(session, user, contractor.entity_id, READ_ROLES)
+
+    work_order_ids = _contractor_correspondence_work_order_ids(contractor, session)
+    audit_rows = session.scalars(
+        select(AuditAction)
+        .where(
+            AuditAction.entity_id == contractor.entity_id,
+            AuditAction.action.in_(("dispatch", "dismiss")),
+            AuditAction.target_id.is_not(None),
+        )
+        .order_by(AuditAction.occurred_at.desc())
+    ).all()
+    events = [
+        _audit_correspondence_event(row, session)
+        for row in audit_rows
+        if _is_contractor_correspondence_audit(row, contractor, work_order_ids)
+    ]
+    return CommsContractorCorrespondenceRead(
+        entity_id=contractor.entity_id,
+        contractor_id=contractor.id,
+        contractor_name=contractor.name,
+        events=events,
+        guardrails=[
+            (
+                "This vendor correspondence is read-only and uses already "
+                "stored comms audit receipts."
+            ),
+            (
+                "Opening this panel does not send email, send SMS, change "
+                "queue state, refresh providers, mutate vendor records, or "
+                "mutate maintenance records."
             ),
         ],
         generated_at=utcnow(),
@@ -2785,6 +2933,20 @@ def dismiss_comms_candidate(
         metadata[DISMISS_METADATA_KEY] = dismiss
         source.work_order_metadata = metadata
 
+    audit_tool_input = {
+        "candidate_id": candidate_id,
+        "kind": payload.kind,
+        "deferred_until": deferred_until.isoformat(),
+        "reason": payload.reason,
+    }
+    if (
+        isinstance(source, MaintenanceWorkOrder)
+        and payload.kind == "maintenance_contractor_forward"
+    ):
+        audit_tool_input["recipient"] = (
+            source.contractor_email or source.contractor_phone
+        )
+
     audit_log(
         session,
         actor=user.actor,
@@ -2794,12 +2956,7 @@ def dismiss_comms_candidate(
         target_table=payload.target_kind,
         target_id=payload.target_id,
         tool_name="comms.dismiss",
-        tool_input={
-            "candidate_id": candidate_id,
-            "kind": payload.kind,
-            "deferred_until": deferred_until.isoformat(),
-            "reason": payload.reason,
-        },
+        tool_input=audit_tool_input,
         tool_output_summary=f"comms candidate dismissed until {deferred_until.isoformat()}",
         outcome=AuditOutcome.success,
         data_classification="confidential",

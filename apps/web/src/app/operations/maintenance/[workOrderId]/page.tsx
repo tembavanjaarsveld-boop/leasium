@@ -370,7 +370,7 @@ function maintenanceCorrespondenceCsv({
   generatedAt: string | null | undefined;
 }) {
   const guardrail =
-    "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.";
+    "Read-only export: copying or downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.";
   const rows: Array<Array<string | number | null | undefined>> = [
     [
       "Category",
@@ -3447,6 +3447,9 @@ function MaintenanceDetailRoute() {
   const [activityAuditReceipt, setActivityAuditReceipt] = useState<
     string | null
   >(null);
+  const [correspondenceCopyReceipt, setCorrespondenceCopyReceipt] = useState<
+    string | null
+  >(null);
   const [vendorPortalContractorDraft, setVendorPortalContractorDraft] =
     useState("");
   const [vendorPortalTitleDraft, setVendorPortalTitleDraft] = useState("");
@@ -3899,23 +3902,43 @@ function MaintenanceDetailRoute() {
     invoiceDraftsQuery.refetch();
   };
 
-  const downloadCorrespondenceCsv = () => {
+  const correspondenceCsvExport = () => {
     const correspondence = correspondenceQuery.data;
     if (!workOrder || !correspondence) {
+      return null;
+    }
+    return {
+      csv: maintenanceCorrespondenceCsv({
+        events: correspondence.events,
+        workOrderId: workOrder.id,
+        generatedAt: correspondence.generated_at,
+      }),
+      filename: `maintenance-correspondence-${workOrder.id}.csv`,
+    };
+  };
+
+  const copyCorrespondenceCsv = async () => {
+    const exportFile = correspondenceCsvExport();
+    if (!exportFile) {
+      setCorrespondenceCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    const copied = await copyTextToClipboard(exportFile.csv);
+    setCorrespondenceCopyReceipt(
+      copied
+        ? "Correspondence CSV copied."
+        : "Copy unavailable in this browser.",
+    );
+  };
+
+  const downloadCorrespondenceCsv = () => {
+    const exportFile = correspondenceCsvExport();
+    if (!exportFile) {
       return;
     }
     saveBlob(
-      new Blob(
-        [
-          maintenanceCorrespondenceCsv({
-            events: correspondence.events,
-            workOrderId: workOrder.id,
-            generatedAt: correspondence.generated_at,
-          }),
-        ],
-        { type: "text/csv;charset=utf-8" },
-      ),
-      `maintenance-correspondence-${workOrder.id}.csv`,
+      new Blob([exportFile.csv], { type: "text/csv;charset=utf-8" }),
+      exportFile.filename,
     );
   };
 
@@ -6123,8 +6146,10 @@ function MaintenanceDetailRoute() {
                   guardrails={correspondenceQuery.data?.guardrails ?? []}
                   isLoading={correspondenceQuery.isLoading}
                   error={correspondenceQuery.error}
+                  onCopy={() => void copyCorrespondenceCsv()}
                   onDownload={downloadCorrespondenceCsv}
-                  downloadDisabled={
+                  copyReceipt={correspondenceCopyReceipt}
+                  actionsDisabled={
                     !correspondenceQuery.data ||
                     correspondenceQuery.data.events.length === 0
                   }
@@ -6143,15 +6168,19 @@ function WorkOrderCorrespondencePanel({
   guardrails,
   isLoading,
   error,
+  onCopy,
   onDownload,
-  downloadDisabled,
+  copyReceipt,
+  actionsDisabled,
 }: {
   events: CommsCorrespondenceEventRecord[];
   guardrails: string[];
   isLoading: boolean;
   error: unknown;
+  onCopy: () => void;
   onDownload: () => void;
-  downloadDisabled: boolean;
+  copyReceipt: string | null;
+  actionsDisabled: boolean;
 }) {
   const countLabel = `${events.length} correspondence ${
     events.length === 1 ? "event" : "events"
@@ -6168,8 +6197,16 @@ function WorkOrderCorrespondencePanel({
           <StatusBadge tone="neutral">{countLabel}</StatusBadge>
           <SecondaryButton
             type="button"
+            onClick={onCopy}
+            disabled={actionsDisabled}
+          >
+            <ClipboardCheck size={15} />
+            Copy correspondence CSV
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
             onClick={onDownload}
-            disabled={downloadDisabled}
+            disabled={actionsDisabled}
           >
             <Download size={15} />
             Download correspondence CSV
@@ -6178,6 +6215,9 @@ function WorkOrderCorrespondencePanel({
       }
     >
       <div className="grid gap-3 p-4 text-sm">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
         {isLoading ? (
           <SkeletonRows rows={3} />
         ) : null}

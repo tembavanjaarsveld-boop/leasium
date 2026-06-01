@@ -20,6 +20,11 @@ test("operator intake-adjacent pages use shared error and chip-tone helpers", as
       usesToneHelper: true,
     },
     {
+      path: "src/app/comms/page.tsx",
+      usesErrorHelper: true,
+      usesToneHelper: true,
+    },
+    {
       path: "src/app/inbox/page.tsx",
       usesErrorHelper: true,
       usesToneHelper: true,
@@ -60,6 +65,11 @@ test("operator intake-adjacent pages use shared error and chip-tone helpers", as
       usesToneHelper: true,
     },
     {
+      path: "src/app/settings/page.tsx",
+      usesErrorHelper: true,
+      usesToneHelper: true,
+    },
+    {
       path: "src/app/tenants/page.tsx",
       usesErrorHelper: true,
       usesToneHelper: false,
@@ -94,7 +104,9 @@ test("operator intake-adjacent pages use shared error and chip-tone helpers", as
       expect(text).toContain("friendlyError");
     }
     if (file.usesToneHelper) {
-      expect(text).toContain("type StatusTone");
+      expect(text).toMatch(
+        /import\s*\{[\s\S]*\btype StatusTone\b[\s\S]*\}\s*from\s*"@\/components\/ui";/,
+      );
     }
   }
 });

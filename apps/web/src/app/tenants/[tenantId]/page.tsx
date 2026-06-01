@@ -1035,7 +1035,7 @@ function slugifyFilename(value: string) {
 }
 
 const CORRESPONDENCE_EXPORT_GUARDRAIL =
-  "Review-only export: downloading this file does not send email or SMS, change queue state, refresh providers, mutate tenant data, dispatch providers, write provider history, or fetch document bytes.";
+  "Review-only export: copying or downloading this file does not send email or SMS, change queue state, refresh providers, mutate tenant data, dispatch providers, write provider history, or fetch document bytes.";
 
 function tenantCorrespondenceCsv(data: CommsTenantCorrespondenceRecord) {
   const rows: Array<Array<string | number | null | undefined>> = [

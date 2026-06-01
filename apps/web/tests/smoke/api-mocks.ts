@@ -5356,6 +5356,59 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const contractorMatch = path.match(/^\/contractors\/([^/]+)$/);
+    if (method === "GET" && contractorMatch) {
+      const contractor = contractors.find((item) => item.id === contractorMatch[1]);
+      if (contractor) {
+        await fulfillJson(route, contractor);
+        return;
+      }
+      await fulfillJson(route, { detail: "Contractor not found." }, 404);
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/comms/correspondence/contractors/contractor-1"
+    ) {
+      await fulfillJson(route, {
+        entity_id: entityId,
+        contractor_id: "contractor-1",
+        contractor_name: "Bright Spark Electrical",
+        generated_at: "2026-05-21T02:45:00.000Z",
+        guardrails: [
+          "This vendor correspondence is read-only and uses already stored comms audit receipts.",
+          "Opening this panel does not send email, send SMS, change queue state, refresh providers, mutate vendor records, or mutate maintenance records.",
+        ],
+        events: [
+          {
+            id: "vendor-comms-1",
+            source: "comms_audit",
+            direction: "outbound",
+            event_type: "dispatch",
+            channel: "email",
+            provider: "sendgrid",
+            recipient: "service@brightspark.example",
+            from_address: null,
+            to_address: null,
+            subject: null,
+            summary: "contractor forward email queued",
+            body_preview: null,
+            target_kind: "maintenance_work_order",
+            target_id: "work-order-1",
+            status: "success",
+            occurred_at: "2026-05-21T02:30:00.000Z",
+            metadata: {
+              kind: "maintenance_contractor_forward",
+              candidate_id:
+                "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+            },
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/tenants") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
       const created = {

@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -244,6 +244,27 @@ scale, typography) and the provider-mutation guardrail.
   handoff, completion review, contractor receipt evidence, and portal
   visibility. It uses existing page data, copy/CSV export only, and no provider
   or record mutation.
+- Maintenance correspondence export parity: the work-order Correspondence panel
+  now has local formula-safe Copy/Download CSV actions from the same stored
+  comms receipt data. Copying/downloading does not send providers, dismiss
+  queue rows, upload evidence, write provider history, refresh providers, or
+  mutate maintenance records.
+- Vendor correspondence on contractor records: the Activity tab now shows
+  stored contractor-facing maintenance comms receipts with safe work-order and
+  Comms handoffs plus local formula-safe Copy/Download CSV export parity. It
+  keeps the record-level People shape and does not send providers, dismiss
+  queue rows, refresh providers, mutate vendors, mutate maintenance records, or
+  write provider history.
+- Correspondence export copy clarity: tenant, vendor, and maintenance
+  correspondence CSV guardrails now say `copying or downloading this file` so
+  the safety copy matches the paired local actions without changing the
+  interaction pattern.
+- Vendor portal preview error/cache parity: the read-only vendor preview now
+  distinguishes missing previews from service failures, refetches on mount, and
+  disables stale cache reuse so hidden or moved vendor rows do not linger,
+  including same-route return after a preview changes to 404. No vendor account,
+  invite, contractor message, provider, payment, or maintenance mutation paths
+  changed.
 - Dashboard list-row motion token normalization: command-center, Upcoming lease
   events, and activity-feed rows now use the shared 200ms `ease-leasium`
   transition timing. The secondary Upcoming/Activity rows also share the
@@ -1446,7 +1467,10 @@ Not addressed yet, queued for follow-up:
   `settings/page.tsx` (4,517 lines), `operations/page.tsx` (4,694
   lines). Surface adoption rides with each.
 - Migration of inline `friendlyError` / `StatusTone` redeclarations
-  in the remaining 15 / 7 pages.
+  in the remaining pages. 2026-06-02 follow-up: Comms now imports the shared
+  `friendlyError` helper and canonical `StatusTone`; Settings now imports
+  canonical `StatusTone`; the helper-consolidation smoke requires the canonical
+  UI import for covered pages so local aliases do not pass by accident.
 - Mobile bottom-nav at sub-md (review §8.2) — shipped pending
   Remba/real-device review on 2026-06-01 as a five-item operator bottom
   nav for Dashboard, Properties, People, Work, and Money.

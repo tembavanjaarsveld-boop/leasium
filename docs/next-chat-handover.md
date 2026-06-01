@@ -1,11 +1,80 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
-## Codex continuation — 2026-06-01 (latest)
+## Codex continuation — 2026-06-02 (latest)
 
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
+
+### Correspondence export guardrail wording parity
+- Tenant, vendor, and maintenance correspondence CSV exports now use
+  copy/download-aware guardrails: `copying or downloading this file...` rather
+  than download-only language.
+- The vendor correspondence smoke now asserts the full vendor export guardrail
+  sentence so Copy CSV regressions are caught instead of only checking a
+  generic no-send fragment.
+- Verification: focused vendor correspondence, tenant correspondence mobile,
+  maintenance detail, and tenant-detail app-flow smokes passed **4 passed**;
+  targeted frontend eslint, `tsc --noEmit`, and `git diff --check` passed.
+
+### Helper consolidation follow-up
+- `Comms` now imports the shared `friendlyError` helper and canonical
+  `StatusTone` type instead of redeclaring both inline.
+- `Settings` now imports the canonical `StatusTone` type instead of carrying a
+  local chip-tone union.
+- The helper-consolidation smoke now includes Comms and Settings and requires
+  `StatusTone` to be imported from `@/components/ui`, so a local alias no
+  longer satisfies the guard.
+- Verification: the helper-consolidation smoke passed **5 passed**; focused
+  Comms queue/outbound-log smokes passed **2 passed**; focused Settings Xero
+  smoke passed **2 passed**; targeted frontend eslint and `tsc --noEmit`
+  passed.
+
+### Vendor correspondence timeline
+- Contractor records now replace the Activity placeholder with a read-only
+  vendor correspondence panel backed by
+  `/api/v1/comms/correspondence/contractors/{contractor_id}`.
+- The endpoint aggregates contractor-facing maintenance comms receipts from
+  work orders matched by vendor-portal contractor id or exact saved
+  contractor email/phone, and each work-order receipt must also carry a
+  recipient matching the selected contractor contact. This excludes
+  tenant-facing forwards, prior-vendor receipts after reassignment, and
+  unrelated vendors.
+- The vendor Activity panel shows recent receipt rows, safe work-order/Comms
+  handoffs, endpoint guardrails, and local Copy/Download
+  `vendor-correspondence-{vendor}.csv` actions with shared formula-safe cells.
+- Guardrails: viewing/copying/downloading does not send email/SMS, dismiss
+  queue rows, refresh providers, mutate contractor/vendor records, mutate
+  maintenance records, or write provider history.
+- Verification: focused backend tenant/maintenance/vendor/dismiss-recipient
+  correspondence tests passed **4 passed**; focused vendor correspondence
+  copy/download smoke passed **1 passed**; targeted backend `ruff`, frontend
+  eslint, `tsc --noEmit`, and `git diff --check` passed. Broader People record
+  smoke is now green after running the spec in managing-agent mode for Owner
+  record copy (**11 passed**).
+
+### Vendor portal preview error/cache parity
+- `/vendor-portal/[contractorId]` now follows the owner/tenant preview error
+  pattern: missing previews render `Vendor portal preview not found`, while
+  non-404 failures stay on `Vendor portal unavailable` with the API message.
+- The vendor portal preview read disables retry/stale cache reuse and refetches
+  on mount so recently hidden or moved previews do not keep showing cached
+  vendor/work-order rows. The smoke now covers same-route return after a
+  contractor preview changes from success to 404.
+- Verification: focused vendor portal smoke passed **4 passed**; combined
+  People record + vendor portal smoke previously passed **14 passed**; targeted vendor
+  portal/frontend eslint and `tsc --noEmit` passed.
+
+### Maintenance correspondence export parity
+- Work-order detail Correspondence now has local `Copy correspondence CSV`
+  beside `Download correspondence CSV`; both actions use the same
+  formula-safe maintenance correspondence CSV builder.
+- The existing maintenance detail smoke now stubs clipboard, proves copied and
+  downloaded CSV match exactly, keeps the export read-only/local-only, and
+  tightens a duplicate `Provider history` text assertion in the same scenario.
+- Verification: focused maintenance detail smoke passed **1 passed**; targeted
+  maintenance frontend eslint and `tsc --noEmit` passed.
 
 ### Settings, statements, and Comms export parity
 - Settings Organisation template overrides now have a local `Copy overrides

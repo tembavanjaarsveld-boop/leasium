@@ -3,7 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowUpRight,
   Building2,
+  Copy,
+  Download,
   FileText,
   Mail,
   MapPin,
@@ -33,10 +36,15 @@ import {
 } from "@/components/ui";
 import {
   ApiError,
+  type CommsContractorCorrespondenceRecord,
+  type CommsCorrespondenceEventRecord,
   type ContractorRecord,
+  getContractorCommsCorrespondence,
   getContractor,
   listEntities,
 } from "@/lib/api";
+import { csvRows } from "@/lib/csv";
+import { saveBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
@@ -84,6 +92,163 @@ function serviceRadiusLabel(contractor: ContractorRecord) {
     return "No radius set";
   }
   return `${contractor.service_radius_km} km service radius`;
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-AU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function label(value: string | null | undefined) {
+  if (!value) return "";
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function correspondenceEventLabel(event: CommsCorrespondenceEventRecord) {
+  if (event.event_type === "dispatch") return "Dispatch";
+  if (event.event_type === "dismiss") return "Dismiss";
+  return label(event.event_type) || "Correspondence";
+}
+
+function correspondenceEventTone(
+  event: CommsCorrespondenceEventRecord,
+): StatusTone {
+  if (event.event_type === "dispatch") return "success";
+  if (event.event_type === "dismiss") return "warning";
+  return "neutral";
+}
+
+function correspondenceStatusTone(status: string | null | undefined): StatusTone {
+  if (!status) return "neutral";
+  if (["success", "queued", "sent", "delivered"].includes(status)) {
+    return "success";
+  }
+  if (["error", "failed", "skipped", "bounced"].includes(status)) {
+    return "danger";
+  }
+  return "neutral";
+}
+
+function correspondenceCounterparty(event: CommsCorrespondenceEventRecord) {
+  if (event.direction === "inbound") {
+    return event.from_address ?? event.provider ?? "Inbound";
+  }
+  return event.recipient ?? event.provider ?? "Reviewed comms";
+}
+
+function correspondenceTargetLink(event: CommsCorrespondenceEventRecord) {
+  if (!event.target_kind || !event.target_id) return null;
+  if (event.target_kind === "maintenance_work_order") {
+    return {
+      href: `/operations/maintenance/${encodeURIComponent(event.target_id)}`,
+      label: "Open work order",
+    };
+  }
+  if (event.target_kind === "contractor") {
+    return {
+      href: `/contractors/${encodeURIComponent(event.target_id)}`,
+      label: "Open vendor",
+    };
+  }
+  return { href: "/comms", label: "Open Comms queue" };
+}
+
+function slugifyFilename(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+const VENDOR_CORRESPONDENCE_EXPORT_GUARDRAIL =
+  "Review-only export: copying or downloading this file does not send email, send SMS, change queue state, refresh providers, mutate vendor records, mutate maintenance records, or write provider history.";
+
+function vendorCorrespondenceCsv(data: CommsContractorCorrespondenceRecord) {
+  return csvRows([
+    [
+      "Section",
+      "Vendor",
+      "Generated at",
+      "Occurred at",
+      "Event",
+      "Direction",
+      "Channel",
+      "Counterparty",
+      "Summary",
+      "Status",
+      "Provider",
+      "Target",
+      "Guardrail",
+    ],
+    ...data.events.map((event) => [
+      "Vendor correspondence",
+      data.contractor_name,
+      data.generated_at,
+      event.occurred_at,
+      correspondenceEventLabel(event),
+      event.direction,
+      event.channel,
+      correspondenceCounterparty(event),
+      event.summary,
+      event.status,
+      event.provider,
+      [event.metadata.kind, event.target_kind, event.target_id]
+        .filter(Boolean)
+        .join(":"),
+      VENDOR_CORRESPONDENCE_EXPORT_GUARDRAIL,
+    ]),
+    ...data.guardrails.map((guardrail) => [
+      "Endpoint guardrail",
+      data.contractor_name,
+      data.generated_at,
+      "",
+      "",
+      "",
+      "",
+      "",
+      guardrail,
+      "",
+      "",
+      "",
+      VENDOR_CORRESPONDENCE_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      data.contractor_name,
+      data.generated_at,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      VENDOR_CORRESPONDENCE_EXPORT_GUARDRAIL,
+    ],
+  ]);
+}
+
+function vendorCorrespondenceCsvExport(
+  data: CommsContractorCorrespondenceRecord,
+  fallbackContractorId: string,
+) {
+  const filenameName =
+    slugifyFilename(data.contractor_name) || fallbackContractorId;
+  return {
+    csv: vendorCorrespondenceCsv(data),
+    filename: `vendor-correspondence-${filenameName}.csv`,
+  };
 }
 
 function isNotFoundError(error: unknown) {
@@ -273,6 +438,52 @@ function ContractorRecordView({
   const contact = contactStatus(contractor);
   const priorityLabel =
     PRIORITY_LABEL[contractor.priority] ?? `Priority ${contractor.priority}`;
+  const [correspondenceCopyReceipt, setCorrespondenceCopyReceipt] = useState<
+    string | null
+  >(null);
+  const correspondenceQuery = useQuery({
+    queryKey: ["contractor-correspondence", contractor.id],
+    queryFn: () => getContractorCommsCorrespondence(contractor.id),
+  });
+
+  function correspondenceCsvExport() {
+    const correspondence = correspondenceQuery.data;
+    if (!correspondence) {
+      return null;
+    }
+    return vendorCorrespondenceCsvExport(correspondence, contractor.id);
+  }
+
+  async function copyCorrespondenceCsv() {
+    const exportFile = correspondenceCsvExport();
+    if (
+      !exportFile ||
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
+      setCorrespondenceCopyReceipt("Copy unavailable in this browser.");
+      return;
+    }
+    await navigator.clipboard
+      .writeText(exportFile.csv)
+      .then(() => {
+        setCorrespondenceCopyReceipt("Correspondence CSV copied.");
+      })
+      .catch(() => {
+        setCorrespondenceCopyReceipt("Copy unavailable in this browser.");
+      });
+  }
+
+  function downloadCorrespondenceCsv() {
+    const exportFile = correspondenceCsvExport();
+    if (!exportFile) return;
+    saveBlob(
+      new Blob([exportFile.csv], {
+        type: "text/csv;charset=utf-8",
+      }),
+      exportFile.filename,
+    );
+  }
 
   return (
     <PeopleRecordLayout
@@ -446,13 +657,176 @@ function ContractorRecordView({
           description="Insurance certificates, licences, and onboarding documents will appear here."
         />
 
-        <PlaceholderPanel
-          id="activity"
-          title="Activity"
-          icon={<ReceiptText size={17} />}
-          description="Recent vendor changes, dispatches, and correspondence receipts will appear here."
-        />
+        <div id="activity">
+          <VendorCorrespondencePanel
+            events={correspondenceQuery.data?.events ?? []}
+            guardrails={correspondenceQuery.data?.guardrails ?? []}
+            isLoading={correspondenceQuery.isLoading}
+            error={correspondenceQuery.error}
+            onCopy={() => void copyCorrespondenceCsv()}
+            onDownload={downloadCorrespondenceCsv}
+            copyReceipt={correspondenceCopyReceipt}
+            actionsDisabled={
+              !correspondenceQuery.data ||
+              correspondenceQuery.data.events.length === 0
+            }
+          />
+        </div>
       </div>
     </PeopleRecordLayout>
+  );
+}
+
+function VendorCorrespondencePanel({
+  events,
+  guardrails,
+  isLoading,
+  error,
+  onCopy,
+  onDownload,
+  copyReceipt,
+  actionsDisabled,
+}: {
+  events: CommsCorrespondenceEventRecord[];
+  guardrails: string[];
+  isLoading: boolean;
+  error: unknown;
+  onCopy: () => void;
+  onDownload: () => void;
+  copyReceipt: string | null;
+  actionsDisabled: boolean;
+}) {
+  const countLabel = `${events.length} correspondence ${
+    events.length === 1 ? "event" : "events"
+  }`;
+
+  return (
+    <SectionPanel
+      title="Activity"
+      icon={<ReceiptText size={17} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">{countLabel}</StatusBadge>
+          <SecondaryButton
+            type="button"
+            onClick={onCopy}
+            disabled={actionsDisabled}
+          >
+            <Copy size={15} />
+            Copy correspondence CSV
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={onDownload}
+            disabled={actionsDisabled}
+          >
+            <Download size={15} />
+            Download correspondence CSV
+          </SecondaryButton>
+        </div>
+      }
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        {copyReceipt ? (
+          <p className="text-sm font-medium text-success">{copyReceipt}</p>
+        ) : null}
+        {isLoading ? <SkeletonRows rows={3} /> : null}
+        {error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-danger">
+            {friendlyError(error)}
+          </p>
+        ) : null}
+        {!isLoading && !error && events.length === 0 ? (
+          <EmptyState
+            icon={<ReceiptText size={18} />}
+            title="No correspondence receipts"
+            description="Contractor-facing comms receipts linked to this vendor will appear here."
+          />
+        ) : null}
+        {!isLoading && !error && events.length > 0 ? (
+          <div className="grid gap-2">
+            {events.slice(0, 5).map((event) => {
+              const targetLink = correspondenceTargetLink(event);
+              return (
+                <div
+                  key={event.id}
+                  className="grid gap-2 rounded-md border border-border bg-white px-3 py-3"
+                  data-testid="vendor-correspondence-event"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground">
+                        {event.summary ?? correspondenceEventLabel(event)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {correspondenceCounterparty(event)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone={correspondenceEventTone(event)}>
+                        {correspondenceEventLabel(event)}
+                      </StatusBadge>
+                      {event.channel ? (
+                        <StatusBadge tone="neutral">
+                          {label(event.channel)}
+                        </StatusBadge>
+                      ) : null}
+                      {event.status ? (
+                        <StatusBadge tone={correspondenceStatusTone(event.status)}>
+                          {label(event.status)}
+                        </StatusBadge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {event.provider ? (
+                      <span>Provider {event.provider}</span>
+                    ) : null}
+                    <span>{formatDateTime(event.occurred_at)}</span>
+                    {event.target_kind && event.target_id ? (
+                      <span>
+                        {event.target_kind}:{event.target_id}
+                      </span>
+                    ) : null}
+                  </div>
+                  {targetLink ? (
+                    <div>
+                      <Link
+                        href={targetLink.href}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                      >
+                        <ArrowUpRight size={14} />
+                        {targetLink.label}
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {events.length > 5 ? (
+          <p className="text-xs text-muted-foreground">
+            Showing the five most recent correspondence receipts.
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/comms"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+          >
+            <ArrowUpRight size={14} />
+            Open Comms queue
+          </Link>
+        </div>
+        {guardrails.length ? (
+          <div className="grid gap-2 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+            {guardrails.map((guardrail) => (
+              <p key={guardrail}>{guardrail}</p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </SectionPanel>
   );
 }

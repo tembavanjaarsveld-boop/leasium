@@ -22,6 +22,7 @@ from stewart.core.models import (
     ArrearsCaseStatus,
     AuditAction,
     AuditOutcome,
+    Contractor,
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
@@ -820,6 +821,217 @@ def test_comms_maintenance_correspondence_returns_work_order_receipts(
     assert "mismatched maintenance dispatch" not in str(events)
     assert "other work order dispatch" not in str(events)
     assert "other entity maintenance dispatch" not in str(events)
+
+
+def test_comms_contractor_correspondence_returns_vendor_work_order_receipts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Vendor correspondence aggregates contractor-facing work-order receipts."""
+
+    entity = _entity(session)
+    contractor = Contractor(
+        entity_id=entity.id,
+        name="Bright Spark Electrical",
+        company_name="Bright Spark Electrical Pty Ltd",
+        categories=["electrical"],
+        email="service@brightspark.example",
+        phone="+61730002222",
+        priority=1,
+    )
+    other_contractor = Contractor(
+        entity_id=entity.id,
+        name="Other Contractor",
+        categories=["plumbing"],
+        email="other@example.test",
+        priority=2,
+    )
+    session.add_all([contractor, other_contractor])
+    session.flush()
+
+    work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        title="Switchboard fault",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name=contractor.name,
+        contractor_email=contractor.email,
+        contractor_phone=contractor.phone,
+    )
+    portal_work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        title="Portal-visible lighting",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name="Different saved label",
+        contractor_email="different@example.test",
+        work_order_metadata={
+            "vendor_portal_visible": True,
+            "vendor_portal_contractor_id": str(contractor.id),
+        },
+    )
+    other_work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        title="Other work",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name=other_contractor.name,
+        contractor_email=other_contractor.email,
+    )
+    session.add_all([work_order, portal_work_order, other_work_order])
+    session.flush()
+
+    direct_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+            "channel": "email",
+            "recipient": contractor.email,
+        },
+        tool_output_summary="contractor forward email queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    direct_dispatch.occurred_at = datetime(2026, 5, 21, 2, 30, 0)
+    portal_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=portal_work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{portal_work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+            "channel": "email",
+            "recipient": contractor.email,
+        },
+        tool_output_summary="portal vendor forward queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    portal_dispatch.occurred_at = datetime(2026, 5, 21, 2, 40, 0)
+    dismiss_row = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dismiss",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="comms.dismiss",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+            "reason": "Contractor already called.",
+            "recipient": contractor.email,
+        },
+        tool_output_summary="contractor forward deferred",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    dismiss_row.occurred_at = datetime(2026, 5, 21, 2, 10, 0)
+    tenant_forward = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="twilio.twilio",
+        tool_input={
+            "candidate_id": (
+                f"maintenance_tenant_forward:maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_tenant_forward",
+            "channel": "sms",
+        },
+        tool_output_summary="tenant update forwarded",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    tenant_forward.occurred_at = datetime(2026, 5, 21, 2, 20, 0)
+    previous_vendor_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+            "channel": "email",
+            "recipient": other_contractor.email,
+        },
+        tool_output_summary="previous vendor forward queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    previous_vendor_dispatch.occurred_at = datetime(2026, 5, 21, 2, 35, 0)
+    other_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=entity.id,
+        action="dispatch",
+        target_table="maintenance_work_order",
+        target_id=other_work_order.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": (
+                "maintenance_contractor_forward:"
+                f"maintenance_work_order:{other_work_order.id}"
+            ),
+            "kind": "maintenance_contractor_forward",
+        },
+        tool_output_summary="other contractor forward queued",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    other_dispatch.occurred_at = datetime(2026, 5, 21, 2, 50, 0)
+    session.commit()
+
+    response = client.get(f"/api/v1/comms/correspondence/contractors/{contractor.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_id"] == str(entity.id)
+    assert body["contractor_id"] == str(contractor.id)
+    assert body["contractor_name"] == "Bright Spark Electrical"
+    assert any("read-only" in guardrail for guardrail in body["guardrails"])
+    events = body["events"]
+    assert [event["summary"] for event in events] == [
+        "portal vendor forward queued",
+        "contractor forward email queued",
+        "contractor forward deferred",
+    ]
+    assert {event["target_id"] for event in events} == {
+        str(work_order.id),
+        str(portal_work_order.id),
+    }
+    assert "tenant update forwarded" not in str(events)
+    assert "previous vendor forward queued" not in str(events)
+    assert "other contractor forward queued" not in str(events)
 
 
 def _seed_lease_only(session: Session, expiry_in_days: int) -> dict[str, str]:
@@ -2209,6 +2421,58 @@ def test_comms_dispatch_maintenance_forward_stamps_work_order_metadata(
     assert dispatch["maintenance_contractor_forward"]["provider_message_id"] == (
         "sg-maintenance-forward"
     )
+
+
+def test_comms_dismiss_maintenance_contractor_forward_stamps_recipient(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Dismissed contractor forwards keep the vendor recipient in audit receipts."""
+
+    entity = _entity(session)
+    work_order = MaintenanceWorkOrder(
+        entity_id=entity.id,
+        title="Dismiss forwarding",
+        status=MaintenanceWorkOrderStatus.in_progress,
+        priority=MaintenancePriority.normal,
+        contractor_name="Dismiss FixCo",
+        contractor_email="dismiss.fixco@example.test",
+        contractor_phone="+61400123456",
+    )
+    session.add(work_order)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/dismiss",
+        json={
+            "kind": "maintenance_contractor_forward",
+            "target_kind": "maintenance_work_order",
+            "target_id": str(work_order.id),
+            "reason": "contractor already called back",
+        },
+    )
+
+    assert response.status_code == 201
+    deferred_until = response.json()["deferred_until"]
+    session.refresh(work_order)
+    from apps.api.routers import comms as comms_router
+
+    comms_stamp = work_order.work_order_metadata[comms_router.DISMISS_METADATA_KEY][
+        "maintenance_contractor_forward"
+    ]
+    assert comms_stamp["deferred_until"] == deferred_until
+    assert comms_stamp["reason"] == "contractor already called back"
+
+    audit_row = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "dismiss",
+            AuditAction.target_table == "maintenance_work_order",
+            AuditAction.target_id == work_order.id,
+        )
+    )
+    assert audit_row is not None
+    assert audit_row.tool_input["kind"] == "maintenance_contractor_forward"
+    assert audit_row.tool_input["recipient"] == "dismiss.fixco@example.test"
 
 
 def test_inbound_webhook_persists_and_attributes_tenant(

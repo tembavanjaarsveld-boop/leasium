@@ -20,10 +20,12 @@ import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
   SectionPanel,
+  SecondaryButton,
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
 import {
+  ApiError,
   getVendorPortal,
   type VendorPortalRecord,
   type VendorPortalWorkOrderItemRecord,
@@ -66,6 +68,10 @@ function titleCase(value: string): string {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function isNotFoundError(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 function PortalShell({ children }: { children: React.ReactNode }) {
@@ -335,13 +341,41 @@ function VendorPortalContent() {
     queryKey: ["vendor-portal", contractorId],
     queryFn: () => getVendorPortal(contractorId ?? ""),
     enabled: Boolean(contractorId),
+    refetchOnMount: "always",
+    retry: false,
+    staleTime: 0,
   });
+  const portalNotFound = isNotFoundError(portalQuery.error);
 
   if (portalQuery.isLoading) {
     return (
       <div className="mx-auto max-w-6xl px-5 py-6">
         <SectionPanel title="Vendor portal">
           <SkeletonRows rows={6} />
+        </SectionPanel>
+      </div>
+    );
+  }
+
+  if (portalNotFound) {
+    return (
+      <div className="mx-auto max-w-3xl px-5 py-8">
+        <SectionPanel title="Vendor portal preview not found">
+          <EmptyState
+            title="No vendor portal preview found."
+            description={`${friendlyError(portalQuery.error)} This vendor portal preview may have been deleted, hidden, or moved. Return to the vendor directory to choose another vendor.`}
+            icon={<AlertTriangle size={18} />}
+            action={
+              <SecondaryButton
+                type="button"
+                onClick={() => {
+                  window.location.href = "/contractors";
+                }}
+              >
+                Back to vendors
+              </SecondaryButton>
+            }
+          />
         </SectionPanel>
       </div>
     );

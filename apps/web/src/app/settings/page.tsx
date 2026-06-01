@@ -45,6 +45,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   APPEARANCE_CHANGED_EVENT,
@@ -139,7 +140,6 @@ const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
 type SettingsTab = "security" | "organisation" | "xero";
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
   noticeKey: string;

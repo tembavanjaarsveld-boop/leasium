@@ -129,6 +129,17 @@ class CommsMaintenanceWorkOrderCorrespondenceRead(BaseModel):
     generated_at: datetime
 
 
+class CommsContractorCorrespondenceRead(BaseModel):
+    """Read-only contractor correspondence timeline response."""
+
+    entity_id: UUID
+    contractor_id: UUID
+    contractor_name: str
+    events: list[CommsCorrespondenceEvent]
+    guardrails: list[str]
+    generated_at: datetime
+
+
 class CommsOutboundLogRead(BaseModel):
     """Read-only entity-scoped comms dispatch receipt log."""
 

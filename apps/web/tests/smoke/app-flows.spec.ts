@@ -2094,6 +2094,20 @@ test("notification center shows work notices and digest receipts", async ({
 });
 
 test("maintenance detail route shows quote evidence", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("maintenanceCopiedCorrespondenceCsv");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          window.localStorage.setItem(
+            "maintenanceCopiedCorrespondenceCsv",
+            text,
+          );
+        },
+      },
+    });
+  });
   let commsCorrespondenceMutationRequests = 0;
   const reviewPacketMutationPaths: string[] = [];
   page.on("request", (request) => {
@@ -2226,10 +2240,34 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       "Opening this panel does not send email",
     ),
   ).toBeVisible();
+  const copyCorrespondenceCsv = workOrderCorrespondencePanel.getByRole(
+    "button",
+    { name: "Copy correspondence CSV" },
+  );
+  const downloadCorrespondenceCsv = workOrderCorrespondencePanel.getByRole(
+    "button",
+    { name: "Download correspondence CSV" },
+  );
+  await expect(copyCorrespondenceCsv).toBeVisible();
+  await expect(copyCorrespondenceCsv).toBeEnabled();
+  await expect(downloadCorrespondenceCsv).toBeVisible();
+  await expect(downloadCorrespondenceCsv).toBeEnabled();
+  await copyCorrespondenceCsv.click();
+  await expect(
+    workOrderCorrespondencePanel.getByText("Correspondence CSV copied."),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem("maintenanceCopiedCorrespondenceCsv"),
+      ),
+    )
+    .not.toBeNull();
+  const copiedWorkOrderCorrespondenceCsv = await page.evaluate(() =>
+    window.localStorage.getItem("maintenanceCopiedCorrespondenceCsv"),
+  );
   const workOrderCorrespondenceDownloadPromise = page.waitForEvent("download");
-  await workOrderCorrespondencePanel
-    .getByRole("button", { name: "Download correspondence CSV" })
-    .click();
+  await downloadCorrespondenceCsv.click();
   const workOrderCorrespondenceDownload =
     await workOrderCorrespondenceDownloadPromise;
   expect(workOrderCorrespondenceDownload.suggestedFilename()).toBe(
@@ -2242,6 +2280,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
     workOrderCorrespondencePath!,
     "utf8",
   );
+  expect(copiedWorkOrderCorrespondenceCsv).toBe(workOrderCorrespondenceCsv);
   expect(workOrderCorrespondenceCsv).toContain(
     "maintenance_work_order:work-order-1",
   );
@@ -2253,7 +2292,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
     '"\'=HYPERLINK(""https://example.invalid"",""Cool Air"")"',
   );
   expect(workOrderCorrespondenceCsv).toContain(
-    "Read-only export: downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.",
+    "Read-only export: copying or downloading this file does not send SendGrid email, send Twilio SMS, dismiss candidates, upload evidence, write provider history, settle candidates, mutate the queue, refresh providers, or mutate maintenance records.",
   );
   expect(commsCorrespondenceMutationRequests).toBe(0);
   await page
@@ -2288,7 +2327,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(page.getByText("Last provider attempt failed")).toBeVisible();
-  await expect(page.getByText("Provider history")).toBeVisible();
+  await expect(page.getByText("Provider history").first()).toBeVisible();
   await expect(
     page.getByText("Template maintenance_contractor_update v1").first(),
   ).toBeVisible();
@@ -3051,7 +3090,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
     '"\'=HYPERLINK(""https://example.invalid"",""Mia"")"',
   );
   expect(correspondenceCsv).toContain(
-    "Review-only export: downloading this file does not send email or SMS",
+    "Review-only export: copying or downloading this file does not send email or SMS",
   );
   await expect(page.getByText("Applied ABN")).toBeVisible();
   await expect(

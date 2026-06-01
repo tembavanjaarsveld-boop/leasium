@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -541,6 +541,7 @@ Official Re-Leased pages position their product around a few mature modules that
     buttons plus tenant/queue links now meet the 44px mobile touch target
     baseline.
   - [x] Vendor portal read-only preview v1: `GET /api/v1/vendor-portal/{contractor_id}` and `/vendor-portal/[contractorId]` show only explicitly `vendor_portal_visible` work tied to `vendor_portal_contractor_id`, with safe vendor summary fields, contractor-visible comments, and no tenant identity, raw work-order body, provider delivery/history, invoice/source ids, email/SMS dispatch, Xero/Basiq write, or payment reconciliation.
+  - [x] Vendor portal preview error/cache parity: missing vendor previews now render a calm `Vendor portal preview not found` state, non-404 failures stay unavailable, and preview reads refetch without stale cache reuse so hidden/moved vendor rows do not linger, including same-route return after a preview changes to 404.
   - [x] Vendor portal operator visibility controls v1: maintenance work-order detail now lets an operator choose a contractor-directory vendor, enter an explicit vendor-safe title, optionally add a vendor-visible note, and share/hide the work order from the read-only vendor portal through local metadata only. Backend share/unshare commands audit the local visibility change and do not send contractor email/SMS, dispatch work, touch provider history, write Xero/Basiq data, or reconcile payments.
   - [x] Vendor exposure packet v1: maintenance work-order detail now adds a local copy/CSV packet inside the operator Vendor portal panel, summarising current exposure state, selected/saved vendor, draft-or-saved vendor-safe title and vendor-visible note evidence, preview target, and excluded tenant/internal/provider/invoice/raw metadata fields from already-loaded page data. Copy/export does not share/hide portal access, send contractor email/SMS, create comments, upload documents, draft invoices, call Comms/Xero/Basiq, dispatch providers, or touch payment/reconciliation paths.
 - [ ] Compliance and inspections: recurring checks, certifications, document expiry, fire/safety obligations, delegated owners, and audit trail.
@@ -548,11 +549,22 @@ Official Re-Leased pages position their product around a few mature modules that
 - [ ] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.
   - [x] Tenant correspondence timeline v1: tenant detail now surfaces a read-only Correspondence panel from stored inbound messages and reviewed comms audit receipts, with guardrails that opening the panel never sends providers or mutates queue/tenant state. Broader hub threads/templates/log workflows remain open.
-  - [x] Tenant correspondence CSV export v1: tenant detail can download a local review-only correspondence CSV from the already-loaded timeline, including inbound/dispatch rows, target context, endpoint guardrails, and a no-send/no-mutation export guardrail.
+  - [x] Tenant correspondence CSV export v1: tenant detail can copy or download a local review-only correspondence CSV from the already-loaded timeline, including inbound/dispatch rows, target context, endpoint guardrails, and a no-send/no-mutation export guardrail.
   - [x] Tenant correspondence record links v1: tenant correspondence rows now expose local open-record links for linked arrears, maintenance, inbound comms, tenant workflow, and obligation targets so the timeline can hand operators back into the source work without sending or mutating anything.
   - [x] Comms outbound log v1: the Comms hub now shows a compact read-only dispatch receipt log from stored comms audit rows, with local target links, CSV export, and guardrails that viewing or exporting the log never sends, dismisses, refreshes providers, or mutates queue state.
   - [x] Comms outbound log filters v1: the Comms hub dispatch receipt log now has compact all/needs-attention/email/SMS filters, filtered row counts, and filtered CSV export scope while keeping the log read-only and provider-mutation safe.
-  - [x] Maintenance correspondence panel v1: maintenance work-order detail now shows linked Comms dispatch/dismiss receipts for tenant and contractor forwards, with local Comms/tenant handoffs, CSV export, and guardrails that the panel never sends, dismisses, refreshes providers, or mutates the work order.
+  - [x] Maintenance correspondence panel v1: maintenance work-order detail now shows linked Comms dispatch/dismiss receipts for tenant and contractor forwards, with local Comms/tenant handoffs, formula-safe Copy/Download CSV export parity, and guardrails that the panel never sends, dismisses, refreshes providers, or mutates the work order.
+  - [x] Vendor correspondence timeline v1: contractor records now show a
+    read-only Activity correspondence panel from stored contractor-facing
+    maintenance comms audit receipts. Rows link back to the source work order
+    or Comms queue and include local formula-safe Copy/Download CSV export
+    parity. Viewing, copying, or exporting does not send email/SMS, dismiss
+    queue rows, refresh providers, mutate vendor records, mutate maintenance
+    records, or write provider history.
+  - [x] Correspondence export guardrail wording parity: tenant, vendor, and
+    maintenance correspondence CSV guardrails now explicitly cover copying or
+    downloading the file, matching the paired local actions while keeping the
+    no-send/no-provider/no-record-mutation promise unchanged.
 - [ ] Approvals and workflow: invoice approval, maintenance spend approval, delegated tasks, reminders, escalation rules, and activity history.
 - [ ] Mobile/field workflows for inspections, photos, quick notes, and work order updates.
 

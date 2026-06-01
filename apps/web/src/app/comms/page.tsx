@@ -53,6 +53,7 @@ import {
   SectionPanel,
   SkeletonRows,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   type CommsCandidateRecord,
@@ -68,11 +69,11 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
 type CommsFilter = "all" | CommsKind;
 type OutboundLogFilter = "all" | "attention" | "email" | "sms";
 type OutboundLogDownload = {
@@ -176,11 +177,6 @@ function handleCommsDraftListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
       firstEditable.focus();
     }
   }
-}
-
-function friendlyError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Something went wrong.";
 }
 
 function formatDateTime(value: string | null | undefined) {

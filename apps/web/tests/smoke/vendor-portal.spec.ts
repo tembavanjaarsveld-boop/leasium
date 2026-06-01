@@ -79,6 +79,20 @@ async function trapUnsafeCalls(page: Page, attemptedCalls: string[]) {
   }
 }
 
+async function navigateWithAppRouter(page: Page, href: string) {
+  await page.evaluate((targetHref) => {
+    const router = (
+      window as typeof window & {
+        next?: { router?: { push: (href: string) => void } };
+      }
+    ).next?.router;
+    if (!router) {
+      throw new Error("Next router unavailable.");
+    }
+    router.push(targetHref);
+  }, href);
+}
+
 test("vendor portal preview renders safe read-only work", async ({ page }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   const attemptedCalls: string[] = [];
@@ -138,6 +152,17 @@ test("vendor portal preview renders safe read-only work", async ({ page }) => {
 test("vendor portal preview shows a calm not-found state", async ({ page }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
+  await page.route("**/api/v1/vendor-portal/contractor-1", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(VENDOR_PORTAL_RESPONSE),
+    });
+  });
   await page.route("**/api/v1/vendor-portal/missing-vendor", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -150,11 +175,135 @@ test("vendor portal preview shows a calm not-found state", async ({ page }) => {
     });
   });
 
+  await page.goto("/vendor-portal/contractor-1");
+  await expect(page.getByText("Repair air conditioning")).toBeVisible({
+    timeout: 15_000,
+  });
+
   await page.goto("/vendor-portal/missing-vendor");
+
+  await expect(
+    page.getByRole("heading", { name: "Vendor portal preview not found" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("No vendor portal preview found.")).toBeVisible();
+  await expect(
+    page.getByText("This vendor portal preview may have been deleted"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Back to vendors" }),
+  ).toBeVisible();
+  await expect(page.getByText("Bright Spark Electrical")).toHaveCount(0);
+  await expect(page.getByText("Repair air conditioning")).toHaveCount(0);
+  await expect(page.getByText("Vendor portal unavailable")).toHaveCount(0);
+});
+
+test("vendor portal preview refetches on return and clears stale vendor data", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  let contractorOneMode: "success" | "not_found" = "success";
+  let contractorOneRequests = 0;
+
+  await page.route("**/api/v1/vendor-portal/contractor-1", async (route) => {
+    contractorOneRequests += 1;
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (contractorOneMode === "not_found") {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Vendor portal preview no longer exists." }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(VENDOR_PORTAL_RESPONSE),
+    });
+  });
+  await page.route("**/api/v1/vendor-portal/contractor-2", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...VENDOR_PORTAL_RESPONSE,
+        vendor: {
+          ...VENDOR_PORTAL_RESPONSE.vendor,
+          id: "contractor-2",
+          name: "Other Vendor Plumbing",
+          company_name: "Other Vendor Plumbing Pty Ltd",
+          email: "service@othervendor.example",
+        },
+        work_orders: {
+          ...VENDOR_PORTAL_RESPONSE.work_orders,
+          items: [
+            {
+              ...VENDOR_PORTAL_RESPONSE.work_orders.items[0],
+              id: "work-order-2",
+              title: "Repair burst pipe",
+              property_name: "King Street Offices",
+            },
+          ],
+        },
+      }),
+    });
+  });
+
+  await page.goto("/vendor-portal/contractor-1");
+  await expect(page.getByText("Bright Spark Electrical").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Repair air conditioning")).toBeVisible();
+
+  contractorOneMode = "not_found";
+  await navigateWithAppRouter(page, "/vendor-portal/contractor-2");
+  await expect(page.getByText("Other Vendor Plumbing").first()).toBeVisible();
+  await expect(page.getByText("Repair burst pipe")).toBeVisible();
+  await navigateWithAppRouter(page, "/vendor-portal/contractor-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Vendor portal preview not found" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Vendor portal preview no longer exists."),
+  ).toBeVisible();
+  await expect(page.getByText("Bright Spark Electrical")).toHaveCount(0);
+  await expect(page.getByText("Repair air conditioning")).toHaveCount(0);
+  await expect(page.getByText("Other Vendor Plumbing")).toHaveCount(0);
+  await expect(page.getByText("Repair burst pipe")).toHaveCount(0);
+  expect(contractorOneRequests).toBeGreaterThanOrEqual(2);
+});
+
+test("vendor portal preview keeps service failures out of not-found state", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+
+  await page.route("**/api/v1/vendor-portal/broken-vendor", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Vendor portal service unavailable." }),
+    });
+  });
+
+  await page.goto("/vendor-portal/broken-vendor");
 
   await expect(
     page.getByRole("heading", { name: "Vendor portal unavailable" }),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Vendor portal not found.")).toBeVisible();
+  await expect(page.getByText("Vendor portal service unavailable.")).toBeVisible();
+  await expect(page.getByText("Vendor portal preview not found")).toHaveCount(0);
   await expect(page.getByText("Bright Spark Electrical")).toHaveCount(0);
 });

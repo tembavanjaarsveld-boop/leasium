@@ -22,7 +22,7 @@ function expectTenantCorrespondenceCsv(correspondenceCsv: string) {
   );
   expect(correspondenceCsv).not.toMatch(/(?:^|,)"[=+\-@]/m);
   expect(correspondenceCsv).toContain(
-    "Review-only export: downloading this file does not send email or SMS",
+    "Review-only export: copying or downloading this file does not send email or SMS",
   );
   expect(correspondenceCsv).toContain("fetch document bytes.");
 }

@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -55,7 +57,7 @@ const recordTabs = [
 ];
 
 test.beforeEach(async ({ page }) => {
-  await mockLeasiumApi(page);
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
   await page.route("**/api/v1/owners/owner-1", async (route) => {
     if (route.request().method() !== "GET") {
@@ -166,6 +168,177 @@ test.describe("people record layout", () => {
     await expect(
       page.getByRole("link", { name: "Open portal preview" }),
     ).toHaveAttribute("href", "/vendor-portal/contractor-1");
+  });
+
+  test("vendor detail shows correspondence receipts without provider mutations", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      window.localStorage.removeItem("vendorCopiedCorrespondenceCsv");
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            window.localStorage.setItem("vendorCopiedCorrespondenceCsv", text);
+          },
+        },
+      });
+    });
+    const forbiddenRequests: string[] = [];
+    await page.route("**/api/v1/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (
+        request.method() !== "GET" &&
+        (url.pathname.includes("/api/v1/comms") ||
+          url.pathname.includes("/api/v1/maintenance") ||
+          url.pathname.includes("/api/v1/contractors"))
+      ) {
+        forbiddenRequests.push(`${request.method()} ${url.pathname}`);
+        await route.fulfill({
+          status: 418,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: "Vendor correspondence must stay local-only.",
+          }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route(
+      "**/api/v1/comms/correspondence/contractors/contractor-1",
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            entity_id: "entity-1",
+            contractor_id: "contractor-1",
+            contractor_name: "Bright Spark Electrical",
+            generated_at: "2026-05-21T02:45:00.000Z",
+            guardrails: [
+              "This vendor correspondence is read-only and uses already stored comms audit receipts.",
+              "Opening this panel does not send email, send SMS, change queue state, refresh providers, mutate vendor records, or mutate maintenance records.",
+            ],
+            events: [
+              {
+                id: "vendor-comms-1",
+                source: "comms_audit",
+                direction: "outbound",
+                event_type: "dispatch",
+                channel: "email",
+                provider: "sendgrid",
+                recipient: '=HYPERLINK("https://example.invalid","Vendor")',
+                from_address: null,
+                to_address: null,
+                subject: null,
+                summary: "contractor forward email queued",
+                body_preview: null,
+                target_kind: "maintenance_work_order",
+                target_id: "work-order-1",
+                status: "success",
+                occurred_at: "2026-05-21T02:30:00.000Z",
+                metadata: {
+                  kind: "maintenance_contractor_forward",
+                  candidate_id:
+                    "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+                },
+              },
+              {
+                id: "vendor-comms-2",
+                source: "comms_audit",
+                direction: "internal",
+                event_type: "dismiss",
+                channel: "email",
+                provider: "comms",
+                recipient: "service@brightspark.example",
+                from_address: null,
+                to_address: null,
+                subject: null,
+                summary: "contractor forward deferred",
+                body_preview: null,
+                target_kind: "maintenance_work_order",
+                target_id: "work-order-1",
+                status: "success",
+                occurred_at: "2026-05-21T02:10:00.000Z",
+                metadata: {
+                  kind: "maintenance_contractor_forward",
+                  candidate_id:
+                    "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+                },
+              },
+            ],
+          }),
+        });
+      },
+    );
+
+    await page.goto("/contractors/contractor-1");
+
+    await expect(
+      page.getByRole("heading", { name: "Bright Spark Electrical" }),
+    ).toBeVisible({ timeout: 15_000 });
+    const activityPanel = page.locator("#activity");
+    await expect(activityPanel.getByText("2 correspondence events")).toBeVisible();
+    await expect(
+      activityPanel.getByText("contractor forward email queued"),
+    ).toBeVisible();
+    await expect(
+      activityPanel.getByText("contractor forward deferred"),
+    ).toBeVisible();
+    await expect(
+      activityPanel.getByRole("link", { name: "Open work order" }).first(),
+    ).toHaveAttribute("href", "/operations/maintenance/work-order-1");
+    const copyCorrespondenceCsv = activityPanel.getByRole("button", {
+      name: "Copy correspondence CSV",
+    });
+    const downloadCorrespondenceCsv = activityPanel.getByRole("button", {
+      name: "Download correspondence CSV",
+    });
+    await expect(copyCorrespondenceCsv).toBeVisible();
+    await expect(copyCorrespondenceCsv).toBeEnabled();
+    await expect(downloadCorrespondenceCsv).toBeVisible();
+    await expect(downloadCorrespondenceCsv).toBeEnabled();
+
+    await copyCorrespondenceCsv.click();
+    await expect(
+      activityPanel.getByText("Correspondence CSV copied."),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.localStorage.getItem("vendorCopiedCorrespondenceCsv"),
+        ),
+      )
+      .not.toBeNull();
+    const copiedCsv = await page.evaluate(() =>
+      window.localStorage.getItem("vendorCopiedCorrespondenceCsv"),
+    );
+    const downloadPromise = page.waitForEvent("download");
+    await downloadCorrespondenceCsv.click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(
+      "vendor-correspondence-bright-spark-electrical.csv",
+    );
+    const downloadPath = await download.path();
+    expect(downloadPath).not.toBeNull();
+    const csv = await readFile(downloadPath!, "utf8");
+    expect(copiedCsv).toBe(csv);
+    expect(csv).toContain("Vendor correspondence");
+    expect(csv).toContain("contractor forward email queued");
+    expect(csv).toContain(
+      "maintenance_contractor_forward:maintenance_work_order:work-order-1",
+    );
+    expect(csv).toContain(
+      "Review-only export: copying or downloading this file does not send email, send SMS, change queue state, refresh providers, mutate vendor records, mutate maintenance records, or write provider history.",
+    );
+    expect(csv).not.toMatch(/(?:^|,)"[=+\-@]/m);
+    expect(forbiddenRequests).toEqual([]);
   });
 
   test("owner detail shows a not-found state for missing owners", async ({
