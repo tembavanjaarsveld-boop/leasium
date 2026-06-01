@@ -10,19 +10,22 @@ Continuation from the tenant portal account cache hardening slice.
 - Web now exposes a typed App Router manifest at `/manifest.webmanifest` with
   `display: standalone`, root `start_url`/`scope`, Leasium theme/background
   colours, the existing SVG app icon, PNG 192/512 install icons, a 512 maskable
-  icon, and shortcuts for Smart Intake, People, and Money.
+  icon, a dedicated 180px Apple touch icon, and shortcuts for Smart Intake,
+  People, and Money.
 - Root metadata now emits application name, manifest link, icon/apple icon
   links, mobile-web-app and Apple standalone tags, format-detection guard, and
   a `viewport` export with `viewport-fit=cover`, light/dark `theme-color`, and
   `color-scheme: light dark`.
 - `/manifest.webmanifest` is public through the temporary access gate alongside
-  `/icon.svg` and `/icons/*`; the v1 deliberately adds no service worker,
-  Workbox, runtime cache, or private-data offline storage.
+  `/icon.svg`, `/apple-touch-icon.png`, and `/icons/*`; the v1 deliberately
+  adds no service worker, Workbox, runtime cache, or private-data offline
+  storage.
 - Red-green proof was captured in
   `apps/web/tests/smoke/pwa-mobile.spec.ts`: it first failed for missing
   manifest/standalone metadata and for the manifest route being gated, then
   passed after the metadata + public-route changes. Follow-up red-green added
-  the PNG/maskable icon expectations and public `/icons/*` gate.
+  the PNG/maskable icon expectations, public `/icons/*` gate, and dedicated
+  Apple touch icon expectation.
 - Verification: PWA/mobile smoke passed **3 passed**; adjacent mobile-header
   smoke passed **1 passed**; targeted frontend `eslint`, `tsc --noEmit`,
   `git diff --check`, and production-style `next build` passed.

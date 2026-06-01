@@ -14,6 +14,7 @@ test("pwa assets stay outside the temporary access gate", () => {
     "/icons/leasium-icon-192.png",
     "/icons/leasium-icon-512.png",
     "/icons/leasium-maskable-512.png",
+    "/apple-touch-icon.png",
   ]) {
     expect(isPublicOperatorPath(path)).toBe(true);
   }
@@ -127,6 +128,21 @@ test("mobile shell carries standalone metadata and avoids horizontal overflow", 
   await expect(
     page.locator('meta[name="mobile-web-app-capable"]'),
   ).toHaveAttribute("content", "yes");
+  const appleTouchIcon = page.locator('link[rel="apple-touch-icon"]');
+  await expect(appleTouchIcon).toHaveAttribute(
+    "href",
+    /\/apple-touch-icon\.png$/,
+  );
+  await expect(appleTouchIcon).toHaveAttribute("sizes", "180x180");
+  const appleTouchIconHref = await appleTouchIcon.getAttribute("href");
+  expect(appleTouchIconHref).toBeTruthy();
+  const appleTouchIconResponse = await page.request.get(
+    new URL(appleTouchIconHref ?? "", page.url()).toString(),
+  );
+  expect(appleTouchIconResponse.ok()).toBe(true);
+  expect(appleTouchIconResponse.headers()["content-type"]).toContain(
+    "image/png",
+  );
   await expect(
     page.locator(
       'meta[name="theme-color"][media="(prefers-color-scheme: light)"]',
