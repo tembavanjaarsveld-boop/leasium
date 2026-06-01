@@ -172,6 +172,15 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   Authorization headers for invite claim, account status/session reads, and
   account shared-document download; live-Clerk production smoke remains a
   rollout follow-up.
+- **Owner portal shared-login guard** (`/owner-portal/invite/[token]`):
+  backfilled owners that share a billing email must not let one Clerk subject
+  claim multiple active owner accounts. The second different-owner claim returns
+  a plain 409 recovery message, leaves the invite unconsumed, and account
+  status/session/document reads refuse ambiguous active provider rows. If a
+  simultaneous claim reaches the database unique constraint first, the request
+  is rolled back into the same 409 recovery path. Migration `20260601_0032`
+  adds the database invariant: one active owner portal account per Clerk
+  provider id.
 - **Owner portal preview error/cache parity** (`/owner-portal/[ownerId]`):
   operator-preview reads now match the tenant preview freshness pattern with
   no stale cache, no retry delay, and refetch-on-return. 404s must use

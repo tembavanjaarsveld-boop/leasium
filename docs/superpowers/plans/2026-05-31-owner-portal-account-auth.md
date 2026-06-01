@@ -39,7 +39,7 @@ Expected: import failure for the new owner portal account models.
 
 - [x] **Step 3: Add model + migration**
 
-Add `OwnerPortalAccountStatus(active, revoked)`, `OwnerPortalInvite`, and `OwnerPortalAccount`. The account unique active index is on `(auth_provider, auth_provider_id, owner_id)`, which lets one Clerk login claim more than one Owner record while preventing duplicate active links to the same Owner.
+Add `OwnerPortalAccountStatus(active, revoked)`, `OwnerPortalInvite`, and `OwnerPortalAccount`. The initial account unique active index was on `(auth_provider, auth_provider_id, owner_id)`; follow-up migration `20260601_0032` adds the rollout-safe invariant of one active owner portal account per Clerk provider id, matching the provider-only account-session lookup.
 
 - [~] **Step 4: Run migration and test**
 

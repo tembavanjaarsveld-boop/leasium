@@ -38,6 +38,7 @@ from stewart.core.models import (
     TenantOnboarding,
     TenantOnboardingStatus,
 )
+from stewart.core.owner_backfill import backfill_owners
 from stewart.core.settings import Settings, get_settings
 
 
@@ -408,6 +409,198 @@ def test_owner_portal_account_claim_and_bearer_session_are_scoped(
         headers={"Authorization": "Bearer owner-subject-one"},
     )
     assert revoked_session.status_code == 401
+
+
+def test_backfilled_owner_portal_account_blocks_ambiguous_shared_login(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _owner_account_settings
+    _set_operating_mode(session)
+    entity = _entity(session)
+    session.add_all(
+        [
+            Property(
+                entity_id=entity.id,
+                name="Backfilled Alpha",
+                street_address="1 Shared Email Street",
+                property_type=PropertyType.commercial_office,
+                owner_legal_name="Backfilled Alpha Pty Ltd",
+                billing_email="shared-owner@example.test",
+            ),
+            Property(
+                entity_id=entity.id,
+                name="Backfilled Beta",
+                street_address="2 Shared Email Street",
+                property_type=PropertyType.commercial_office,
+                owner_legal_name="Backfilled Beta Pty Ltd",
+                billing_email="shared-owner@example.test",
+            ),
+        ]
+    )
+    session.commit()
+
+    backfill_result = backfill_owners(session, entity_id=entity.id)
+    assert backfill_result.owners_created == 2
+    session.commit()
+    owners = {
+        owner.legal_name: owner
+        for owner in session.scalars(
+            select(Owner).where(
+                Owner.entity_id == entity.id,
+                Owner.legal_name.in_(
+                    ["Backfilled Alpha Pty Ltd", "Backfilled Beta Pty Ltd"]
+                ),
+            )
+        )
+    }
+    first_owner = owners["Backfilled Alpha Pty Ltd"]
+    second_owner = owners["Backfilled Beta Pty Ltd"]
+    first_invite = _create_invite(client, first_owner)
+    second_invite = _create_invite(client, second_owner)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="shared-owner-subject",
+            verified_email="shared-owner@example.test",
+        )
+
+    monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+    monkeypatch.setattr(owner_portal_router, "_current_statement_month", lambda: "2026-05")
+
+    first_claim = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer shared-owner-subject"},
+        json={"portal_token": first_invite["portal_token"]},
+    )
+    assert first_claim.status_code == 200, first_claim.text
+    assert first_claim.json()["owner"]["id"] == str(first_owner.id)
+
+    first_account = _account_by_provider(session, "shared-owner-subject")
+    assert first_account.owner_id == first_owner.id
+    assert first_account.owner_portal_invite_id is not None
+
+    second_claim = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer shared-owner-subject"},
+        json={"portal_token": second_invite["portal_token"]},
+    )
+
+    assert second_claim.status_code == 409
+    assert second_claim.json()["detail"] == (
+        "This owner portal login is already linked to another owner. "
+        "Ask the property team for a separate login before claiming this link."
+    )
+    session.expire_all()
+    second_stored_invite = session.scalar(
+        select(OwnerPortalInvite).where(
+            OwnerPortalInvite.owner_id == second_owner.id
+        )
+    )
+    assert second_stored_invite is not None
+    assert second_stored_invite.consumed_at is None
+    accounts = list(
+        session.scalars(
+            select(OwnerPortalAccount).where(
+                OwnerPortalAccount.auth_provider == "clerk",
+                OwnerPortalAccount.auth_provider_id == "shared-owner-subject",
+                OwnerPortalAccount.status == OwnerPortalAccountStatus.active,
+                OwnerPortalAccount.revoked_at.is_(None),
+                OwnerPortalAccount.deleted_at.is_(None),
+            )
+        )
+    )
+    assert [account.owner_id for account in accounts] == [first_owner.id]
+
+    status_response = client.get(
+        "/api/v1/owner-portal/account/status",
+        headers={"Authorization": "Bearer shared-owner-subject"},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["owner_id"] == str(first_owner.id)
+
+    session_response = client.get(
+        "/api/v1/owner-portal/account/session",
+        params={"month": "2026-05"},
+        headers={"Authorization": "Bearer shared-owner-subject"},
+    )
+    assert session_response.status_code == 200, session_response.text
+    assert session_response.json()["owner"]["id"] == str(first_owner.id)
+
+
+def test_owner_portal_claim_unique_index_race_returns_shared_login_conflict(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    app.dependency_overrides[get_settings] = _owner_account_settings
+    first_owner = _seed_owner(session, email="shared-owner@example.test")
+    second_owner = _seed_owner(session, email="shared-owner@example.test")
+    first_invite = _create_invite(client, first_owner)
+    second_invite = _create_invite(client, second_owner)
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="shared-owner-subject",
+            verified_email="shared-owner@example.test",
+        )
+
+    monkeypatch.setattr(owner_portal_router, "_owner_portal_identity", fake_identity)
+    first_claim = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer shared-owner-subject"},
+        json={"portal_token": first_invite["portal_token"]},
+    )
+    assert first_claim.status_code == 200, first_claim.text
+
+    real_active_accounts = owner_portal_router._active_owner_portal_accounts
+    stale_read_count = 0
+
+    def stale_active_accounts(provider_id, db_session):  # noqa: ANN001
+        nonlocal stale_read_count
+        stale_read_count += 1
+        if stale_read_count == 1:
+            return []
+        return real_active_accounts(provider_id, db_session)
+
+    monkeypatch.setattr(
+        owner_portal_router,
+        "_active_owner_portal_accounts",
+        stale_active_accounts,
+    )
+
+    second_claim = client.post(
+        "/api/v1/owner-portal/account/claim",
+        headers={"Authorization": "Bearer shared-owner-subject"},
+        json={"portal_token": second_invite["portal_token"]},
+    )
+
+    assert second_claim.status_code == 409
+    assert second_claim.json()["detail"] == (
+        "This owner portal login is already linked to another owner. "
+        "Ask the property team for a separate login before claiming this link."
+    )
+    session.expire_all()
+    second_stored_invite = session.scalar(
+        select(OwnerPortalInvite).where(
+            OwnerPortalInvite.owner_id == second_owner.id
+        )
+    )
+    assert second_stored_invite is not None
+    assert second_stored_invite.consumed_at is None
+    accounts = list(
+        session.scalars(
+            select(OwnerPortalAccount).where(
+                OwnerPortalAccount.auth_provider == "clerk",
+                OwnerPortalAccount.auth_provider_id == "shared-owner-subject",
+                OwnerPortalAccount.status == OwnerPortalAccountStatus.active,
+                OwnerPortalAccount.revoked_at.is_(None),
+                OwnerPortalAccount.deleted_at.is_(None),
+            )
+        )
+    )
+    assert [account.owner_id for account in accounts] == [first_owner.id]
 
 
 def test_owner_portal_account_session_includes_safe_maintenance_snapshot(

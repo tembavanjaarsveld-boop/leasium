@@ -32,6 +32,24 @@ review-packet slices.
   smoke passed **6 passed / 2 skipped**; targeted frontend eslint,
   `tsc --noEmit`, and `git diff --check` passed.
 
+### Owner portal shared-login guard
+- Backfilled owners with the same billing email can no longer let one Clerk
+  subject claim multiple active owner accounts. The second claim now returns a
+  clear 409, leaves the second invite unconsumed, and keeps status/session reads
+  scoped to the first linked owner.
+- The account status/session/document paths now refuse ambiguous active
+  provider rows instead of choosing the most recently updated owner.
+- If a simultaneous claim slips past the application read guard, the database
+  unique-index failure is rolled back and translated into the same 409 recovery
+  message instead of surfacing as a server error.
+- New migration `20260601_0032_owner_portal_provider_active_unique.py` adds a
+  unique active-provider index on `owner_portal_account` and fails the migration
+  up front if duplicate active provider links already exist, so rollout cleanup
+  is explicit.
+- Verification: the shared-login regression went red first, then
+  `.venv/bin/python -m pytest tests/integration/test_owner_portal_auth_api.py -q`
+  passed **12 passed**; targeted backend `ruff` passed.
+
 ### Owner statement ZIP CSV hardening
 - Backend owner statement ZIP packs now formula-harden both included CSVs:
   `MANIFEST-{month}.csv` and `INVOICE-EVIDENCE-{month}.csv`.
@@ -867,18 +885,21 @@ before the Ticket 2.2 slice.
   `https://leasium.ai/statements` returned HTTP 200.
 
 ### Next
-1. Test production owner invites and secure document downloads with a real Clerk
+1. Apply/verify migration `20260601_0032` in the target database before broad
+   owner rollout. If the duplicate preflight fails, revoke or soft-delete the
+   duplicate active owner portal account rows first.
+2. Test production owner invites and secure document downloads with a real Clerk
    owner account before broad owner rollout.
    This is blocked in Codex without operator input: it needs a real operator
    Clerk session, a chosen production owner, a matching owner Clerk account, an
    eligible `owner_portal_visible` document, and explicit approval because invite
    creation/account claim mutate production state, even though they send no
    owner email and touch no providers.
-2. Real-device PWA install review on iOS/Android: confirm the standalone launch
+3. Real-device PWA install review on iOS/Android: confirm the standalone launch
    experience and decide whether to add PNG/maskable icons or launch images.
    Keep v1's no-service-worker/no-private-offline-data constraint unless the
    operator explicitly approves an offline strategy.
-3. Continue the low-provider-risk UX runway: mobile bottom-nav/field-operator
+4. Continue the low-provider-risk UX runway: mobile bottom-nav/field-operator
    shell review, vendor portal account/invite design only after the auth
    boundary is agreed, and then the next read-only work/maintenance depth
    slice. Avoid provider sends/writes unless explicitly approved.

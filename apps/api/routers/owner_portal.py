@@ -11,6 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from stewart.core.auth import (
     ClerkIdentity,
@@ -252,27 +253,73 @@ def _owner_for_invite(invite: OwnerPortalInvite, session: Session) -> Owner:
     return owner
 
 
+_OWNER_PORTAL_LOGIN_ALREADY_LINKED_DETAIL = (
+    "This owner portal login is already linked to another owner. Ask the "
+    "property team for a separate login before claiming this link."
+)
+
+
+def _owner_portal_login_already_linked_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=_OWNER_PORTAL_LOGIN_ALREADY_LINKED_DETAIL,
+    )
+
+
+def _is_active_provider_integrity_error(error: IntegrityError) -> bool:
+    message = str(error.orig).lower()
+    return (
+        "owner_portal_account_auth_provider_active_idx" in message
+        or (
+            "owner_portal_account.auth_provider" in message
+            and "owner_portal_account.auth_provider_id" in message
+        )
+        or (
+            "owner_portal_account" in message
+            and "auth_provider" in message
+            and "auth_provider_id" in message
+        )
+    )
+
+
+def _active_owner_portal_accounts(
+    provider_id: str,
+    session: Session,
+) -> list[OwnerPortalAccount]:
+    return list(
+        session.scalars(
+            select(OwnerPortalAccount)
+            .where(
+                OwnerPortalAccount.auth_provider == "clerk",
+                OwnerPortalAccount.auth_provider_id == provider_id,
+                OwnerPortalAccount.status == OwnerPortalAccountStatus.active,
+                OwnerPortalAccount.revoked_at.is_(None),
+                OwnerPortalAccount.deleted_at.is_(None),
+            )
+            .order_by(OwnerPortalAccount.updated_at.desc())
+        ).all()
+    )
+
+
+def _assert_owner_portal_accounts_unambiguous(
+    accounts: list[OwnerPortalAccount],
+) -> None:
+    if len({account.owner_id for account in accounts}) > 1:
+        raise _owner_portal_login_already_linked_error()
+
+
 def _active_owner_portal_account(
     provider_id: str,
     session: Session,
 ) -> OwnerPortalAccount:
-    account = session.scalar(
-        select(OwnerPortalAccount)
-        .where(
-            OwnerPortalAccount.auth_provider == "clerk",
-            OwnerPortalAccount.auth_provider_id == provider_id,
-            OwnerPortalAccount.status == OwnerPortalAccountStatus.active,
-            OwnerPortalAccount.revoked_at.is_(None),
-            OwnerPortalAccount.deleted_at.is_(None),
-        )
-        .order_by(OwnerPortalAccount.updated_at.desc())
-    )
-    if account is None:
+    accounts = _active_owner_portal_accounts(provider_id, session)
+    if not accounts:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Owner portal account not found.",
         )
-    return account
+    _assert_owner_portal_accounts_unambiguous(accounts)
+    return accounts[0]
 
 
 def _owner_for_account(account: OwnerPortalAccount, session: Session) -> Owner:
@@ -653,6 +700,25 @@ def _portal_read(
     )
 
 
+def _owner_portal_account_read(
+    owner: Owner,
+    session: Session,
+    month: str | None = None,
+) -> OwnerPortalRead:
+    return _portal_read(
+        owner,
+        session,
+        month or _current_statement_month(),
+        OwnerPortalAuthRead(
+            mode="owner_portal_account",
+            token_source="bearer",
+            owner_auth_configured=True,
+            boundary="owner_portal_account",
+            detail="Access is scoped to the owner linked to this owner portal account.",
+        ),
+    )
+
+
 @router.post(
     "/{owner_id}/invite",
     response_model=OwnerPortalInviteRead,
@@ -759,6 +825,10 @@ def claim_owner_portal_account(
 
     _assert_claim_email_matches_invite(identity, invite.claim_email, settings)
 
+    active_accounts = _active_owner_portal_accounts(provider_id, session)
+    if any(account.owner_id != owner.id for account in active_accounts):
+        raise _owner_portal_login_already_linked_error()
+
     revoked_account = session.scalar(
         select(OwnerPortalAccount).where(
             OwnerPortalAccount.auth_provider == "clerk",
@@ -813,21 +883,36 @@ def claim_owner_portal_account(
         }
     if invite.consumed_at is None:
         invite.consumed_at = now
-    session.commit()
+    owner_id = owner.id
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        if not _is_active_provider_integrity_error(exc):
+            raise
+        active_accounts = _active_owner_portal_accounts(provider_id, session)
+        if any(account.owner_id != owner_id for account in active_accounts):
+            raise _owner_portal_login_already_linked_error() from None
+        account = next(
+            (
+                active_account
+                for active_account in active_accounts
+                if active_account.owner_id == owner_id
+            ),
+            None,
+        )
+        if account is None:
+            raise
+        owner = _owner_for_account(account, session)
+        _assert_owner_portal_operating_mode(session, owner.entity_id)
+        account.last_seen_at = utcnow()
+        session.commit()
+        session.refresh(account)
+        session.refresh(owner)
+        return _owner_portal_account_read(owner, session)
     session.refresh(account)
     session.refresh(owner)
-    return _portal_read(
-        owner,
-        session,
-        _current_statement_month(),
-        OwnerPortalAuthRead(
-            mode="owner_portal_account",
-            token_source="bearer",
-            owner_auth_configured=True,
-            boundary="owner_portal_account",
-            detail="Access is scoped to the owner linked to this owner portal account.",
-        ),
-    )
+    return _owner_portal_account_read(owner, session)
 
 
 @router.get("/account/status", response_model=OwnerPortalAccountLifecycleRead)
@@ -838,18 +923,10 @@ def get_owner_portal_account_status(
 ) -> OwnerPortalAccountLifecycleRead:
     identity = _owner_portal_identity(authorization, settings)
     provider_id = identity.provider_id
-    account = session.scalar(
-        select(OwnerPortalAccount)
-        .where(
-            OwnerPortalAccount.auth_provider == "clerk",
-            OwnerPortalAccount.auth_provider_id == provider_id,
-            OwnerPortalAccount.status == OwnerPortalAccountStatus.active,
-            OwnerPortalAccount.revoked_at.is_(None),
-            OwnerPortalAccount.deleted_at.is_(None),
-        )
-        .order_by(OwnerPortalAccount.updated_at.desc())
-    )
-    if account is not None:
+    active_accounts = _active_owner_portal_accounts(provider_id, session)
+    _assert_owner_portal_accounts_unambiguous(active_accounts)
+    if active_accounts:
+        account = active_accounts[0]
         _assert_owner_portal_operating_mode(session, account.entity_id)
         owner = session.get(Owner, account.owner_id)
         return OwnerPortalAccountLifecycleRead(

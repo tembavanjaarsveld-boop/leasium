@@ -1478,6 +1478,22 @@ Index(
     postgresql_where=OwnerPortalAccount.deleted_at.is_(None),
 )
 Index(
+    "owner_portal_account_auth_provider_active_idx",
+    OwnerPortalAccount.auth_provider,
+    OwnerPortalAccount.auth_provider_id,
+    unique=True,
+    postgresql_where=(
+        (OwnerPortalAccount.status == OwnerPortalAccountStatus.active)
+        & OwnerPortalAccount.revoked_at.is_(None)
+        & OwnerPortalAccount.deleted_at.is_(None)
+    ),
+    sqlite_where=(
+        (OwnerPortalAccount.status == OwnerPortalAccountStatus.active)
+        & OwnerPortalAccount.revoked_at.is_(None)
+        & OwnerPortalAccount.deleted_at.is_(None)
+    ),
+)
+Index(
     "owner_portal_account_entity_idx",
     OwnerPortalAccount.entity_id,
     postgresql_where=OwnerPortalAccount.deleted_at.is_(None),
