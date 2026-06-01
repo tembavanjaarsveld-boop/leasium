@@ -62,6 +62,10 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  isManagingAgentOperatingMode,
+  useOperatingMode,
+} from "@/lib/use-operating-mode";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
@@ -105,6 +109,7 @@ type MonthEndHandoff = {
   entityName: string;
   statementMonth: string;
   statementsHref: string;
+  showOwnerDispatch: boolean;
   closeStatus: "ready" | "incomplete" | "unpaid" | "blocked";
   approvedCount: number;
   approvedCents: number;
@@ -624,6 +629,7 @@ function buildMonthEndHandoff({
   entityId,
   entityName,
   statementMonth,
+  showOwnerDispatch,
 }: {
   invoiceDrafts: InvoiceDraftRecord[];
   freshness: XeroAccountingFreshnessRecord | null;
@@ -632,6 +638,7 @@ function buildMonthEndHandoff({
   entityId: string;
   entityName: string;
   statementMonth: string;
+  showOwnerDispatch: boolean;
 }): MonthEndHandoff {
   const approvedDrafts = invoiceDrafts.filter(
     (draft) => draft.status === "approved",
@@ -676,9 +683,12 @@ function buildMonthEndHandoff({
     (total, owner) => total + owner.invoice_count,
     0,
   );
-  const missingOwnerEmailCount = statementOwners.filter(
+  const rawMissingOwnerEmailCount = statementOwners.filter(
     (owner) => !owner.billing_email,
   ).length;
+  const missingOwnerEmailCount = showOwnerDispatch
+    ? rawMissingOwnerEmailCount
+    : 0;
   const outstandingCents = statementOwners.reduce(
     (total, owner) => total + owner.outstanding_cents,
     0,
@@ -727,7 +737,11 @@ function buildMonthEndHandoff({
     );
   }
   if (approvedCount === 0) {
-    issues.push("No approved invoices are available for owner statements yet.");
+    issues.push(
+      showOwnerDispatch
+        ? "No approved invoices are available for owner statements yet."
+        : "No approved invoices are available for entity statements yet.",
+    );
   }
   if (needsXeroApprovalCount > 0) {
     issues.push(
@@ -736,7 +750,9 @@ function buildMonthEndHandoff({
   }
   if (providerRecoveryCount > 0) {
     issues.push(
-      `${countLabel(providerRecoveryCount, "provider recovery", "provider recoveries")} needs attention before dispatch review.`,
+      `${countLabel(providerRecoveryCount, "provider recovery", "provider recoveries")} needs attention before ${
+        showOwnerDispatch ? "dispatch review" : "month end"
+      }.`,
     );
   }
   if (readyDispatchCount > 0) {
@@ -761,33 +777,44 @@ function buildMonthEndHandoff({
   }
   if (!statementsLoading && statementInvoiceCount === 0) {
     issues.push(
-      `No owner statement invoices are showing for ${statementMonth}.`,
+      `No ${showOwnerDispatch ? "owner" : "entity"} statement invoices are showing for ${statementMonth}.`,
     );
   }
   if (missingOwnerEmailCount > 0) {
     issues.push(
       `${countLabel(missingOwnerEmailCount, "owner")} needs a billing email before dispatch approval.`,
     );
+  } else if (!showOwnerDispatch && rawMissingOwnerEmailCount > 0) {
+    issues.push(
+      "Recipient emails are not required for self-managed reporting.",
+    );
   }
   if (!issues.length) {
-    issues.push("Statement pack is ready for preview and dispatch review.");
+    issues.push(
+      showOwnerDispatch
+        ? "Statement pack is ready for preview and dispatch review."
+        : "Statement pack is ready for self-managed reporting.",
+    );
   }
+  const statementModeLabel = showOwnerDispatch ? "Owner" : "Entity";
 
   return {
     status,
     title:
       status === "ready"
-        ? "Owner statement handoff ready"
+        ? `${statementModeLabel} statement handoff ready`
         : status === "blocked"
-          ? "Owner statement handoff blocked"
+          ? `${statementModeLabel} statement handoff blocked`
           : status === "loading"
-            ? "Checking owner statement handoff"
-            : "Owner statement handoff needs review",
+            ? `Checking ${statementModeLabel.toLowerCase()} statement handoff`
+            : `${statementModeLabel} statement handoff needs review`,
     detail:
       status === "ready"
-        ? "Finance can open the statement pack and review dispatch copy."
+        ? showOwnerDispatch
+          ? "Finance can open the statement pack and review dispatch copy."
+          : "Finance can open the statement pack for local reporting."
         : status === "blocked"
-          ? "Clear blockers before relying on the owner statement pack."
+          ? `Clear blockers before relying on the ${statementModeLabel.toLowerCase()} statement pack.`
           : status === "loading"
             ? `Checking statement roll-up for ${statementMonth}.`
             : "Review the open items before treating this month as closed.",
@@ -798,6 +825,7 @@ function buildMonthEndHandoff({
       month: statementMonth,
       closeStatus,
     }),
+    showOwnerDispatch,
     closeStatus,
     approvedCount,
     approvedCents,
@@ -816,8 +844,21 @@ function buildMonthEndHandoff({
 }
 
 function monthEndHandoffText(handoff: MonthEndHandoff) {
+  const statementLabel = handoff.showOwnerDispatch
+    ? "Owner statements"
+    : "Entity statements";
+  const participantDetail = countLabel(
+    handoff.ownerCount,
+    handoff.showOwnerDispatch ? "owner" : "entity",
+  );
+  const recipientDetail = handoff.showOwnerDispatch
+    ? `${handoff.missingOwnerEmailCount} missing recipient`
+    : "self-managed reporting";
+  const reviewGuardrail = handoff.showOwnerDispatch
+    ? "Review-only: statement preview/export and dispatch review remain explicit approval steps."
+    : "Review-only: statement preview/export remain explicit local reporting steps.";
   return [
-    "Month-end owner statement handoff",
+    `Month-end ${statementLabel.toLowerCase()} handoff`,
     `Entity: ${handoff.entityName}`,
     `Month: ${handoff.statementMonth}`,
     `Status: ${handoffStatusLabel(handoff.status)} (${handoff.closeStatus})`,
@@ -827,19 +868,29 @@ function monthEndHandoffText(handoff: MonthEndHandoff) {
     )}`,
     `Provider dispatch: ${handoff.providerCompleteCount} complete / ${handoff.readyDispatchCount} ready / ${handoff.providerRecoveryCount} recovery`,
     `Payment review: ${handoff.unpaidCount} unpaid / ${handoff.paymentReviewCount} Xero-linked review`,
-    `Owner statements: ${handoff.ownerCount} owners / ${handoff.statementInvoiceCount} invoices / ${handoff.missingOwnerEmailCount} missing recipient`,
+    `${statementLabel}: ${participantDetail} / ${countLabel(
+      handoff.statementInvoiceCount,
+      "invoice",
+    )} / ${recipientDetail}`,
     `Outstanding on statements: ${formatMoney(handoff.outstandingCents)}`,
     "",
     "Open items",
     ...handoff.issues.map((issue) => `- ${issue}`),
     "",
-    "Review-only: statement preview/export and dispatch review remain explicit approval steps.",
+    reviewGuardrail,
   ].join("\n");
 }
 
 function monthEndHandoffCsv(handoff: MonthEndHandoff) {
-  const guardrail =
-    "Review-only export: downloading this file does not create Xero drafts, preview or apply payment reconciliation, send tenant or owner email, generate billing drafts, dispatch invoices, refresh providers, or mutate provider history.";
+  const guardrail = handoff.showOwnerDispatch
+    ? "Review-only export: downloading this file does not create Xero drafts, preview or apply payment reconciliation, send tenant or owner email, generate billing drafts, dispatch invoices, refresh providers, or mutate provider history."
+    : "Review-only export: downloading this file does not create Xero drafts, preview or apply payment reconciliation, send tenant or billing-contact email, generate billing drafts, dispatch invoices, refresh providers, or mutate provider history.";
+  const statementLabel = handoff.showOwnerDispatch
+    ? "Owner statements"
+    : "Entity statements";
+  const statementDetail = handoff.showOwnerDispatch
+    ? `${handoff.statementInvoiceCount} invoices; ${handoff.missingOwnerEmailCount} missing recipient.`
+    : `${handoff.statementInvoiceCount} invoices; self-managed reporting.`;
   const rows: Array<Array<string | number | null | undefined>> = [
     ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
     [
@@ -857,7 +908,9 @@ function monthEndHandoffCsv(handoff: MonthEndHandoff) {
       "Approved",
       handoff.approvedCount,
       formatMoney(handoff.approvedCents),
-      "Invoices available for owner statement review.",
+      handoff.showOwnerDispatch
+        ? "Invoices available for owner statement review."
+        : "Invoices available for entity statement review.",
       guardrail,
     ],
     [
@@ -879,12 +932,12 @@ function monthEndHandoffCsv(handoff: MonthEndHandoff) {
       guardrail,
     ],
     [
-      "Owner statements",
-      "Owner statements",
+      statementLabel,
+      statementLabel,
       "Statement pack",
       handoff.ownerCount,
       formatMoney(handoff.outstandingCents),
-      `${handoff.statementInvoiceCount} invoices; ${handoff.missingOwnerEmailCount} missing recipient.`,
+      statementDetail,
       guardrail,
     ],
     ...handoff.issues.map((issue) => [
@@ -909,6 +962,7 @@ function buildMonthEndChecklist({
   statementsLoading,
   entityId,
   statementMonth,
+  showOwnerDispatch,
 }: {
   invoiceDrafts: InvoiceDraftRecord[];
   freshness: XeroAccountingFreshnessRecord | null;
@@ -916,6 +970,7 @@ function buildMonthEndChecklist({
   statementsLoading: boolean;
   entityId: string;
   statementMonth: string;
+  showOwnerDispatch: boolean;
 }): MonthEndChecklistItem[] {
   const approvedDrafts = invoiceDrafts.filter(
     (draft) => draft.status === "approved",
@@ -979,9 +1034,12 @@ function buildMonthEndChecklist({
     (total, owner) => total + owner.invoice_count,
     0,
   );
-  const missingOwnerEmailCount = statementOwners.filter(
+  const rawMissingOwnerEmailCount = statementOwners.filter(
     (owner) => !owner.billing_email,
   ).length;
+  const missingOwnerEmailCount = showOwnerDispatch
+    ? rawMissingOwnerEmailCount
+    : 0;
   const statementReviewStatus: MonthEndChecklistStatus =
     statementsLoading ||
     approvedCount === 0 ||
@@ -990,21 +1048,27 @@ function buildMonthEndChecklist({
       ? "review"
       : "clear";
   const statementReviewDetail = statementsLoading
-    ? `Checking owner statement roll-up for ${statementMonth}.`
+    ? `Checking ${showOwnerDispatch ? "owner" : "entity"} statement roll-up for ${statementMonth}.`
     : approvedCount === 0 || statementInvoiceCount === 0
-      ? `No owner statement invoices found for ${statementMonth}.`
-      : missingOwnerEmailCount > 0
-        ? `${countLabel(
-            statementOwners.length,
-            "owner",
-          )} in the statement pack; ${countLabel(
-            missingOwnerEmailCount,
-            "owner",
-          )} need billing email before dispatch.`
-        : `${countLabel(statementOwners.length, "owner")} and ${countLabel(
-            statementInvoiceCount,
-            "statement invoice",
-          )} ready for preview and dispatch review.`;
+      ? `No ${showOwnerDispatch ? "owner" : "entity"} statement invoices found for ${statementMonth}.`
+      : !showOwnerDispatch && rawMissingOwnerEmailCount > 0
+        ? "Recipient emails are not required for self-managed reporting."
+        : missingOwnerEmailCount > 0
+          ? `${countLabel(
+              statementOwners.length,
+              "owner",
+            )} in the statement pack; ${countLabel(
+              missingOwnerEmailCount,
+              "owner",
+            )} need billing email before dispatch.`
+          : `${countLabel(
+              statementOwners.length,
+              showOwnerDispatch ? "owner" : "entity",
+            )} and ${countLabel(statementInvoiceCount, "statement invoice")} ${
+              showOwnerDispatch
+                ? "ready for preview and dispatch review."
+                : "ready for self-managed reporting."
+            }`;
   const statementsHref = ownerStatementsHref({
     entityId,
     month: statementMonth,
@@ -1102,7 +1166,7 @@ function buildMonthEndChecklist({
     },
     {
       id: "owner-statements",
-      title: "Owner statements",
+      title: showOwnerDispatch ? "Owner statements" : "Entity statements",
       detail: statementReviewDetail,
       status: statementReviewStatus,
       actionLabel: "Review statements",
@@ -1113,10 +1177,16 @@ function buildMonthEndChecklist({
       title: "Month-end pack",
       detail:
         closeReady && statementReviewStatus === "clear"
-          ? "Ready to use in owner and accounting reporting."
+          ? showOwnerDispatch
+            ? "Ready to use in owner and accounting reporting."
+            : "Ready to use in entity and accounting reporting."
           : closeReady && statementReviewStatus !== "clear"
-            ? "Review owner statement previews and dispatch copy before relying on the pack."
-            : "Close the open checklist items before relying on owner or accounting reporting.",
+            ? showOwnerDispatch
+              ? "Review owner statement previews and dispatch copy before relying on the pack."
+              : "Review entity statement previews before relying on the pack."
+            : showOwnerDispatch
+              ? "Close the open checklist items before relying on owner or accounting reporting."
+              : "Close the open checklist items before relying on entity or accounting reporting.",
       status:
         closeStatus === "blocked"
           ? "blocked"
@@ -1140,7 +1210,7 @@ function MonthEndChecklistStrip({ items }: { items: MonthEndChecklistItem[] }) {
             Month-end checklist
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            One scan before owner statements or accounting reports go out.
+            One scan before statements or accounting reports go out.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1226,9 +1296,16 @@ function MonthEndHandoffPanel({ handoff }: { handoff: MonthEndHandoff }) {
           : "success",
     },
     {
-      label: "Statement pack",
+      label: handoff.showOwnerDispatch
+        ? "Owner statements"
+        : "Entity statements",
       value: handoff.ownerCount,
-      detail: `${handoff.statementInvoiceCount} invoices / ${handoff.missingOwnerEmailCount} missing recipient`,
+      detail:
+        handoff.showOwnerDispatch && handoff.missingOwnerEmailCount > 0
+          ? `${handoff.statementInvoiceCount} invoices / ${handoff.missingOwnerEmailCount} missing recipient`
+          : handoff.showOwnerDispatch
+            ? `${handoff.statementInvoiceCount} invoices / dispatch ready`
+            : `${handoff.statementInvoiceCount} invoices / local reporting`,
       tone: handoff.missingOwnerEmailCount
         ? "danger"
         : handoff.statementInvoiceCount
@@ -1618,6 +1695,8 @@ function KpiCard({
 
 function BillingReadinessWorkspace() {
   const queryClient = useQueryClient();
+  const { operatingMode } = useOperatingMode();
+  const showOwnerDispatch = isManagingAgentOperatingMode(operatingMode);
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [asOf, setAsOf] = useState(() => dateOnly(new Date()));
   const [activeBillingTab, setActiveBillingTab] =
@@ -1966,6 +2045,7 @@ function BillingReadinessWorkspace() {
         statementsLoading: ownerStatementsQuery.isLoading,
         entityId: selectedEntityId,
         statementMonth,
+        showOwnerDispatch,
       }),
     [
       invoiceDrafts,
@@ -1973,6 +2053,7 @@ function BillingReadinessWorkspace() {
       ownerStatementsQuery.isLoading,
       selectedEntityId,
       statementMonth,
+      showOwnerDispatch,
       xeroAccountingFreshness,
     ],
   );
@@ -1987,6 +2068,7 @@ function BillingReadinessWorkspace() {
         entityId: selectedEntityId,
         entityName: selectedEntity?.name ?? "Selected entity",
         statementMonth,
+        showOwnerDispatch,
       }),
     [
       invoiceDrafts,
@@ -1996,6 +2078,7 @@ function BillingReadinessWorkspace() {
       selectedEntity?.name,
       selectedEntityId,
       statementMonth,
+      showOwnerDispatch,
       xeroAccountingFreshness,
     ],
   );

@@ -25,7 +25,11 @@ const OWNERS = [
         property_name: "Queen Street Retail Centre",
         split_pct: 60,
       },
-      { property_id: "p2", property_name: "King Street Offices", split_pct: 40 },
+      {
+        property_id: "p2",
+        property_name: "King Street Offices",
+        split_pct: 40,
+      },
     ],
   },
 ];
@@ -93,6 +97,33 @@ test("hybrid people hub uses managing-agent owner-client framing", async ({
   await expect(page.getByText("SKJ Holdings Pty Ltd")).toBeVisible();
 });
 
+test("self-managed direct owner record uses entity framing", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await mockOwnerRecord(page);
+
+  await page.goto("/owners/owner-1");
+
+  await expect(
+    page.getByRole("heading", { name: "SKJ Holdings Pty Ltd" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Entities" })).toHaveAttribute(
+    "href",
+    /\/settings\?tab=organisation/,
+  );
+  await expect(
+    page.getByText("Entity follow-ups will appear here"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Email owner" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Owner follow-ups")).toHaveCount(0);
+  await expect(page.getByText("Owner statements")).toHaveCount(0);
+  await expect(page.getByText("owner-specific tasks")).toHaveCount(0);
+  await expect(page.getByText("owner events")).toHaveCount(0);
+});
+
 async function mockOwners(page: Parameters<typeof mockLeasiumApi>[0]) {
   // Layer a /owners mock over the catch-all (most-recent route wins first).
   await page.route(
@@ -106,6 +137,23 @@ async function mockOwners(page: Parameters<typeof mockLeasiumApi>[0]) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(OWNERS),
+      });
+    },
+  );
+}
+
+async function mockOwnerRecord(page: Parameters<typeof mockLeasiumApi>[0]) {
+  await page.route(
+    (url) => url.pathname.endsWith("/api/v1/owners/owner-1"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNERS[0]),
       });
     },
   );

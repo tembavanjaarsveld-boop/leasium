@@ -2186,7 +2186,10 @@ function SettingsWorkspace() {
     const params = new URLSearchParams(window.location.search);
     const hasXeroCallback =
       params.get("xero_connected") === "1" || params.has("xero_error");
-    if (params.get("tab") === "xero" || hasXeroCallback) {
+    const requestedTab = params.get("tab");
+    if (requestedTab === "organisation") {
+      setActiveTab("organisation");
+    } else if (requestedTab === "xero" || hasXeroCallback) {
       setActiveTab("xero");
     }
     const entityId = params.get("entity_id");

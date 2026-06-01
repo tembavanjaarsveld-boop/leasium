@@ -28,6 +28,7 @@ import {
   type OwnerPropertyLink,
   type OwnerRecord,
 } from "@/lib/api";
+import { useOperatingMode } from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
 
 function ownerName(owner: OwnerRecord) {
@@ -101,6 +102,12 @@ function OwnerPageContent() {
   const ownerId = Array.isArray(params.ownerId)
     ? params.ownerId[0]
     : params.ownerId;
+  const { operatingMode } = useOperatingMode();
+  const isSelfManaged = operatingMode === "self_managed_owner";
+  const fallbackBackHref = isSelfManaged
+    ? "/settings?tab=organisation#entity-owners-title"
+    : "/people?tab=owners";
+  const backLabel = isSelfManaged ? "Entities" : "Owners";
 
   const ownerQuery = useQuery({
     queryKey: ["owner", ownerId],
@@ -116,10 +123,14 @@ function OwnerPageContent() {
       <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
         {ownerQuery.isLoading ? (
           <PeopleRecordLayout
-            backHref="/people?tab=owners"
-            backLabel="Owners"
+            backHref={fallbackBackHref}
+            backLabel={backLabel}
             title="Loading owner"
-            description="Fetching the owner record and property links."
+            description={
+              isSelfManaged
+                ? "Fetching the entity record and property links."
+                : "Fetching the owner record and property links."
+            }
           >
             <SectionPanel>
               <SkeletonRows rows={5} />
@@ -129,24 +140,36 @@ function OwnerPageContent() {
 
         {ownerNotFound ? (
           <PeopleRecordLayout
-            backHref="/people?tab=owners"
-            backLabel="Owners"
-            title="Owner not found"
-            description="This owner record could not be found in the current workspace."
+            backHref={fallbackBackHref}
+            backLabel={backLabel}
+            title={isSelfManaged ? "Entity not found" : "Owner not found"}
+            description={
+              isSelfManaged
+                ? "This entity record could not be found in the current workspace."
+                : "This owner record could not be found in the current workspace."
+            }
           >
             <SectionPanel>
               <EmptyState
-                title="No owner record found."
-                description="This owner record may have been deleted or moved. Return to the owner directory to choose another record."
+                title={
+                  isSelfManaged
+                    ? "No entity record found."
+                    : "No owner record found."
+                }
+                description={
+                  isSelfManaged
+                    ? "This entity record may have been deleted or moved. Return to the entity directory to choose another record."
+                    : "This owner record may have been deleted or moved. Return to the owner directory to choose another record."
+                }
                 icon={<AlertTriangle size={18} />}
                 action={
                   <SecondaryButton
                     type="button"
                     onClick={() => {
-                      window.location.href = "/people?tab=owners";
+                      window.location.href = fallbackBackHref;
                     }}
                   >
-                    Back to owners
+                    {isSelfManaged ? "Back to entities" : "Back to owners"}
                   </SecondaryButton>
                 }
               />
@@ -156,10 +179,14 @@ function OwnerPageContent() {
 
         {ownerQuery.error && !ownerNotFound ? (
           <PeopleRecordLayout
-            backHref="/people?tab=owners"
-            backLabel="Owners"
-            title="Owner unavailable"
-            description="The owner record could not be loaded."
+            backHref={fallbackBackHref}
+            backLabel={backLabel}
+            title={isSelfManaged ? "Entity unavailable" : "Owner unavailable"}
+            description={
+              isSelfManaged
+                ? "The entity record could not be loaded."
+                : "The owner record could not be loaded."
+            }
           >
             <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
               <AlertTriangle size={16} />
@@ -168,25 +195,49 @@ function OwnerPageContent() {
           </PeopleRecordLayout>
         ) : null}
 
-        {ownerQuery.data ? <OwnerRecordView owner={ownerQuery.data} /> : null}
+        {ownerQuery.data ? (
+          <OwnerRecordView
+            owner={ownerQuery.data}
+            isSelfManaged={isSelfManaged}
+          />
+        ) : null}
       </div>
     </main>
   );
 }
 
-function OwnerRecordView({ owner }: { owner: OwnerRecord }) {
+function ownerRecordBackHref(owner: OwnerRecord, isSelfManaged: boolean) {
+  if (!isSelfManaged) {
+    return "/people?tab=owners";
+  }
+  const params = new URLSearchParams({
+    tab: "organisation",
+    entity_id: owner.entity_id,
+  });
+  return `/settings?${params.toString()}#entity-owners-title`;
+}
+
+function OwnerRecordView({
+  owner,
+  isSelfManaged,
+}: {
+  owner: OwnerRecord;
+  isSelfManaged: boolean;
+}) {
   const properties = owner.properties ?? [];
   const hasBillingEmail = Boolean(owner.billing_email);
 
   return (
     <PeopleRecordLayout
-      backHref="/people?tab=owners"
-      backLabel="Owners"
+      backHref={ownerRecordBackHref(owner, isSelfManaged)}
+      backLabel={isSelfManaged ? "Entities" : "Owners"}
       title={ownerName(owner)}
       description={
         owner.trust_name && owner.trustee_name
           ? `${owner.trustee_name} as trustee for ${owner.trust_name}`
-          : "Owner billing identity, property split, and finance readiness."
+          : isSelfManaged
+            ? "Entity billing identity, property split, and finance readiness."
+            : "Owner billing identity, property split, and finance readiness."
       }
       actions={
         hasBillingEmail ? (
@@ -197,7 +248,7 @@ function OwnerRecordView({ owner }: { owner: OwnerRecord }) {
             }}
           >
             <Mail size={15} />
-            Email owner
+            {isSelfManaged ? "Email billing contact" : "Email owner"}
           </SecondaryButton>
         ) : null
       }
@@ -313,12 +364,20 @@ function OwnerRecordView({ owner }: { owner: OwnerRecord }) {
           <div id="tasks">
             <SectionPanel
               title="Tasks"
-              description="Owner follow-ups will appear here when assigned."
+              description={
+                isSelfManaged
+                  ? "Entity follow-ups will appear here when assigned."
+                  : "Owner follow-ups will appear here when assigned."
+              }
               icon={<ClipboardList size={17} />}
             >
               <EmptyState
                 title="No open tasks."
-                description="There are no owner-specific tasks on this record."
+                description={
+                  isSelfManaged
+                    ? "There are no entity-specific tasks on this record."
+                    : "There are no owner-specific tasks on this record."
+                }
               />
             </SectionPanel>
           </div>
@@ -336,7 +395,11 @@ function OwnerRecordView({ owner }: { owner: OwnerRecord }) {
             <SectionPanel title="Files" icon={<FileText size={17} />}>
               <EmptyState
                 title="No files attached."
-                description="Owner statements, trust documents, and evidence files can be surfaced here later."
+                description={
+                  isSelfManaged
+                    ? "Entity statements, trust documents, and evidence files can be surfaced here later."
+                    : "Owner statements, trust documents, and evidence files can be surfaced here later."
+                }
               />
             </SectionPanel>
           </div>
@@ -345,7 +408,11 @@ function OwnerRecordView({ owner }: { owner: OwnerRecord }) {
             <SectionPanel title="Activity">
               <EmptyState
                 title="No recent activity."
-                description="Record activity will appear once owner events are captured."
+                description={
+                  isSelfManaged
+                    ? "Record activity will appear once entity events are captured."
+                    : "Record activity will appear once owner events are captured."
+                }
               />
             </SectionPanel>
           </div>

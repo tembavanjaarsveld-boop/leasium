@@ -7,6 +7,20 @@ Last updated: 2026-06-01
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Self-managed statement handoff and entity records
+- `/billing-readiness` now reads the organisation operating mode and only treats
+  missing owner billing recipients as statement-dispatch blockers for managing
+  agent and hybrid accounts. Self-managed accounts keep the month-end handoff
+  local with entity-statement copy and no owner-recipient blocker language.
+- Direct `/owners/{ownerId}` records are now mode-aware: self-managed accounts
+  link back to Settings → Organisation entities, use entity/trust framing, and
+  avoid owner-client email/follow-up/files copy. Settings now honors
+  `?tab=organisation` so those back-links land on the entity directory.
+- Guardrails: `billing-readiness-ux.spec.ts` covers the self-managed handoff
+  with an invoice-bearing no-email owner and traps owner statement dispatch/send
+  calls, plus the clean-recipient clipboard/CSV handoff export;
+  `people-hub.spec.ts` covers direct self-managed record access.
+
 ### Owner portal bearer-action follow-through
 - `/owner-portal/invite/[token]` now splits Clerk-enabled and local no-Clerk
   modes, fetching a fresh Clerk bearer with `getToken({ skipCache: true })`

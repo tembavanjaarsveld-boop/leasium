@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -82,3 +83,183 @@ test("mobile billing operations expose invoice and delivery cards without raw pl
 
   await expect(page.locator("body")).not.toContainText(/\.\.\.|Loading\.\.\./);
 });
+
+test("self-managed billing readiness keeps statement handoff local", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, {
+    operatingMode: "self_managed_owner",
+    ownerStatementMissingRecipientInvoice: true,
+  });
+
+  const providerRequests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      path.includes("/api/v1/owners/statements/dispatch") ||
+      path.includes("/api/v1/owners/statements/send")
+    ) {
+      providerRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  await page.goto("/billing-readiness");
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+
+  await expect(
+    page.getByText("Entity statements", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Owner statements", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page
+      .getByText(
+        "Recipient emails are not required for self-managed reporting.",
+      )
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/owner.*billing email before dispatch/i),
+  ).toHaveCount(0);
+  await expect(page.getByText(/missing recipient/i)).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Open statements" }).first(),
+  ).toHaveAttribute("href", /\/statements\?.*from=billing-readiness/);
+  expect(providerRequests).toEqual([]);
+});
+
+test("self-managed billing readiness keeps clean statement packs local", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await mockOwnerStatementsWithBillingRecipients(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=delivery");
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy handoff" }),
+  ).toBeVisible();
+
+  await expect(
+    page.getByText("Entity statements", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "1 entity and 1 statement invoice ready for self-managed reporting.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/preview and dispatch review/i)).toHaveCount(0);
+  await expect(page.getByText(/owner and accounting reporting/i)).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/missing recipient/i)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Copy handoff" }).click();
+  const handoffText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(handoffText).toContain("Month-end entity statements handoff");
+  expect(handoffText).toContain("Entity statements");
+  expect(handoffText).toContain(
+    "1 entity / 1 invoice / self-managed reporting",
+  );
+  expect(handoffText).toContain(
+    "Review-only: statement preview/export remain explicit local reporting steps.",
+  );
+  expect(handoffText).not.toContain("Owner statements");
+  expect(handoffText).not.toContain("owner statement");
+  expect(handoffText).not.toContain("dispatch review");
+  expect(handoffText).not.toContain("missing recipient");
+
+  const handoffDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download handoff CSV" }).click();
+  const handoffDownload = await handoffDownloadPromise;
+  const handoffDownloadPath = await handoffDownload.path();
+  expect(handoffDownloadPath).not.toBeNull();
+  const handoffCsv = await readFile(handoffDownloadPath!, "utf8");
+  expect(handoffCsv).toContain("Entity statements");
+  expect(handoffCsv).toContain(
+    "Invoices available for entity statement review.",
+  );
+  expect(handoffCsv).toContain("self-managed reporting");
+  expect(handoffCsv).not.toContain("Owner statements");
+  expect(handoffCsv).not.toContain("owner statement review");
+  expect(handoffCsv).not.toContain("missing recipient");
+});
+
+async function mockOwnerStatementsWithBillingRecipients(
+  page: Parameters<typeof mockLeasiumApi>[0],
+) {
+  await page.route(
+    (url) => url.pathname.endsWith("/api/v1/owners/statements"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const month =
+        new URL(route.request().url()).searchParams.get("month") ?? "2026-05";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          entity_id: "entity-1",
+          month,
+          month_start: `${month}-01`,
+          month_end: `${month}-31`,
+          owners: [
+            {
+              owner_id: "owner-1",
+              owner_identity: "SKJ Holdings Pty Ltd",
+              owner_legal_name: "SKJ Holdings Pty Ltd",
+              trustee_name: null,
+              trust_name: "SKJ Family Trust",
+              invoice_issuer_name: null,
+              billing_contact_name: "Sam King",
+              billing_email: "owners@skjcapital.example",
+              property_count: 1,
+              properties: [
+                {
+                  property_id: "property-1",
+                  property_name: "Queen Street Retail Centre",
+                  invoiced_cents: 880000,
+                  paid_cents: 880000,
+                  outstanding_cents: 0,
+                  invoice_count: 1,
+                  invoices: [
+                    {
+                      invoice_draft_id: "invoice-1",
+                      invoice_number: "INV-1001",
+                      title: "May rent and outgoings",
+                      issue_date: `${month}-01`,
+                      due_date: `${month}-14`,
+                      total_cents: 880000,
+                      paid_cents: 880000,
+                      outstanding_cents: 0,
+                      payment_status: "paid",
+                      xero_invoice_id: null,
+                      reconciliation_reference: null,
+                      reconciliation_match_confidence: null,
+                      reconciliation_bank_transaction_id: null,
+                    },
+                  ],
+                },
+              ],
+              invoiced_cents: 880000,
+              paid_cents: 880000,
+              outstanding_cents: 0,
+              invoice_count: 1,
+            },
+          ],
+          generated_at: "2026-05-25T00:00:00.000Z",
+        }),
+      });
+    },
+  );
+}
