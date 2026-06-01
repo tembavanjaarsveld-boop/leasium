@@ -281,7 +281,15 @@ function ContractorRecordView({
       title={displayName(contractor)}
       description="Vendor profile, contact readiness, service coverage, and relationship notes."
       actions={
-        <StatusBadge tone={contact.tone}>{contact.label}</StatusBadge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted active:scale-[0.98] active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:active:scale-100"
+            href={`/vendor-portal/${contractor.id}`}
+          >
+            Open portal preview
+          </Link>
+          <StatusBadge tone={contact.tone}>{contact.label}</StatusBadge>
+        </div>
       }
       summary={
         <div className="grid gap-3 md:grid-cols-4">

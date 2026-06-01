@@ -53,6 +53,27 @@ Continuation from the tenant portal account cache hardening slice.
   frontend `eslint`, `tsc --noEmit`, `git diff --check`, and production-style
   `next build` passed.
 
+### Vendor portal read-only foundations v1
+- Backend now has `GET /api/v1/vendor-portal/{contractor_id}` as an
+  operator-authenticated preview. It returns a safe vendor summary plus active
+  work orders only when the work order metadata has both
+  `vendor_portal_visible: true` and
+  `vendor_portal_contractor_id: "<contractor id>"`.
+- The projection excludes tenant identity/contact fields, unit/lease ids, raw
+  titles/descriptions, internal notes/comments, provider delivery/history,
+  invoice/source document ids, raw metadata, completed/cancelled/deleted work,
+  and contact-only copied contractor assignments.
+- Frontend now has `/vendor-portal/[contractorId]` and a vendor-record
+  `Open portal preview` action. The page shows vendor contact readiness,
+  safe work-order rows, contractor-visible comments, counts, and an access
+  boundary panel.
+- Guardrails: this slice creates no vendor account/invite, sends no contractor
+  email/SMS, dispatches no work, refreshes no providers, writes no Xero/Basiq
+  data, reconciles no payments, and mutates no provider history.
+- Focused red-green proof: `tests/integration/test_vendor_portal_api.py`
+  passed **2 passed**; `tests/smoke/vendor-portal.spec.ts` passed
+  **2 passed**; the vendor-record portal-link smoke passed **1 passed**.
+
 ### Tenant portal backend account-scope hardening
 - Backend tenant portal reads now keep the durable account boundary all the way
   through shared portal endpoints: if a request carries a valid Clerk bearer
@@ -642,8 +663,9 @@ before the Ticket 2.2 slice.
    Keep v1's no-service-worker/no-private-offline-data constraint unless the
    operator explicitly approves an offline strategy.
 3. Continue the low-provider-risk UX runway: mobile bottom-nav/field-operator
-   shell review, then vendor portal read-only foundations. Avoid provider
-   sends/writes unless explicitly approved.
+   shell review, vendor portal account/invite design only after the auth
+   boundary is agreed, and then the next read-only work/maintenance depth
+   slice. Avoid provider sends/writes unless explicitly approved.
 
 ### Operating rule
 - Use agents wherever they can materially advance the work: parallel

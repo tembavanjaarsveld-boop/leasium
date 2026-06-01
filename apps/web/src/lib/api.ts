@@ -5345,6 +5345,68 @@ export function getOwnerPortal(ownerId: string, month?: string) {
   );
 }
 
+// ---- Vendor portal preview -----------------------------------------------
+
+export type VendorPortalAuthRecord = {
+  mode: "operator_preview";
+  token_source: "bearer";
+  vendor_auth_configured: boolean;
+  boundary: string;
+  detail: string;
+};
+
+export type VendorPortalVendorRecord = {
+  id: string;
+  entity_id: string;
+  name: string;
+  company_name: string | null;
+  categories: string[];
+  email: string | null;
+  phone: string | null;
+  service_radius_km: number | null;
+  priority: number;
+};
+
+export type VendorPortalCommentRecord = {
+  body: string;
+  timestamp: string | null;
+};
+
+export type VendorPortalWorkOrderItemRecord = {
+  id: string;
+  property_id: string;
+  property_name: string;
+  title: string;
+  status: MaintenanceWorkOrderStatus;
+  priority: MaintenancePriority;
+  requested_at: string;
+  due_date: string | null;
+  contractor_assigned_at: string | null;
+  quote_amount_cents: number | null;
+  comments: VendorPortalCommentRecord[];
+};
+
+export type VendorPortalWorkOrdersRecord = {
+  open_count: number;
+  urgent_count: number;
+  overdue_count: number;
+  items: VendorPortalWorkOrderItemRecord[];
+};
+
+export type VendorPortalRecord = {
+  auth: VendorPortalAuthRecord;
+  vendor: VendorPortalVendorRecord;
+  work_orders: VendorPortalWorkOrdersRecord;
+  guardrails: string[];
+  generated_at: string;
+};
+
+export function getVendorPortal(contractorId: string) {
+  return request<VendorPortalRecord>(
+    `/vendor-portal/${encodeURIComponent(contractorId)}`,
+  );
+}
+
 export type OwnerPortalInviteRecord = {
   owner_id: string;
   owner_display_name: string;

@@ -157,6 +157,17 @@ test.describe("people record layout", () => {
     await expect(page.getByLabel("Select entity")).toHaveValue("entity-1");
   });
 
+  test("vendor detail links to the vendor portal preview", async ({ page }) => {
+    await page.goto("/contractors/contractor-1");
+
+    await expect(
+      page.getByRole("heading", { name: "Bright Spark Electrical" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole("link", { name: "Open portal preview" }),
+    ).toHaveAttribute("href", "/vendor-portal/contractor-1");
+  });
+
   test("owner detail shows a not-found state for missing owners", async ({
     page,
   }) => {

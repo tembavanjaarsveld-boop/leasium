@@ -42,6 +42,7 @@ from apps.api.routers import (
     tenant_onboarding,
     tenant_portal,
     tenants,
+    vendor_portal,
     work_assignment_notifications,
     xero,
 )
@@ -167,3 +168,4 @@ app.include_router(contractors.router, prefix="/api/v1")
 app.include_router(owners.router, prefix="/api/v1")
 app.include_router(owner_entities.router, prefix="/api/v1")
 app.include_router(owner_portal.router, prefix="/api/v1")
+app.include_router(vendor_portal.router, prefix="/api/v1")
