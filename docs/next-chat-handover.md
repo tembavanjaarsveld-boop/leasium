@@ -22,11 +22,14 @@ review-packet slices.
   existing request fallback when auth is disabled.
 - Guardrails: the owner account smoke preserves the safe invite preview,
   no-provider/no-statement-send traps, packet copy/CSV local-only behavior,
-  mobile empty states, and account-session failure clearing. A source guard now
-  keeps the fresh-bearer wiring in place until a signed-in Clerk smoke session
-  is available for runtime Authorization-header assertions.
-- Verification: owner portal account bearer guard passed **1 passed**; full
-  owner account smoke passed **6 passed**; targeted frontend eslint,
+  mobile empty states, and account-session failure clearing. The auth-enabled
+  smoke installs a Playwright-only Clerk stub, proves the invite claim,
+  account status/session reads, and document download send
+  `Authorization: Bearer owner-action-smoke-token`, and verifies
+  `getToken({ skipCache: true })` is used at action time.
+- Verification: owner portal account bearer guard passed **1 passed**;
+  auth-enabled owner action smoke passed **2 passed**; default owner account
+  smoke passed **6 passed / 2 skipped**; targeted frontend eslint,
   `tsc --noEmit`, and `git diff --check` passed.
 
 ### Owner statement ZIP CSV hardening

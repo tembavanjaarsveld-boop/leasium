@@ -168,8 +168,10 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   downloads now request fresh Clerk bearer tokens at action time. Clerk-required
   downloads fail closed if no fresh token is available instead of falling back to
   cached ambient auth, while local no-Clerk dev/test mode keeps the existing
-  token-only fallback. Runtime Authorization-header smoke coverage remains a
-  follow-up for a signed-in Clerk smoke environment.
+  token-only fallback. Playwright Clerk-stub smoke coverage now proves runtime
+  Authorization headers for invite claim, account status/session reads, and
+  account shared-document download; live-Clerk production smoke remains a
+  rollout follow-up.
 - **Owner portal preview error/cache parity** (`/owner-portal/[ownerId]`):
   operator-preview reads now match the tenant preview freshness pattern with
   no stale cache, no retry delay, and refetch-on-return. 404s must use

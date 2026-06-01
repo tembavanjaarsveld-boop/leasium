@@ -120,6 +120,11 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
 
 const LONG_OWNER_BILLING_EMAIL =
   "owner.accounts.with.an.extremely.long.mailbox.name@very-long-owner-domain.example";
+const OWNER_AUTH_SMOKE_TOKEN =
+  process.env.NEXT_PUBLIC_LEASIUM_OWNER_PORTAL_AUTH_SMOKE_TOKEN;
+const OWNER_AUTH_SMOKE_ENABLED = Boolean(
+  OWNER_AUTH_SMOKE_TOKEN && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+);
 
 const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
   ...OWNER_PORTAL_ACCOUNT_RESPONSE,
@@ -186,6 +191,340 @@ async function navigateWithAppRouter(page: Page, href: string) {
     router.push(targetHref);
   }, href);
 }
+
+async function installOwnerClerkSmoke(page: Page) {
+  if (!OWNER_AUTH_SMOKE_TOKEN) {
+    throw new Error("Owner auth smoke token is required.");
+  }
+  const clerkScript =
+    "window.Clerk = window.Clerk || window.__LEASIUM_OWNER_CLERK_SMOKE__;";
+  await page.route(
+    "**/npm/@clerk/clerk-js@*/dist/clerk.browser.js",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: clerkScript,
+      });
+    },
+  );
+  await page.route("**/npm/@clerk/ui@*/dist/ui.browser.js", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: "window.__internal_ClerkUICtor = function ClerkUI() {};",
+    });
+  });
+  await page.addInitScript((token) => {
+    type ClerkSmokeWindow = typeof window & {
+      Clerk?: unknown;
+      __internal_ClerkUICtor?: unknown;
+      __LEASIUM_OWNER_CLERK_SMOKE__?: unknown;
+      __LEASIUM_OWNER_CLERK_TOKEN_OPTIONS?: unknown[];
+    };
+    const smokeWindow = window as ClerkSmokeWindow;
+    const tokenOptions: unknown[] = [];
+    const session = {
+      id: "owner-smoke-session",
+      status: "active",
+      factorVerificationAge: null,
+      lastActiveToken: {
+        jwt: {
+          claims: {
+            sid: "owner-smoke-session",
+            sub: "owner-smoke-user",
+          },
+        },
+      },
+      getToken: async (options?: unknown) => {
+        tokenOptions.push(options ?? null);
+        return token;
+      },
+    };
+    const user = {
+      id: "owner-smoke-user",
+      organizationMemberships: [],
+    };
+    const client = {
+      id: "owner-smoke-client",
+      sessions: [session],
+      signIn: null,
+      signUp: null,
+    };
+    const resources = {
+      client,
+      organization: null,
+      session,
+      user,
+    };
+    const statusListeners = new Set<(status: string) => void>();
+    const resourceListeners = new Set<(state: typeof resources) => void>();
+    const clerk = {
+      loaded: true,
+      status: "ready",
+      isSignedIn: true,
+      client,
+      organization: null,
+      session,
+      user,
+      __internal_lastEmittedResources: resources,
+      __internal_updateProps: async () => undefined,
+      addListener: (
+        listener: (state: typeof resources) => void,
+        options?: { skipInitialEmit?: boolean },
+      ) => {
+        resourceListeners.add(listener);
+        if (!options?.skipInitialEmit) {
+          listener(resources);
+        }
+        return () => resourceListeners.delete(listener);
+      },
+      buildSignInUrl: () => "/sign-in",
+      buildSignUpUrl: () => "/sign-up",
+      load: async () => clerk,
+      off: (event: string, listener: (status: string) => void) => {
+        if (event === "status") {
+          statusListeners.delete(listener);
+        }
+      },
+      on: (
+        event: string,
+        listener: (status: string) => void,
+        options?: { notify?: boolean },
+      ) => {
+        if (event === "status") {
+          statusListeners.add(listener);
+          if (options?.notify) {
+            listener("ready");
+          }
+        }
+      },
+      signOut: async () => undefined,
+      telemetry: {
+        record: () => undefined,
+      },
+    };
+    smokeWindow.__LEASIUM_OWNER_CLERK_TOKEN_OPTIONS = tokenOptions;
+    smokeWindow.__LEASIUM_OWNER_CLERK_SMOKE__ = clerk;
+    smokeWindow.__internal_ClerkUICtor = function ClerkUI() {};
+    smokeWindow.Clerk = clerk;
+  }, OWNER_AUTH_SMOKE_TOKEN);
+}
+
+async function ownerClerkTokenOptions(page: Page) {
+  return page.evaluate(() => {
+    const smokeWindow = window as typeof window & {
+      __LEASIUM_OWNER_CLERK_TOKEN_OPTIONS?: unknown[];
+    };
+    return smokeWindow.__LEASIUM_OWNER_CLERK_TOKEN_OPTIONS ?? [];
+  });
+}
+
+function skipCacheCallCount(tokenOptions: unknown[]) {
+  return tokenOptions.filter(
+    (option) =>
+      typeof option === "object" &&
+      option !== null &&
+      (option as { skipCache?: unknown }).skipCache === true,
+  ).length;
+}
+
+test("owner invite claim sends fresh owner bearer token when auth is enabled", async ({
+  page,
+}) => {
+  test.skip(
+    !OWNER_AUTH_SMOKE_ENABLED,
+    "Runs only with Clerk enabled and the owner auth smoke token set.",
+  );
+  await installOwnerClerkSmoke(page);
+  const blockedReads: string[] = [];
+  const unsafeRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    if (
+      (path.startsWith("/api/v1/owner-portal/") &&
+        ["DELETE", "PATCH", "POST"].includes(method) &&
+        path !== "/api/v1/owner-portal/account/claim") ||
+      path.startsWith("/api/v1/owners/statements/send") ||
+      path.startsWith("/api/v1/owners/statements/dispatch") ||
+      path.startsWith("/api/v1/owners/statements/pdf") ||
+      path.startsWith("/api/v1/comms") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path.startsWith("/api/v1/payments") ||
+      path.startsWith("/api/v1/reconciliation")
+    ) {
+      unsafeRequests.push(`${method} ${path}`);
+    }
+  });
+
+  await page.route(
+    "**/api/v1/owner-portal/invites/owner-token-one/preview",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNER_INVITE_PREVIEW),
+      });
+    },
+  );
+  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
+    blockedReads.push(route.request().url());
+    await route.fulfill({ status: 500, body: "account read must stay gated" });
+  });
+  await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
+    blockedReads.push(route.request().url());
+    await route.fulfill({
+      status: 500,
+      body: "operator preview must stay unused",
+    });
+  });
+
+  let claimAuthorization: string | undefined;
+  let claimBody: unknown;
+  await page.route("**/api/v1/owner-portal/account/claim", async (route) => {
+    claimAuthorization = route.request().headers().authorization;
+    claimBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
+    });
+  });
+
+  await page.goto("/owner-portal/invite/owner-token-one");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner Account Setup" }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(blockedReads).toEqual([]);
+  await page.getByRole("button", { name: "Open portal" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Owner portal" }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(claimAuthorization).toBe(`Bearer ${OWNER_AUTH_SMOKE_TOKEN}`);
+  expect(claimBody).toEqual({ portal_token: "owner-token-one" });
+  expect(skipCacheCallCount(await ownerClerkTokenOptions(page))).toBeGreaterThan(
+    0,
+  );
+  expect(blockedReads).toEqual([]);
+  expect(unsafeRequests).toEqual([]);
+});
+
+test("owner document download sends fresh owner bearer token when auth is enabled", async ({
+  page,
+}) => {
+  test.skip(
+    !OWNER_AUTH_SMOKE_ENABLED,
+    "Runs only with Clerk enabled and the owner auth smoke token set.",
+  );
+  await installOwnerClerkSmoke(page);
+  const unsafeRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const allowedOwnerAccountRead =
+      method === "GET" &&
+      (path === "/api/v1/owner-portal/account/status" ||
+        path === "/api/v1/owner-portal/account/session" ||
+        (path.startsWith("/api/v1/owner-portal/account/documents/") &&
+          path.endsWith("/download")));
+    if (
+      (path.startsWith("/api/v1/owner-portal/") &&
+        !allowedOwnerAccountRead) ||
+      path.startsWith("/api/v1/owners/statements/send") ||
+      path.startsWith("/api/v1/owners/statements/dispatch") ||
+      path.startsWith("/api/v1/owners/statements/pdf") ||
+      path.startsWith("/api/v1/comms") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path.startsWith("/api/v1/payments") ||
+      path.startsWith("/api/v1/reconciliation")
+    ) {
+      unsafeRequests.push(`${method} ${path}`);
+    }
+  });
+
+  const accountReadAuthorizations: Array<string | undefined> = [];
+  await page.route("**/api/v1/owner-portal/account/status", async (route) => {
+    accountReadAuthorizations.push(route.request().headers().authorization);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "active",
+        owner_id: "owner-1",
+        owner_name: "Owner Portal Pty Ltd",
+        email: "owner@example.test",
+        linked_at: "2026-05-31T00:00:00.000Z",
+        last_seen_at: "2026-05-31T00:00:00.000Z",
+        revoked_at: null,
+        recovery_hint:
+          "This owner login can open the owner portal without the original claim link.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
+    accountReadAuthorizations.push(route.request().headers().authorization);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
+    });
+  });
+
+  const downloadAuthorizations: Array<string | undefined> = [];
+  await page.route(
+    "**/api/v1/owner-portal/account/documents/*/download",
+    async (route) => {
+      downloadAuthorizations.push(route.request().headers().authorization);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        headers: {
+          "Content-Disposition":
+            "attachment; filename*=UTF-8''owner-visible-report.pdf",
+        },
+        body: "owner visible",
+      });
+    },
+  );
+
+  await page.goto("/owner-portal?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner portal" }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(accountReadAuthorizations).toEqual([
+    `Bearer ${OWNER_AUTH_SMOKE_TOKEN}`,
+    `Bearer ${OWNER_AUTH_SMOKE_TOKEN}`,
+  ]);
+
+  const packetDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download packet CSV" }).click();
+  await packetDownloadPromise;
+  expect(downloadAuthorizations).toEqual([]);
+
+  const documentDownloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", {
+      name: "Download owner-visible-report.pdf for Owner Portal Plaza",
+    })
+    .click();
+  expect((await documentDownloadPromise).suggestedFilename()).toBe(
+    "owner-visible-report.pdf",
+  );
+  expect(downloadAuthorizations).toEqual([
+    `Bearer ${OWNER_AUTH_SMOKE_TOKEN}`,
+  ]);
+  expect(skipCacheCallCount(await ownerClerkTokenOptions(page))).toBeGreaterThan(
+    2,
+  );
+  expect(unsafeRequests).toEqual([]);
+});
 
 test("owner claim link shows only safe context before account claim", async ({
   page,
