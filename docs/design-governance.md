@@ -170,7 +170,7 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   cached ambient auth, while local no-Clerk dev/test mode keeps the existing
   token-only fallback. Playwright Clerk-stub smoke coverage now proves runtime
   Authorization headers for invite claim, account status/session reads, and
-  account shared-document download; live-Clerk production smoke remains a
+  account shared-document download; live-Clerk production execution remains a
   rollout follow-up.
 - **Owner portal shared-login guard** (`/owner-portal/invite/[token]`):
   backfilled owners that share a billing email must not let one Clerk subject
@@ -187,8 +187,12 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   with a saved owner Clerk session, allows only owner account status/session
   reads plus optional shared-document download, and aborts owner portal
   mutations, statement dispatch/PDF, Comms, Xero, Basiq, payments, and
-  reconciliation requests. Use this before broad rollout, after the target
-  database proves migration `20260601_0032`.
+  reconciliation requests by blocking any other `/api/v1` call. The separately
+  gated claim lane consumes one disposable invite token only after operator
+  approval, proves no private statement/property data appears before claim,
+  sends one bearer-authenticated claim request, then renders the owner portal
+  while blocking any other `/api/v1` call. Use these before broad rollout,
+  after the target database proves migration `20260601_0032`.
 - **Owner portal preview error/cache parity** (`/owner-portal/[ownerId]`):
   operator-preview reads now match the tenant preview freshness pattern with
   no stale cache, no retry delay, and refetch-on-return. 404s must use

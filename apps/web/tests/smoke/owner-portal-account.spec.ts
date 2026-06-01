@@ -145,6 +145,10 @@ const OWNER_PORTAL_LIVE_EXPECT_OWNER =
   process.env.LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_OWNER;
 const OWNER_PORTAL_LIVE_EXPECT_DOCUMENT =
   process.env.LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_DOCUMENT;
+const OWNER_PORTAL_CLAIM_LIVE_ENABLED =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_LIVE === "1";
+const OWNER_PORTAL_CLAIM_TOKEN =
+  process.env.LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN;
 const EMPTY_STORAGE_STATE = { cookies: [], origins: [] };
 
 const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
@@ -354,6 +358,18 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function redactLiveSmokePath(pathname: string) {
+  return pathname
+    .replace(
+      /\/api\/v1\/owner-portal\/invites\/[^/]+/g,
+      "/api/v1/owner-portal/invites/<token>",
+    )
+    .replace(
+      /\/api\/v1\/owner-portal\/account\/documents\/[^/]+/g,
+      "/api/v1/owner-portal/account/documents/<document>",
+    );
+}
+
 test.describe("live Clerk owner portal account", () => {
   test.skip(
     !OWNER_PORTAL_LIVE_ENABLED ||
@@ -373,7 +389,7 @@ test.describe("live Clerk owner portal account", () => {
   }) => {
     const unsafeRequests: string[] = [];
     const ownerAccountRequests: string[] = [];
-    const ownerAccountAuthorizations: string[] = [];
+    const ownerAccountAuthorizationSchemes: string[] = [];
     await page.route("**/api/v1/**", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -394,29 +410,19 @@ test.describe("live Clerk owner portal account", () => {
         method === "OPTIONS" &&
         (isOwnerAccountReadPath || isDocumentDownloadPath);
       if (isOwnerAccountRead || isAllowedDocumentDownload) {
-        ownerAccountRequests.push(`${method} ${path}`);
+        ownerAccountRequests.push(`${method} ${redactLiveSmokePath(path)}`);
         const authorization = request.headers().authorization;
         if (authorization) {
-          ownerAccountAuthorizations.push(authorization);
+          ownerAccountAuthorizationSchemes.push(
+            authorization.startsWith("Bearer ") ? "Bearer" : "not-bearer",
+          );
         }
       }
 
-      const unsafeOwnerPortalRequest =
-        path.startsWith("/api/v1/owner-portal/") &&
-        !isOwnerAccountRead &&
-        !isAllowedDocumentDownload &&
-        !isAllowedPreflight;
-      const unsafeProviderOrDispatchRequest =
-        path.startsWith("/api/v1/owners/statements/send") ||
-        path.startsWith("/api/v1/owners/statements/dispatch") ||
-        path.startsWith("/api/v1/owners/statements/pdf") ||
-        path.startsWith("/api/v1/comms") ||
-        path.startsWith("/api/v1/xero") ||
-        path.startsWith("/api/v1/basiq") ||
-        path.startsWith("/api/v1/payments") ||
-        path.startsWith("/api/v1/reconciliation");
-      if (unsafeOwnerPortalRequest || unsafeProviderOrDispatchRequest) {
-        unsafeRequests.push(`${method} ${path}`);
+      const isAllowedLiveReadApiRequest =
+        isOwnerAccountRead || isAllowedDocumentDownload || isAllowedPreflight;
+      if (!isAllowedLiveReadApiRequest) {
+        unsafeRequests.push(`${method} ${redactLiveSmokePath(path)}`);
         await route.abort();
         return;
       }
@@ -470,9 +476,9 @@ test.describe("live Clerk owner portal account", () => {
     expect(ownerAccountRequests).toContain(
       "GET /api/v1/owner-portal/account/session",
     );
-    expect(ownerAccountAuthorizations.length).toBeGreaterThanOrEqual(2);
+    expect(ownerAccountAuthorizationSchemes.length).toBeGreaterThanOrEqual(2);
     expect(
-      ownerAccountAuthorizations.every((header) => header.startsWith("Bearer ")),
+      ownerAccountAuthorizationSchemes.every((scheme) => scheme === "Bearer"),
     ).toBe(true);
 
     const packetDownloadPromise = page.waitForEvent("download");
@@ -494,6 +500,107 @@ test.describe("live Clerk owner portal account", () => {
       );
     }
 
+    expect(unsafeRequests).toEqual([]);
+  });
+});
+
+test.describe("live Clerk owner portal claim", () => {
+  test.skip(
+    !OWNER_PORTAL_CLAIM_LIVE_ENABLED ||
+      !OWNER_PORTAL_LIVE_BASE_URL_IS_HTTPS ||
+      !OWNER_PORTAL_LIVE_OWNER_STORAGE_EXISTS ||
+      !OWNER_PORTAL_CLAIM_TOKEN,
+    "Runs only with explicit approval, HTTPS, owner Clerk storage state, and a disposable claim token.",
+  );
+
+  test.use({
+    storageState: OWNER_PORTAL_LIVE_OWNER_STORAGE_EXISTS
+      ? OWNER_PORTAL_LIVE_OWNER_STORAGE
+      : EMPTY_STORAGE_STATE,
+  });
+
+  test("live Clerk owner invite claim consumes disposable claim token", async ({
+    page,
+  }) => {
+    const unsafeRequests: string[] = [];
+    let previewRequestCount = 0;
+    let claimAuthorizationCount = 0;
+    const claimAuthorizationSchemes: string[] = [];
+    await page.route("**/api/v1/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      const method = request.method();
+      const isInvitePreviewPath =
+        path.startsWith("/api/v1/owner-portal/invites/") &&
+        path.endsWith("/preview");
+      const isInvitePreview = method === "GET" && isInvitePreviewPath;
+      const isClaim =
+        method === "POST" && path === "/api/v1/owner-portal/account/claim";
+      const isAllowedPreflight =
+        method === "OPTIONS" &&
+        (isInvitePreviewPath ||
+          path === "/api/v1/owner-portal/account/claim");
+
+      if (isInvitePreview) {
+        previewRequestCount += 1;
+      }
+      if (isClaim) {
+        const authorization = request.headers().authorization;
+        if (authorization) {
+          claimAuthorizationCount += 1;
+          claimAuthorizationSchemes.push(
+            authorization.startsWith("Bearer ") ? "Bearer" : "not-bearer",
+          );
+        }
+      }
+
+      const isAllowedClaimApiRequest =
+        isInvitePreview || isClaim || isAllowedPreflight;
+      if (!isAllowedClaimApiRequest) {
+        unsafeRequests.push(`${method} ${redactLiveSmokePath(path)}`);
+        await route.abort();
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await page.goto(
+      `/owner-portal/invite/${encodeURIComponent(OWNER_PORTAL_CLAIM_TOKEN ?? "")}`,
+    );
+
+    await expect(
+      page.getByRole("heading", { name: "Owner Account Setup" }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText("Statement and property data stays hidden"),
+    ).toBeVisible();
+    await expect(page.getByText("Owner-visible packet")).toHaveCount(0);
+    await expect(page.getByText("Read-only owner portal")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Open portal" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "Owner portal" }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Owner-visible packet" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Access boundary" }),
+    ).toBeVisible();
+    await expect(page.getByText("Read-only owner portal")).toBeVisible();
+    if (OWNER_PORTAL_LIVE_EXPECT_OWNER) {
+      await expect(
+        page.getByText(OWNER_PORTAL_LIVE_EXPECT_OWNER).first(),
+      ).toBeVisible();
+    }
+
+    expect(previewRequestCount).toBeGreaterThanOrEqual(1);
+    expect(claimAuthorizationCount).toBe(1);
+    expect(claimAuthorizationSchemes).toEqual(["Bearer"]);
     expect(unsafeRequests).toEqual([]);
   });
 });

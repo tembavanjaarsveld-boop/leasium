@@ -63,14 +63,20 @@ review-packet slices.
   `LEASIUM_SMOKE_OWNER_PORTAL_STORAGE=<storage-state.json>`. It opens only
   `/owner-portal`, proves the live owner account status/session reads carry
   bearer auth, verifies the owner portal/access-boundary/packet controls, and
-  aborts forbidden owner-portal mutation, statement dispatch/PDF, Comms, Xero,
-  Basiq, payment, and reconciliation requests. Shared-document download remains
-  optional via `LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_DOCUMENT`.
+  aborts any other `/api/v1` request. Shared-document download remains optional
+  via `LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_DOCUMENT`.
+- Added a separately gated live invite-claim smoke for the same spec, enabled
+  only with `LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_LIVE=1`, HTTPS base URL, saved
+  owner Clerk storage, and a disposable
+  `LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN`. It proves the invite preview hides
+  statement/property data before claim, sends exactly one bearer-authenticated
+  claim request, renders the owner portal packet after claim, and keeps the
+  forbidden-request trap empty by aborting any other `/api/v1` request.
 - Added deployment docs for the `20260601_0032` target-database proof and
   duplicate cleanup/rollback guidance. Automated Alembic migration coverage
   still requires `TEST_DATABASE_URL`; local smoke without that URL skips.
-- Verification: live owner account smoke default run passed as **1 skipped**;
-  targeted frontend `eslint` for the smoke spec passed.
+- Verification: full owner portal account smoke passed **6 passed / 4 skipped**;
+  targeted frontend `eslint`, `tsc --noEmit`, and `git diff --check` passed.
 
 ### Owner statement ZIP CSV hardening
 - Backend owner statement ZIP packs now formula-harden both included CSVs:

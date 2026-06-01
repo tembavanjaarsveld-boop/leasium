@@ -132,7 +132,11 @@ LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_DOCUMENT="<owner-visible filename>"
 
 Success: the page shows `Owner portal`, `Owner account`, the expected owner when
 provided, the access boundary, local packet CSV download works, optional shared
-document download works, and the forbidden-request trap stays empty.
+document download works, and the forbidden-request trap stays empty. The
+Playwright trap aborts any other `/api/v1` request in this lane.
+
+Do not set `LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_LIVE` or
+`LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN` in this read-only lane.
 
 ## 5. Separately Approved Claim Pass
 
@@ -151,20 +155,81 @@ operator approval, one chosen production owner, and a matching owner Clerk email
 2. From the operator UI, create one local no-send owner portal invite for the
    chosen owner. Confirm no owner email, statement PDF, provider sync, or Xero
    action is triggered.
-3. Open the claim link with the matching owner Clerk account and complete the
-   claim.
+3. Use either the optional Playwright claim lane below or open the claim link
+   manually with the matching owner Clerk account and complete the claim.
 4. Re-run the read-only owner account smoke above against that owner account.
 5. Do not paste the raw invite token into shared evidence. Record only the owner
    id, the claim timestamp, and whether the owner account status/session and
    optional shared-document download passed.
 
+### Optional Playwright Claim Lane
+
+This lane is production-mutating. It consumes exactly one disposable owner
+invite token and creates or updates the matching `owner_portal_account` row. Run
+it only after explicit operator approval for one chosen owner, with the matching
+owner Clerk account saved in `LEASIUM_SMOKE_OWNER_PORTAL_STORAGE`.
+
+Allowed API calls in this lane:
+
+- `GET /api/v1/owner-portal/invites/<token>/preview`
+- `POST /api/v1/owner-portal/account/claim`
+- matching `OPTIONS` preflights
+
+The Playwright trap aborts any other `/api/v1` request in this lane, including
+owner-portal reads/mutations outside the allowlist plus owner statement
+send/dispatch/PDF, Comms, Xero, Basiq, payment, and reconciliation paths.
+
+```bash
+cd apps/web
+printf "Owner claim token: "
+read -r -s LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN
+printf "\n"
+export LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN
+
+PLAYWRIGHT_BASE_URL=https://leasium.ai \
+LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_LIVE=1 \
+LEASIUM_SMOKE_OWNER_PORTAL_STORAGE=/tmp/leasium-owner-clerk.json \
+LEASIUM_SMOKE_OWNER_PORTAL_EXPECT_OWNER_NAME="<owner display name>" \
+./node_modules/.bin/playwright test tests/smoke/owner-portal-account.spec.ts \
+  -g "live Clerk owner invite claim consumes disposable claim token" --workers=1
+
+unset LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN
+```
+
+Success: the claim page shows `Owner Account Setup`, keeps statement/property
+data hidden before claim, sends exactly one bearer-authenticated claim request,
+then renders `Owner portal`, `Owner account`, `Owner-visible packet`, `Access
+boundary`, and `Read-only owner portal`. The forbidden-request trap stays empty.
+
+After success, immediately unset the claim env vars and rerun the Section 4
+read-only smoke against the same owner session. Record only owner id, claim
+timestamp, expected owner name, read-only smoke result, and whether optional
+shared-document download passed. Do not record the raw token.
+
 Failure handling:
 
 - `401 Owner portal account not found`: the owner account is not linked; use the
   approved claim pass or choose the correct owner login.
+- Test skipped: one of `PLAYWRIGHT_BASE_URL`,
+  `LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_LIVE=1`, owner storage, or
+  `LEASIUM_SMOKE_OWNER_PORTAL_CLAIM_TOKEN` is missing.
+- `401` or redirect to sign-in: owner storage is stale or for the wrong Clerk
+  account.
+- `404 Owner portal invite not found`: token is wrong, expired, revoked, or from
+  another environment.
+- `403 Owner portal login email must match this invite`: signed-in Clerk email
+  does not match the invite claim email; the invite should remain unconsumed.
 - `403 owner portal access`: the organisation is likely self-managed; switch to
   managing-agent/hybrid only with operator approval.
+- `403 Owner portal access...managing-agent or hybrid`: stop; do not switch
+  operating mode without operator approval.
+- `409 Owner billing email is required`: fix the owner billing email before
+  creating the invite.
 - `409 already linked to another owner`: use a separate owner login or revoke
   the incorrect active owner portal account after review.
+- `410 invite has been used`: do not reuse the token; sign in as the account
+  that claimed it or create a fresh no-send invite after approval.
 - `404 document not found`: the document is not linked to this owner property,
   is tenant/private scoped, or is missing `owner_portal_visible`.
+- Forbidden-request trap failure: stop rollout, capture the method/path, and do
+  not retry with another token until reviewed.
