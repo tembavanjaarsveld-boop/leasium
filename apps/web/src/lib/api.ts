@@ -1005,6 +1005,7 @@ export type TenantPortalInvoiceRecord = {
   paid_cents: number;
   outstanding_cents: number;
   payment_status: string;
+  payment_reference: string | null;
   pdf_document_id: string | null;
   lines: TenantPortalInvoiceLineRecord[];
 };
@@ -1093,6 +1094,18 @@ export type TenantPortalMaintenanceRequestPayload = {
   photo_document_ids?: string[];
 };
 
+export type TenantPortalHowToPayRecord = {
+  configured: boolean;
+  methods: string[];
+  account_name: string | null;
+  bsb: string | null;
+  account_number: string | null;
+  payid: string | null;
+  payid_name: string | null;
+  bpay_biller_code: string | null;
+  instructions: string | null;
+};
+
 export type TenantPortalRecord = {
   auth: TenantPortalAuthRecord;
   tenant: TenantPortalTenantRecord;
@@ -1102,11 +1115,53 @@ export type TenantPortalRecord = {
   compliance: TenantPortalComplianceRecord;
   invoices: TenantPortalInvoiceRecord[];
   payment_summary: TenantPortalPaymentSummaryRecord;
+  how_to_pay: TenantPortalHowToPayRecord | null;
   maintenance_requests: TenantPortalMaintenanceRequestRecord[];
   notification_preferences: TenantPortalNotificationPreferencesRecord;
   contact_change_requests: TenantPortalContactChangeRequestRecord[];
   guardrails: string[];
 };
+
+export type PaymentInstructionRecord = {
+  entity_id: string;
+  account_name: string | null;
+  bsb: string | null;
+  account_number: string | null;
+  payid: string | null;
+  payid_name: string | null;
+  bpay_biller_code: string | null;
+  instructions: string | null;
+  configured: boolean;
+  methods: string[];
+  updated_at: string | null;
+  guardrails: string[];
+};
+
+export type PaymentInstructionPayload = {
+  account_name?: string | null;
+  bsb?: string | null;
+  account_number?: string | null;
+  payid?: string | null;
+  payid_name?: string | null;
+  bpay_biller_code?: string | null;
+  instructions?: string | null;
+};
+
+export function getPaymentInstructions(entityId: string) {
+  return request<PaymentInstructionRecord>(
+    `/payments/instructions?entity_id=${encodeURIComponent(entityId)}`,
+  );
+}
+
+export function updatePaymentInstructions(
+  entityId: string,
+  payload: PaymentInstructionPayload,
+) {
+  return request<PaymentInstructionRecord>(
+    `/payments/instructions?entity_id=${encodeURIComponent(entityId)}`,
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+}
 
 export type MaintenancePriority = "low" | "normal" | "high" | "urgent";
 

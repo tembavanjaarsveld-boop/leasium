@@ -35,6 +35,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   contractor reads/writes stay scoped to vendor-visible work orders shared to them.
   Verified by eslint + tsc + production build. Plan:
   [`superpowers/plans/2026-06-02-vendor-portal-login.md`](superpowers/plans/2026-06-02-vendor-portal-login.md).
+- **Tenant payment-instructions "How to pay" (2026-06-02, prototype mode, no Remba gate):**
+  tenant-portal panel rendering operator-entered EFT / PayID / optional BPAY / notes plus a
+  per-invoice payment reference; display-only (no in-portal "pay now", no rails). Operator
+  config is a Settings form (next slice). Plan:
+  [`superpowers/plans/2026-06-02-tenant-payment-instructions.md`](superpowers/plans/2026-06-02-tenant-payment-instructions.md).
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

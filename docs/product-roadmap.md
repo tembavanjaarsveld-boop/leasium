@@ -395,9 +395,17 @@ Equifax/illion; RTBA/state RTAs).
   coverage preventing local unsafe `csvCell` drift. Backend owner statement ZIP
   packs now apply the same formula-hardening to `MANIFEST-{month}.csv` and
   `INVOICE-EVIDENCE-{month}.csv`.
-- [ ] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
+- [~] **Tenant self-serve payments on AU rails.** PayTo / PayID / BPAY / direct debit
   (Monoova / Zai / Stripe AU). Tenants pay in-portal; reconciliation stays review-first
   through the existing Basiq/Xero engine. DoorLoop's #1 value driver, AU-correct.
+  **Foundation shipped (review-first, display-only, no money movement):**
+  `EntityPaymentInstruction` (per-entity; migration `20260602_0036`), operator
+  `GET/PUT /payments/instructions`, tenant-portal `how_to_pay` projection + a
+  per-invoice `payment_reference`, and a tenant-portal "How to pay" panel
+  (EFT / PayID / optional BPAY / notes). api.ts client + types in place; backend
+  ~5 tests. **Remaining:** Settings operator config form (the api client exists),
+  a tenant-portal smoke, then the actual rails (PayTo/Monoova/Zai/Stripe AU) +
+  in-portal "pay now" — which is the provider decision still to make.
 - [ ] **Installable PWA (mobile runway).** Operator field use (inspections / photos /
   approvals) + tenant portal on a phone, ahead of any native build.
 

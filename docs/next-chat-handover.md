@@ -8,6 +8,31 @@ Took over from Codex with a clean, fully-pushed tree (no unstaged slice to
 preserve, despite the older "Active Local Tree" note further down). Picked the
 DoorLoop P2 **vendor portal authenticated login** off the backlog.
 
+### Tenant payment-instructions foundation (backend `ad71aa5` + frontend, pushed)
+Review-first first slice of DoorLoop P1 tenant payments. Display-only: no money
+movement, no rails provider, no Basiq/Xero/reconciliation change.
+- Backend (`ad71aa5`): `EntityPaymentInstruction` model (per-entity; EFT
+  bsb/account_name/account_number, PayID, optional BPAY, notes) + migration
+  `20260602_0036`; operator `GET/PUT /api/v1/payments/instructions` (read
+  owner/admin/finance/ops/viewer; write owner/admin/finance; blank-normalising;
+  audited `payment.instructions.update`, confidential); tenant-portal read gains
+  `how_to_pay` + per-invoice `payment_reference` + a display-only guardrail.
+- Frontend: api.ts client (`getPaymentInstructions` / `updatePaymentInstructions`
+  + `PaymentInstructionRecord`; `how_to_pay` + `payment_reference` on the portal
+  record) and a tenant-portal "How to pay" panel + per-invoice reference.
+- Verification: backend pytest **61 passed** (payments + tenant portal), migration
+  test 4 passed/1 skipped, ruff clean, single alembic head `20260602_0036`;
+  frontend eslint + tsc + production `next build` green.
+- Next: a Settings operator config form (the api client already exists), a
+  tenant-portal Playwright smoke (run with `NODE_ENV=development`), then the actual
+  rails (PayTo / Monoova / Zai / Stripe AU) + in-portal "pay now" — the provider
+  decision still to make. Plan:
+  `docs/superpowers/plans/2026-06-02-tenant-payment-instructions.md`.
+- eSign → lease was found already fully built this session (helper + state machine +
+  send-lease-pack + Connect webhook + signed-PDF retention + Settings provider panel +
+  ~36 tests); the stale roadmap line was corrected (`2639ff6`). Going live is DocuSign
+  provider config only (Render env + a Connect webhook), not code.
+
 ### Vendor portal contractor login — backend (commit `2cd21fd`, local, NOT pushed)
 - New models `VendorPortalInvite` + `VendorPortalAccount` (+ `VendorPortalAccountStatus`)
   in `stewart/core/models.py`, mirroring the owner portal account pattern, with
