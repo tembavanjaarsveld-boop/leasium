@@ -96,6 +96,15 @@ test("insights exports review packet CSV from loaded overview data", async ({
   await expect(arrearsRow).toBeVisible();
   await expect(arrearsRow.getByText("$8,800")).toBeVisible();
   await expect(arrearsRow.getByText("18 days aged")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Invoice Status" }),
+  ).toBeVisible();
+  const invoiceRow = page.getByRole("link", {
+    name: /Maintenance recovery invoice/,
+  });
+  await expect(invoiceRow).toBeVisible();
+  await expect(invoiceRow.getByText("Provider failed")).toBeVisible();
+  await expect(invoiceRow.getByText("$8,800")).toBeVisible();
 
   await page.getByRole("button", { name: "Copy review packet" }).click();
   await expect(page.getByText("Insights review packet copied.")).toBeVisible();
@@ -131,6 +140,9 @@ test("insights exports review packet CSV from loaded overview data", async ({
   expect(csv).toContain("Arrears snapshot");
   expect(csv).toContain("Bright Cafe Pty Ltd arrears");
   expect(csv).toContain("18 days aged");
+  expect(csv).toContain("Invoice status");
+  expect(csv).toContain("Maintenance recovery invoice");
+  expect(csv).toContain("Provider failed");
   expect(csv).toContain("ops@example.test");
   expect(csv).toContain("Lease event");
   expect(csv).toContain("Bright Cafe Pty Ltd rent review");
@@ -157,6 +169,9 @@ test("insights exports review packet CSV from loaded overview data", async ({
     expect(packet).toContain("Arrears snapshot");
     expect(packet).toContain("Bright Cafe Pty Ltd arrears");
     expect(packet).toContain("18 days aged");
+    expect(packet).toContain("Invoice status");
+    expect(packet).toContain("Maintenance recovery invoice");
+    expect(packet).toContain("Provider failed");
     expect(packet).toContain("ops@example.test");
     expect(packet).toContain("Lease event");
     expect(packet).toContain("Bright Cafe Pty Ltd rent review");

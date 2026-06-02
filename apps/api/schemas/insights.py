@@ -288,6 +288,52 @@ class ArrearsSnapshotRead(BaseModel):
     next_items: list[ArrearsSnapshotItemRead] = Field(default_factory=list)
 
 
+class InvoiceStatusItemRead(BaseModel):
+    id: UUID
+    title: str
+    invoice_number: str | None = None
+    status: str
+    currency: str
+    issue_date: Date | None = None
+    due_date: Date | None = None
+    total_cents: int
+    paid_cents: int
+    outstanding_cents: int
+    payment_status: str
+    delivery_status: str
+    posting_status: str
+    chip: str
+    href: str
+    property_id: UUID | None = None
+    property_name: str | None = None
+    tenancy_unit_id: UUID | None = None
+    unit_label: str | None = None
+    lease_id: UUID | None = None
+    tenant_id: UUID | None = None
+    tenant_name: str | None = None
+    recipient_name: str | None = None
+    recipient_email: str | None = None
+    rank: int = 0
+
+
+class InvoiceStatusSnapshotRead(BaseModel):
+    total_invoice_count: int = 0
+    approved_count: int = 0
+    approved_unsynced_count: int = 0
+    ready_to_send_count: int = 0
+    sent_count: int = 0
+    unpaid_count: int = 0
+    overdue_count: int = 0
+    xero_failed_count: int = 0
+    total_cents: int = 0
+    outstanding_cents: int = 0
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    payment_status_counts: dict[str, int] = Field(default_factory=dict)
+    delivery_status_counts: dict[str, int] = Field(default_factory=dict)
+    posting_status_counts: dict[str, int] = Field(default_factory=dict)
+    next_items: list[InvoiceStatusItemRead] = Field(default_factory=list)
+
+
 class InsightsOverviewRead(BaseModel):
     entity: InsightsEntityRead
     as_of: Date
@@ -301,6 +347,9 @@ class InsightsOverviewRead(BaseModel):
     compliance_snapshot: ComplianceSnapshotRead = Field(default_factory=ComplianceSnapshotRead)
     maintenance_snapshot: MaintenanceSnapshotRead = Field(default_factory=MaintenanceSnapshotRead)
     arrears_snapshot: ArrearsSnapshotRead = Field(default_factory=ArrearsSnapshotRead)
+    invoice_status_snapshot: InvoiceStatusSnapshotRead = Field(
+        default_factory=InvoiceStatusSnapshotRead
+    )
     guardrails: list[str]
 
 

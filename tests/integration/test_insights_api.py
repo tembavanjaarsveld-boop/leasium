@@ -191,7 +191,24 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
         gst_cents=0,
         total_cents=100000,
         recipient_name="No Email Retail Pty Ltd",
-        invoice_metadata={"payment_status": {"status": "unpaid"}},
+        invoice_metadata={
+            "delivery_state": {
+                "delivery_ready": True,
+                "pdf_generated": True,
+                "pdf_artifact_stored": True,
+                "tenant_email_sent": False,
+            },
+            "payment_status": {
+                "status": "unpaid",
+                "paid_cents": 0,
+                "outstanding_cents": 100000,
+            },
+            "posting_preparation": {
+                "external_posting_status": "approved_not_synced",
+                "xero_synced": False,
+            },
+            "xero_posting_approval": {"state": "approved", "approved": True},
+        },
     )
     onboarding = TenantOnboarding(
         entity_id=UUID(entity_id),
@@ -255,6 +272,33 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
     assert body["billing_risk"]["invoice_draft_counts"]["approved"] == 1
     assert body["finance_snapshot"]["configured_charges_cents"] > 0
     assert body["finance_snapshot"]["approved_unsynced_invoice_count"] == 1
+    invoice_status = body["invoice_status_snapshot"]
+    assert invoice_status["total_invoice_count"] == 1
+    assert invoice_status["approved_count"] == 1
+    assert invoice_status["approved_unsynced_count"] == 1
+    assert invoice_status["ready_to_send_count"] == 1
+    assert invoice_status["sent_count"] == 0
+    assert invoice_status["unpaid_count"] == 1
+    assert invoice_status["overdue_count"] == 0
+    assert invoice_status["xero_failed_count"] == 0
+    assert invoice_status["total_cents"] == 100000
+    assert invoice_status["outstanding_cents"] == 100000
+    assert invoice_status["status_counts"] == {"approved": 1}
+    assert invoice_status["payment_status_counts"] == {"unpaid": 1}
+    assert invoice_status["delivery_status_counts"] == {"ready": 1}
+    assert invoice_status["posting_status_counts"] == {"approved_not_synced": 1}
+    invoice_item = invoice_status["next_items"][0]
+    assert invoice_item["title"] == "May rent"
+    assert invoice_item["invoice_number"] == "INV-0001"
+    assert invoice_item["property_name"] == "Queen Street Retail"
+    assert invoice_item["tenant_name"] == "No Email Retail Pty Ltd"
+    assert invoice_item["total_cents"] == 100000
+    assert invoice_item["outstanding_cents"] == 100000
+    assert invoice_item["payment_status"] == "unpaid"
+    assert invoice_item["delivery_status"] == "ready"
+    assert invoice_item["posting_status"] == "approved_not_synced"
+    assert invoice_item["chip"] == "In 13d"
+    assert invoice_item["href"].startswith("/billing-readiness?tab=delivery&")
     accounting = body["finance_snapshot"]["accounting_readiness"]
     assert accounting["status"] in {"ready", "missing", "stale", "attention"}
     assert accounting["generated_at"] is not None

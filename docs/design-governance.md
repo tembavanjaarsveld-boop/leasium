@@ -327,6 +327,16 @@ scale, typography) and the provider-mutation guardrail.
   clicks those read-only filters, then measures existing recovery, payment, and
   statement handoffs without clicking dispatch, email, payment, provider, or
   reconciliation actions.
+- Insights invoice status panel: `/insights` now adds an `Invoice Status`
+  snapshot below Arrears and above Finance using the existing `SectionPanel`,
+  count-pills, status-badges, and linked-row pattern. It surfaces outstanding
+  value, approved-not-synced, ready-to-send, unpaid, provider-failed, posting
+  mix, and ranked invoice follow-up rows from the already-loaded Insights
+  overview. Copy/download review packet rows stay local and do not send tenant
+  email, post invoices, sync Xero, reconcile payments, mutate invoice drafts,
+  dispatch providers, or write provider history. Remba should review whether
+  invoice status belongs as its own Insights panel or should later collapse
+  into Finance once owner/entity dashboard depth lands.
 - Helper consolidation, aligned to the deferred external-review cleanup:
   `/contractors`, `/inbox`, `/insights`, `/notifications`, and
   `/operations` plus maintenance detail, the Smart Intake register-import

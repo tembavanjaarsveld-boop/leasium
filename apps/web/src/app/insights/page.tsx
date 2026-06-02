@@ -14,6 +14,7 @@ import {
   Gauge,
   LineChart,
   Loader2,
+  Receipt,
   RefreshCw,
   Share2,
   ShieldCheck,
@@ -48,6 +49,7 @@ import {
   InsightsSnapshotCreateRecord,
   InsightsSnapshotRecord,
   InsightsSnapshotType,
+  InvoiceStatusItemRecord,
   listEntities,
   listInsightsSnapshots,
   LiveExceptionRecord,
@@ -112,6 +114,11 @@ function formatMoney(cents: number | null | undefined) {
 
 function labelStatus(value: string | null | undefined) {
   return value ? value.replaceAll("_", " ") : "None";
+}
+
+function sentenceStatus(value: string | null | undefined) {
+  const label = labelStatus(value);
+  return `${label.slice(0, 1).toUpperCase()}${label.slice(1)}`;
 }
 
 function accountingTone(status: string | null | undefined) {
@@ -426,6 +433,24 @@ function arrearsTone(item: ArrearsSnapshotItemRecord): StatusTone {
   return "neutral";
 }
 
+function invoiceStatusTone(item: InvoiceStatusItemRecord): StatusTone {
+  if (
+    item.posting_status === "provider_failed" ||
+    item.delivery_status === "blocked" ||
+    item.chip.includes("overdue")
+  ) {
+    return "danger";
+  }
+  if (
+    item.posting_status === "approved_not_synced" ||
+    item.delivery_status === "ready" ||
+    item.payment_status !== "paid"
+  ) {
+    return "warning";
+  }
+  return "success";
+}
+
 function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
   const context = [
     item.property_name,
@@ -556,6 +581,47 @@ function ArrearsSnapshotRow({ item }: { item: ArrearsSnapshotItemRecord }) {
   );
 }
 
+function InvoiceStatusRow({ item }: { item: InvoiceStatusItemRecord }) {
+  const context = [
+    item.property_name,
+    item.unit_label,
+    item.tenant_name ?? item.recipient_name,
+  ].filter(Boolean);
+  const invoiceLabel = item.invoice_number ?? "No invoice number";
+  const recipientLabel = item.recipient_email
+    ? `Email ${item.recipient_email}`
+    : "No recipient email";
+
+  return (
+    <Link
+      href={item.href}
+      className="grid gap-3 border-t border-border px-4 py-4 transition hover:bg-muted/60 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-semibold">{item.title}</div>
+          <StatusBadge tone={invoiceStatusTone(item)}>{item.chip}</StatusBadge>
+          <StatusBadge tone="neutral">
+            {sentenceStatus(item.posting_status)}
+          </StatusBadge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {context.length ? context.join(" · ") : "Invoice draft"}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+          <span>{invoiceLabel}</span>
+          <span>Payment {sentenceStatus(item.payment_status)}</span>
+          <span>Delivery {sentenceStatus(item.delivery_status)}</span>
+          <span>{recipientLabel}</span>
+        </div>
+      </div>
+      <div className="text-xs font-semibold text-foreground">
+        {formatMoney(item.outstanding_cents)}
+      </div>
+    </Link>
+  );
+}
+
 const INSIGHTS_REVIEW_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.";
 
@@ -569,6 +635,7 @@ function insightsReviewPacketCsv(
   const complianceSnapshot = overview.compliance_snapshot;
   const maintenanceSnapshot = overview.maintenance_snapshot;
   const arrearsSnapshot = overview.arrears_snapshot;
+  const invoiceStatusSnapshot = overview.invoice_status_snapshot;
   const rows: Array<Array<string | number | null | undefined>> = [
     ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
     [
@@ -690,6 +757,24 @@ function insightsReviewPacketCsv(
       item.age_days,
       formatMoney(item.total_balance_cents),
       `${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? "No tenant"}; ${item.age_days} days aged; ${labelStatus(item.dispute_status)} dispute; ${labelStatus(item.escalation_status)} escalation; ${item.promise_to_pay_date ? `promise ${formatDate(item.promise_to_pay_date)}` : "no promise"}; reminder ${formatDate(item.next_reminder_on)}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Invoice status",
+      "Invoice delivery and posting",
+      `${invoiceStatusSnapshot.total_invoice_count} invoices`,
+      invoiceStatusSnapshot.total_invoice_count,
+      formatMoney(invoiceStatusSnapshot.outstanding_cents),
+      `${invoiceStatusSnapshot.approved_count} approved; ${invoiceStatusSnapshot.approved_unsynced_count} approved not synced; ${invoiceStatusSnapshot.ready_to_send_count} ready to send; ${invoiceStatusSnapshot.unpaid_count} unpaid; ${invoiceStatusSnapshot.xero_failed_count} provider failed.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...invoiceStatusSnapshot.next_items.map((item) => [
+      "Invoice status",
+      item.title,
+      sentenceStatus(item.posting_status),
+      item.rank,
+      formatMoney(item.outstanding_cents),
+      `${item.invoice_number ?? "No invoice number"}; ${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? item.recipient_name ?? "No recipient"}; ${sentenceStatus(item.payment_status)} payment; ${sentenceStatus(item.delivery_status)} delivery; ${sentenceStatus(item.posting_status)}; due ${formatDate(item.due_date)}.`,
       INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
     ]),
     [
@@ -935,6 +1020,7 @@ function InsightsWorkspace() {
   const complianceSnapshot = overview?.compliance_snapshot;
   const maintenanceSnapshot = overview?.maintenance_snapshot;
   const arrearsSnapshot = overview?.arrears_snapshot;
+  const invoiceStatusSnapshot = overview?.invoice_status_snapshot;
   const snapshots = snapshotsQuery.data ?? [];
 
   function downloadReviewCsv() {
@@ -1576,6 +1662,95 @@ function InsightsWorkspace() {
                       icon={<CircleDollarSign size={18} />}
                       title="No open arrears"
                       description="Active or monitoring credit-control cases will appear here."
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Invoice Status"
+              description="Draft invoice delivery, unpaid balance, and Xero posting follow-up."
+              icon={<Receipt size={17} className="text-primary" />}
+              actions={
+                <StatusBadge
+                  tone={
+                    invoiceStatusSnapshot?.xero_failed_count ||
+                    invoiceStatusSnapshot?.overdue_count
+                      ? "danger"
+                      : invoiceStatusSnapshot?.approved_unsynced_count ||
+                          invoiceStatusSnapshot?.ready_to_send_count ||
+                          invoiceStatusSnapshot?.unpaid_count
+                        ? "warning"
+                        : "success"
+                  }
+                >
+                  {invoiceStatusSnapshot?.total_invoice_count ?? 0} invoices
+                </StatusBadge>
+              }
+            >
+              <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <CountPill
+                    label="Outstanding"
+                    value={formatMoney(invoiceStatusSnapshot?.outstanding_cents ?? 0)}
+                  />
+                  <CountPill
+                    label="Approved not synced"
+                    value={invoiceStatusSnapshot?.approved_unsynced_count ?? 0}
+                  />
+                  <CountPill
+                    label="Ready to send"
+                    value={invoiceStatusSnapshot?.ready_to_send_count ?? 0}
+                  />
+                  <CountPill
+                    label="Unpaid"
+                    value={invoiceStatusSnapshot?.unpaid_count ?? 0}
+                  />
+                  <CountPill
+                    label="Provider failed"
+                    value={invoiceStatusSnapshot?.xero_failed_count ?? 0}
+                  />
+                  <div className="rounded-2xl border border-border bg-white p-4 text-sm">
+                    <div className="font-semibold">Posting mix</div>
+                    <div className="mt-3 grid gap-2 text-muted-foreground">
+                      {Object.entries(
+                        invoiceStatusSnapshot?.posting_status_counts ?? {},
+                      ).map(([status, count]) => (
+                        <div
+                          key={status}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <span>{sentenceStatus(status)}</span>
+                          <span className="font-semibold text-foreground">
+                            {count}
+                          </span>
+                        </div>
+                      ))}
+                      {Object.keys(
+                        invoiceStatusSnapshot?.posting_status_counts ?? {},
+                      ).length === 0 ? (
+                        <div>No invoice posting statuses</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                  <div className="grid gap-1 px-4 py-3">
+                    <div className="text-sm font-semibold">Invoice follow-up</div>
+                    <div className="text-xs text-muted-foreground">
+                      {invoiceStatusSnapshot?.overdue_count ?? 0} overdue;{" "}
+                      {invoiceStatusSnapshot?.sent_count ?? 0} sent.
+                    </div>
+                  </div>
+                  {(invoiceStatusSnapshot?.next_items ?? []).map((item) => (
+                    <InvoiceStatusRow key={item.id} item={item} />
+                  ))}
+                  {(invoiceStatusSnapshot?.next_items.length ?? 0) === 0 ? (
+                    <EmptyState
+                      icon={<Receipt size={18} />}
+                      title="No invoice follow-up"
+                      description="Approved, unsent, unpaid, and posting-risk invoice drafts will appear here."
                     />
                   ) : null}
                 </div>

@@ -2425,6 +2425,52 @@ export type ArrearsSnapshotRecord = {
   next_items: ArrearsSnapshotItemRecord[];
 };
 
+export type InvoiceStatusItemRecord = {
+  id: string;
+  title: string;
+  invoice_number: string | null;
+  status: InvoiceDraftStatus;
+  currency: string;
+  issue_date: string | null;
+  due_date: string | null;
+  total_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  payment_status: string;
+  delivery_status: string;
+  posting_status: string;
+  chip: string;
+  href: string;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  rank: number;
+};
+
+export type InvoiceStatusSnapshotRecord = {
+  total_invoice_count: number;
+  approved_count: number;
+  approved_unsynced_count: number;
+  ready_to_send_count: number;
+  sent_count: number;
+  unpaid_count: number;
+  overdue_count: number;
+  xero_failed_count: number;
+  total_cents: number;
+  outstanding_cents: number;
+  status_counts: Record<string, number>;
+  payment_status_counts: Record<string, number>;
+  delivery_status_counts: Record<string, number>;
+  posting_status_counts: Record<string, number>;
+  next_items: InvoiceStatusItemRecord[];
+};
+
 export type InsightsOverviewRecord = {
   entity: InsightsEntityRecord;
   as_of: string;
@@ -2438,6 +2484,7 @@ export type InsightsOverviewRecord = {
   compliance_snapshot: ComplianceSnapshotRecord;
   maintenance_snapshot: MaintenanceSnapshotRecord;
   arrears_snapshot: ArrearsSnapshotRecord;
+  invoice_status_snapshot: InvoiceStatusSnapshotRecord;
   guardrails: string[];
 };
 

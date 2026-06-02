@@ -3701,3 +3701,40 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   `git diff --check` passed.
 - Next sensible Insights follow-up: invoice-status depth and then richer
   owner/entity dashboard context.
+
+## Codex continuation 2026-06-02 - Insights invoice status snapshot v1
+
+- Chosen backlog slice: Portfolio Insights still listed invoice status depth as
+  open after compliance, maintenance aging, and arrears landed. This keeps
+  draft invoice delivery/payment/posting risk inside the read-only Insights
+  review layer rather than adding a mutable billing workflow.
+- `/api/v1/insights/overview` now returns `invoice_status_snapshot` from
+  internal invoice drafts and their existing delivery, payment, posting,
+  Xero approval, Xero sync, and provider-dispatch metadata. The snapshot rolls
+  up total/approved invoices, approved-not-synced, ready-to-send, sent, unpaid,
+  overdue, provider-failed, total and outstanding cents, status/payment/
+  delivery/posting mixes, and ranked invoice rows carrying property, unit,
+  tenant, recipient, due chip, posting state, and Billing Readiness handoff
+  links.
+- `/insights` now renders an `Invoice Status` panel and includes the same
+  invoice status summary/rows in the local review packet copy and CSV export.
+- Guardrails: viewing, copying, or downloading the Insights packet does not
+  send tenant email, post invoices, sync Xero, reconcile payments, mutate
+  invoice drafts, generate billing drafts, dispatch providers, send
+  SendGrid/Twilio messages, or write provider history.
+- Red/green evidence: the backend test first failed with
+  `KeyError: 'invoice_status_snapshot'`; after the API snapshot landed it
+  passed. The Insights smoke was then extended and first failed because the
+  `Invoice Status` heading was missing; after the typed web panel and export
+  rows landed it passed.
+- Verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_insights_api.py -q`
+  passed **4 passed**;
+  `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py tests/integration/test_insights_api.py`
+  passed;
+  `./node_modules/.bin/playwright test tests/smoke/insights.spec.ts --workers=1`
+  passed **2 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
+- Next sensible Insights follow-up: richer owner/entity dashboard context, or
+  use the same read-only snapshot pattern to deepen dashboard command-centre
+  context.

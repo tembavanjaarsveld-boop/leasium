@@ -24,6 +24,7 @@ from stewart.core.models import (
     Entity,
     InsightsSnapshot,
     InvoiceDraft,
+    InvoiceDraftStatus,
     Lease,
     MaintenancePriority,
     MaintenanceWorkOrder,
@@ -59,6 +60,8 @@ from apps.api.schemas.insights import (
     InsightsSnapshotPublicRead,
     InsightsSnapshotRead,
     InsightTargetRead,
+    InvoiceStatusItemRead,
+    InvoiceStatusSnapshotRead,
     LeaseEventRead,
     LeaseEventSnapshotRead,
     LiveExceptionRead,
@@ -537,6 +540,216 @@ def _build_arrears_snapshot(
     )
 
 
+def _metadata_dict(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def _metadata_text_value(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _metadata_int_value(value: object, default: int = 0) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+
+def _invoice_payment_status(
+    draft: InvoiceDraft,
+    payment_metadata: dict[str, object],
+) -> tuple[str, int, int]:
+    paid_cents = min(
+        max(_metadata_int_value(payment_metadata.get("paid_cents")), 0),
+        draft.total_cents,
+    )
+    outstanding_cents = _metadata_int_value(
+        payment_metadata.get("outstanding_cents"),
+        max(draft.total_cents - paid_cents, 0),
+    )
+    outstanding_cents = max(outstanding_cents, 0)
+    recorded_status = _metadata_text_value(payment_metadata.get("status"))
+    if outstanding_cents == 0:
+        return "paid", paid_cents, outstanding_cents
+    if paid_cents > 0:
+        return "partially_paid", paid_cents, outstanding_cents
+    return recorded_status or "unpaid", paid_cents, outstanding_cents
+
+
+def _invoice_delivery_status(metadata: dict[str, object]) -> str:
+    delivery_state = _metadata_dict(metadata.get("delivery_state"))
+    delivery_email = _metadata_dict(metadata.get("delivery_email"))
+    send_state = _metadata_dict(delivery_email.get("send"))
+    send_status = _metadata_text_value(send_state.get("status"))
+    if delivery_state.get("tenant_email_sent") is True or send_status in {
+        "queued",
+        "sent",
+        "delivered",
+        "opened",
+    }:
+        return "sent"
+    if send_status in {"blocked", "bounced", "failed"}:
+        return "blocked"
+    if delivery_state.get("delivery_ready") is True:
+        return "ready"
+    return "not_ready"
+
+
+def _invoice_posting_status(draft: InvoiceDraft, metadata: dict[str, object]) -> str:
+    delivery_state = _metadata_dict(metadata.get("delivery_state"))
+    posting_preparation = _metadata_dict(metadata.get("posting_preparation"))
+    xero_sync = _metadata_dict(metadata.get("xero_sync"))
+    approval = _metadata_dict(metadata.get("xero_posting_approval"))
+    provider_dispatch = _metadata_dict(metadata.get("provider_dispatch"))
+    xero_dispatch = _metadata_dict(provider_dispatch.get("xero"))
+    external_status = (
+        _metadata_text_value(posting_preparation.get("external_posting_status"))
+        or _metadata_text_value(xero_dispatch.get("external_posting_status"))
+        or _metadata_text_value(xero_sync.get("external_posting_status"))
+    )
+    provider_status = _metadata_text_value(xero_dispatch.get("status"))
+    xero_synced = (
+        delivery_state.get("xero_synced") is True
+        or posting_preparation.get("xero_synced") is True
+        or xero_sync.get("xero_synced") is True
+    )
+    if xero_synced or external_status == "draft_created":
+        return "xero_synced"
+    if external_status == "provider_failed" or provider_status == "failed":
+        return "provider_failed"
+    if external_status in {"approved_not_synced", "approved_pending_xero_draft"}:
+        return "approved_not_synced"
+    if (
+        draft.status == InvoiceDraftStatus.approved
+        and (approval.get("approved") is True or approval.get("state") == "approved")
+    ):
+        return "approved_not_synced"
+    if draft.status == InvoiceDraftStatus.approved:
+        return "not_approved"
+    if draft.status == InvoiceDraftStatus.ready_for_approval:
+        return "awaiting_approval"
+    return "not_ready"
+
+
+def _invoice_status_filter(
+    *,
+    payment_status: str,
+    delivery_status: str,
+    posting_status: str,
+) -> str:
+    if posting_status == "provider_failed" or delivery_status == "blocked":
+        return "needs_action"
+    if delivery_status == "ready" or posting_status == "approved_not_synced":
+        return "ready_dispatch"
+    if payment_status != "paid":
+        return "unpaid"
+    return "all"
+
+
+def _build_invoice_status_snapshot(
+    invoice_drafts: list[InvoiceDraft],
+    *,
+    as_of: date,
+    properties_by_id: dict[UUID, Property],
+    units_by_id: dict[UUID, TenancyUnit],
+    tenants_by_id: dict[UUID, Tenant],
+) -> InvoiceStatusSnapshotRead:
+    rows: list[InvoiceStatusItemRead] = []
+
+    for draft in invoice_drafts:
+        metadata = _metadata_dict(draft.invoice_metadata)
+        payment_status, paid_cents, outstanding_cents = _invoice_payment_status(
+            draft,
+            _metadata_dict(metadata.get("payment_status")),
+        )
+        delivery_status = _invoice_delivery_status(metadata)
+        posting_status = _invoice_posting_status(draft, metadata)
+        due_days = _days_until(draft.due_date, as_of)
+        rank = min(due_days, 60)
+        if posting_status == "provider_failed":
+            rank -= 50
+        elif posting_status == "approved_not_synced":
+            rank -= 25
+        if delivery_status == "ready":
+            rank -= 10
+        if payment_status != "paid":
+            rank -= 5
+
+        prop = properties_by_id.get(draft.property_id) if draft.property_id else None
+        unit = units_by_id.get(draft.tenancy_unit_id) if draft.tenancy_unit_id else None
+        tenant = tenants_by_id.get(draft.tenant_id) if draft.tenant_id else None
+        filter_value = _invoice_status_filter(
+            payment_status=payment_status,
+            delivery_status=delivery_status,
+            posting_status=posting_status,
+        )
+        rows.append(
+            InvoiceStatusItemRead(
+                id=draft.id,
+                title=draft.title,
+                invoice_number=draft.invoice_number,
+                status=_enum_value(draft.status),
+                currency=draft.currency,
+                issue_date=draft.issue_date,
+                due_date=draft.due_date,
+                total_cents=draft.total_cents,
+                paid_cents=paid_cents,
+                outstanding_cents=outstanding_cents,
+                payment_status=payment_status,
+                delivery_status=delivery_status,
+                posting_status=posting_status,
+                chip=_date_chip(draft.due_date, as_of),
+                href=(
+                    "/billing-readiness?tab=delivery"
+                    f"&filter={filter_value}&invoice_id={draft.id}"
+                ),
+                property_id=draft.property_id,
+                property_name=prop.name if prop else None,
+                tenancy_unit_id=draft.tenancy_unit_id,
+                unit_label=unit.unit_label if unit else None,
+                lease_id=draft.lease_id,
+                tenant_id=draft.tenant_id,
+                tenant_name=tenant.legal_name if tenant else None,
+                recipient_name=draft.recipient_name,
+                recipient_email=draft.recipient_email,
+                rank=rank,
+            )
+        )
+
+    rows.sort(key=lambda item: (item.rank, -item.outstanding_cents, item.title))
+    return InvoiceStatusSnapshotRead(
+        total_invoice_count=len(invoice_drafts),
+        approved_count=sum(
+            1 for item in invoice_drafts if item.status == InvoiceDraftStatus.approved
+        ),
+        approved_unsynced_count=sum(
+            1
+            for item in rows
+            if item.status == InvoiceDraftStatus.approved.value
+            and item.posting_status != "xero_synced"
+        ),
+        ready_to_send_count=sum(1 for item in rows if item.delivery_status == "ready"),
+        sent_count=sum(1 for item in rows if item.delivery_status == "sent"),
+        unpaid_count=sum(
+            1
+            for item in rows
+            if item.payment_status != "paid" and item.outstanding_cents > 0
+        ),
+        overdue_count=sum(
+            1
+            for item in rows
+            if item.outstanding_cents > 0
+            and item.due_date is not None
+            and item.due_date < as_of
+        ),
+        xero_failed_count=sum(1 for item in rows if item.posting_status == "provider_failed"),
+        total_cents=sum(item.total_cents for item in rows),
+        outstanding_cents=sum(item.outstanding_cents for item in rows),
+        status_counts=dict(Counter(_enum_value(item.status) for item in invoice_drafts)),
+        payment_status_counts=dict(Counter(item.payment_status for item in rows)),
+        delivery_status_counts=dict(Counter(item.delivery_status for item in rows)),
+        posting_status_counts=dict(Counter(item.posting_status for item in rows)),
+        next_items=rows[:10],
+    )
+
+
 def _build_insights_overview(
     user: CurrentUser,
     session: Session,
@@ -726,11 +939,20 @@ def _build_insights_overview(
     )
     invoice_drafts = list(
         session.scalars(
-            select(InvoiceDraft).where(
+            select(InvoiceDraft)
+            .where(
                 InvoiceDraft.entity_id == entity_id,
                 InvoiceDraft.deleted_at.is_(None),
             )
+            .order_by(InvoiceDraft.due_date, InvoiceDraft.created_at)
         )
+    )
+    invoice_status_snapshot = _build_invoice_status_snapshot(
+        invoice_drafts,
+        as_of=as_of,
+        properties_by_id=properties_by_id,
+        units_by_id=units_by_id,
+        tenants_by_id=tenants_by_id,
     )
     xero = xero_status(user, session, get_settings(), entity_id)
     xero_blocker_count = sum(1 for issue in xero.issues if issue.severity == "blocker")
@@ -1121,6 +1343,7 @@ def _build_insights_overview(
         compliance_snapshot=compliance_snapshot,
         maintenance_snapshot=maintenance_snapshot,
         arrears_snapshot=arrears_snapshot,
+        invoice_status_snapshot=invoice_status_snapshot,
         guardrails=[
             "Insights is read-only and does not mutate portfolio records.",
             (
