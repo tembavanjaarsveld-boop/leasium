@@ -3085,7 +3085,7 @@ def apply_document_intake(
                 "work_order_ids": work_order_ids,
                 "work_order_count": len(work_order_ids),
                 "obligation_ids": [],
-                "obligation_count": len(work_order_ids),
+                "obligation_count": 0,
             },
         }
         intake.status = DocumentIntakeStatus.applied

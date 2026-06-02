@@ -33,10 +33,11 @@ review-packet slices.
   creation concurrently, add a DB-level uniqueness/upsert guard for generated
   lease-calendar obligations. The route is idempotent for normal repeat runs
   today, but the duplicate guard is still read-before-insert.
-- Next small backend cleanup found by the Work scout: inspection-report Smart
-  Intake apply appears to report `obligation_count` from `work_order_ids` in
-  `apps/api/routers/document_intakes.py`; add a regression so inspection apply
-  reports `work_order_count > 0` and `obligation_count == 0`.
+- Smart Intake inspection-report apply count cleanup is now fixed:
+  `created_inspection_work_orders` reports `work_order_count` from created
+  maintenance work orders and `obligation_count: 0` because no obligations are
+  created in that flow. Regression coverage is in
+  `tests/integration/test_document_intake_api.py::test_document_intake_apply_inspection_report_creates_work_orders`.
 
 ### Owner portal compliance snapshot
 - Owner portal preview and owner account session responses now include a

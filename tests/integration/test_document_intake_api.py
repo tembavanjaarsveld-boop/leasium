@@ -1564,7 +1564,7 @@ def test_document_intake_apply_inspection_report_creates_work_orders(
     applied = body["review_data"]["applied"]
     assert applied["action"] == "created_inspection_work_orders"
     assert applied["work_order_count"] == 2
-    assert applied["obligation_count"] == 2
+    assert applied["obligation_count"] == 0
 
     work_orders = session.scalars(
         select(MaintenanceWorkOrder).order_by(MaintenanceWorkOrder.created_at)
