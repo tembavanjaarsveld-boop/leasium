@@ -19,7 +19,9 @@ movement, no rails provider, no Basiq/Xero/reconciliation change.
   `how_to_pay` + per-invoice `payment_reference` + a display-only guardrail.
 - Frontend: api.ts client (`getPaymentInstructions` / `updatePaymentInstructions`
   + `PaymentInstructionRecord`; `how_to_pay` + `payment_reference` on the portal
-  record) and a tenant-portal "How to pay" panel + per-invoice reference.
+  record), a tenant-portal "How to pay" panel + per-invoice reference, and a
+  Settings → Organisation operator config form (`PaymentInstructionsPanel`,
+  commit `d351a3e`).
 - Verification: backend pytest **61 passed** (payments + tenant portal), migration
   test 4 passed/1 skipped, ruff clean, single alembic head `20260602_0036`;
   frontend eslint + tsc + production `next build` green.

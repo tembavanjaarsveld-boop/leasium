@@ -401,11 +401,12 @@ Equifax/illion; RTBA/state RTAs).
   **Foundation shipped (review-first, display-only, no money movement):**
   `EntityPaymentInstruction` (per-entity; migration `20260602_0036`), operator
   `GET/PUT /payments/instructions`, tenant-portal `how_to_pay` projection + a
-  per-invoice `payment_reference`, and a tenant-portal "How to pay" panel
-  (EFT / PayID / optional BPAY / notes). api.ts client + types in place; backend
-  ~5 tests. **Remaining:** Settings operator config form (the api client exists),
-  a tenant-portal smoke, then the actual rails (PayTo/Monoova/Zai/Stripe AU) +
-  in-portal "pay now" — which is the provider decision still to make.
+  per-invoice `payment_reference`, a tenant-portal "How to pay" panel
+  (EFT / PayID / optional BPAY / notes), and a Settings → Organisation operator
+  config form. Backend ~5 tests; frontend eslint/tsc/build green.
+  **Remaining:** a tenant-portal smoke, then the actual rails
+  (PayTo/Monoova/Zai/Stripe AU) + in-portal "pay now" — the provider decision
+  still to make.
 - [ ] **Installable PWA (mobile runway).** Operator field use (inspections / photos /
   approvals) + tenant portal on a phone, ahead of any native build.
 
