@@ -3581,3 +3581,33 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   passed.
 - Next tenant-portal lifecycle follow-up: tenant-side recovery UX/account
   switching if a real user hits revoked or conflicting login states.
+
+## Codex continuation 2026-06-02 - Comms template catalog v1
+
+- Chosen backlog slice: Communications hub remains open around templates/logs.
+  The stored branded-template registry already existed in Settings, but Comms
+  itself did not show the active template context operators need while reviewing
+  queued drafts and outbound receipts.
+- `/comms` now loads active `branded-communication-templates` for the selected
+  entity and shows a `Template catalog` panel above the outbound log. Rows show
+  template name, key, version, provider/channel, System vs Override source,
+  subject/body preview, notes, and action template context.
+- Added local Copy/Download CSV export as
+  `comms-template-catalog-{latest-template-date}.csv`, using formula-safe CSV
+  cells and only already-loaded template rows.
+- Guardrails: viewing, copying, or downloading the catalog does not send
+  SendGrid email, send Twilio SMS, dispatch or dismiss queue candidates,
+  refresh providers, mutate communication templates, write provider history, or
+  change tenant, maintenance, invoice, billing, payment, reconciliation, Xero,
+  or Basiq records.
+- Red/green evidence: the new smoke first failed because the `Template catalog`
+  panel was missing, then passed after wiring the existing API client and panel.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/comms-template-catalog.spec.ts --workers=1`
+  passed **1 passed**; broader Comms smoke
+  `./node_modules/.bin/playwright test tests/smoke/comms-template-catalog.spec.ts tests/smoke/comms-outbound-log-export.spec.ts tests/smoke/comms-export-parity.spec.ts tests/smoke/comms-keyboard.spec.ts --workers=1`
+  passed **4 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
+- Next sensible Comms follow-up: template editing/override workflow only after
+  the operator review boundary is designed; otherwise prefer record-linked
+  correspondence depth over another read-only panel.

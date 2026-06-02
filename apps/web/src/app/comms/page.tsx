@@ -56,6 +56,7 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  type BrandedCommunicationTemplateRecord,
   type CommsCandidateRecord,
   type CommsCorrespondenceEventRecord,
   type CommsKind,
@@ -64,6 +65,7 @@ import {
   dispatchCommsDraft,
   getCommsOutboundLog,
   getCommsQueue,
+  listBrandedCommunicationTemplates,
   listEntities,
   uploadDocument,
 } from "@/lib/api";
@@ -81,6 +83,13 @@ type OutboundLogDownload = {
   filterLabel: string;
   totalEvents: number;
 };
+type TemplateCatalogDownload = {
+  templates: BrandedCommunicationTemplateRecord[];
+  entityName: string;
+};
+
+const TEMPLATE_CATALOG_GUARDRAIL =
+  "Review-only export: copying or downloading this file does not send SendGrid email, send Twilio SMS, dispatch queued drafts, dismiss candidates, refresh providers, mutate communication templates, write provider history, or change tenant, maintenance, invoice, billing, payment, reconciliation, Xero, or Basiq records.";
 
 const KIND_LABEL: Record<CommsKind, string> = {
   arrears_reminder: "Arrears reminder",
@@ -189,6 +198,123 @@ function formatDateTime(value: string | null | undefined) {
 
 function commsQueueReviewDate(value: string | null | undefined) {
   return value?.slice(0, 10) || "undated";
+}
+
+function commsTemplateCatalogReviewDate(
+  templates: BrandedCommunicationTemplateRecord[],
+) {
+  const dates = templates
+    .map((template) => template.updated_at || template.created_at)
+    .filter(Boolean)
+    .sort();
+  return dates.length ? dates[dates.length - 1]?.slice(0, 10) : "undated";
+}
+
+function providerLabel(value: string | null | undefined) {
+  if (!value) return "Provider";
+  if (value.toLowerCase() === "sendgrid") return "SendGrid";
+  if (value.toLowerCase() === "twilio") return "Twilio";
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function channelLabel(value: BrandedCommunicationTemplateRecord["channel"]) {
+  if (value === "sms") return "SMS";
+  if (value === "in_app") return "In-app";
+  return "email";
+}
+
+function templateChannelProviderLabel(
+  template: BrandedCommunicationTemplateRecord,
+) {
+  return `${providerLabel(template.provider)} ${channelLabel(template.channel)}`;
+}
+
+function templateSourceLabel(template: BrandedCommunicationTemplateRecord) {
+  return template.is_system ? "System" : "Override";
+}
+
+function commsTemplateCatalogCsv({
+  templates,
+  entityName,
+}: TemplateCatalogDownload) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Category",
+      "Name",
+      "Key",
+      "Version",
+      "Channel",
+      "Provider",
+      "Status",
+      "Source",
+      "Subject",
+      "Body preview",
+      "Action label",
+      "Action URL template",
+      "Notes",
+      "Entity",
+      "Updated",
+      "Guardrail",
+    ],
+    [
+      "Template catalog",
+      `${templates.length} active ${templates.length === 1 ? "template" : "templates"}`,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      entityName,
+      commsTemplateCatalogReviewDate(templates),
+      TEMPLATE_CATALOG_GUARDRAIL,
+    ],
+    ...templates.map((template) => [
+      "Template",
+      template.name,
+      template.key,
+      template.version,
+      template.channel,
+      template.provider,
+      template.is_active ? "active" : "inactive",
+      templateSourceLabel(template),
+      template.subject_template,
+      template.body_template,
+      template.action_label,
+      template.action_url_template,
+      template.notes,
+      entityName,
+      formatDateTime(template.updated_at),
+      TEMPLATE_CATALOG_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      TEMPLATE_CATALOG_GUARDRAIL,
+      entityName,
+      "",
+      TEMPLATE_CATALOG_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 function commsQueueReviewCsv({
@@ -511,6 +637,12 @@ function CommsContent() {
     queryFn: () => getCommsOutboundLog(selectedEntityId),
     enabled: Boolean(selectedEntityId),
   });
+  const templateCatalogQuery = useQuery({
+    queryKey: ["comms-template-catalog", selectedEntityId],
+    queryFn: () =>
+      listBrandedCommunicationTemplates({ entityId: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
 
   const [selectedFilter, setSelectedFilter] = useState<CommsFilter>("all");
   const [settledCandidateIds, setSettledCandidateIds] = useState<Set<string>>(
@@ -581,6 +713,16 @@ function CommsContent() {
       : `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining, ${settledCount} settled this session.`;
   const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
   const outboundLogEvents = outboundLogQuery.data?.events ?? [];
+  const selectedEntityName =
+    entitiesQuery.data?.find((entity) => entity.id === selectedEntityId)?.name ??
+    "Selected entity";
+  const activeTemplates = useMemo(
+    () =>
+      (templateCatalogQuery.data ?? []).filter(
+        (template) => template.is_active && !template.deleted_at,
+      ),
+    [templateCatalogQuery.data],
+  );
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
   const [reviewCsvCopyReceipt, setReviewCsvCopyReceipt] = useState<string | null>(
     null,
@@ -588,6 +730,8 @@ function CommsContent() {
   const [outboundLogCsvCopyReceipt, setOutboundLogCsvCopyReceipt] = useState<
     string | null
   >(null);
+  const [templateCatalogCsvCopyReceipt, setTemplateCatalogCsvCopyReceipt] =
+    useState<string | null>(null);
   const reviewCsv = () => {
     if (!queueQuery.data) {
       return null;
@@ -658,6 +802,24 @@ function CommsContent() {
     saveBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
       `comms-outbound-log-${commsQueueReviewDate(outboundLogQuery.data.generated_at)}.csv`,
+    );
+  };
+  const templateCatalogCsv = (download: TemplateCatalogDownload) =>
+    commsTemplateCatalogCsv(download);
+  const copyTemplateCatalogCsv = async (download: TemplateCatalogDownload) => {
+    const csv = templateCatalogCsv(download);
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setTemplateCatalogCsvCopyReceipt("Clipboard is not available.");
+      return;
+    }
+    await navigator.clipboard.writeText(csv);
+    setTemplateCatalogCsvCopyReceipt("Template catalog CSV copied.");
+  };
+  const downloadTemplateCatalogCsv = (download: TemplateCatalogDownload) => {
+    const csv = templateCatalogCsv(download);
+    saveBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+      `comms-template-catalog-${commsTemplateCatalogReviewDate(download.templates)}.csv`,
     );
   };
 
@@ -747,6 +909,15 @@ function CommsContent() {
             }
           />
         </section>
+        <TemplateCatalogPanel
+          templates={activeTemplates}
+          entityName={selectedEntityName}
+          isLoading={templateCatalogQuery.isLoading}
+          error={templateCatalogQuery.error}
+          onCopy={copyTemplateCatalogCsv}
+          onDownload={downloadTemplateCatalogCsv}
+          copyReceipt={templateCatalogCsvCopyReceipt}
+        />
         <OutboundLogPanel
           events={outboundLogEvents}
           guardrails={outboundLogQuery.data?.guardrails ?? []}
@@ -893,6 +1064,133 @@ function Metric({
       </div>
       <div className="mt-1 text-sm text-muted-foreground">{label}</div>
     </div>
+  );
+}
+
+function TemplateCatalogPanel({
+  templates,
+  entityName,
+  isLoading,
+  error,
+  onCopy,
+  onDownload,
+  copyReceipt,
+}: {
+  templates: BrandedCommunicationTemplateRecord[];
+  entityName: string;
+  isLoading: boolean;
+  error: unknown;
+  onCopy: (download: TemplateCatalogDownload) => void | Promise<void>;
+  onDownload: (download: TemplateCatalogDownload) => void;
+  copyReceipt: string | null;
+}) {
+  const download: TemplateCatalogDownload = { templates, entityName };
+  const templateCountLabel = `${templates.length} active ${
+    templates.length === 1 ? "template" : "templates"
+  }`;
+  const actionDisabled = isLoading || Boolean(error) || templates.length === 0;
+
+  return (
+    <SectionPanel
+      title="Template catalog"
+      description="Active stored communication templates for the selected entity."
+      icon={<Sparkles size={17} />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">{templateCountLabel}</StatusBadge>
+          <SecondaryButton
+            type="button"
+            onClick={() => {
+              void onCopy(download);
+            }}
+            disabled={actionDisabled}
+          >
+            <Copy size={15} />
+            Copy template catalog CSV
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={() => onDownload(download)}
+            disabled={actionDisabled}
+          >
+            <Download size={15} />
+            Download template catalog CSV
+          </SecondaryButton>
+          {copyReceipt ? (
+            <StatusBadge tone="success">{copyReceipt}</StatusBadge>
+          ) : null}
+        </div>
+      }
+    >
+      {isLoading ? (
+        <div className="p-4">
+          <SkeletonRows rows={2} />
+        </div>
+      ) : null}
+      {error ? (
+        <p className="m-4 rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+          {friendlyError(error)}
+        </p>
+      ) : null}
+      {!isLoading && !error && templates.length === 0 ? (
+        <div className="p-4 text-sm text-muted-foreground">
+          No active communication templates are stored for {entityName}.
+        </div>
+      ) : null}
+      {!isLoading && !error && templates.length > 0 ? (
+        <div className="divide-y divide-border">
+          {templates.map((template) => (
+            <div key={template.id} className="grid gap-2 p-4 text-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">{template.name}</p>
+                  <p className="mt-1 break-words text-xs text-muted-foreground">
+                    {template.key}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge tone="neutral">{template.version}</StatusBadge>
+                  <StatusBadge
+                    tone={template.channel === "sms" ? "primary" : "neutral"}
+                  >
+                    {templateChannelProviderLabel(template)}
+                  </StatusBadge>
+                  <StatusBadge tone={template.is_system ? "neutral" : "primary"}>
+                    {templateSourceLabel(template)}
+                  </StatusBadge>
+                </div>
+              </div>
+              {template.subject_template ? (
+                <p className="text-xs text-muted-foreground">
+                  Subject: {template.subject_template}
+                </p>
+              ) : null}
+              <p className="text-xs leading-5 text-muted-foreground">
+                {template.body_template}
+              </p>
+              {template.notes ? (
+                <p className="text-xs text-muted-foreground">{template.notes}</p>
+              ) : null}
+              {template.action_label || template.action_url_template ? (
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {template.action_label ? (
+                    <span>Action {template.action_label}</span>
+                  ) : null}
+                  {template.action_url_template ? (
+                    <span>{template.action_url_template}</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="border-t border-border bg-muted/20 px-4 py-3">
+        <p className="text-xs text-muted-foreground">
+          {TEMPLATE_CATALOG_GUARDRAIL}
+        </p>
+      </div>
+    </SectionPanel>
   );
 }
 
