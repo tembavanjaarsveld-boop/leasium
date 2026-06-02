@@ -2,6 +2,71 @@
 
 Last updated: 2026-06-02
 
+## Claude continuation — 2026-06-02 (vendor portal contractor login — latest)
+
+Took over from Codex with a clean, fully-pushed tree (no unstaged slice to
+preserve, despite the older "Active Local Tree" note further down). Picked the
+DoorLoop P2 **vendor portal authenticated login** off the backlog.
+
+### Vendor portal contractor login — backend (commit `2cd21fd`, local, NOT pushed)
+- New models `VendorPortalInvite` + `VendorPortalAccount` (+ `VendorPortalAccountStatus`)
+  in `stewart/core/models.py`, mirroring the owner portal account pattern, with
+  one-active-account-per-login and per-contractor unique partial indexes
+  (shared-login guard). One-sided `contractor`/`entity` relationships so the
+  broadly-used `Contractor`/`Entity` classes are untouched.
+- Migration `20260602_0035_vendor_portal_accounts.py` (down_revision
+  `20260602_0034`) creates the two tables + enum + indexes; cloned from owner
+  portal `0030`. `alembic heads` is a single head.
+- `apps/api/routers/vendor_portal.py` adds, on top of the existing read-only
+  operator preview: `POST /vendor-portal/{contractor_id}/invite` (operator
+  owner/admin/ops, requires contractor email, no send), `GET /vendor-portal/invites/{token}/preview`
+  (public safe context), `POST /vendor-portal/account/claim` (Clerk bearer +
+  token: email match, consumed/410, shared-login/409 with IntegrityError
+  rollback retry, revoked/403), `GET /vendor-portal/account/status`,
+  `GET /vendor-portal/account/session`, and bearer-scoped
+  `POST /vendor-portal/account/work-orders/{id}/accept|comment|photo`. Catch-all
+  `GET /{contractor_id}` moved to the end so `/account/*` and `/invites/*`
+  resolve first.
+- Accept records acceptance metadata + a contractor-visible comment + activity,
+  and advances `assigned`/`approved` → `in_progress` (other statuses keep their
+  status; closed → 409). Comment appends `visibility=contractor`. Photo stores an
+  image-only `StoredDocument` (category `other`, source `vendor_portal_photo`),
+  links `attachments.photo_document_ids`, and adds a contractor-visible comment.
+  Comment/activity dict shapes match `maintenance.py` so the preview reader
+  returns them unchanged. `VendorPortalWorkOrderItemRead` gains `photo_count`.
+- No operating-mode gate (unlike owners — contractors serve self-managed and
+  managing-agent operators). Guardrails: no provider send, Xero/Basiq write,
+  payment reconciliation, tenant email/SMS, or provider-history mutation; tenant
+  identity, internal notes, provider receipts, and payment data stay operator-side.
+- Design/plan: `docs/superpowers/plans/2026-06-02-vendor-portal-login.md`.
+
+### Verification (Mac `.venv`)
+- `pytest tests/integration/test_vendor_portal_auth_api.py
+  tests/integration/test_vendor_portal_actions_api.py
+  tests/integration/test_vendor_portal_api.py
+  tests/integration/test_vendor_portal_share_api.py -q` → **23 passed**.
+- Regression `pytest test_maintenance_arrears_api.py test_owner_portal_auth_api.py
+  test_security_api.py -q` → **49 passed**.
+- `pytest tests/integration/test_migrations.py -q` → **4 passed, 1 skipped**
+  (`TEST_DATABASE_URL` not configured — Postgres lane).
+- `ruff check` on touched backend/test/migration files → clean.
+- `git diff --check` clean; `alembic heads` = `20260602_0035` (single head).
+
+### Next slice (frontend — not started)
+- Contractor-facing UI mirroring the owner portal frontend: `/vendor-portal`
+  account entry, `/vendor-portal/invite/[token]` claim gate (preview + Clerk
+  sign-in → auto-claim), and a signed-in dashboard reusing the existing
+  `WorkOrderRow`/`WorkOrdersPanel` plus Accept / Post update / Upload photo
+  actions per job. Add `apps/web/src/lib/api.ts` client fns + types
+  (`createVendorPortalInvite`, claim/status/session/accept/comment/photo;
+  widen `VendorPortalAuthRecord.mode`, add `photo_count`), an operator
+  "Generate login link" control on `/vendor-portal/[contractorId]`, and a
+  `vendor-portal-account` Clerk-stub Playwright smoke. This is the design-facing
+  part — record it in `docs/design-governance.md` when it lands.
+- Deploy note: this backend commit is **local only**. Pushing triggers Vercel +
+  Render; Render runs `alembic upgrade head`, which will create the vendor portal
+  tables on Neon. Hold push until the operator decides (frontend may land first).
+
 ## Codex continuation — 2026-06-02 (latest)
 
 Continuation from the tenant portal account cache hardening and Operations

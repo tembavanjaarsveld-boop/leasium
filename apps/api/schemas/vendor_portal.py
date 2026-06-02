@@ -13,7 +13,7 @@ from stewart.core.models import MaintenancePriority, MaintenanceWorkOrderStatus
 class VendorPortalAuthRead(BaseModel):
     """Auth boundary presented to the vendor portal UI."""
 
-    mode: Literal["operator_preview"]
+    mode: Literal["operator_preview", "vendor_portal_account"]
     token_source: Literal["bearer"]
     vendor_auth_configured: bool
     boundary: str
@@ -54,6 +54,7 @@ class VendorPortalWorkOrderItemRead(BaseModel):
     due_date: date | None = None
     contractor_assigned_at: datetime | None = None
     quote_amount_cents: int | None = None
+    photo_count: int = 0
     comments: list[VendorPortalCommentRead] = Field(default_factory=list)
 
 
@@ -81,3 +82,49 @@ class VendorPortalRead(BaseModel):
     )
     guardrails: list[str] = Field(default_factory=list)
     generated_at: datetime
+
+
+class VendorPortalInviteRead(BaseModel):
+    """Local one-time vendor portal claim link (no email is sent)."""
+
+    contractor_id: UUID
+    vendor_display_name: str
+    claim_email: str
+    portal_token: str
+    claim_url: str
+    expires_at: datetime
+    guardrails: list[str] = Field(default_factory=list)
+
+
+class VendorPortalInvitePreviewRead(BaseModel):
+    """Safe context for the public vendor account claim gate."""
+
+    vendor_display_name: str
+    claim_email: str
+    expires_at: datetime
+    claimable: bool
+
+
+class VendorPortalAccountClaimCreate(BaseModel):
+    """Body for a Clerk-bearer vendor portal account claim."""
+
+    portal_token: str = Field(min_length=1)
+
+
+class VendorPortalAccountLifecycleRead(BaseModel):
+    """Lifecycle/recovery state for a signed-in vendor portal account."""
+
+    status: Literal["active", "revoked", "unlinked"]
+    contractor_id: UUID | None = None
+    vendor_name: str | None = None
+    email: str | None = None
+    linked_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    revoked_at: datetime | None = None
+    recovery_hint: str | None = None
+
+
+class VendorPortalCommentCreate(BaseModel):
+    """A contractor-posted update on a shared work order."""
+
+    body: str = Field(min_length=1, max_length=2000)

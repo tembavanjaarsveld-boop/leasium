@@ -208,6 +208,11 @@ class OwnerPortalAccountStatus(enum.StrEnum):
     revoked = "revoked"
 
 
+class VendorPortalAccountStatus(enum.StrEnum):
+    active = "active"
+    revoked = "revoked"
+
+
 class DocumentCategory(enum.StrEnum):
     lease = "lease"
     insurance = "insurance"
@@ -1636,6 +1641,151 @@ Index(
     "owner_portal_account_owner_idx",
     OwnerPortalAccount.owner_id,
     postgresql_where=OwnerPortalAccount.deleted_at.is_(None),
+)
+
+
+class VendorPortalInvite(Base):
+    __tablename__ = "vendor_portal_invite"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    contractor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("contractor.id"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_email: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    invite_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    contractor: Mapped[Contractor] = relationship()
+
+
+Index(
+    "vendor_portal_invite_token_hash_idx",
+    VendorPortalInvite.token_hash,
+    unique=True,
+    postgresql_where=VendorPortalInvite.deleted_at.is_(None),
+    sqlite_where=VendorPortalInvite.deleted_at.is_(None),
+)
+Index(
+    "vendor_portal_invite_entity_idx",
+    VendorPortalInvite.entity_id,
+    postgresql_where=VendorPortalInvite.deleted_at.is_(None),
+)
+Index(
+    "vendor_portal_invite_contractor_idx",
+    VendorPortalInvite.contractor_id,
+    postgresql_where=VendorPortalInvite.deleted_at.is_(None),
+)
+
+
+class VendorPortalAccount(Base):
+    __tablename__ = "vendor_portal_account"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    contractor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("contractor.id"), nullable=False
+    )
+    vendor_portal_invite_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("vendor_portal_invite.id")
+    )
+    auth_provider: Mapped[str] = mapped_column(Text, nullable=False, default="clerk")
+    auth_provider_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[VendorPortalAccountStatus] = mapped_column(
+        Enum(VendorPortalAccountStatus, name="vendor_portal_account_status"),
+        nullable=False,
+        default=VendorPortalAccountStatus.active,
+    )
+    linked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    account_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    contractor: Mapped[Contractor] = relationship()
+    invite: Mapped[VendorPortalInvite | None] = relationship()
+
+
+Index(
+    "vendor_portal_account_auth_provider_contractor_active_idx",
+    VendorPortalAccount.auth_provider,
+    VendorPortalAccount.auth_provider_id,
+    VendorPortalAccount.contractor_id,
+    unique=True,
+    postgresql_where=(
+        (VendorPortalAccount.status == VendorPortalAccountStatus.active)
+        & VendorPortalAccount.revoked_at.is_(None)
+        & VendorPortalAccount.deleted_at.is_(None)
+    ),
+    sqlite_where=(
+        (VendorPortalAccount.status == VendorPortalAccountStatus.active)
+        & VendorPortalAccount.revoked_at.is_(None)
+        & VendorPortalAccount.deleted_at.is_(None)
+    ),
+)
+Index(
+    "vendor_portal_account_auth_provider_active_idx",
+    VendorPortalAccount.auth_provider,
+    VendorPortalAccount.auth_provider_id,
+    unique=True,
+    postgresql_where=(
+        (VendorPortalAccount.status == VendorPortalAccountStatus.active)
+        & VendorPortalAccount.revoked_at.is_(None)
+        & VendorPortalAccount.deleted_at.is_(None)
+    ),
+    sqlite_where=(
+        (VendorPortalAccount.status == VendorPortalAccountStatus.active)
+        & VendorPortalAccount.revoked_at.is_(None)
+        & VendorPortalAccount.deleted_at.is_(None)
+    ),
+)
+Index(
+    "vendor_portal_account_auth_provider_idx",
+    VendorPortalAccount.auth_provider,
+    VendorPortalAccount.auth_provider_id,
+    postgresql_where=VendorPortalAccount.deleted_at.is_(None),
+)
+Index(
+    "vendor_portal_account_entity_idx",
+    VendorPortalAccount.entity_id,
+    postgresql_where=VendorPortalAccount.deleted_at.is_(None),
+)
+Index(
+    "vendor_portal_account_contractor_idx",
+    VendorPortalAccount.contractor_id,
+    postgresql_where=VendorPortalAccount.deleted_at.is_(None),
 )
 
 

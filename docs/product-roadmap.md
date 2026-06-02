@@ -405,9 +405,17 @@ Equifax/illion; RTBA/state RTAs).
 
 - [ ] Owner distributions + automatic management-fee deduction.
 - [~] Vendor portal (contractors log in, accept jobs, post updates/photos).
-  Read-only operator preview and explicit operator share/hide controls now
-  exist; authenticated contractor login, accept/update/photo posting, and any
-  vendor messaging remain future work.
+  Read-only operator preview and explicit operator share/hide controls exist.
+  Authenticated contractor login now exists at the backend/API layer
+  (commit `2cd21fd`): local no-send invite, public invite preview, Clerk-bearer
+  claim (email match, one-active-account-per-login shared-login guard,
+  consumed/410, revoked/403), bearer account status/session, and bearer-scoped
+  accept / post-update / photo actions scoped to vendor-visible work orders
+  shared to the contractor. Models + migration `20260602_0035`, 13 integration
+  tests. No operating-mode gate (contractors serve self-managed and agent
+  operators). The contractor-facing UI (claim gate + Clerk sign-in + account
+  dashboard with accept/update/photo, plus the operator "generate login link"
+  control) is the next slice; vendor messaging remains future work.
 - [ ] Finish eSign → lease (DocuSign helper exists) + the Communications hub (templates + logs).
 - [ ] Customisable reporting, a Calendar surface, and a Workflows builder.
 
