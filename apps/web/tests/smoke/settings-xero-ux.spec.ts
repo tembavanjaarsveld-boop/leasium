@@ -17,7 +17,7 @@ test("settings Xero exceptions use contextual loading copy", async ({
   });
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Xero" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
 
   const exceptionPanel = page
     .locator("section")
@@ -151,7 +151,7 @@ test("mobile settings Xero exceptions use readable review cards", async ({
   });
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Xero" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
 
   const exceptionPanel = page
     .locator("section")

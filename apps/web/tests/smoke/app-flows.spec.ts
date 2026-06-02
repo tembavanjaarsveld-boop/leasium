@@ -430,7 +430,7 @@ test("settings mobile tabs keep 44px touch targets", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expectTouchTarget(page.getByRole("tab", { name: "Security" }));
   await expectTouchTarget(page.getByRole("tab", { name: "Organisation" }));
-  await expectTouchTarget(page.getByRole("tab", { name: "Xero" }));
+  await expectTouchTarget(page.getByRole("tab", { name: "Connect" }));
 });
 
 test("notifications mobile actions keep intended touch targets", async ({
@@ -4899,7 +4899,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     page.getByRole("link", { name: /Queen Street Retail Centre/ }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: "Xero" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();
   const exceptionQueuePanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Xero sync exception queue" }),
@@ -5441,7 +5441,7 @@ test("settings shows Xero OAuth callback success feedback", async ({
 
   await expect(page.getByText("Xero connected")).toBeVisible();
   await expect(page.getByText(/Run contact preview next/)).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Xero" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Connect" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -5454,7 +5454,7 @@ test("settings shows Xero OAuth callback error feedback without tab param", asyn
 
   await expect(page.getByText("Xero connection needs attention")).toBeVisible();
   await expect(page.getByText(/access denied/)).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Xero" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Connect" })).toHaveAttribute(
     "aria-selected",
     "true",
   );

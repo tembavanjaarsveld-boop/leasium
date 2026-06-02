@@ -22,7 +22,7 @@ test("Basiq apply only fires for approved transactions and is gated", async ({
   await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Xero" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
 
   const basiqPanel = page
     .locator("section")
@@ -78,7 +78,7 @@ test("Basiq connection block is inert and Connect is gated when unconfigured", a
   await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Xero" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
 
   const basiqPanel = page
     .locator("section")

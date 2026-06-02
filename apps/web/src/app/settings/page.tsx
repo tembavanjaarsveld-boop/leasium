@@ -143,7 +143,7 @@ const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
-type SettingsTab = "security" | "organisation" | "xero";
+type SettingsTab = "security" | "organisation" | "connect";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
   noticeKey: string;
@@ -205,7 +205,7 @@ const settingsTabs: Array<{
 }> = [
   { id: "security", label: "Security", icon: <ShieldCheck size={15} /> },
   { id: "organisation", label: "Organisation", icon: <Building2 size={15} /> },
-  { id: "xero", label: "Xero", icon: <PlugZap size={15} /> },
+  { id: "connect", label: "Connect", icon: <PlugZap size={15} /> },
 ];
 
 const roleOptions: Array<{ value: SecurityRole; label: string }> = [
@@ -2346,8 +2346,12 @@ function SettingsWorkspace() {
     const requestedTab = params.get("tab");
     if (requestedTab === "organisation") {
       setActiveTab("organisation");
-    } else if (requestedTab === "xero" || hasXeroCallback) {
-      setActiveTab("xero");
+    } else if (
+      requestedTab === "connect" ||
+      requestedTab === "xero" ||
+      hasXeroCallback
+    ) {
+      setActiveTab("connect");
     }
     const entityId = params.get("entity_id");
     if (entityId) {
@@ -2430,13 +2434,13 @@ function SettingsWorkspace() {
   const xeroStatusQuery = useQuery({
     queryKey: ["xero-status", selectedEntityId],
     queryFn: () => getXeroStatus(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+    enabled: Boolean(selectedEntityId) && activeTab === "connect",
   });
 
   const xeroDiagnosticsQuery = useQuery({
     queryKey: ["xero-connection-diagnostics", selectedEntityId],
     queryFn: () => getXeroConnectionDiagnostics(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+    enabled: Boolean(selectedEntityId) && activeTab === "connect",
     retry: false,
   });
 
@@ -2454,13 +2458,13 @@ function SettingsWorkspace() {
   const xeroExceptionQueueQuery = useQuery({
     queryKey: ["xero-exception-queue", selectedEntityId],
     queryFn: () => getXeroExceptionQueue(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+    enabled: Boolean(selectedEntityId) && activeTab === "connect",
   });
 
   const basiqConnectionStatusQuery = useQuery({
     queryKey: ["basiq-connection-status", selectedEntityId],
     queryFn: () => getBasiqConnectionStatus(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+    enabled: Boolean(selectedEntityId) && activeTab === "connect",
   });
 
   const securityQuery = useQuery({
@@ -3342,7 +3346,7 @@ function SettingsWorkspace() {
               type="button"
               onClick={() => xeroStatusQuery.refetch()}
               disabled={
-                activeTab !== "xero" ||
+                activeTab !== "connect" ||
                 !selectedEntityId ||
                 xeroStatusQuery.isFetching
               }
@@ -3386,14 +3390,14 @@ function SettingsWorkspace() {
               : "Could not load entities."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroStatusQuery.error ? (
+        {activeTab === "connect" && xeroStatusQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroStatusQuery.error instanceof Error
               ? xeroStatusQuery.error.message
               : "Could not load Xero readiness."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroDiagnosticsQuery.error ? (
+        {activeTab === "connect" && xeroDiagnosticsQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             <div>
               {xeroDiagnosticsQuery.error instanceof Error
@@ -3405,70 +3409,70 @@ function SettingsWorkspace() {
             </div>
           </div>
         ) : null}
-        {activeTab === "xero" && xeroExceptionQueueQuery.error ? (
+        {activeTab === "connect" && xeroExceptionQueueQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroExceptionQueueQuery.error instanceof Error
               ? xeroExceptionQueueQuery.error.message
               : "Could not load Xero sync exceptions."}
           </div>
         ) : null}
-        {activeTab === "xero" && connectionMutation.error ? (
+        {activeTab === "connect" && connectionMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {connectionMutation.error instanceof Error
               ? connectionMutation.error.message
               : "Could not update Xero connection status."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroOAuthMutation.error ? (
+        {activeTab === "connect" && xeroOAuthMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroOAuthMutation.error instanceof Error
               ? xeroOAuthMutation.error.message
               : "Could not start the Xero connection."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroContactSyncMutation.error ? (
+        {activeTab === "connect" && xeroContactSyncMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroContactSyncMutation.error instanceof Error
               ? xeroContactSyncMutation.error.message
               : "Could not preview Xero contacts."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroContactApplyMutation.error ? (
+        {activeTab === "connect" && xeroContactApplyMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroContactApplyMutation.error instanceof Error
               ? xeroContactApplyMutation.error.message
               : "Could not apply the selected Xero contact mappings."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroChartTaxMutation.error ? (
+        {activeTab === "connect" && xeroChartTaxMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroChartTaxMutation.error instanceof Error
               ? xeroChartTaxMutation.error.message
               : "Could not preview Xero chart and tax validation."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroInvoicePostingMutation.error ? (
+        {activeTab === "connect" && xeroInvoicePostingMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroInvoicePostingMutation.error instanceof Error
               ? xeroInvoicePostingMutation.error.message
               : "Could not preview Xero invoice posting."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroInvoiceApprovalMutation.error ? (
+        {activeTab === "connect" && xeroInvoiceApprovalMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroInvoiceApprovalMutation.error instanceof Error
               ? xeroInvoiceApprovalMutation.error.message
               : "Could not record Xero posting approval."}
           </div>
         ) : null}
-        {activeTab === "xero" && xeroDraftCreateMutation.error ? (
+        {activeTab === "connect" && xeroDraftCreateMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {xeroDraftCreateMutation.error instanceof Error
               ? xeroDraftCreateMutation.error.message
               : "Could not create Xero draft invoices."}
           </div>
         ) : null}
-        {activeTab === "xero" && mappingMutation.error ? (
+        {activeTab === "connect" && mappingMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {mappingMutation.error instanceof Error
               ? mappingMutation.error.message
@@ -5218,7 +5222,7 @@ function SettingsWorkspace() {
           </>
         ) : null}
 
-        {activeTab === "xero" && !selectedEntityId ? (
+        {activeTab === "connect" && !selectedEntityId ? (
           <SectionPanel>
             <EmptyState
               icon={<Building2 size={18} />}
@@ -5228,7 +5232,7 @@ function SettingsWorkspace() {
           </SectionPanel>
         ) : null}
 
-        {activeTab === "xero" &&
+        {activeTab === "connect" &&
         selectedEntityId &&
         status &&
         !xeroDiagnosticsReady ? (
@@ -5238,7 +5242,7 @@ function SettingsWorkspace() {
           </div>
         ) : null}
 
-        {activeTab === "xero" && selectedEntityId && status ? (
+        {activeTab === "connect" && selectedEntityId && status ? (
           <>
             {xeroCallbackFeedback ? (
               <div
