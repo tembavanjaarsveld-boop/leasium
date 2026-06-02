@@ -420,7 +420,20 @@ Equifax/illion; RTBA/state RTAs).
   Verified by frontend eslint + tsc + production build (account-flow Playwright
   smoke written for the operator invite-link path). Vendor messaging remains
   future work.
-- [ ] Finish eSign → lease (DocuSign helper exists) + the Communications hub (templates + logs).
+- [x] eSign → lease (DocuSign): fully built and tested — provider helper
+  (`stewart/integrations/docusign.py`: JWT grant, envelope create, signed-PDF
+  download, soft-skip when unconfigured), the lease-signing state machine
+  (`apps/api/tenant_lease_agreement.py`: questions → ready_to_sign → signed),
+  operator `POST /{onboarding_id}/send-lease-pack` + tenant-detail send/resend UI
+  with DocuSign receipt states, the `/webhooks/docusign` Connect endpoint (secret
+  verify, envelope/custom-field matching, signed-PDF retention, lease activation),
+  the tenant-portal signing surface, and a Settings → Providers DocuSign
+  config-readiness panel (configured/live-ready, webhook URL, copyable setup
+  packet of the exact env vars). ~36 backend tests + smokes. **Going live is
+  provider config only** (set `DOCUSIGN_*` env on Render + a DocuSign Connect
+  webhook → `/api/v1/tenant-onboarding/webhooks/docusign`); until then it
+  soft-skips and tenants sign in-portal.
+- [ ] Communications hub (templates + logs).
 - [ ] Customisable reporting, a Calendar surface, and a Workflows builder.
 
 **P3 — product-for-the-AU-market bets (low value while SKJ-internal/commercial):**
