@@ -159,3 +159,41 @@ def test_payment_instructions_reject_entities_without_access(
         )
         is None
     )
+
+
+def test_rail_status_reports_manual_only_with_available_methods(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    client.put(
+        f"/api/v1/payments/instructions?entity_id={entity.id}",
+        json={
+            "bsb": "062-000",
+            "account_number": "12345678",
+            "payid": "rent@skj.example",
+        },
+    )
+
+    resp = client.get(f"/api/v1/payments/rail-status?entity_id={entity.id}")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["online_payment_enabled"] is False
+    assert body["provider"] is None
+    assert set(body["available_methods"]) == {"eft", "payid"}
+    assert "not enabled" in body["message"]
+    assert body["guardrails"]
+
+
+def test_rail_status_requires_entity_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    other = Entity(organisation_id=entity.organisation_id, name="No Rail Access Pty Ltd")
+    session.add(other)
+    session.commit()
+
+    resp = client.get(f"/api/v1/payments/rail-status?entity_id={other.id}")
+    assert resp.status_code == 403

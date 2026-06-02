@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     basiq_api_key: str = ""
     basiq_api_base_url: str = "https://au-api.basiq.io"
     basiq_http_timeout_seconds: float = 15.0
+    # Tenant payment rails. Empty by default: the PaymentRail boundary in
+    # stewart.integrations.payment_rails soft-skips (no online payment, no money
+    # movement) until an AU provider (monoova / zai / stripe_au) is wired and this
+    # is set. Display-only payment instructions still work without it.
+    payment_rail_provider: str = ""
     # Observability: a complete no-op unless set in the deployment env.
     sentry_dsn: str = ""
     sentry_environment: str = ""

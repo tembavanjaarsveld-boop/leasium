@@ -55,3 +55,18 @@ class PaymentInstructionRead(BaseModel):
     methods: list[str] = Field(default_factory=list)
     updated_at: datetime | None = None
     guardrails: list[str] = Field(default_factory=list)
+
+
+class PaymentRailStatusRead(BaseModel):
+    """Online-payment readiness for an entity (review-first scaffold).
+
+    ``online_payment_enabled`` is false until an AU rail provider is wired; the
+    available manual methods come from the entity's payment instructions.
+    """
+
+    entity_id: UUID
+    online_payment_enabled: bool = False
+    provider: str | None = None
+    available_methods: list[str] = Field(default_factory=list)
+    message: str = ""
+    guardrails: list[str] = Field(default_factory=list)

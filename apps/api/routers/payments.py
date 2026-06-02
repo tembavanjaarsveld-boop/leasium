@@ -16,9 +16,15 @@ from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import EntityPaymentInstruction, UserRole
+from stewart.core.settings import Settings, get_settings
+from stewart.integrations.payment_rails import configured_rail
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
-from apps.api.schemas.payments import PaymentInstructionRead, PaymentInstructionUpdate
+from apps.api.schemas.payments import (
+    PaymentInstructionRead,
+    PaymentInstructionUpdate,
+    PaymentRailStatusRead,
+)
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -89,6 +95,41 @@ def get_payment_instructions(
 ) -> PaymentInstructionRead:
     assert_entity_role(session, user, entity_id, READ_ROLES)
     return _read(entity_id, _active_row(entity_id, session))
+
+
+PAYMENT_RAIL_GUARDRAIL = (
+    "Review-first scaffold: no online payment rail is wired, so this never moves "
+    "money or calls a provider. Tenants pay via the displayed instructions."
+)
+
+
+@router.get("/rail-status", response_model=PaymentRailStatusRead)
+def get_payment_rail_status(
+    entity_id: Annotated[UUID, Query()],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PaymentRailStatusRead:
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    provider = configured_rail(settings)
+    methods = _methods(_active_row(entity_id, session))
+    message = (
+        f"Online payment via {provider} is configured; creating a charge stays "
+        "an explicit, reviewed step."
+        if provider is not None
+        else (
+            "Online payment is not enabled yet. Tenants pay using the displayed "
+            "instructions and the per-invoice payment reference."
+        )
+    )
+    return PaymentRailStatusRead(
+        entity_id=entity_id,
+        online_payment_enabled=provider is not None,
+        provider=provider,
+        available_methods=methods,
+        message=message,
+        guardrails=[PAYMENT_RAIL_GUARDRAIL],
+    )
 
 
 @router.put("/instructions", response_model=PaymentInstructionRead)
