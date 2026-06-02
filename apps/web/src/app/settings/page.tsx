@@ -82,6 +82,7 @@ import {
   type IntegrationStatusRecord,
   type OperatingMode,
   type ProviderStatusRecord,
+  getPaymentInstructions,
   getXeroStatus,
   listBrandedCommunicationTemplates,
   listEntities,
@@ -94,6 +95,7 @@ import {
   resendSecurityMemberInvite,
   setOperatingMode,
   startXeroOAuth,
+  updatePaymentInstructions,
   updateSecurityMember,
   updateChargeRule,
   unlinkSecurityMemberLogin,
@@ -126,6 +128,8 @@ import {
   type WorkAssignmentNotificationTemplateCatalogRecord,
   type WorkAssignmentNotificationTemplateKind,
   type WorkAssignmentNotificationTemplateRecord,
+  type PaymentInstructionPayload,
+  type PaymentInstructionRecord,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
@@ -2092,6 +2096,159 @@ function MetricCard({
       </div>
       <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
     </div>
+  );
+}
+
+type PaymentFormState = {
+  account_name: string;
+  bsb: string;
+  account_number: string;
+  payid: string;
+  payid_name: string;
+  bpay_biller_code: string;
+  instructions: string;
+};
+
+function paymentFormFromRecord(
+  record: PaymentInstructionRecord | undefined,
+): PaymentFormState {
+  return {
+    account_name: record?.account_name ?? "",
+    bsb: record?.bsb ?? "",
+    account_number: record?.account_number ?? "",
+    payid: record?.payid ?? "",
+    payid_name: record?.payid_name ?? "",
+    bpay_biller_code: record?.bpay_biller_code ?? "",
+    instructions: record?.instructions ?? "",
+  };
+}
+
+function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<PaymentFormState>(
+    paymentFormFromRecord(undefined),
+  );
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const instructionsQuery = useQuery({
+    queryKey: ["payment-instructions", entityId],
+    queryFn: () => getPaymentInstructions(entityId),
+    enabled: Boolean(entityId),
+  });
+
+  useEffect(() => {
+    if (instructionsQuery.data) {
+      setForm(paymentFormFromRecord(instructionsQuery.data));
+    }
+  }, [instructionsQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload: PaymentInstructionPayload = { ...form };
+      return updatePaymentInstructions(entityId, payload);
+    },
+    onSuccess: (result) => {
+      setForm(paymentFormFromRecord(result));
+      setNotice("Payment instructions saved.");
+      void queryClient.invalidateQueries({
+        queryKey: ["payment-instructions", entityId],
+      });
+    },
+  });
+
+  const data = instructionsQuery.data;
+  const update = (key: keyof PaymentFormState, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setNotice(null);
+  };
+
+  return (
+    <SectionPanel
+      title="Tenant payment instructions"
+      description="Shown to tenants in their portal as 'How to pay'. Display-only - Leasium does not process payments or move money."
+      icon={<CircleDollarSign size={17} className="text-primary" />}
+      actions={
+        data ? (
+          <StatusBadge tone={data.configured ? "success" : "neutral"}>
+            {data.configured ? data.methods.join(" · ").toUpperCase() : "Not set"}
+          </StatusBadge>
+        ) : null
+      }
+    >
+      <div className="grid gap-4 p-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Account name">
+            <Input
+              value={form.account_name}
+              onChange={(event) => update("account_name", event.target.value)}
+              placeholder="SKJ Property Pty Ltd"
+            />
+          </Field>
+          <Field label="BSB">
+            <Input
+              value={form.bsb}
+              onChange={(event) => update("bsb", event.target.value)}
+              placeholder="062-000"
+            />
+          </Field>
+          <Field label="Account number">
+            <Input
+              value={form.account_number}
+              onChange={(event) => update("account_number", event.target.value)}
+              placeholder="12345678"
+            />
+          </Field>
+          <Field label="PayID">
+            <Input
+              value={form.payid}
+              onChange={(event) => update("payid", event.target.value)}
+              placeholder="rent@yourbusiness.com.au"
+            />
+          </Field>
+          <Field label="PayID name">
+            <Input
+              value={form.payid_name}
+              onChange={(event) => update("payid_name", event.target.value)}
+              placeholder="Name registered to the PayID"
+            />
+          </Field>
+          <Field label="BPAY biller code (optional)">
+            <Input
+              value={form.bpay_biller_code}
+              onChange={(event) => update("bpay_biller_code", event.target.value)}
+              placeholder="123456"
+            />
+          </Field>
+        </div>
+        <Field label="Notes for tenants (optional)">
+          <textarea
+            className="min-h-[72px] w-full rounded-md border border-border bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-primary"
+            value={form.instructions}
+            onChange={(event) => update("instructions", event.target.value)}
+            placeholder="e.g. Quote your invoice number as the payment reference."
+            rows={3}
+          />
+        </Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            disabled={saveMutation.isPending || instructionsQuery.isLoading}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? "Saving..." : "Save payment instructions"}
+          </Button>
+          {notice ? <span className="text-sm text-success">{notice}</span> : null}
+          {saveMutation.error ? (
+            <span className="text-sm text-danger">
+              Could not save. Check the fields and try again.
+            </span>
+          ) : null}
+        </div>
+        {data?.guardrails.length ? (
+          <p className="text-xs text-muted-foreground">{data.guardrails[0]}</p>
+        ) : null}
+      </div>
+    </SectionPanel>
   );
 }
 
@@ -4561,6 +4718,10 @@ function SettingsWorkspace() {
                 </div>
               </div>
             </SectionPanel>
+
+            {selectedEntityId ? (
+              <PaymentInstructionsPanel entityId={selectedEntityId} />
+            ) : null}
 
             <SectionPanel
               title="Operating mode"
