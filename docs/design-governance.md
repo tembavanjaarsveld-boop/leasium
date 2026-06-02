@@ -27,6 +27,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 - Leasium should feel like modern tooling for operators: calm, fast, clear, and confident.
 - **Navigation legibility is the standard (DoorLoop-informed, 2026-05-31):** organise around two spines — Properties → Units and a single People hub — with fewer destinations and consistent record pages. See the dated section below.
 - **Account operating mode gates the Owners hub (2026-05-31):** the People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are *managing-agent* framing. A self-managed owner-operator has no third-party owner and must not see the Owners hub — gate it on an account `operating_mode` (default `self_managed_owner`), set at onboarding; keep entity-grouped statements via Entities for owner-operators. **Shipped 2026-05-31 (prototype mode, no Remba gate):** People tab-set + default by mode, an owner/admin Settings operating-mode toggle, a "Your entities & trusts" Settings panel for self-managed owners, owner-statement palette/shortcut gating, Money/Statements dispatch gating with provider-call guard tests, and owner-portal preview/invite/account/document-download gating for self-managed accounts. Deeper disbursement/trust-accounting gates remain follow-ups once those route surfaces exist. Decision + sketch: [account-operating-mode-ia.md](account-operating-mode-ia.md).
+- **Vendor portal contractor login UI (2026-06-02, prototype mode, no Remba gate):**
+  `/vendor-portal` account entry, `/vendor-portal/invite/[token]` Clerk claim gate,
+  and a signed-in contractor dashboard (accept / post-update / upload-photo per
+  shared job), plus an operator "generate login link" control on
+  `/vendor-portal/[contractorId]`. Reuses the read-only vendor preview patterns;
+  contractor reads/writes stay scoped to vendor-visible work orders shared to them.
+  Verified by eslint + tsc + production build. Plan:
+  [`superpowers/plans/2026-06-02-vendor-portal-login.md`](superpowers/plans/2026-06-02-vendor-portal-login.md).
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

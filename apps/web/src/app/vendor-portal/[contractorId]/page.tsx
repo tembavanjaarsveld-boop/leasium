@@ -1,12 +1,14 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Copy,
+  Link2,
   Mail,
   MapPin,
   Phone,
@@ -14,6 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 import { LeasiumMark } from "@/components/brand";
 import { QueryProvider } from "@/components/query-provider";
@@ -26,6 +29,7 @@ import {
 } from "@/components/ui";
 import {
   ApiError,
+  createVendorPortalInvite,
   getVendorPortal,
   type VendorPortalRecord,
   type VendorPortalWorkOrderItemRecord,
@@ -212,6 +216,66 @@ function WorkOrdersPanel({ portal }: { portal: VendorPortalRecord }) {
   );
 }
 
+function VendorLoginLinkPanel({ contractorId }: { contractorId: string }) {
+  const [copied, setCopied] = useState(false);
+  const inviteMutation = useMutation({
+    mutationFn: () => createVendorPortalInvite(contractorId),
+    onSuccess: () => setCopied(false),
+  });
+  const invite = inviteMutation.data;
+  const claimUrl = invite
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}${invite.claim_url}`
+    : "";
+
+  async function copyLink() {
+    if (!claimUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(claimUrl);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <SectionPanel title="Vendor login" icon={<Link2 size={17} />}>
+      <div className="grid gap-3 p-4 text-sm">
+        <p className="text-muted-foreground">
+          Generate a one-time link the contractor uses to sign in and self-serve
+          on jobs you have shared. No email is sent — copy and send it yourself.
+        </p>
+        <SecondaryButton
+          type="button"
+          disabled={inviteMutation.isPending}
+          onClick={() => inviteMutation.mutate()}
+        >
+          <Link2 size={16} />
+          {invite ? "Generate new link" : "Generate login link"}
+        </SecondaryButton>
+        {inviteMutation.error ? (
+          <p className="text-danger">{friendlyError(inviteMutation.error)}</p>
+        ) : null}
+        {invite ? (
+          <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3">
+            <p className="break-all font-mono text-xs leading-5">{claimUrl}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <SecondaryButton type="button" onClick={() => void copyLink()}>
+                <Copy size={14} />
+                {copied ? "Copied" : "Copy link"}
+              </SecondaryButton>
+              <span className="text-xs text-muted-foreground">
+                Expires {formatDate(invite.expires_at)} · for {invite.claim_email}
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </SectionPanel>
+  );
+}
+
 function VendorPortalView({ portal }: { portal: VendorPortalRecord }) {
   const vendor = portal.vendor;
   const categories = vendor.categories.length > 0 ? vendor.categories : ["other"];
@@ -310,6 +374,8 @@ function VendorPortalView({ portal }: { portal: VendorPortalRecord }) {
               </div>
             </dl>
           </SectionPanel>
+
+          <VendorLoginLinkPanel contractorId={vendor.id} />
 
           <SectionPanel title="Preview" icon={<Clock3 size={17} />}>
             <div className="grid gap-3 p-4 text-sm text-muted-foreground">

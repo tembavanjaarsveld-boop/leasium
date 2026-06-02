@@ -5728,7 +5728,7 @@ export function getOwnerPortal(ownerId: string, month?: string) {
 // ---- Vendor portal preview -----------------------------------------------
 
 export type VendorPortalAuthRecord = {
-  mode: "operator_preview";
+  mode: "operator_preview" | "vendor_portal_account";
   token_source: "bearer";
   vendor_auth_configured: boolean;
   boundary: string;
@@ -5763,6 +5763,7 @@ export type VendorPortalWorkOrderItemRecord = {
   due_date: string | null;
   contractor_assigned_at: string | null;
   quote_amount_cents: number | null;
+  photo_count: number;
   comments: VendorPortalCommentRecord[];
 };
 
@@ -5785,6 +5786,143 @@ export function getVendorPortal(contractorId: string) {
   return request<VendorPortalRecord>(
     `/vendor-portal/${encodeURIComponent(contractorId)}`,
   );
+}
+
+export type VendorPortalInviteRecord = {
+  contractor_id: string;
+  vendor_display_name: string;
+  claim_email: string;
+  portal_token: string;
+  claim_url: string;
+  expires_at: string;
+  guardrails: string[];
+};
+
+export type VendorPortalInvitePreviewRecord = {
+  vendor_display_name: string;
+  claim_email: string;
+  expires_at: string;
+  claimable: boolean;
+};
+
+export type VendorPortalAccountLifecycleRecord = {
+  status: "active" | "revoked" | "unlinked";
+  contractor_id: string | null;
+  vendor_name: string | null;
+  email: string | null;
+  linked_at: string | null;
+  last_seen_at: string | null;
+  revoked_at: string | null;
+  recovery_hint: string | null;
+};
+
+function vendorPortalBearerHeaders(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
+
+export function createVendorPortalInvite(contractorId: string) {
+  return request<VendorPortalInviteRecord>(
+    `/vendor-portal/${encodeURIComponent(contractorId)}/invite`,
+    { method: "POST" },
+  );
+}
+
+export function getVendorPortalInvitePreview(token: string) {
+  return publicRequest<VendorPortalInvitePreviewRecord>(
+    `/vendor-portal/invites/${encodeURIComponent(token)}/preview`,
+  );
+}
+
+export function claimVendorPortalAccount(
+  portalToken: string,
+  authToken?: string | null,
+) {
+  const init: RequestInit = {
+    method: "POST",
+    body: JSON.stringify({ portal_token: portalToken }),
+  };
+  if (authToken) {
+    return publicRequest<VendorPortalRecord>("/vendor-portal/account/claim", {
+      ...init,
+      headers: vendorPortalBearerHeaders(authToken),
+    });
+  }
+  return request<VendorPortalRecord>("/vendor-portal/account/claim", init);
+}
+
+export function getVendorPortalAccountStatus(authToken?: string | null) {
+  if (authToken) {
+    return publicRequest<VendorPortalAccountLifecycleRecord>(
+      "/vendor-portal/account/status",
+      { headers: vendorPortalBearerHeaders(authToken) },
+    );
+  }
+  return request<VendorPortalAccountLifecycleRecord>(
+    "/vendor-portal/account/status",
+  );
+}
+
+export function getVendorPortalAccountSession(authToken?: string | null) {
+  if (authToken) {
+    return publicRequest<VendorPortalRecord>("/vendor-portal/account/session", {
+      headers: vendorPortalBearerHeaders(authToken),
+    });
+  }
+  return request<VendorPortalRecord>("/vendor-portal/account/session");
+}
+
+export function acceptVendorPortalWorkOrder(
+  workOrderId: string,
+  authToken?: string | null,
+) {
+  const path = `/vendor-portal/account/work-orders/${encodeURIComponent(
+    workOrderId,
+  )}/accept`;
+  if (authToken) {
+    return publicRequest<VendorPortalRecord>(path, {
+      method: "POST",
+      headers: vendorPortalBearerHeaders(authToken),
+    });
+  }
+  return request<VendorPortalRecord>(path, { method: "POST" });
+}
+
+export function commentVendorPortalWorkOrder(
+  workOrderId: string,
+  body: string,
+  authToken?: string | null,
+) {
+  const path = `/vendor-portal/account/work-orders/${encodeURIComponent(
+    workOrderId,
+  )}/comment`;
+  const init: RequestInit = { method: "POST", body: JSON.stringify({ body }) };
+  if (authToken) {
+    return publicRequest<VendorPortalRecord>(path, {
+      ...init,
+      headers: vendorPortalBearerHeaders(authToken),
+    });
+  }
+  return request<VendorPortalRecord>(path, init);
+}
+
+export function uploadVendorPortalWorkOrderPhoto(
+  workOrderId: string,
+  file: File,
+  authToken?: string | null,
+) {
+  const path = `/vendor-portal/account/work-orders/${encodeURIComponent(
+    workOrderId,
+  )}/photo`;
+  const formData = new FormData();
+  formData.append("file", file);
+  if (authToken) {
+    return publicRequestForm<VendorPortalRecord>(
+      path,
+      formData,
+      vendorPortalBearerHeaders(authToken),
+    );
+  }
+  return requestForm<VendorPortalRecord>(path, formData);
 }
 
 export type OwnerPortalInviteRecord = {

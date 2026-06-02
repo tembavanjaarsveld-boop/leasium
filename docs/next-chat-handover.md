@@ -52,20 +52,39 @@ DoorLoop P2 **vendor portal authenticated login** off the backlog.
 - `ruff check` on touched backend/test/migration files → clean.
 - `git diff --check` clean; `alembic heads` = `20260602_0035` (single head).
 
-### Next slice (frontend — not started)
-- Contractor-facing UI mirroring the owner portal frontend: `/vendor-portal`
-  account entry, `/vendor-portal/invite/[token]` claim gate (preview + Clerk
-  sign-in → auto-claim), and a signed-in dashboard reusing the existing
-  `WorkOrderRow`/`WorkOrdersPanel` plus Accept / Post update / Upload photo
-  actions per job. Add `apps/web/src/lib/api.ts` client fns + types
-  (`createVendorPortalInvite`, claim/status/session/accept/comment/photo;
-  widen `VendorPortalAuthRecord.mode`, add `photo_count`), an operator
-  "Generate login link" control on `/vendor-portal/[contractorId]`, and a
-  `vendor-portal-account` Clerk-stub Playwright smoke. This is the design-facing
-  part — record it in `docs/design-governance.md` when it lands.
-- Deploy note: this backend commit is **local only**. Pushing triggers Vercel +
-  Render; Render runs `alembic upgrade head`, which will create the vendor portal
-  tables on Neon. Hold push until the operator decides (frontend may land first).
+### Vendor portal contractor login — frontend (second commit)
+- `apps/web/src/lib/api.ts`: widened `VendorPortalAuthRecord.mode`, added
+  `photo_count`, and added `VendorPortalInviteRecord` / `...InvitePreviewRecord`
+  / `...AccountLifecycleRecord` + client fns `createVendorPortalInvite`,
+  `getVendorPortalInvitePreview`, `claim/status/session`, and
+  `accept/comment/uploadPhoto` (mirroring the owner portal `getToken` bearer
+  pattern; `publicRequestForm` for the photo multipart).
+- `apps/web/src/app/vendor-portal/vendor-portal-account-ui.tsx`: lean shared UI
+  (`VendorPortalShell`/`Loading`/`Notice` + `VendorPortalAccountView`) with per-job
+  Accept / Post-update / Upload-photo actions; action results replace local
+  portal state. Self-contained so the read-only preview page is untouched.
+- `apps/web/src/app/vendor-portal/invite/[token]/page.tsx`: claim gate (preview +
+  Clerk sign-in → auto-claim), mirroring the owner invite page; gates on
+  `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` with a no-Clerk fallback.
+- `apps/web/src/app/vendor-portal/page.tsx`: bearer account entry (status →
+  session → dashboard).
+- `apps/web/src/app/vendor-portal/[contractorId]/page.tsx`: operator "Generate
+  login link" control (no-send invite + copyable claim URL).
+- Providers: root `app/layout.tsx` supplies QueryProvider globally and Clerk via
+  `OperatorAuthProvider`, so these pages need no self-wrapping (same as owner).
+- Verification: frontend `eslint src/app/vendor-portal src/lib/api.ts` clean;
+  `tsc --noEmit` clean; production `next build` passed with all three vendor
+  routes compiled (`/vendor-portal`, `/vendor-portal/[contractorId]`,
+  `/vendor-portal/invite/[token]`).
+- Smoke: `tests/smoke/vendor-portal.spec.ts` gains an operator generate-login-link
+  test. NOT YET RUN GREEN in-session — the Playwright `webServer` (`next start`)
+  crash-loops with `EvalError: Code generation from strings disallowed` in the
+  Edge middleware runtime under the sandbox launch. eslint/tsc/build cover the
+  code; run `./node_modules/.bin/playwright test tests/smoke/vendor-portal.spec.ts`
+  in the normal local setup to confirm, and add a Clerk-stub account-dashboard
+  smoke (accept/comment/photo) as follow-up.
+- Backend commit `96722b3` is pushed to `main` (Vercel + Render redeploy; Render
+  runs `alembic upgrade head`, creating the vendor portal tables on Neon).
 
 ## Codex continuation — 2026-06-02 (latest)
 

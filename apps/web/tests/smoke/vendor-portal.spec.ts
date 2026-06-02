@@ -307,3 +307,58 @@ test("vendor portal preview keeps service failures out of not-found state", asyn
   await expect(page.getByText("Vendor portal preview not found")).toHaveCount(0);
   await expect(page.getByText("Bright Spark Electrical")).toHaveCount(0);
 });
+
+test("vendor portal preview generates a contractor login link", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+
+  await page.route("**/api/v1/vendor-portal/contractor-1", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(VENDOR_PORTAL_RESPONSE),
+    });
+  });
+  let inviteCalls = 0;
+  await page.route(
+    "**/api/v1/vendor-portal/contractor-1/invite",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      inviteCalls += 1;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          contractor_id: "contractor-1",
+          vendor_display_name: "Bright Spark Electrical Pty Ltd",
+          claim_email: "service@brightspark.example",
+          portal_token: "tok-vendor-123",
+          claim_url: "/vendor-portal/invite/tok-vendor-123",
+          expires_at: "2026-07-01T00:00:00.000Z",
+          guardrails: [
+            "Vendor portal invite created locally only: no contractor email or SMS is sent, no work is dispatched, and no provider history is mutated.",
+          ],
+        }),
+      });
+    },
+  );
+
+  await page.goto("/vendor-portal/contractor-1");
+  const generate = page.getByRole("button", { name: "Generate login link" });
+  await expect(generate).toBeVisible({ timeout: 15_000 });
+  await generate.click();
+
+  await expect(
+    page.getByText("/vendor-portal/invite/tok-vendor-123"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+  expect(inviteCalls).toBe(1);
+});

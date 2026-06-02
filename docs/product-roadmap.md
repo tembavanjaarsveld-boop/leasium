@@ -413,9 +413,13 @@ Equifax/illion; RTBA/state RTAs).
   accept / post-update / photo actions scoped to vendor-visible work orders
   shared to the contractor. Models + migration `20260602_0035`, 13 integration
   tests. No operating-mode gate (contractors serve self-managed and agent
-  operators). The contractor-facing UI (claim gate + Clerk sign-in + account
-  dashboard with accept/update/photo, plus the operator "generate login link"
-  control) is the next slice; vendor messaging remains future work.
+  operators). The contractor-facing UI now ships too: `/vendor-portal` account
+  entry, `/vendor-portal/invite/[token]` Clerk claim gate (sign-in → auto-claim),
+  a signed-in dashboard with accept / post-update / upload-photo per shared job,
+  and an operator "generate login link" control on `/vendor-portal/[contractorId]`.
+  Verified by frontend eslint + tsc + production build (account-flow Playwright
+  smoke written for the operator invite-link path). Vendor messaging remains
+  future work.
 - [ ] Finish eSign → lease (DocuSign helper exists) + the Communications hub (templates + logs).
 - [ ] Customisable reporting, a Calendar surface, and a Workflows builder.
 
