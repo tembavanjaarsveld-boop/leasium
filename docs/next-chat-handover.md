@@ -89,6 +89,14 @@ DoorLoop P2 **vendor portal authenticated login** off the backlog.
   clear any stale prod `.next` first. A Clerk-stub runtime smoke for the signed-in
   claim/session path (mirroring the owner `installOwnerClerkSmoke` lane) remains
   an optional follow-up.
+- Access fix (post-deploy): `/vendor-portal` + `/vendor-portal/invite/[token]`
+  were missing from `publicOperatorPathPrefixes`, so the contractor-facing pages
+  hit the operator-auth shell ("Confirming operator access") in prod. Added
+  `/vendor-portal` (+ trailing slash) to the allowlist mirroring `/owner-portal`;
+  the operator preview `/vendor-portal/[contractorId]` stays operator-only via the
+  backend entity-role check. Prod check: api.leasium.ai live on `56325a5`, and
+  `GET /api/v1/vendor-portal/invites/<token>/preview` returns 404 (vendor tables
+  migrated on Neon).
 - Backend commit `96722b3` is pushed to `main` (Vercel + Render redeploy; Render
   runs `alembic upgrade head`, creating the vendor portal tables on Neon).
 

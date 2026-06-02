@@ -11,6 +11,8 @@ export const publicOperatorPathPrefixes = [
   "/tenant-portal/",
   "/owner-portal",
   "/owner-portal/",
+  "/vendor-portal",
+  "/vendor-portal/",
   "/snapshots/",
   "/welcome",
   "/apple-touch-icon.png",
