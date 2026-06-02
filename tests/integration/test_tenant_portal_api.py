@@ -385,6 +385,48 @@ def test_tenant_portal_session_is_scoped_to_token_tenant(
     assert body["payment_summary"]["paid_cents"] == 330000
     assert body["payment_summary"]["outstanding_cents"] == 550000
     assert body["maintenance_requests"] == []
+    assert body["how_to_pay"] is None
+    assert body["invoices"][0]["payment_reference"] == "INV-PORTAL-1"
+
+
+def test_tenant_portal_session_includes_payment_instructions(
+    client: TestClient,
+    session: Session,
+) -> None:
+    from stewart.core.models import EntityPaymentInstruction
+
+    scope = _seed_portal_scope(session)
+    entity = _entity(session)
+    session.add(
+        EntityPaymentInstruction(
+            entity_id=entity.id,
+            account_name="SKJ Property Pty Ltd",
+            bsb="062-000",
+            account_number="12345678",
+            payid="rent@skj.example",
+            payid_name="SKJ Property",
+            bpay_biller_code="123456",
+            instructions="Quote your invoice number as the reference.",
+        )
+    )
+    session.commit()
+
+    response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    how_to_pay = body["how_to_pay"]
+    assert how_to_pay is not None
+    assert how_to_pay["configured"] is True
+    assert set(how_to_pay["methods"]) == {"eft", "payid", "bpay"}
+    assert how_to_pay["account_number"] == "12345678"
+    assert how_to_pay["payid"] == "rent@skj.example"
+    assert how_to_pay["bpay_biller_code"] == "123456"
+    assert body["invoices"][0]["payment_reference"] == "INV-PORTAL-1"
+    assert any("display-only" in guardrail for guardrail in body["guardrails"])
 
 
 def test_tenant_portal_session_caps_invoice_overpayment_metadata(

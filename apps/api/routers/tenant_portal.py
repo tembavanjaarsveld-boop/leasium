@@ -38,6 +38,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
+    EntityPaymentInstruction,
     InvoiceDraft,
     InvoiceDraftStatus,
     Lease,
@@ -67,6 +68,7 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalContactChangeRequestCreate,
     TenantPortalContactChangeRequestRead,
     TenantPortalDocumentRead,
+    TenantPortalHowToPayRead,
     TenantPortalInvitePreviewRead,
     TenantPortalInvoiceLineRead,
     TenantPortalInvoiceRead,
@@ -1101,6 +1103,7 @@ def _invoice_read(invoice: InvoiceDraft) -> TenantPortalInvoiceRead:
         paid_cents=paid_cents,
         outstanding_cents=outstanding_cents,
         payment_status=payment_status,
+        payment_reference=invoice.invoice_number,
         pdf_document_id=_invoice_pdf_document_id(invoice),
         lines=[
             TenantPortalInvoiceLineRead(
@@ -1149,6 +1152,39 @@ def _payment_summary(invoices: list[InvoiceDraft]) -> TenantPortalPaymentSummary
         overdue_count=overdue_count,
         next_due_date=next_due_date,
         status=summary_status,
+    )
+
+
+def _how_to_pay(
+    scope: PortalScope, session: Session
+) -> TenantPortalHowToPayRead | None:
+    row = session.scalar(
+        select(EntityPaymentInstruction).where(
+            EntityPaymentInstruction.entity_id == scope.onboarding.entity_id,
+            EntityPaymentInstruction.deleted_at.is_(None),
+        )
+    )
+    if row is None:
+        return None
+    methods: list[str] = []
+    if row.bsb and row.account_number:
+        methods.append("eft")
+    if row.payid:
+        methods.append("payid")
+    if row.bpay_biller_code:
+        methods.append("bpay")
+    if not methods and not row.instructions:
+        return None
+    return TenantPortalHowToPayRead(
+        configured=bool(methods),
+        methods=methods,
+        account_name=row.account_name,
+        bsb=row.bsb,
+        account_number=row.account_number,
+        payid=row.payid,
+        payid_name=row.payid_name,
+        bpay_biller_code=row.bpay_biller_code,
+        instructions=row.instructions,
     )
 
 
@@ -1559,6 +1595,10 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             "Maintenance requests only include tenant portal submissions for this token.",
             "Notification preference updates do not send email or SMS.",
         ]
+    guardrails.append(
+        "Payment instructions are display-only; Leasium does not process payments "
+        "or move money."
+    )
     return TenantPortalRead(
         auth=scope.auth.read(),
         tenant=TenantPortalTenantRead(
@@ -1595,6 +1635,7 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
         compliance=_compliance(scope, documents),
         invoices=[_invoice_read(invoice) for invoice in invoices],
         payment_summary=_payment_summary(invoices),
+        how_to_pay=_how_to_pay(scope, session),
         maintenance_requests=[
             _maintenance_request_read(work_order) for work_order in maintenance_requests
         ],

@@ -210,6 +210,7 @@ class TenantPortalInvoiceRead(BaseModel):
     paid_cents: int
     outstanding_cents: int
     payment_status: str
+    payment_reference: str | None = None
     pdf_document_id: UUID | None
     lines: list[TenantPortalInvoiceLineRead] = Field(default_factory=list)
 
@@ -335,6 +336,20 @@ class TenantPortalMaintenanceRequestRead(BaseModel):
     created_at: datetime
 
 
+class TenantPortalHowToPayRead(BaseModel):
+    """Operator-entered, display-only payment instructions for the tenant."""
+
+    configured: bool
+    methods: list[str] = Field(default_factory=list)
+    account_name: str | None = None
+    bsb: str | None = None
+    account_number: str | None = None
+    payid: str | None = None
+    payid_name: str | None = None
+    bpay_biller_code: str | None = None
+    instructions: str | None = None
+
+
 class TenantPortalRead(BaseModel):
     auth: TenantPortalAuthRead
     tenant: TenantPortalTenantRead
@@ -344,6 +359,7 @@ class TenantPortalRead(BaseModel):
     compliance: TenantPortalComplianceRead
     invoices: list[TenantPortalInvoiceRead]
     payment_summary: TenantPortalPaymentSummaryRead
+    how_to_pay: TenantPortalHowToPayRead | None = None
     maintenance_requests: list[TenantPortalMaintenanceRequestRead]
     notification_preferences: TenantPortalNotificationPreferencesRead
     contact_change_requests: list[TenantPortalContactChangeRequestRead] = Field(

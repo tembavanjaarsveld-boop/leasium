@@ -425,6 +425,55 @@ Index(
 )
 
 
+class EntityPaymentInstruction(Base):
+    """Operator-entered tenant payment instructions for an entity (display-only).
+
+    One active row per entity. These are the landlord's *receiving* details
+    (EFT / PayID, optional BPAY, free-text notes) the operator chooses to show
+    tenants so they know how and what to pay. Leasium does not process payments
+    or move money; reconciliation stays in the existing Basiq/Xero engine.
+    """
+
+    __tablename__ = "entity_payment_instruction"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    account_name: Mapped[str | None] = mapped_column(Text)
+    bsb: Mapped[str | None] = mapped_column(Text)
+    account_number: Mapped[str | None] = mapped_column(Text)
+    payid: Mapped[str | None] = mapped_column(Text)
+    payid_name: Mapped[str | None] = mapped_column(Text)
+    bpay_biller_code: Mapped[str | None] = mapped_column(Text)
+    instructions: Mapped[str | None] = mapped_column(Text)
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    payment_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    updated_by_user: Mapped["AppUser | None"] = relationship()
+
+
+Index(
+    "entity_payment_instruction_entity_active_idx",
+    EntityPaymentInstruction.entity_id,
+    unique=True,
+    postgresql_where=EntityPaymentInstruction.deleted_at.is_(None),
+    sqlite_where=EntityPaymentInstruction.deleted_at.is_(None),
+)
+
+
 class BasiqConnection(Base):
     """Per-entity Basiq (AU bank-feed) consent connection.
 
