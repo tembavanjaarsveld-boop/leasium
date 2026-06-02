@@ -102,13 +102,15 @@ review-packet slices.
   `StatusTone` type instead of redeclaring both inline.
 - `Settings` now imports the canonical `StatusTone` type instead of carrying a
   local chip-tone union.
-- The helper-consolidation smoke now includes Comms and Settings and requires
-  `StatusTone` to be imported from `@/components/ui`, so a local alias no
-  longer satisfies the guard.
+- Billing Readiness now imports both the shared `friendlyError` helper and
+  canonical `StatusTone`; `friendlyError` accepts an optional fallback so pages
+  with context-specific copy do not need local wrappers.
+- The helper-consolidation smoke now includes Comms, Settings, and Billing
+  Readiness and requires `StatusTone` to be imported from `@/components/ui`, so
+  a local alias no longer satisfies the guard.
 - Verification: the helper-consolidation smoke passed **5 passed**; focused
-  Comms queue/outbound-log smokes passed **2 passed**; focused Settings Xero
-  smoke passed **2 passed**; targeted frontend eslint and `tsc --noEmit`
-  passed.
+  Billing Readiness smoke passed **4 passed**;
+  targeted frontend eslint and `tsc --noEmit` passed.
 
 ### Vendor correspondence timeline
 - Contractor records now replace the Activity placeholder with a read-only

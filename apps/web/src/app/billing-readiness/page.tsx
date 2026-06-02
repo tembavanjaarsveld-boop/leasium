@@ -32,6 +32,7 @@ import {
   SectionPanel,
   Select,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   createInvoiceDraftFromBillingDraft,
@@ -66,6 +67,7 @@ import {
   isManagingAgentOperatingMode,
   useOperatingMode,
 } from "@/lib/use-operating-mode";
+import { friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
@@ -195,8 +197,6 @@ type BlockerAction = {
   href: string;
 };
 
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "primary";
-
 function dateOnly(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -238,10 +238,6 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
-}
-
-function friendlyError(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
 }
 
 function shortId(value: string | null | undefined) {

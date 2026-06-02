@@ -80,6 +80,11 @@ test("operator intake-adjacent pages use shared error and chip-tone helpers", as
       usesToneHelper: false,
     },
     {
+      path: "src/app/billing-readiness/page.tsx",
+      usesErrorHelper: true,
+      usesToneHelper: true,
+    },
+    {
       path: "src/app/statements/page.tsx",
       usesErrorHelper: true,
       usesToneHelper: false,

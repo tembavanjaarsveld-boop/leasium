@@ -1469,8 +1469,10 @@ Not addressed yet, queued for follow-up:
 - Migration of inline `friendlyError` / `StatusTone` redeclarations
   in the remaining pages. 2026-06-02 follow-up: Comms now imports the shared
   `friendlyError` helper and canonical `StatusTone`; Settings now imports
-  canonical `StatusTone`; the helper-consolidation smoke requires the canonical
-  UI import for covered pages so local aliases do not pass by accident.
+  canonical `StatusTone`; Billing Readiness now imports both, with the shared
+  `friendlyError` supporting a page-specific fallback. The
+  helper-consolidation smoke requires the canonical UI import for covered pages
+  so local aliases do not pass by accident.
 - Mobile bottom-nav at sub-md (review §8.2) — shipped pending
   Remba/real-device review on 2026-06-01 as a five-item operator bottom
   nav for Dashboard, Properties, People, Work, and Money.
