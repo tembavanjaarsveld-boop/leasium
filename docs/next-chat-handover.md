@@ -3668,3 +3668,36 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   `git diff --check` passed.
 - Next sensible Insights follow-up: arrears/invoice status depth in the same
   review-only portfolio layer, then richer owner/entity dashboard context.
+
+## Codex continuation 2026-06-02 - Insights arrears snapshot v1
+
+- Chosen backlog slice: Portfolio Insights still listed arrears as open after
+  compliance and maintenance aging. This keeps arrears in the same read-only
+  review layer rather than adding a new credit-control workflow surface.
+- `/api/v1/insights/overview` now returns `arrears_snapshot` from active and
+  monitoring arrears cases, with open count, total balance, reminder-due,
+  disputed, escalated, promise-to-pay, aged-30-plus, aged-90-plus, oldest-aged,
+  status/dispute/escalation mixes, and ranked rows carrying property, unit,
+  tenant, balance buckets, reminder chip, promise, escalation, and Operations
+  handoff links.
+- `/insights` now renders an `Arrears Snapshot` panel and includes the same
+  arrears summary/rows in the local review packet copy and CSV export.
+- Guardrails: viewing, copying, or downloading the Insights packet does not
+  send arrears reminders, escalate cases, update arrears records, create
+  invoices, call Xero/Basiq, reconcile payments, generate billing drafts, send
+  SendGrid/Twilio messages, or write provider history.
+- Red/green evidence: the backend test first failed with
+  `KeyError: 'arrears_snapshot'`; after the API snapshot landed it passed. The
+  Insights smoke was then extended and first failed because the
+  `Arrears Snapshot` heading was missing; after the typed web panel and export
+  rows landed it passed.
+- Verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_insights_api.py -q`
+  passed **4 passed**;
+  `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py tests/integration/test_insights_api.py`
+  passed;
+  `./node_modules/.bin/playwright test tests/smoke/insights.spec.ts --workers=1`
+  passed **2 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
+- Next sensible Insights follow-up: invoice-status depth and then richer
+  owner/entity dashboard context.

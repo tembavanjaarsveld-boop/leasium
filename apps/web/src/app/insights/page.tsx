@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Building2,
   CheckCircle2,
+  CircleDollarSign,
   Copy,
   Clock3,
   Download,
@@ -38,6 +39,7 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  ArrearsSnapshotItemRecord,
   AutomationActivityRecord,
   ComplianceRiskItemRecord,
   createInsightsSnapshot,
@@ -405,6 +407,25 @@ function maintenanceAgingTone(item: MaintenanceAgingItemRecord): StatusTone {
   return "neutral";
 }
 
+function arrearsTone(item: ArrearsSnapshotItemRecord): StatusTone {
+  if (
+    item.rank < 0 ||
+    item.dispute_status === "escalated" ||
+    ["queued", "in_progress", "referred"].includes(item.escalation_status)
+  ) {
+    return "danger";
+  }
+  if (
+    item.total_balance_cents > 0 ||
+    item.dispute_status === "raised" ||
+    item.dispute_status === "under_review" ||
+    item.age_days >= 30
+  ) {
+    return "warning";
+  }
+  return "neutral";
+}
+
 function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
   const context = [
     item.property_name,
@@ -493,6 +514,48 @@ function MaintenanceAgingRow({ item }: { item: MaintenanceAgingItemRecord }) {
   );
 }
 
+function ArrearsSnapshotRow({ item }: { item: ArrearsSnapshotItemRecord }) {
+  const context = [
+    item.property_name,
+    item.unit_label,
+    item.tenant_name,
+  ].filter(Boolean);
+  const promiseLabel = item.promise_to_pay_date
+    ? `Promise ${formatDate(item.promise_to_pay_date)}`
+    : "No promise";
+  const escalationLabel =
+    item.escalation_status === "none"
+      ? "Escalation none"
+      : `Escalation ${labelStatus(item.escalation_status)}`;
+
+  return (
+    <Link
+      href={item.href}
+      className="grid gap-3 border-t border-border px-4 py-4 transition hover:bg-muted/60 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-semibold">{item.title}</div>
+          <StatusBadge tone={arrearsTone(item)}>{item.chip}</StatusBadge>
+          <StatusBadge tone="neutral">{labelStatus(item.status)}</StatusBadge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {context.length ? context.join(" · ") : "Tenant arrears"}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+          <span>{item.age_days} days aged</span>
+          <span>{promiseLabel}</span>
+          <span>Dispute {labelStatus(item.dispute_status)}</span>
+          <span>{escalationLabel}</span>
+        </div>
+      </div>
+      <div className="text-xs font-semibold text-foreground">
+        {formatMoney(item.total_balance_cents)}
+      </div>
+    </Link>
+  );
+}
+
 const INSIGHTS_REVIEW_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.";
 
@@ -505,6 +568,7 @@ function insightsReviewPacketCsv(
   const leaseSnapshot = overview.lease_event_snapshot;
   const complianceSnapshot = overview.compliance_snapshot;
   const maintenanceSnapshot = overview.maintenance_snapshot;
+  const arrearsSnapshot = overview.arrears_snapshot;
   const rows: Array<Array<string | number | null | undefined>> = [
     ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
     [
@@ -608,6 +672,24 @@ function insightsReviewPacketCsv(
       item.age_days,
       formatMoney(item.quote_amount_cents),
       `${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? "No tenant"}; ${item.contractor_name ?? "No contractor"}; ${item.age_days} days open; ${labelStatus(item.priority)} priority; ${item.chip}; due ${formatDate(item.due_date)}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Arrears snapshot",
+      "Credit control",
+      `${arrearsSnapshot.open_count} open`,
+      arrearsSnapshot.open_count,
+      formatMoney(arrearsSnapshot.total_balance_cents),
+      `${arrearsSnapshot.overdue_reminder_count} reminders due; ${arrearsSnapshot.disputed_count} disputed; ${arrearsSnapshot.escalated_count} escalated; ${arrearsSnapshot.promise_to_pay_count} promises to pay; oldest ${arrearsSnapshot.oldest_age_days} days aged.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...arrearsSnapshot.next_items.map((item) => [
+      "Arrears snapshot",
+      item.title,
+      labelStatus(item.status),
+      item.age_days,
+      formatMoney(item.total_balance_cents),
+      `${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? "No tenant"}; ${item.age_days} days aged; ${labelStatus(item.dispute_status)} dispute; ${labelStatus(item.escalation_status)} escalation; ${item.promise_to_pay_date ? `promise ${formatDate(item.promise_to_pay_date)}` : "no promise"}; reminder ${formatDate(item.next_reminder_on)}.`,
       INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
     ]),
     [
@@ -852,6 +934,7 @@ function InsightsWorkspace() {
   const leaseEventSnapshot = overview?.lease_event_snapshot;
   const complianceSnapshot = overview?.compliance_snapshot;
   const maintenanceSnapshot = overview?.maintenance_snapshot;
+  const arrearsSnapshot = overview?.arrears_snapshot;
   const snapshots = snapshotsQuery.data ?? [];
 
   function downloadReviewCsv() {
@@ -1406,6 +1489,93 @@ function InsightsWorkspace() {
                       icon={<Wrench size={18} />}
                       title="No open maintenance aging"
                       description="Requested, assigned, approval, and in-progress work orders will appear here."
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Arrears Snapshot"
+              description="Credit-control balances, reminder timing, disputes, promises, and escalation focus."
+              icon={<CircleDollarSign size={17} className="text-primary" />}
+              actions={
+                <StatusBadge
+                  tone={
+                    arrearsSnapshot?.overdue_reminder_count ||
+                    arrearsSnapshot?.escalated_count
+                      ? "danger"
+                      : arrearsSnapshot?.disputed_count
+                        ? "warning"
+                        : "success"
+                  }
+                >
+                  {arrearsSnapshot?.open_count ?? 0} open
+                </StatusBadge>
+              }
+            >
+              <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <CountPill
+                    label="Balance"
+                    value={formatMoney(arrearsSnapshot?.total_balance_cents ?? 0)}
+                  />
+                  <CountPill
+                    label="Reminders due"
+                    value={arrearsSnapshot?.overdue_reminder_count ?? 0}
+                  />
+                  <CountPill
+                    label="Disputed"
+                    value={arrearsSnapshot?.disputed_count ?? 0}
+                  />
+                  <CountPill
+                    label="Escalated"
+                    value={arrearsSnapshot?.escalated_count ?? 0}
+                  />
+                  <CountPill
+                    label="Oldest aged"
+                    value={`${arrearsSnapshot?.oldest_age_days ?? 0} days`}
+                  />
+                  <div className="rounded-2xl border border-border bg-white p-4 text-sm">
+                    <div className="font-semibold">Status mix</div>
+                    <div className="mt-3 grid gap-2 text-muted-foreground">
+                      {Object.entries(arrearsSnapshot?.status_counts ?? {}).map(
+                        ([status, count]) => (
+                          <div
+                            key={status}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span>{labelStatus(status)}</span>
+                            <span className="font-semibold text-foreground">
+                              {count}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                      {Object.keys(arrearsSnapshot?.status_counts ?? {}).length === 0 ? (
+                        <div>No open arrears statuses</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                  <div className="grid gap-1 px-4 py-3">
+                    <div className="text-sm font-semibold">
+                      Credit-control focus
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {arrearsSnapshot?.promise_to_pay_count ?? 0} promises to pay;{" "}
+                      {arrearsSnapshot?.aged_90_day_count ?? 0} aged 90+ days.
+                    </div>
+                  </div>
+                  {(arrearsSnapshot?.next_items ?? []).map((item) => (
+                    <ArrearsSnapshotRow key={item.id} item={item} />
+                  ))}
+                  {(arrearsSnapshot?.next_items.length ?? 0) === 0 ? (
+                    <EmptyState
+                      icon={<CircleDollarSign size={18} />}
+                      title="No open arrears"
+                      description="Active or monitoring credit-control cases will appear here."
                     />
                   ) : null}
                 </div>

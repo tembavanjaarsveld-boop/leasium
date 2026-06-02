@@ -8,6 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    ArrearsCase,
+    ArrearsCaseStatus,
+    ArrearsDisputeStatus,
+    ArrearsEscalationStatus,
     AuditAction,
     AuditOutcome,
     BillingDraft,
@@ -422,6 +426,62 @@ def test_insights_overview_summarises_compliance_and_inspection_risk(
         completed_at=utcnow(),
     )
     session.add_all([urgent_work_order, assigned_work_order, closed_work_order])
+    disputed_arrears = ArrearsCase(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        lease_id=UUID(lease_id),
+        status=ArrearsCaseStatus.active,
+        as_of=date(2026, 5, 19),
+        balance_current_cents=0,
+        balance_1_30_cents=0,
+        balance_31_60_cents=440000,
+        balance_61_90_cents=0,
+        balance_90_plus_cents=0,
+        total_balance_cents=440000,
+        oldest_unpaid_invoice_date=date(2026, 4, 1),
+        last_invoice_date=date(2026, 5, 1),
+        reminder_stage=2,
+        reminder_frequency_days=7,
+        next_reminder_on=date(2026, 5, 18),
+        dispute_status=ArrearsDisputeStatus.raised,
+        promise_to_pay_date=date(2026, 5, 24),
+        promise_to_pay_amount_cents=220000,
+        notes="Tenant queried outgoings allocation.",
+    )
+    escalated_arrears = ArrearsCase(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        lease_id=UUID(lease_id),
+        status=ArrearsCaseStatus.monitoring,
+        as_of=date(2026, 5, 19),
+        balance_current_cents=0,
+        balance_1_30_cents=0,
+        balance_31_60_cents=0,
+        balance_61_90_cents=0,
+        balance_90_plus_cents=125000,
+        total_balance_cents=125000,
+        oldest_unpaid_invoice_date=date(2026, 2, 10),
+        reminder_stage=3,
+        next_reminder_on=date(2026, 5, 23),
+        escalation_status=ArrearsEscalationStatus.queued,
+        escalation_queue="Legal review",
+        source_reference="February invoice run",
+    )
+    resolved_arrears = ArrearsCase(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        lease_id=UUID(lease_id),
+        status=ArrearsCaseStatus.resolved,
+        as_of=date(2026, 5, 19),
+        total_balance_cents=0,
+    )
+    session.add_all([disputed_arrears, escalated_arrears, resolved_arrears])
     session.commit()
 
     response = client.get(f"/api/v1/insights/overview?entity_id={entity_id}&as_of={as_of}")
@@ -475,6 +535,36 @@ def test_insights_overview_summarises_compliance_and_inspection_risk(
     assert maintenance_item["age_days"] == 21
     assert maintenance_item["chip"] == "4d overdue"
     assert maintenance_item["href"].startswith("/operations/maintenance/")
+
+    arrears = response.json()["arrears_snapshot"]
+    assert arrears["open_count"] == 2
+    assert arrears["total_balance_cents"] == 565000
+    assert arrears["overdue_reminder_count"] == 1
+    assert arrears["disputed_count"] == 1
+    assert arrears["escalated_count"] == 1
+    assert arrears["promise_to_pay_count"] == 1
+    assert arrears["aged_30_day_count"] == 2
+    assert arrears["aged_90_day_count"] == 1
+    assert arrears["oldest_age_days"] == 98
+    assert arrears["status_counts"] == {"active": 1, "monitoring": 1}
+    assert arrears["dispute_counts"] == {"raised": 1, "none": 1}
+    assert arrears["escalation_counts"] == {"none": 1, "queued": 1}
+
+    arrears_titles = [item["title"] for item in arrears["next_items"]]
+    assert arrears_titles == [
+        "Valley Books Pty Ltd arrears",
+        "Valley Books Pty Ltd arrears",
+    ]
+
+    arrears_item = arrears["next_items"][0]
+    assert arrears_item["property_name"] == "Fortitude Valley Arcade"
+    assert arrears_item["unit_label"] == "Shop 6"
+    assert arrears_item["tenant_name"] == "Valley Books Pty Ltd"
+    assert arrears_item["total_balance_cents"] == 440000
+    assert arrears_item["age_days"] == 48
+    assert arrears_item["chip"] == "1d overdue"
+    assert arrears_item["promise_to_pay_date"] == "2026-05-24"
+    assert arrears_item["href"].startswith("/operations?tab=arrears&case_id=")
 
 
 def test_insights_snapshots_freeze_public_payload_and_revoke(

@@ -240,6 +240,54 @@ class MaintenanceSnapshotRead(BaseModel):
     next_items: list[MaintenanceAgingItemRead] = Field(default_factory=list)
 
 
+class ArrearsSnapshotItemRead(BaseModel):
+    id: UUID
+    title: str
+    status: str
+    currency: str
+    as_of: Date
+    total_balance_cents: int
+    balance_1_30_cents: int = 0
+    balance_31_60_cents: int = 0
+    balance_61_90_cents: int = 0
+    balance_90_plus_cents: int = 0
+    oldest_unpaid_invoice_date: Date | None = None
+    age_days: int
+    next_reminder_on: Date | None = None
+    chip: str
+    href: str
+    property_id: UUID | None = None
+    property_name: str | None = None
+    tenancy_unit_id: UUID | None = None
+    unit_label: str | None = None
+    lease_id: UUID | None = None
+    tenant_id: UUID
+    tenant_name: str | None = None
+    dispute_status: str
+    escalation_status: str
+    escalation_queue: str | None = None
+    promise_to_pay_date: Date | None = None
+    promise_to_pay_amount_cents: int | None = None
+    reminder_stage: int = 0
+    rank: int = 0
+
+
+class ArrearsSnapshotRead(BaseModel):
+    open_count: int = 0
+    total_balance_cents: int = 0
+    overdue_reminder_count: int = 0
+    disputed_count: int = 0
+    escalated_count: int = 0
+    promise_to_pay_count: int = 0
+    aged_30_day_count: int = 0
+    aged_90_day_count: int = 0
+    oldest_age_days: int = 0
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    dispute_counts: dict[str, int] = Field(default_factory=dict)
+    escalation_counts: dict[str, int] = Field(default_factory=dict)
+    next_items: list[ArrearsSnapshotItemRead] = Field(default_factory=list)
+
+
 class InsightsOverviewRead(BaseModel):
     entity: InsightsEntityRead
     as_of: Date
@@ -252,6 +300,7 @@ class InsightsOverviewRead(BaseModel):
     lease_event_snapshot: LeaseEventSnapshotRead
     compliance_snapshot: ComplianceSnapshotRead = Field(default_factory=ComplianceSnapshotRead)
     maintenance_snapshot: MaintenanceSnapshotRead = Field(default_factory=MaintenanceSnapshotRead)
+    arrears_snapshot: ArrearsSnapshotRead = Field(default_factory=ArrearsSnapshotRead)
     guardrails: list[str]
 
 

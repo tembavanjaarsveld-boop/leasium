@@ -13,6 +13,10 @@ from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    ArrearsCase,
+    ArrearsCaseStatus,
+    ArrearsDisputeStatus,
+    ArrearsEscalationStatus,
     AuditAction,
     BillingDraft,
     DocumentIntake,
@@ -41,6 +45,8 @@ from apps.api.routers.charge_rules import rent_roll
 from apps.api.routers.xero import xero_status
 from apps.api.schemas.insights import (
     AccountingReadinessSnapshotRead,
+    ArrearsSnapshotItemRead,
+    ArrearsSnapshotRead,
     AutomationActivityRead,
     BillingRiskRead,
     ComplianceRiskItemRead,
@@ -94,6 +100,20 @@ OPEN_MAINTENANCE_STATUSES = {
     MaintenanceWorkOrderStatus.awaiting_approval,
     MaintenanceWorkOrderStatus.approved,
     MaintenanceWorkOrderStatus.in_progress,
+}
+OPEN_ARREARS_STATUSES = {
+    ArrearsCaseStatus.active,
+    ArrearsCaseStatus.monitoring,
+}
+ACTIVE_ARREARS_DISPUTE_STATUSES = {
+    ArrearsDisputeStatus.raised,
+    ArrearsDisputeStatus.under_review,
+    ArrearsDisputeStatus.escalated,
+}
+ACTIVE_ARREARS_ESCALATION_STATUSES = {
+    ArrearsEscalationStatus.queued,
+    ArrearsEscalationStatus.in_progress,
+    ArrearsEscalationStatus.referred,
 }
 
 
@@ -420,6 +440,103 @@ def _build_maintenance_snapshot(
     )
 
 
+def _build_arrears_snapshot(
+    arrears_cases: list[ArrearsCase],
+    *,
+    as_of: date,
+    properties_by_id: dict[UUID, Property],
+    units_by_id: dict[UUID, TenancyUnit],
+    tenants_by_id: dict[UUID, Tenant],
+) -> ArrearsSnapshotRead:
+    open_items = [item for item in arrears_cases if item.status in OPEN_ARREARS_STATUSES]
+    rows: list[ArrearsSnapshotItemRead] = []
+    oldest_age_days = 0
+
+    for arrears_case in open_items:
+        age_days = (
+            max((as_of - arrears_case.oldest_unpaid_invoice_date).days, 0)
+            if arrears_case.oldest_unpaid_invoice_date is not None
+            else 0
+        )
+        oldest_age_days = max(oldest_age_days, age_days)
+        prop = (
+            properties_by_id.get(arrears_case.property_id)
+            if arrears_case.property_id is not None
+            else None
+        )
+        unit = (
+            units_by_id.get(arrears_case.tenancy_unit_id)
+            if arrears_case.tenancy_unit_id is not None
+            else None
+        )
+        tenant = tenants_by_id.get(arrears_case.tenant_id)
+        reminder_days = min(_days_until(arrears_case.next_reminder_on, as_of), 30)
+        rank = (reminder_days * 10) - min(age_days, 90)
+        title = f"{tenant.legal_name if tenant else 'Tenant'} arrears"
+        rows.append(
+            ArrearsSnapshotItemRead(
+                id=arrears_case.id,
+                title=title,
+                status=_enum_value(arrears_case.status),
+                currency=arrears_case.currency,
+                as_of=arrears_case.as_of,
+                total_balance_cents=arrears_case.total_balance_cents,
+                balance_1_30_cents=arrears_case.balance_1_30_cents,
+                balance_31_60_cents=arrears_case.balance_31_60_cents,
+                balance_61_90_cents=arrears_case.balance_61_90_cents,
+                balance_90_plus_cents=arrears_case.balance_90_plus_cents,
+                oldest_unpaid_invoice_date=arrears_case.oldest_unpaid_invoice_date,
+                age_days=age_days,
+                next_reminder_on=arrears_case.next_reminder_on,
+                chip=_date_chip(arrears_case.next_reminder_on, as_of),
+                href=f"/operations?tab=arrears&case_id={arrears_case.id}",
+                property_id=arrears_case.property_id,
+                property_name=prop.name if prop else None,
+                tenancy_unit_id=arrears_case.tenancy_unit_id,
+                unit_label=unit.unit_label if unit else None,
+                lease_id=arrears_case.lease_id,
+                tenant_id=arrears_case.tenant_id,
+                tenant_name=tenant.legal_name if tenant else None,
+                dispute_status=_enum_value(arrears_case.dispute_status),
+                escalation_status=_enum_value(arrears_case.escalation_status),
+                escalation_queue=arrears_case.escalation_queue,
+                promise_to_pay_date=arrears_case.promise_to_pay_date,
+                promise_to_pay_amount_cents=arrears_case.promise_to_pay_amount_cents,
+                reminder_stage=arrears_case.reminder_stage,
+                rank=rank,
+            )
+        )
+
+    rows.sort(key=lambda item: (item.rank, -item.total_balance_cents, item.title))
+    return ArrearsSnapshotRead(
+        open_count=len(open_items),
+        total_balance_cents=sum(item.total_balance_cents for item in open_items),
+        overdue_reminder_count=sum(
+            1
+            for item in open_items
+            if item.next_reminder_on is not None and item.next_reminder_on < as_of
+        ),
+        disputed_count=sum(
+            1 for item in open_items if item.dispute_status in ACTIVE_ARREARS_DISPUTE_STATUSES
+        ),
+        escalated_count=sum(
+            1
+            for item in open_items
+            if item.escalation_status in ACTIVE_ARREARS_ESCALATION_STATUSES
+        ),
+        promise_to_pay_count=sum(1 for item in open_items if item.promise_to_pay_date),
+        aged_30_day_count=sum(1 for item in rows if item.age_days >= 30),
+        aged_90_day_count=sum(1 for item in rows if item.age_days >= 90),
+        oldest_age_days=oldest_age_days,
+        status_counts=dict(Counter(_enum_value(item.status) for item in open_items)),
+        dispute_counts=dict(Counter(_enum_value(item.dispute_status) for item in open_items)),
+        escalation_counts=dict(
+            Counter(_enum_value(item.escalation_status) for item in open_items)
+        ),
+        next_items=rows[:10],
+    )
+
+
 def _build_insights_overview(
     user: CurrentUser,
     session: Session,
@@ -536,6 +653,28 @@ def _build_insights_overview(
     )
     maintenance_snapshot = _build_maintenance_snapshot(
         maintenance_work_orders,
+        as_of=as_of,
+        properties_by_id=properties_by_id,
+        units_by_id=units_by_id,
+        tenants_by_id=tenants_by_id,
+    )
+
+    arrears_cases = list(
+        session.scalars(
+            select(ArrearsCase)
+            .where(
+                ArrearsCase.entity_id == entity_id,
+                ArrearsCase.deleted_at.is_(None),
+            )
+            .order_by(
+                ArrearsCase.next_reminder_on,
+                ArrearsCase.oldest_unpaid_invoice_date,
+                ArrearsCase.total_balance_cents.desc(),
+            )
+        )
+    )
+    arrears_snapshot = _build_arrears_snapshot(
+        arrears_cases,
         as_of=as_of,
         properties_by_id=properties_by_id,
         units_by_id=units_by_id,
@@ -981,6 +1120,7 @@ def _build_insights_overview(
         ),
         compliance_snapshot=compliance_snapshot,
         maintenance_snapshot=maintenance_snapshot,
+        arrears_snapshot=arrears_snapshot,
         guardrails=[
             "Insights is read-only and does not mutate portfolio records.",
             (

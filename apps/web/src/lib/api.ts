@@ -2377,6 +2377,54 @@ export type MaintenanceSnapshotRecord = {
   next_items: MaintenanceAgingItemRecord[];
 };
 
+export type ArrearsSnapshotItemRecord = {
+  id: string;
+  title: string;
+  status: ArrearsCaseStatus;
+  currency: string;
+  as_of: string;
+  total_balance_cents: number;
+  balance_1_30_cents: number;
+  balance_31_60_cents: number;
+  balance_61_90_cents: number;
+  balance_90_plus_cents: number;
+  oldest_unpaid_invoice_date: string | null;
+  age_days: number;
+  next_reminder_on: string | null;
+  chip: string;
+  href: string;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  lease_id: string | null;
+  tenant_id: string;
+  tenant_name: string | null;
+  dispute_status: ArrearsDisputeStatus;
+  escalation_status: ArrearsEscalationStatus;
+  escalation_queue: string | null;
+  promise_to_pay_date: string | null;
+  promise_to_pay_amount_cents: number | null;
+  reminder_stage: number;
+  rank: number;
+};
+
+export type ArrearsSnapshotRecord = {
+  open_count: number;
+  total_balance_cents: number;
+  overdue_reminder_count: number;
+  disputed_count: number;
+  escalated_count: number;
+  promise_to_pay_count: number;
+  aged_30_day_count: number;
+  aged_90_day_count: number;
+  oldest_age_days: number;
+  status_counts: Record<string, number>;
+  dispute_counts: Record<string, number>;
+  escalation_counts: Record<string, number>;
+  next_items: ArrearsSnapshotItemRecord[];
+};
+
 export type InsightsOverviewRecord = {
   entity: InsightsEntityRecord;
   as_of: string;
@@ -2389,6 +2437,7 @@ export type InsightsOverviewRecord = {
   lease_event_snapshot: LeaseEventSnapshotRecord;
   compliance_snapshot: ComplianceSnapshotRecord;
   maintenance_snapshot: MaintenanceSnapshotRecord;
+  arrears_snapshot: ArrearsSnapshotRecord;
   guardrails: string[];
 };
 
