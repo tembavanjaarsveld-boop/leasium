@@ -77,12 +77,18 @@ DoorLoop P2 **vendor portal authenticated login** off the backlog.
   routes compiled (`/vendor-portal`, `/vendor-portal/[contractorId]`,
   `/vendor-portal/invite/[token]`).
 - Smoke: `tests/smoke/vendor-portal.spec.ts` gains an operator generate-login-link
-  test. NOT YET RUN GREEN in-session — the Playwright `webServer` (`next start`)
+  test, and new `tests/smoke/vendor-portal-account.spec.ts` adds a source-wiring
+  bearer-token assertion plus a no-Clerk account-dashboard interaction
+  (accept -> comment -> photo) against a mocked API. **All 7 vendor smoke tests
+  pass** (`NODE_ENV=development ./node_modules/.bin/playwright test
+  tests/smoke/vendor-portal.spec.ts tests/smoke/vendor-portal-account.spec.ts`).
+- Smoke gotcha (cost an hour): the Playwright `webServer` runs `next dev`, which
   crash-loops with `EvalError: Code generation from strings disallowed` in the
-  Edge middleware runtime under the sandbox launch. eslint/tsc/build cover the
-  code; run `./node_modules/.bin/playwright test tests/smoke/vendor-portal.spec.ts`
-  in the normal local setup to confirm, and add a Clerk-stub account-dashboard
-  smoke (accept/comment/photo) as follow-up.
+  Edge middleware runtime when `NODE_ENV=production` is set in the shell (it is,
+  in the Desktop Commander shell). Run smokes with `NODE_ENV=development` and
+  clear any stale prod `.next` first. A Clerk-stub runtime smoke for the signed-in
+  claim/session path (mirroring the owner `installOwnerClerkSmoke` lane) remains
+  an optional follow-up.
 - Backend commit `96722b3` is pushed to `main` (Vercel + Render redeploy; Render
   runs `alembic upgrade head`, creating the vendor portal tables on Neon).
 
