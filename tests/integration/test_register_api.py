@@ -685,6 +685,118 @@ def test_lease_event_follow_up_run_skips_deleted_tenants(
     )
 
 
+def test_lease_event_follow_up_run_skips_unique_race_duplicates(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    from apps.api.routers import obligations as obligations_router
+
+    entity_id = _entity_id(session)
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Race Duplicate Calendar Centre",
+            "street_address": "8 Creek Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_office",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Level 8"},
+    )
+    assert unit_response.status_code == 201
+    unit_id = unit_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Race Tenant Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2024-07-01",
+            "expiry_date": "2027-06-30",
+            "annual_rent_cents": 1200000,
+            "rent_frequency": "annual",
+            "next_review_date": "2026-06-18",
+        },
+    )
+    assert lease_response.status_code == 201
+    lease_id = lease_response.json()["id"]
+
+    existing = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        lease_id=UUID(lease_id),
+        title="Existing race lease follow-up",
+        category="rent_review",
+        status="upcoming",
+        due_date=date(2026, 6, 18),
+        priority=1,
+        owner_role="ops",
+        obligation_metadata={"source": "lease_calendar_follow_up"},
+    )
+    session.add(existing)
+    session.commit()
+
+    real_existing = obligations_router._existing_lease_event_obligation
+    existing_checks = 0
+
+    def stale_existing_once(**kwargs: Any) -> Obligation | None:
+        nonlocal existing_checks
+        existing_checks += 1
+        if existing_checks == 1:
+            return None
+        return real_existing(**kwargs)
+
+    monkeypatch.setattr(
+        obligations_router,
+        "_existing_lease_event_obligation",
+        stale_existing_once,
+    )
+
+    response = client.post(
+        "/api/v1/obligations/lease-event-follow-ups",
+        json={
+            "entity_id": entity_id,
+            "property_ids": [property_id],
+            "as_of": "2026-06-02",
+            "horizon_days": 90,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["created_count"] == 0
+    assert body["skipped_count"] == 1
+    assert body["skipped"][0]["obligation_id"] == str(existing.id)
+
+    duplicates = session.scalars(
+        select(Obligation)
+        .where(Obligation.lease_id == UUID(lease_id))
+        .where(Obligation.category == "rent_review")
+        .where(Obligation.due_date == date(2026, 6, 18))
+        .where(Obligation.deleted_at.is_(None))
+    ).all()
+    assert [row.id for row in duplicates] == [existing.id]
+
+
 def test_charge_rules_and_rent_roll_surface_billing_readiness(
     client: TestClient,
     session: Session,

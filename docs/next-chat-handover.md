@@ -14,6 +14,10 @@ review-packet slices.
   and optional property filters.
 - The run is idempotent by lease/category/due date: existing non-deleted
   obligations are returned as skipped rows instead of creating duplicates.
+  Migration `20260602_0034` adds a source-scoped partial unique index on
+  generated lease-calendar obligations (`lease_id`, `category`, `due_date`)
+  where `metadata.source = lease_calendar_follow_up`, so concurrent runs cannot
+  double-create generated tasks while manual obligations remain flexible.
 - Created tasks are normal `Obligation` rows scoped to entity/property/unit/
   lease with `source: lease_calendar_follow_up`, `source_event`, and source
   ids in metadata, so Work/Notifications can pick them up through the existing
@@ -25,14 +29,15 @@ review-packet slices.
 - Guardrails: the run only creates internal obligation tasks. It does not send
   email/SMS, dispatch providers, post invoices, sync Xero/Basiq, reconcile
   payments, or mutate leases.
-- Verification: focused backend regression passed **2 passed**; full register
-  integration passed **11 passed**; focused Properties smoke passed
-  **12 passed**; targeted backend `ruff`, frontend eslint, `tsc --noEmit`,
-  and `git diff --check` passed.
-- Follow-up from code review: if multiple operators can run the same calendar
-  creation concurrently, add a DB-level uniqueness/upsert guard for generated
-  lease-calendar obligations. The route is idempotent for normal repeat runs
-  today, but the duplicate guard is still read-before-insert.
+- The route now handles an insert-time unique collision with a savepoint and
+  returns the existing task as skipped, so a stale read during concurrent runs
+  does not turn into a failed request.
+- Verification: lease-calendar hardening focused backend regression passed
+  **4 passed**; full register integration passed **12 passed**; migration
+  tests passed **4 passed, 1 skipped** (`TEST_DATABASE_URL` not configured);
+  targeted backend `ruff` and `git diff --check` passed. The earlier UI slice
+  had already passed focused Properties smoke, frontend eslint, and
+  `tsc --noEmit`.
 - Smart Intake inspection-report apply count cleanup is now fixed:
   `created_inspection_work_orders` reports `work_order_count` from created
   maintenance work orders and `obligation_count: 0` because no obligations are

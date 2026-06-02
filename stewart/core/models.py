@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -867,6 +868,23 @@ Index(
     "obligation_due_date_idx",
     Obligation.due_date,
     postgresql_where=Obligation.deleted_at.is_(None),
+)
+Index(
+    "obligation_lease_event_unique_idx",
+    Obligation.lease_id,
+    Obligation.category,
+    Obligation.due_date,
+    unique=True,
+    postgresql_where=text(
+        "lease_id IS NOT NULL "
+        "AND deleted_at IS NULL "
+        "AND metadata ->> 'source' = 'lease_calendar_follow_up'"
+    ),
+    sqlite_where=text(
+        "lease_id IS NOT NULL "
+        "AND deleted_at IS NULL "
+        "AND json_extract(metadata, '$.source') = 'lease_calendar_follow_up'"
+    ),
 )
 
 

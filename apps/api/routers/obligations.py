@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
@@ -281,6 +282,26 @@ def _existing_lease_event_obligation(
     )
 
 
+def _lease_event_follow_up_skip(
+    *,
+    lease: Lease,
+    unit: TenancyUnit,
+    prop: Property,
+    category: ObligationCategory,
+    due_date: Any,
+    obligation: Obligation,
+) -> LeaseEventFollowUpSkippedRead:
+    return LeaseEventFollowUpSkippedRead(
+        lease_id=lease.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        category=category,
+        due_date=due_date,
+        reason="existing_obligation",
+        obligation_id=obligation.id,
+    )
+
+
 @router.post(
     "/lease-event-follow-ups",
     response_model=LeaseEventFollowUpRunRead,
@@ -345,14 +366,13 @@ def create_lease_event_follow_ups(
             )
             if existing is not None:
                 skipped.append(
-                    LeaseEventFollowUpSkippedRead(
-                        lease_id=lease.id,
-                        property_id=prop.id,
-                        tenancy_unit_id=unit.id,
+                    _lease_event_follow_up_skip(
+                        lease=lease,
+                        unit=unit,
+                        prop=prop,
                         category=category,
                         due_date=due_date,
-                        reason="existing_obligation",
-                        obligation_id=existing.id,
+                        obligation=existing,
                     )
                 )
                 continue
@@ -386,8 +406,30 @@ def create_lease_event_follow_ups(
                     "horizon_days": payload.horizon_days,
                 },
             )
-            session.add(obligation)
-            session.flush()
+            try:
+                with session.begin_nested():
+                    session.add(obligation)
+                    session.flush()
+            except IntegrityError:
+                existing = _existing_lease_event_obligation(
+                    lease_id=lease.id,
+                    category=category,
+                    due_date=due_date,
+                    session=session,
+                )
+                if existing is None:
+                    raise
+                skipped.append(
+                    _lease_event_follow_up_skip(
+                        lease=lease,
+                        unit=unit,
+                        prop=prop,
+                        category=category,
+                        due_date=due_date,
+                        obligation=existing,
+                    )
+                )
+                continue
             audit_log(
                 session,
                 actor=user.actor,
