@@ -31,6 +31,7 @@ import type {
 } from "@/lib/api";
 
 import {
+  OwnerPortalCompliancePanel,
   OwnerPortalDocumentsPanel,
   OwnerPortalLeaseEventsPanel,
   OwnerPortalMaintenancePanel,
@@ -78,7 +79,11 @@ function formatDate(value: string | null | undefined): string {
   }
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   const date = dateOnly
-    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    ? new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3]),
+      )
     : new Date(value);
   return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
@@ -95,11 +100,7 @@ export function ownerPortalAuthLabel(mode: OwnerPortalRecord["auth"]["mode"]) {
   return mode === "owner_portal_account" ? "Owner account" : "Operator preview";
 }
 
-export function OwnerPortalShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function OwnerPortalShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border bg-white">
@@ -116,7 +117,11 @@ export function OwnerPortalShell({
   );
 }
 
-export function OwnerPortalLoading({ title = "Owner portal" }: { title?: string }) {
+export function OwnerPortalLoading({
+  title = "Owner portal",
+}: {
+  title?: string;
+}) {
   return (
     <OwnerPortalShell>
       <div className="mx-auto max-w-5xl px-5 py-6">
@@ -230,7 +235,9 @@ function PropertyList({
               Property ID {property.property_id}
             </p>
           </div>
-          <StatusBadge tone="primary">{formatSplit(property.split_pct)}</StatusBadge>
+          <StatusBadge tone="primary">
+            {formatSplit(property.split_pct)}
+          </StatusBadge>
         </div>
       ))}
     </div>
@@ -350,6 +357,24 @@ function ownerPortalLeaseEventLabel(value: string) {
   return value === "rent_review" ? "Rent review" : "Lease expiry";
 }
 
+function ownerPortalComplianceLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function ownerPortalComplianceDueLabel(value: string) {
+  if (value === "due_soon") return "Due soon";
+  return ownerPortalComplianceLabel(value);
+}
+
+function ownerPortalComplianceEvidenceLabel(value: string) {
+  if (value === "missing") return "Missing evidence";
+  if (value === "linked") return "Evidence linked";
+  if (value === "uploaded") return "Evidence uploaded";
+  return ownerPortalComplianceLabel(value);
+}
+
 function ownerVisiblePacketFilename(
   portal: OwnerPortalRecord,
   selectedMonth?: string | null,
@@ -389,7 +414,9 @@ function ownerVisiblePacketRows(
       "Statement",
       "Period",
       formatMonth(periodMonth),
-      statement ? "Owner statement totals are visible." : "No statement linked.",
+      statement
+        ? "Owner statement totals are visible."
+        : "No statement linked.",
     ],
     [
       "Statement",
@@ -412,14 +439,12 @@ function ownerVisiblePacketRows(
   ];
 
   rows.push(
-    ...portal.properties.map(
-      (property): [string, string, string, string] => [
-        "Property split",
-        property.property_name,
-        formatSplit(property.split_pct),
-        `Property ID ${property.property_id}`,
-      ],
-    ),
+    ...portal.properties.map((property): [string, string, string, string] => [
+      "Property split",
+      property.property_name,
+      formatSplit(property.split_pct),
+      `Property ID ${property.property_id}`,
+    ]),
   );
 
   rows.push(
@@ -436,16 +461,14 @@ function ownerVisiblePacketRows(
   );
 
   rows.push(
-    ...portal.documents.map(
-      (document): [string, string, string, string] => [
-        "Shared document",
-        document.filename,
-        document.property_name,
-        `${document.source_label}; ${
-          document.notes ?? "No document note"
-        }; download not triggered by packet export`,
-      ],
-    ),
+    ...portal.documents.map((document): [string, string, string, string] => [
+      "Shared document",
+      document.filename,
+      document.property_name,
+      `${document.source_label}; ${
+        document.notes ?? "No document note"
+      }; download not triggered by packet export`,
+    ]),
   );
 
   rows.push(
@@ -465,6 +488,25 @@ function ownerVisiblePacketRows(
         }`,
       ],
     ),
+  );
+
+  rows.push(
+    ...portal.compliance.items.map((item): [string, string, string, string] => [
+      "Compliance",
+      item.title,
+      ownerPortalComplianceDueLabel(item.due_status),
+      `${item.property_name}; ${ownerPortalComplianceLabel(
+        item.kind,
+      )}; ${ownerPortalComplianceLabel(
+        item.status,
+      )}; ${ownerPortalComplianceEvidenceLabel(
+        item.evidence_status,
+      )}; next due ${formatDate(
+        item.next_due_date,
+      )}; certificate expires ${formatDate(
+        item.certificate_expires_on,
+      )}; checked ${formatOwnerPortalDateTime(item.last_checked_at)}`,
+    ]),
   );
 
   rows.push(
@@ -496,6 +538,12 @@ function ownerVisiblePacketRows(
       "Snapshot totals",
       `${portal.maintenance.open_count} open / ${portal.maintenance.urgent_count} urgent / ${portal.maintenance.awaiting_approval_count} awaiting approval`,
       "Owner-visible maintenance rows only.",
+    ],
+    [
+      "Compliance",
+      "Snapshot totals",
+      `${portal.compliance.open_count} open / ${portal.compliance.overdue_count} overdue / ${portal.compliance.due_soon_count} due soon / ${portal.compliance.missing_evidence_count} missing evidence`,
+      "Owner-safe compliance rows for linked properties only.",
     ],
     ...portal.guardrails.map(
       (guardrail, index): [string, string, string, string] => [
@@ -575,11 +623,15 @@ export function OwnerVisibleReviewPacketPanel({
     >
       <div className="grid gap-3 p-4 text-sm">
         {receipt ? (
-          <p aria-live="polite" className="font-medium text-success" role="status">
+          <p
+            aria-live="polite"
+            className="font-medium text-success"
+            role="status"
+          >
             {receipt}
           </p>
         ) : null}
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <div className="rounded-md border border-border bg-muted/30 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Owner
@@ -610,6 +662,14 @@ export function OwnerVisibleReviewPacketPanel({
             </p>
             <p className="mt-1 font-semibold text-foreground">
               {portal.maintenance.open_count} open
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Compliance
+            </p>
+            <p className="mt-1 font-semibold text-foreground">
+              {portal.compliance.open_count} open
             </p>
           </div>
         </div>
@@ -692,7 +752,9 @@ export function OwnerPortalAccountView({
             label="Outstanding"
             value={formatMoney(statement?.outstanding_cents ?? 0)}
             tone={
-              statement && statement.outstanding_cents > 0 ? "warning" : "neutral"
+              statement && statement.outstanding_cents > 0
+                ? "warning"
+                : "neutral"
             }
           />
         </section>
@@ -743,6 +805,8 @@ export function OwnerPortalAccountView({
 
             <OwnerPortalMaintenancePanel maintenance={portal.maintenance} />
 
+            <OwnerPortalCompliancePanel compliance={portal.compliance} />
+
             <OwnerPortalLeaseEventsPanel leaseEvents={portal.lease_events} />
 
             <OwnerPortalDocumentsPanel
@@ -787,7 +851,10 @@ export function OwnerPortalAccountView({
               </dl>
             </SectionPanel>
 
-            <SectionPanel title="Property split" icon={<WalletCards size={17} />}>
+            <SectionPanel
+              title="Property split"
+              icon={<WalletCards size={17} />}
+            >
               <PropertyList properties={portal.properties} />
             </SectionPanel>
 

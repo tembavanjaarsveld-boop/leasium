@@ -406,10 +406,7 @@ export type SecurityAuthStatusRecord = {
   next_steps: string[];
 };
 
-export type OperatingMode =
-  | "self_managed_owner"
-  | "managing_agent"
-  | "hybrid";
+export type OperatingMode = "self_managed_owner" | "managing_agent" | "hybrid";
 
 export type SecurityWorkspaceRecord = {
   auth: SecurityAuthStatusRecord;
@@ -3347,9 +3344,7 @@ export function applyBasiqReconciliation({
 }
 
 export function getBasiqConnectionStatus(entityId: string) {
-  return request<BasiqConnectionStatus>(
-    `/basiq/connection-status/${entityId}`,
-  );
+  return request<BasiqConnectionStatus>(`/basiq/connection-status/${entityId}`);
 }
 
 export function startBasiqConnect(entityId: string) {
@@ -5465,6 +5460,28 @@ export type OwnerPortalMaintenanceRecord = {
   items: OwnerPortalMaintenanceItemRecord[];
 };
 
+export type OwnerPortalComplianceItemRecord = {
+  id: string;
+  property_id: string;
+  property_name: string;
+  title: string;
+  kind: ComplianceCheckKind;
+  status: ComplianceCheckStatus;
+  due_status: "overdue" | "due_soon" | "upcoming";
+  next_due_date: string;
+  certificate_expires_on: string | null;
+  last_checked_at: string | null;
+  evidence_status: "linked" | "missing";
+};
+
+export type OwnerPortalComplianceRecord = {
+  open_count: number;
+  overdue_count: number;
+  due_soon_count: number;
+  missing_evidence_count: number;
+  items: OwnerPortalComplianceItemRecord[];
+};
+
 export type OwnerPortalLeaseEventRecord = {
   lease_id: string;
   property_id: string;
@@ -5472,7 +5489,12 @@ export type OwnerPortalLeaseEventRecord = {
   unit_label: string;
   event_kind: "rent_review" | "lease_expiry";
   event_date: string;
-  lease_status: "pending" | "active" | "holding_over" | "expired" | "terminated";
+  lease_status:
+    | "pending"
+    | "active"
+    | "holding_over"
+    | "expired"
+    | "terminated";
   annual_rent_cents: number | null;
 };
 
@@ -5490,6 +5512,7 @@ export type OwnerPortalRecord = {
   statement: OwnerPortalStatementRecord | null;
   documents: OwnerPortalDocumentRecord[];
   maintenance: OwnerPortalMaintenanceRecord;
+  compliance: OwnerPortalComplianceRecord;
   lease_events: OwnerPortalLeaseEventsRecord;
   guardrails: string[];
   generated_at: string;

@@ -76,7 +76,7 @@ const OWNER_PORTAL_RESPONSE = {
       byte_size: 13,
       category: "other",
       notes: "Quarterly property report",
-      source_label: "=HYPERLINK(\"https://unsafe.example\")",
+      source_label: '=HYPERLINK("https://unsafe.example")',
       created_at: "2026-05-31T00:00:00.000Z",
     },
   ],
@@ -98,6 +98,45 @@ const OWNER_PORTAL_RESPONSE = {
         approval_required: true,
         approval_status: "pending",
         quote_amount_cents: 125000,
+      },
+    ],
+  },
+  compliance: {
+    open_count: 2,
+    overdue_count: 1,
+    due_soon_count: 1,
+    missing_evidence_count: 1,
+    items: [
+      {
+        id: "compliance-1",
+        property_id: "property-1",
+        property_name: "Queen Street Retail Centre",
+        title: "Fire safety certificate",
+        kind: "fire_safety",
+        status: "active",
+        due_status: "overdue",
+        next_due_date: "2026-05-30",
+        certificate_expires_on: "2026-05-31",
+        last_checked_at: "2026-05-31T00:00:00.000Z",
+        evidence_status: "missing",
+        tenant_name: "Private Compliance Tenant Pty Ltd",
+        internal_notes: "Internal compliance note",
+        source_document_id: "source-doc-secret",
+        evidence_id: "evidence-secret-1",
+        operator_name: "Operator Avery",
+      },
+      {
+        id: "compliance-2",
+        property_id: "property-2",
+        property_name: "King Street Offices",
+        title: "Essential services inspection",
+        kind: "inspection",
+        status: "active",
+        due_status: "due_soon",
+        next_due_date: "2026-06-10",
+        certificate_expires_on: null,
+        last_checked_at: null,
+        evidence_status: "linked",
       },
     ],
   },
@@ -151,6 +190,13 @@ const OWNER_PORTAL_EMPTY_RESPONSE = {
     open_count: 0,
     urgent_count: 0,
     awaiting_approval_count: 0,
+    items: [],
+  },
+  compliance: {
+    open_count: 0,
+    overdue_count: 0,
+    due_soon_count: 0,
+    missing_evidence_count: 0,
     items: [],
   },
   lease_events: {
@@ -209,7 +255,9 @@ test("owner portal preview renders read-only owner statement data", async ({
   });
 
   await page.route("**/api/v1/owners/statements/send**", async (route) => {
-    unsafeRequests.push(`${route.request().method()} /api/v1/owners/statements/send`);
+    unsafeRequests.push(
+      `${route.request().method()} /api/v1/owners/statements/send`,
+    );
     await route.fulfill({ status: 500, body: "send must stay unused" });
   });
   await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
@@ -226,12 +274,14 @@ test("owner portal preview renders read-only owner statement data", async ({
 
   await page.goto("/owner-portal/owner-1?month=2026-05");
 
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   await expect(page.getByText("SKJ Holdings Pty Ltd").first()).toBeVisible();
   await expect(page.getByText("Mia Accounts")).toBeVisible();
-  await expect(page.getByText("Queen Street Retail Centre").first()).toBeVisible();
+  await expect(
+    page.getByText("Queen Street Retail Centre").first(),
+  ).toBeVisible();
   await expect(page.getByText("King Street Offices").first()).toBeVisible();
   await expect(page.getByText("$17,600").first()).toBeVisible();
   await expect(
@@ -245,8 +295,19 @@ test("owner portal preview renders read-only owner statement data", async ({
     page.getByRole("heading", { name: "Maintenance snapshot" }),
   ).toBeVisible();
   await expect(page.getByText("Air conditioning quote review")).toBeVisible();
-  await expect(page.getByText("Queen Street Retail Centre").first()).toBeVisible();
+  await expect(
+    page.getByText("Queen Street Retail Centre").first(),
+  ).toBeVisible();
   await expect(page.getByText("$1,250 quote")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Compliance snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("Fire safety certificate")).toBeVisible();
+  await expect(page.getByText("Essential services inspection")).toBeVisible();
+  await expect(page.getByText("Overdue").first()).toBeVisible();
+  await expect(page.getByText("Missing evidence").first()).toBeVisible();
+  await expect(page.getByText("Due soon").first()).toBeVisible();
+  await expect(page.getByText("Evidence linked").first()).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Lease events" }),
   ).toBeVisible();
@@ -260,6 +321,13 @@ test("owner portal preview renders read-only owner statement data", async ({
   await expect(page.getByText("Private Lease Tenant Pty Ltd")).toHaveCount(0);
   await expect(page.getByText("tenant_id")).toHaveCount(0);
   await expect(page.getByText("Private lease note")).toHaveCount(0);
+  await expect(page.getByText("Private Compliance Tenant Pty Ltd")).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Internal compliance note")).toHaveCount(0);
+  await expect(page.getByText("source-doc-secret")).toHaveCount(0);
+  await expect(page.getByText("evidence-secret-1")).toHaveCount(0);
+  await expect(page.getByText("Operator Avery")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Owner-visible packet" }),
   ).toBeVisible();
@@ -270,7 +338,9 @@ test("owner portal preview renders read-only owner statement data", async ({
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy packet" }).click();
   await expect(page.getByText("Owner-visible packet copied.")).toBeVisible();
-  const copiedPacket = await page.evaluate(() => navigator.clipboard.readText());
+  const copiedPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
   expect(copiedPacket).toContain("SKJ Holdings Pty Ltd");
   expect(copiedPacket).toContain("Operator preview");
   expect(copiedPacket).toContain("Queen Street Retail Centre");
@@ -281,6 +351,16 @@ test("owner portal preview renders read-only owner statement data", async ({
   expect(copiedPacket).toContain("owner-visible-report.pdf");
   expect(copiedPacket).toContain("Air conditioning quote review");
   expect(copiedPacket).toContain("$1,250");
+  expect(copiedPacket).toContain("Compliance");
+  expect(copiedPacket).toContain("Fire safety certificate");
+  expect(copiedPacket).toContain("Essential services inspection");
+  expect(copiedPacket).toContain("Missing evidence");
+  expect(copiedPacket).toContain("Evidence linked");
+  expect(copiedPacket).not.toContain("Private Compliance Tenant Pty Ltd");
+  expect(copiedPacket).not.toContain("Internal compliance note");
+  expect(copiedPacket).not.toContain("source-doc-secret");
+  expect(copiedPacket).not.toContain("evidence-secret-1");
+  expect(copiedPacket).not.toContain("Operator Avery");
   expect(copiedPacket).toContain("Lease events");
   expect(copiedPacket).toContain("Rent review");
   expect(copiedPacket).toContain("Lease expiry");
@@ -303,6 +383,16 @@ test("owner portal preview renders read-only owner statement data", async ({
   expect(packetCsv).toContain("owner-visible-report.pdf");
   expect(packetCsv).toContain("Air conditioning quote review");
   expect(packetCsv).toContain("$1,250");
+  expect(packetCsv).toContain("Compliance");
+  expect(packetCsv).toContain("Fire safety certificate");
+  expect(packetCsv).toContain("Essential services inspection");
+  expect(packetCsv).toContain("Missing evidence");
+  expect(packetCsv).toContain("Evidence linked");
+  expect(packetCsv).not.toContain("Private Compliance Tenant Pty Ltd");
+  expect(packetCsv).not.toContain("Internal compliance note");
+  expect(packetCsv).not.toContain("source-doc-secret");
+  expect(packetCsv).not.toContain("evidence-secret-1");
+  expect(packetCsv).not.toContain("Operator Avery");
   expect(packetCsv).toContain("Lease events");
   expect(packetCsv).toContain("Rent review");
   expect(packetCsv).toContain("Lease expiry");
@@ -504,9 +594,9 @@ test("owner portal preview renders mobile empty states without overflow", async 
 
   await page.goto("/owner-portal/owner-1?month=2026-05");
 
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   await expect(
     page.getByRole("heading", { name: "Owner-visible packet" }),
   ).toBeVisible();
@@ -519,6 +609,7 @@ test("owner portal preview renders mobile empty states without overflow", async 
   await expect(page.getByText("0 open").first()).toBeVisible();
   await expect(page.getByText("No statement available.")).toBeVisible();
   await expect(page.getByText("No open maintenance.")).toBeVisible();
+  await expect(page.getByText("No compliance items.")).toBeVisible();
   await expect(page.getByText("No upcoming lease events.")).toBeVisible();
   await expect(page.getByText("No shared documents.")).toBeVisible();
   await expect(page.getByText("No linked properties.")).toBeVisible();

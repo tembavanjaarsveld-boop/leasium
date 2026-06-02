@@ -1,13 +1,17 @@
 """Read-only owner portal API tests."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.db import utcnow
 from stewart.core.models import (
     BillingDraft,
     BillingDraftStatus,
+    ComplianceCheck,
+    ComplianceCheckKind,
+    ComplianceCheckStatus,
     DocumentCategory,
     Entity,
     InvoiceDraft,
@@ -18,6 +22,9 @@ from stewart.core.models import (
     MaintenancePriority,
     MaintenanceWorkOrder,
     MaintenanceWorkOrderStatus,
+    Obligation,
+    ObligationCategory,
+    ObligationStatus,
     OperatingMode,
     Organisation,
     Owner,
@@ -578,6 +585,170 @@ def test_owner_portal_lists_safe_lease_events_for_linked_properties(
     assert "Suite Hidden" not in serialized
     assert "Unlinked Lease Property" not in serialized
     assert "Suite 99" not in serialized
+
+
+def test_owner_portal_lists_safe_compliance_snapshot_for_linked_properties(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner_portal_owner(session)
+    entity = _entity(session)
+    linked_property = _linked_owner_property(session, owner)
+    today = utcnow().date()
+    tenant = Tenant(entity_id=entity.id, legal_name="Private Compliance Tenant Pty Ltd")
+    unlinked_property = Property(
+        entity_id=entity.id,
+        name="Unlinked Compliance Property",
+        street_address="12 Other Street",
+        property_type=PropertyType.commercial_office,
+    )
+    evidence_doc = StoredDocument(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        filename="private-evidence.pdf",
+        byte_size=1,
+        file_data=b"x",
+        category=DocumentCategory.other,
+        document_metadata={"source": "operator_upload"},
+    )
+    session.add_all([tenant, unlinked_property, evidence_doc])
+    session.flush()
+    evidence_obligation = Obligation(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        title="Private evidence obligation",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=today + timedelta(days=18),
+        obligation_metadata={"evidence_document_ids": [str(evidence_doc.id)]},
+    )
+    session.add(evidence_obligation)
+    session.flush()
+    overdue_check = ComplianceCheck(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        title="Fire safety annual statement",
+        kind=ComplianceCheckKind.fire_safety,
+        status=ComplianceCheckStatus.active,
+        last_checked_at=datetime(2026, 4, 1, 9, 0),
+        next_due_date=today - timedelta(days=13),
+        notes="Internal compliance note should stay private.",
+        check_metadata={
+            "owner_portal_visible": True,
+            "owner_portal_title": "Fire safety annual statement",
+        },
+    )
+    due_soon_check = ComplianceCheck(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        source_document_id=evidence_doc.id,
+        current_obligation_id=evidence_obligation.id,
+        title="Private Compliance Tenant Pty Ltd insurance certificate",
+        kind=ComplianceCheckKind.insurance,
+        status=ComplianceCheckStatus.active,
+        last_checked_at=datetime(2026, 5, 15, 10, 30),
+        next_due_date=today + timedelta(days=18),
+        certificate_expires_on=today + timedelta(days=28),
+        notes="Provider evidence id must stay private.",
+        check_metadata={
+            "owner_portal_visible": True,
+            "owner_portal_title": "Insurance certificate renewal",
+            "operator_history": [{"actor": "ops@example.test"}],
+        },
+    )
+    hidden_sensitive_check = ComplianceCheck(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        tenant_id=tenant.id,
+        title="Private Compliance Tenant Pty Ltd internal inspection",
+        kind=ComplianceCheckKind.inspection,
+        status=ComplianceCheckStatus.active,
+        next_due_date=today + timedelta(days=8),
+    )
+    paused_visible_check = ComplianceCheck(
+        entity_id=entity.id,
+        property_id=linked_property.id,
+        title="Paused compliance check",
+        kind=ComplianceCheckKind.certificate,
+        status=ComplianceCheckStatus.paused,
+        next_due_date=today + timedelta(days=10),
+        check_metadata={"owner_portal_visible": True},
+    )
+    cross_property_check = ComplianceCheck(
+        entity_id=entity.id,
+        property_id=unlinked_property.id,
+        title="Other owner compliance",
+        kind=ComplianceCheckKind.fire_safety,
+        status=ComplianceCheckStatus.active,
+        next_due_date=today + timedelta(days=3),
+        check_metadata={"owner_portal_visible": True},
+    )
+    session.add_all(
+        [
+            overdue_check,
+            due_soon_check,
+            hidden_sensitive_check,
+            paused_visible_check,
+            cross_property_check,
+        ]
+    )
+    session.commit()
+
+    response = client.get(
+        f"/api/v1/owner-portal/{owner.id}",
+        params={"month": "2026-05"},
+    )
+
+    assert response.status_code == 200, response.text
+    compliance = response.json()["compliance"]
+    assert compliance["open_count"] == 2
+    assert compliance["overdue_count"] == 1
+    assert compliance["due_soon_count"] == 1
+    assert compliance["missing_evidence_count"] == 1
+    assert len(compliance["items"]) == 2
+    first, second = compliance["items"]
+    first_checked_at = first.pop("last_checked_at")
+    assert first == {
+        "id": str(overdue_check.id),
+        "property_id": str(linked_property.id),
+        "property_name": linked_property.name,
+        "title": "Fire safety annual statement",
+        "kind": "fire_safety",
+        "status": "active",
+        "due_status": "overdue",
+        "next_due_date": (today - timedelta(days=13)).isoformat(),
+        "certificate_expires_on": None,
+        "evidence_status": "missing",
+    }
+    assert first_checked_at.startswith("2026-04-01T09:00:00")
+    second_checked_at = second.pop("last_checked_at")
+    assert second == {
+        "id": str(due_soon_check.id),
+        "property_id": str(linked_property.id),
+        "property_name": linked_property.name,
+        "title": "Insurance certificate renewal",
+        "kind": "insurance",
+        "status": "active",
+        "due_status": "due_soon",
+        "next_due_date": (today + timedelta(days=18)).isoformat(),
+        "certificate_expires_on": (today + timedelta(days=28)).isoformat(),
+        "evidence_status": "linked",
+    }
+    assert second_checked_at.startswith("2026-05-15T10:30:00")
+    serialized = response.text
+    assert "Private Compliance Tenant Pty Ltd" not in serialized
+    assert "tenant_id" not in serialized
+    assert "source_document_id" not in serialized
+    assert "current_obligation_id" not in serialized
+    assert str(evidence_doc.id) not in serialized
+    assert "private-evidence.pdf" not in serialized
+    assert "Internal compliance note" not in serialized
+    assert "Provider evidence id" not in serialized
+    assert "operator_history" not in serialized
+    assert "ops@example.test" not in serialized
+    assert "Paused compliance check" not in serialized
+    assert "Other owner compliance" not in serialized
 
 
 def test_owner_portal_preview_hides_deleted_owners(

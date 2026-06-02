@@ -23,7 +23,8 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
     token_source: "bearer",
     owner_auth_configured: true,
     boundary: "owner_portal_account",
-    detail: "Access is scoped to the owner linked to this owner portal account.",
+    detail:
+      "Access is scoped to the owner linked to this owner portal account.",
   },
   owner: {
     id: "owner-1",
@@ -87,7 +88,7 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
       byte_size: 17,
       category: "other",
       notes: null,
-      source_label: "=HYPERLINK(\"https://unsafe.example\")",
+      source_label: '=HYPERLINK("https://unsafe.example")',
       created_at: "2026-05-31T00:00:00.000Z",
     },
   ],
@@ -109,6 +110,32 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
         approval_required: true,
         approval_status: "pending",
         quote_amount_cents: 220000,
+      },
+    ],
+  },
+  compliance: {
+    open_count: 1,
+    overdue_count: 0,
+    due_soon_count: 1,
+    missing_evidence_count: 0,
+    items: [
+      {
+        id: "compliance-1",
+        property_id: "property-1",
+        property_name: "Owner Portal Plaza",
+        title: "Annual fire safety statement",
+        kind: "fire_safety",
+        status: "active",
+        due_status: "due_soon",
+        next_due_date: "2026-06-12",
+        certificate_expires_on: "2026-06-30",
+        last_checked_at: "2026-05-31T00:00:00.000Z",
+        evidence_status: "linked",
+        tenant_name: "Private Compliance Tenant Pty Ltd",
+        internal_notes: "Internal compliance note",
+        source_document_id: "source-doc-secret",
+        evidence_id: "evidence-secret-1",
+        operator_name: "Operator Avery",
       },
     ],
   },
@@ -193,6 +220,13 @@ const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
     awaiting_approval_count: 0,
     items: [],
   },
+  compliance: {
+    open_count: 0,
+    overdue_count: 0,
+    due_soon_count: 0,
+    missing_evidence_count: 0,
+    items: [],
+  },
   lease_events: {
     upcoming_count: 0,
     rent_review_count: 0,
@@ -202,7 +236,9 @@ const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
 };
 
 test("owner account claim and document actions use fresh bearer tokens", async () => {
-  const invitePage = await source("src/app/owner-portal/invite/[token]/page.tsx");
+  const invitePage = await source(
+    "src/app/owner-portal/invite/[token]/page.tsx",
+  );
   const accountPage = await source("src/app/owner-portal/page.tsx");
   const accountUi = await source(
     "src/app/owner-portal/owner-portal-account-ui.tsx",
@@ -435,8 +471,7 @@ test.describe("live Clerk owner portal account", () => {
         Boolean(OWNER_PORTAL_LIVE_EXPECT_DOCUMENT) &&
         path.startsWith("/api/v1/owner-portal/account/documents/") &&
         path.endsWith("/download");
-      const isOwnerAccountRead =
-        method === "GET" && isOwnerAccountReadPath;
+      const isOwnerAccountRead = method === "GET" && isOwnerAccountReadPath;
       const isAllowedDocumentDownload =
         method === "GET" && isDocumentDownloadPath;
       const isAllowedPreflight =
@@ -474,11 +509,15 @@ test.describe("live Clerk owner portal account", () => {
     await expect(
       page.getByRole("heading", { name: "Owner portal" }),
     ).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Owner account", { exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Owner-visible packet" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Copy packet" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Copy packet" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Download packet CSV" }),
     ).toBeVisible();
@@ -572,8 +611,7 @@ test.describe("live Clerk owner portal claim", () => {
         method === "POST" && path === "/api/v1/owner-portal/account/claim";
       const isAllowedPreflight =
         method === "OPTIONS" &&
-        (isInvitePreviewPath ||
-          path === "/api/v1/owner-portal/account/claim");
+        (isInvitePreviewPath || path === "/api/v1/owner-portal/account/claim");
 
       if (isInvitePreview) {
         previewRequestCount += 1;
@@ -617,7 +655,9 @@ test.describe("live Clerk owner portal claim", () => {
     await expect(
       page.getByRole("heading", { name: "Owner portal" }),
     ).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Owner account", { exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Owner-visible packet" }),
     ).toBeVisible();
@@ -679,10 +719,16 @@ test("owner invite claim sends fresh owner bearer token when auth is enabled", a
       });
     },
   );
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    blockedReads.push(route.request().url());
-    await route.fulfill({ status: 500, body: "account read must stay gated" });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      blockedReads.push(route.request().url());
+      await route.fulfill({
+        status: 500,
+        body: "account read must stay gated",
+      });
+    },
+  );
   await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
     blockedReads.push(route.request().url());
     await route.fulfill({
@@ -710,14 +756,14 @@ test("owner invite claim sends fresh owner bearer token when auth is enabled", a
   ).toBeVisible({ timeout: 15_000 });
   expect(blockedReads).toEqual([]);
   await page.getByRole("button", { name: "Open portal" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   expect(claimAuthorization).toBe(`Bearer ${OWNER_AUTH_SMOKE_TOKEN}`);
   expect(claimBody).toEqual({ portal_token: "owner-token-one" });
-  expect(skipCacheCallCount(await ownerClerkTokenOptions(page))).toBeGreaterThan(
-    0,
-  );
+  expect(
+    skipCacheCallCount(await ownerClerkTokenOptions(page)),
+  ).toBeGreaterThan(0);
   expect(blockedReads).toEqual([]);
   expect(unsafeRequests).toEqual([]);
 });
@@ -742,8 +788,7 @@ test("owner document download sends fresh owner bearer token when auth is enable
         (path.startsWith("/api/v1/owner-portal/account/documents/") &&
           path.endsWith("/download")));
     if (
-      (path.startsWith("/api/v1/owner-portal/") &&
-        !allowedOwnerAccountRead) ||
+      (path.startsWith("/api/v1/owner-portal/") && !allowedOwnerAccountRead) ||
       path.startsWith("/api/v1/owners/statements/send") ||
       path.startsWith("/api/v1/owners/statements/dispatch") ||
       path.startsWith("/api/v1/owners/statements/pdf") ||
@@ -776,14 +821,17 @@ test("owner document download sends fresh owner bearer token when auth is enable
       }),
     });
   });
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    accountReadAuthorizations.push(route.request().headers().authorization);
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
-    });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      accountReadAuthorizations.push(route.request().headers().authorization);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
+      });
+    },
+  );
 
   const downloadAuthorizations: Array<string | undefined> = [];
   await page.route(
@@ -804,9 +852,9 @@ test("owner document download sends fresh owner bearer token when auth is enable
 
   await page.goto("/owner-portal?month=2026-05");
 
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   expect(accountReadAuthorizations).toEqual([
     `Bearer ${OWNER_AUTH_SMOKE_TOKEN}`,
     `Bearer ${OWNER_AUTH_SMOKE_TOKEN}`,
@@ -826,12 +874,10 @@ test("owner document download sends fresh owner bearer token when auth is enable
   expect((await documentDownloadPromise).suggestedFilename()).toBe(
     "owner-visible-report.pdf",
   );
-  expect(downloadAuthorizations).toEqual([
-    `Bearer ${OWNER_AUTH_SMOKE_TOKEN}`,
-  ]);
-  expect(skipCacheCallCount(await ownerClerkTokenOptions(page))).toBeGreaterThan(
-    2,
-  );
+  expect(downloadAuthorizations).toEqual([`Bearer ${OWNER_AUTH_SMOKE_TOKEN}`]);
+  expect(
+    skipCacheCallCount(await ownerClerkTokenOptions(page)),
+  ).toBeGreaterThan(2);
   expect(unsafeRequests).toEqual([]);
 });
 
@@ -850,10 +896,16 @@ test("owner claim link shows only safe context before account claim", async ({
       });
     },
   );
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    blockedReads.push(route.request().url());
-    await route.fulfill({ status: 500, body: "account read must stay gated" });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      blockedReads.push(route.request().url());
+      await route.fulfill({
+        status: 500,
+        body: "account read must stay gated",
+      });
+    },
+  );
   await page.route("**/api/v1/owner-portal/owner-1**", async (route) => {
     blockedReads.push(route.request().url());
     await route.fulfill({
@@ -919,13 +971,16 @@ test("owner account entry opens a linked owner portal without owner id", async (
       }),
     });
   });
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
-    });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
+      });
+    },
+  );
   const downloads: string[] = [];
   await page.route(
     "**/api/v1/owner-portal/account/documents/*/download",
@@ -949,9 +1004,9 @@ test("owner account entry opens a linked owner portal without owner id", async (
 
   await page.goto("/owner-portal?month=2026-05");
 
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
   await expect(page.getByText("owner_portal_account")).toHaveCount(0);
   await expect(page.getByText("Owner Portal Plaza").first()).toBeVisible();
@@ -969,6 +1024,12 @@ test("owner account entry opens a linked owner portal without owner id", async (
   await expect(page.getByText("Lift service approval")).toBeVisible();
   await expect(page.getByText("$2,200 quote")).toBeVisible();
   await expect(
+    page.getByRole("heading", { name: "Compliance snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("Annual fire safety statement")).toBeVisible();
+  await expect(page.getByText("Due soon").first()).toBeVisible();
+  await expect(page.getByText("Evidence linked").first()).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Lease events" }),
   ).toBeVisible();
   await expect(page.getByText("Rent review").first()).toBeVisible();
@@ -981,6 +1042,13 @@ test("owner account entry opens a linked owner portal without owner id", async (
   await expect(page.getByText("tenant_id")).toHaveCount(0);
   await expect(page.getByText("Private lease note")).toHaveCount(0);
   await expect(page.getByText("operator_upload")).toHaveCount(0);
+  await expect(page.getByText("Private Compliance Tenant Pty Ltd")).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Internal compliance note")).toHaveCount(0);
+  await expect(page.getByText("source-doc-secret")).toHaveCount(0);
+  await expect(page.getByText("evidence-secret-1")).toHaveCount(0);
+  await expect(page.getByText("Operator Avery")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Owner-visible packet" }),
   ).toBeVisible();
@@ -991,7 +1059,9 @@ test("owner account entry opens a linked owner portal without owner id", async (
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy packet" }).click();
   await expect(page.getByText("Owner-visible packet copied.")).toBeVisible();
-  const copiedPacket = await page.evaluate(() => navigator.clipboard.readText());
+  const copiedPacket = await page.evaluate(() =>
+    navigator.clipboard.readText(),
+  );
   expect(copiedPacket).toContain("Owner Portal Pty Ltd");
   expect(copiedPacket).toContain("Owner Portal Plaza");
   expect(copiedPacket).toContain("100%");
@@ -999,6 +1069,15 @@ test("owner account entry opens a linked owner portal without owner id", async (
   expect(copiedPacket).toContain("owner-visible-report.pdf");
   expect(copiedPacket).toContain("Lift service approval");
   expect(copiedPacket).toContain("$2,200");
+  expect(copiedPacket).toContain("Compliance");
+  expect(copiedPacket).toContain("Annual fire safety statement");
+  expect(copiedPacket).toContain("Due soon");
+  expect(copiedPacket).toContain("Evidence linked");
+  expect(copiedPacket).not.toContain("Private Compliance Tenant Pty Ltd");
+  expect(copiedPacket).not.toContain("Internal compliance note");
+  expect(copiedPacket).not.toContain("source-doc-secret");
+  expect(copiedPacket).not.toContain("evidence-secret-1");
+  expect(copiedPacket).not.toContain("Operator Avery");
   expect(copiedPacket).toContain("Lease events");
   expect(copiedPacket).toContain("Rent review");
   expect(copiedPacket).toContain("Lease expiry");
@@ -1021,6 +1100,15 @@ test("owner account entry opens a linked owner portal without owner id", async (
   expect(packetCsv).toContain("owner-visible-report.pdf");
   expect(packetCsv).toContain("Lift service approval");
   expect(packetCsv).toContain("$2,200");
+  expect(packetCsv).toContain("Compliance");
+  expect(packetCsv).toContain("Annual fire safety statement");
+  expect(packetCsv).toContain("Due soon");
+  expect(packetCsv).toContain("Evidence linked");
+  expect(packetCsv).not.toContain("Private Compliance Tenant Pty Ltd");
+  expect(packetCsv).not.toContain("Internal compliance note");
+  expect(packetCsv).not.toContain("source-doc-secret");
+  expect(packetCsv).not.toContain("evidence-secret-1");
+  expect(packetCsv).not.toContain("Operator Avery");
   expect(packetCsv).toContain("Lease events");
   expect(packetCsv).toContain("Rent review");
   expect(packetCsv).toContain("Lease expiry");
@@ -1046,9 +1134,7 @@ test("owner account entry opens a linked owner portal without owner id", async (
       name: "Download owner-visible-report.pdf for Owner Portal Plaza",
     })
     .click();
-  expect((await download).suggestedFilename()).toBe(
-    "owner-visible-report.pdf",
-  );
+  expect((await download).suggestedFilename()).toBe("owner-visible-report.pdf");
   expect(downloads).toHaveLength(1);
   expect(unsafeRequests).toEqual([]);
   await expect(page.getByText("operator_preview")).toHaveCount(0);
@@ -1076,28 +1162,31 @@ test("owner account entry clears owner data after account session failure", asyn
       }),
     });
   });
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    if (failSessionReads) {
-      await route.fulfill({
-        status: 401,
-        contentType: "application/json",
-        body: JSON.stringify({ detail: "Owner account session expired." }),
-      });
-      return;
-    }
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      if (failSessionReads) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Owner account session expired." }),
+        });
+        return;
+      }
 
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
-    });
-  });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNER_PORTAL_ACCOUNT_RESPONSE),
+      });
+    },
+  );
 
   await page.goto("/owner-portal?month=2026-05");
 
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   await expect(page.getByText("Owner Portal Pty Ltd").first()).toBeVisible();
   await expect(page.getByText("Owner Portal Plaza").first()).toBeVisible();
   await expect(page.getByText("$5,500").first()).toBeVisible();
@@ -1189,19 +1278,22 @@ test("owner account entry renders mobile empty states without overflow", async (
       }),
     });
   });
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE),
-    });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE),
+      });
+    },
+  );
 
   await page.goto("/owner-portal?month=2026-05");
 
-  await expect(
-    page.getByRole("heading", { name: "Owner portal" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Owner portal" })).toBeVisible(
+    { timeout: 15_000 },
+  );
   await expect(page.getByText("Owner account", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Owner-visible packet" }),
@@ -1215,6 +1307,7 @@ test("owner account entry renders mobile empty states without overflow", async (
   await expect(page.getByText("0 open").first()).toBeVisible();
   await expect(page.getByText("No statement available.")).toBeVisible();
   await expect(page.getByText("No open maintenance.")).toBeVisible();
+  await expect(page.getByText("No compliance items.")).toBeVisible();
   await expect(page.getByText("No upcoming lease events.")).toBeVisible();
   await expect(page.getByText("No shared documents.")).toBeVisible();
   await expect(page.getByText("No linked properties.")).toBeVisible();
@@ -1271,24 +1364,27 @@ test("owner account entry keeps populated shared documents inside mobile viewpor
       }),
     });
   });
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ...OWNER_PORTAL_ACCOUNT_RESPONSE,
-        documents: [
-          {
-            ...OWNER_PORTAL_ACCOUNT_RESPONSE.documents[0],
-            filename: longFilename,
-            property_name: longPropertyName,
-            source_label: longSourceLabel,
-            notes: longNotes,
-          },
-        ],
-      }),
-    });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...OWNER_PORTAL_ACCOUNT_RESPONSE,
+          documents: [
+            {
+              ...OWNER_PORTAL_ACCOUNT_RESPONSE.documents[0],
+              filename: longFilename,
+              property_name: longPropertyName,
+              source_label: longSourceLabel,
+              notes: longNotes,
+            },
+          ],
+        }),
+      });
+    },
+  );
 
   await page.goto("/owner-portal?month=2026-05");
 
@@ -1296,21 +1392,19 @@ test("owner account entry keeps populated shared documents inside mobile viewpor
     name: `Download ${longFilename} for ${longPropertyName}`,
   });
   await expect(downloadButton).toBeVisible({ timeout: 15_000 });
-  for (const metadataText of [
-    longPropertyName,
-    longSourceLabel,
-    longNotes,
-  ]) {
+  for (const metadataText of [longPropertyName, longSourceLabel, longNotes]) {
     await expect(page.getByText(metadataText, { exact: false })).toBeVisible();
     expect(
-      await page.getByText(metadataText, { exact: false }).evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        return (
-          rect.left >= 0 &&
-          rect.right <= window.innerWidth &&
-          element.scrollWidth <= element.clientWidth
-        );
-      }),
+      await page
+        .getByText(metadataText, { exact: false })
+        .evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.left >= 0 &&
+            rect.right <= window.innerWidth &&
+            element.scrollWidth <= element.clientWidth
+          );
+        }),
     ).toBe(true);
   }
   expect(
@@ -1346,12 +1440,15 @@ test("owner account entry guides unlinked or revoked logins without data", async
       }),
     });
   });
-  await page.route("**/api/v1/owner-portal/account/session**", async (route) => {
-    await route.fulfill({
-      status: 500,
-      body: "unlinked account must not fetch financial data",
-    });
-  });
+  await page.route(
+    "**/api/v1/owner-portal/account/session**",
+    async (route) => {
+      await route.fulfill({
+        status: 500,
+        body: "unlinked account must not fetch financial data",
+      });
+    },
+  );
 
   await page.goto("/owner-portal");
 

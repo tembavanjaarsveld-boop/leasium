@@ -7,6 +7,28 @@ Last updated: 2026-06-02
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner portal compliance snapshot
+- Owner portal preview and owner account session responses now include a
+  read-only `compliance` section for linked owner properties.
+- The projection includes only active checks where
+  `check_metadata.owner_portal_visible` is exactly true and the check's
+  property is linked to the owner through `PropertyOwner`.
+- Owner-visible fields are deliberately narrow: property, owner-safe title,
+  check kind/status, next due date, certificate expiry, last checked date, due
+  status, and evidence-present state (`linked` or `missing`).
+- The shared owner dashboard renders the Compliance snapshot panel, and the
+  local Owner-visible packet copy/download includes matching compliance rows
+  and totals without exposing tenant identity, internal notes, source document
+  IDs, evidence document IDs, raw metadata, operator history, cross-owner
+  checks, or unflagged checks.
+- Viewing/copying/downloading remains read-only: it does not complete checks,
+  upload evidence, apply Smart Intake, send email/SMS, dispatch providers,
+  write Xero/Basiq data, reconcile payments, or mutate provider history.
+- Verification: full owner portal API tests passed **10 passed**; owner portal
+  preview/account smokes passed **13 passed, 4 skipped** (live-Clerk lanes
+  skipped as expected); targeted backend `ruff`, frontend eslint,
+  `tsc --noEmit`, and `git diff --check` passed.
+
 ### Owner portal lease events
 - Owner portal preview and owner account session responses now include a
   read-only `lease_events` section for linked owner properties, covering

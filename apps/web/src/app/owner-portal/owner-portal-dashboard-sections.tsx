@@ -1,16 +1,26 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, CalendarDays, Download, FileText, Wrench } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Download,
+  FileText,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react";
 
 import {
   EmptyState,
   SecondaryButton,
   SectionPanel,
   StatusBadge,
+  type StatusTone,
 } from "@/components/ui";
 import {
   downloadOwnerPortalAccountDocument,
+  type OwnerPortalComplianceItemRecord,
+  type OwnerPortalComplianceRecord,
   type OwnerPortalDocumentRecord,
   type OwnerPortalLeaseEventRecord,
   type OwnerPortalLeaseEventsRecord,
@@ -67,19 +77,29 @@ function formatDate(value: string | null): string {
   }
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   const date = dateOnly
-    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    ? new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3]),
+      )
     : new Date(value);
   return new Intl.DateTimeFormat("en-AU", {
     dateStyle: "medium",
   }).format(date);
 }
 
-const leaseEventLabels: Record<OwnerPortalLeaseEventRecord["event_kind"], string> = {
+const leaseEventLabels: Record<
+  OwnerPortalLeaseEventRecord["event_kind"],
+  string
+> = {
   lease_expiry: "Lease expiry",
   rent_review: "Rent review",
 };
 
-const leaseStatusLabels: Record<OwnerPortalLeaseEventRecord["lease_status"], string> = {
+const leaseStatusLabels: Record<
+  OwnerPortalLeaseEventRecord["lease_status"],
+  string
+> = {
   active: "Active",
   expired: "Expired",
   holding_over: "Holding over",
@@ -117,6 +137,58 @@ function maintenancePriorityTone(
   if (priority === "urgent") return "danger";
   if (priority === "high") return "warning";
   if (priority === "normal") return "primary";
+  return "neutral";
+}
+
+function titleCaseValue(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function complianceKindLabel(kind: string): string {
+  return titleCaseValue(kind);
+}
+
+function complianceDueLabel(dueStatus: string): string {
+  if (dueStatus === "due_soon") return "Due soon";
+  return titleCaseValue(dueStatus);
+}
+
+function complianceEvidenceLabel(evidenceStatus: string): string {
+  if (evidenceStatus === "missing") return "Missing evidence";
+  if (evidenceStatus === "linked") return "Evidence linked";
+  if (evidenceStatus === "uploaded") return "Evidence uploaded";
+  return titleCaseValue(evidenceStatus);
+}
+
+function complianceDueTone(dueStatus: string): StatusTone {
+  if (dueStatus === "overdue") return "danger";
+  if (dueStatus === "due_soon") return "warning";
+  return "neutral";
+}
+
+function complianceEvidenceTone(evidenceStatus: string): StatusTone {
+  if (evidenceStatus === "missing") return "danger";
+  if (evidenceStatus === "linked" || evidenceStatus === "uploaded") {
+    return "success";
+  }
+  return "neutral";
+}
+
+function complianceStatusTone(status: string): StatusTone {
+  if (["completed", "compliant"].includes(status)) {
+    return "success";
+  }
+  if (status === "archived") {
+    return "danger";
+  }
+  if (status === "paused") {
+    return "warning";
+  }
+  if (status === "active") {
+    return "primary";
+  }
   return "neutral";
 }
 
@@ -166,6 +238,77 @@ export function OwnerPortalLeaseEventsPanel({
           title="No upcoming lease events."
           description="Rent reviews and lease expiries for linked properties will appear here."
           icon={<CalendarDays size={18} />}
+        />
+      )}
+    </SectionPanel>
+  );
+}
+
+export function OwnerPortalCompliancePanel({
+  compliance,
+}: {
+  compliance: OwnerPortalComplianceRecord;
+}) {
+  return (
+    <SectionPanel
+      title="Compliance snapshot"
+      description={`${compliance.open_count} open / ${compliance.overdue_count} overdue / ${compliance.due_soon_count} due soon / ${compliance.missing_evidence_count} missing evidence`}
+      icon={<ShieldCheck size={17} />}
+    >
+      {compliance.items.length ? (
+        <div className="divide-y divide-border">
+          {compliance.items.map((item: OwnerPortalComplianceItemRecord) => (
+            <div
+              key={item.id}
+              className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                    {item.title}
+                  </p>
+                  <StatusBadge tone={complianceDueTone(item.due_status)}>
+                    {complianceDueLabel(item.due_status)}
+                  </StatusBadge>
+                  <StatusBadge
+                    tone={complianceEvidenceTone(item.evidence_status)}
+                  >
+                    {complianceEvidenceLabel(item.evidence_status)}
+                  </StatusBadge>
+                  <StatusBadge tone={complianceStatusTone(item.status)}>
+                    {titleCaseValue(item.status)}
+                  </StatusBadge>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {item.property_name} - {complianceKindLabel(item.kind)}
+                </p>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground">
+                  <CalendarDays size={13} />
+                  Next due {formatDate(item.next_due_date)}
+                  {item.certificate_expires_on ? (
+                    <span>
+                      Certificate expires{" "}
+                      {formatDate(item.certificate_expires_on)}
+                    </span>
+                  ) : null}
+                  {item.last_checked_at ? (
+                    <span>Checked {formatDateTime(item.last_checked_at)}</span>
+                  ) : null}
+                </p>
+              </div>
+              {item.certificate_expires_on ? (
+                <div className="text-sm font-semibold text-foreground md:text-right">
+                  Expires {formatDate(item.certificate_expires_on)}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No compliance items."
+          description="Owner-visible compliance dates and evidence status for linked properties will appear here."
+          icon={<ShieldCheck size={18} />}
         />
       )}
     </SectionPanel>
@@ -283,8 +426,8 @@ export function OwnerPortalDocumentsPanel({
                   </p>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {document.property_name} - {categoryLabels[document.category]} -{" "}
-                  {formatBytes(document.byte_size)} - {document.source_label}
+                  {document.property_name} - {categoryLabels[document.category]}{" "}
+                  - {formatBytes(document.byte_size)} - {document.source_label}
                 </p>
                 <p className="text-xs leading-5 text-muted-foreground">
                   Shared {formatDateTime(document.created_at)}

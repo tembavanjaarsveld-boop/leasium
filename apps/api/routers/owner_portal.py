@@ -21,6 +21,8 @@ from stewart.core.auth import (
 )
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    ComplianceCheck,
+    ComplianceCheckStatus,
     DocumentCategory,
     Entity,
     Lease,
@@ -28,6 +30,7 @@ from stewart.core.models import (
     MaintenancePriority,
     MaintenanceWorkOrder,
     MaintenanceWorkOrderStatus,
+    Obligation,
     OperatingMode,
     Organisation,
     Owner,
@@ -48,6 +51,8 @@ from apps.api.schemas.owner_portal import (
     OwnerPortalAccountClaimCreate,
     OwnerPortalAccountLifecycleRead,
     OwnerPortalAuthRead,
+    OwnerPortalComplianceItemRead,
+    OwnerPortalComplianceRead,
     OwnerPortalDocumentRead,
     OwnerPortalInvitePreviewRead,
     OwnerPortalInviteRead,
@@ -97,6 +102,9 @@ OWNER_PORTAL_INVITE_TTL_DAYS = 30
 OWNER_PORTAL_DOCUMENT_VISIBLE_KEY = "owner_portal_visible"
 OWNER_PORTAL_MAINTENANCE_VISIBLE_KEY = "owner_portal_visible"
 OWNER_PORTAL_MAINTENANCE_TITLE_KEY = "owner_portal_title"
+OWNER_PORTAL_COMPLIANCE_VISIBLE_KEY = "owner_portal_visible"
+OWNER_PORTAL_COMPLIANCE_TITLE_KEY = "owner_portal_title"
+OWNER_PORTAL_COMPLIANCE_DUE_SOON_DAYS = 30
 OWNER_PORTAL_LEASE_EVENT_WINDOW_DAYS = 180
 OWNER_PORTAL_OPEN_MAINTENANCE_STATUSES = {
     MaintenanceWorkOrderStatus.requested,
@@ -111,6 +119,7 @@ OWNER_PORTAL_LEASE_EVENT_STATUSES = {
     LeaseStatus.active,
     LeaseStatus.holding_over,
 }
+OWNER_PORTAL_OPEN_COMPLIANCE_STATUSES = {ComplianceCheckStatus.active}
 
 
 def _current_statement_month() -> str:
@@ -141,6 +150,34 @@ def _owner_portal_maintenance_title(metadata: dict[str, object]) -> str:
         _metadata_text(metadata.get(OWNER_PORTAL_MAINTENANCE_TITLE_KEY))
         or "Maintenance item"
     )
+
+
+def _owner_portal_compliance_title(
+    metadata: dict[str, object],
+    fallback: str,
+) -> str:
+    return _metadata_text(metadata.get(OWNER_PORTAL_COMPLIANCE_TITLE_KEY)) or fallback
+
+
+def _owner_portal_compliance_due_status(
+    next_due_date: date,
+    today: date,
+) -> str:
+    if next_due_date < today:
+        return "overdue"
+    if next_due_date <= today + timedelta(days=OWNER_PORTAL_COMPLIANCE_DUE_SOON_DAYS):
+        return "due_soon"
+    return "upcoming"
+
+
+def _owner_portal_compliance_evidence_status(
+    obligation_metadata: dict[str, object] | None,
+) -> str:
+    metadata = obligation_metadata or {}
+    evidence_ids = metadata.get("evidence_document_ids")
+    if isinstance(evidence_ids, list) and any(str(item).strip() for item in evidence_ids):
+        return "linked"
+    return "missing"
 
 
 def _assert_owner_portal_operating_mode(session: Session, entity_id: UUID) -> None:
@@ -670,6 +707,96 @@ def _owner_portal_lease_events(
     )
 
 
+def _owner_portal_compliance(
+    owner: Owner,
+    session: Session,
+    properties: list[OwnerPortalPropertyRead],
+) -> OwnerPortalComplianceRead:
+    property_ids = {row.property_id for row in properties}
+    if not property_ids:
+        return OwnerPortalComplianceRead(
+            open_count=0,
+            overdue_count=0,
+            due_soon_count=0,
+            missing_evidence_count=0,
+            items=[],
+        )
+
+    rows = session.execute(
+        select(
+            ComplianceCheck.id,
+            ComplianceCheck.property_id,
+            Property.name.label("property_name"),
+            ComplianceCheck.check_metadata,
+            ComplianceCheck.kind,
+            ComplianceCheck.status,
+            ComplianceCheck.last_checked_at,
+            ComplianceCheck.next_due_date,
+            ComplianceCheck.certificate_expires_on,
+            Obligation.obligation_metadata.label("current_obligation_metadata"),
+        )
+        .join(Property, Property.id == ComplianceCheck.property_id)
+        .join(PropertyOwner, PropertyOwner.property_id == ComplianceCheck.property_id)
+        .outerjoin(
+            Obligation,
+            (Obligation.id == ComplianceCheck.current_obligation_id)
+            & (Obligation.entity_id == owner.entity_id)
+            & (Obligation.deleted_at.is_(None)),
+        )
+        .where(
+            ComplianceCheck.entity_id == owner.entity_id,
+            ComplianceCheck.property_id.in_(list(property_ids)),
+            ComplianceCheck.status.in_(OWNER_PORTAL_OPEN_COMPLIANCE_STATUSES),
+            ComplianceCheck.deleted_at.is_(None),
+            PropertyOwner.owner_id == owner.id,
+            Property.entity_id == owner.entity_id,
+            Property.deleted_at.is_(None),
+        )
+        .order_by(
+            ComplianceCheck.next_due_date.asc(),
+            Property.name.asc(),
+            ComplianceCheck.id.asc(),
+        )
+    ).all()
+
+    today = utcnow().date()
+    items: list[OwnerPortalComplianceItemRead] = []
+    for row in rows:
+        metadata = _metadata_dict(row.check_metadata)
+        if metadata.get(OWNER_PORTAL_COMPLIANCE_VISIBLE_KEY) is not True:
+            continue
+        assert row.property_id is not None
+        due_status = _owner_portal_compliance_due_status(row.next_due_date, today)
+        evidence_status = _owner_portal_compliance_evidence_status(
+            row.current_obligation_metadata
+        )
+        items.append(
+            OwnerPortalComplianceItemRead(
+                id=row.id,
+                property_id=row.property_id,
+                property_name=row.property_name,
+                title=_owner_portal_compliance_title(metadata, "Compliance check"),
+                kind=row.kind,
+                status=row.status,
+                due_status=due_status,
+                next_due_date=row.next_due_date,
+                certificate_expires_on=row.certificate_expires_on,
+                last_checked_at=row.last_checked_at,
+                evidence_status=evidence_status,
+            )
+        )
+
+    return OwnerPortalComplianceRead(
+        open_count=len(items),
+        overdue_count=sum(1 for item in items if item.due_status == "overdue"),
+        due_soon_count=sum(1 for item in items if item.due_status == "due_soon"),
+        missing_evidence_count=sum(
+            1 for item in items if item.evidence_status == "missing"
+        ),
+        items=items,
+    )
+
+
 def _owner_portal_document(
     owner: Owner,
     document_id: UUID,
@@ -792,6 +919,7 @@ def _portal_read(
         documents=_owner_portal_documents(owner, session, properties),
         maintenance=_owner_portal_maintenance(owner, session, properties),
         lease_events=_owner_portal_lease_events(owner, session, properties, month),
+        compliance=_owner_portal_compliance(owner, session, properties),
         guardrails=OWNER_PORTAL_GUARDRAILS,
         generated_at=owner_statements.generated_at,
     )

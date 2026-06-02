@@ -354,7 +354,14 @@ Equifax/illion; RTBA/state RTAs).
   in the local owner-visible packet; it omits tenant identity, tenant ids, lease
   notes, cross-owner properties, deleted/expired leases, provider evidence,
   Xero/Basiq data, document bytes, and Comms/payment/reconciliation mutation.
-  Richer owner dashboard sections beyond lease events remain next. 2026-06-01
+  2026-06-02 follow-up: preview/account payloads now include an owner-safe
+  Compliance snapshot gated by `check_metadata.owner_portal_visible` and
+  `PropertyOwner` linkage. It exposes high-level check context only: property,
+  owner-safe title, check kind/status, next due date, certificate expiry, last
+  checked date, due status, and evidence-present state. It excludes tenant
+  identity or tenant portal detail, internal notes, source document IDs,
+  evidence document IDs, raw metadata, operator history, provider/accounting
+  evidence, document bytes, cross-owner checks, and unflagged checks. 2026-06-01
   follow-up: owner account and operator-preview paths now have matching 390px
   mobile empty-state smokes for no properties, no statement, no shared
   documents, and no open maintenance,
@@ -563,6 +570,20 @@ Official Re-Leased pages position their product around a few mature modules that
   - [x] Insights compliance snapshot v1: `/api/v1/insights/overview` now returns a read-only `compliance_snapshot` built from existing insurance, bank guarantee, make-good, and compliance obligations. It rolls up open/overdue/due-soon counts, missing/evidence-linked counts, delegated owner roles, fire-safety and inspection-report signals, category/status counts, and the next risk rows with property/unit/tenant context and evidence audit metadata. `/insights` renders the portfolio Compliance & Inspections panel and includes the same rows in the local review CSV/copy packet. No provider dispatch, email/SMS, Xero/Basiq, billing, payment, reconciliation, intake apply, or record mutation runs from viewing/exporting this snapshot.
   - [x] Recurring compliance register v1 backend: `ComplianceCheck` model, migration, schemas, and `/api/v1/compliance/checks` routes now let operators create/list/read/update/soft-delete recurring compliance checks, generate or reuse the current local compliance obligation, complete a check with evidence, mark the old obligation completed, append completion/evidence history, and roll forward to the next due obligation with idempotent retry handling. Entity, property, unit, tenant, lease, document, user, and obligation links are validated to the same entity/organisation. No SendGrid/Twilio, provider dispatch, Xero/Basiq, payment, reconciliation, Smart Intake apply, or comms mutation runs from these routes.
   - [x] Compliance Work tab v1: operator-facing `/operations?tab=compliance` now queues recurring register checks, linked compliance obligations, pending compliance/inspection Smart Intake rows, and inspection-created maintenance work orders in one read-only review surface. It includes overdue/due-soon/missing-evidence counts plus a local `operations-compliance-review.csv` copy/download packet using the same CSV formula-safety helper as the rest of the app. Export/copy does not complete checks, upload evidence, create/update obligations, apply Smart Intake, create/update work orders, send email/SMS, dispatch providers, create billing drafts, call Xero/Basiq, or reconcile payments. Browser smoke coverage exercises the tab on mobile, realistic AU compliance mock checks, inspection handoff links, CSV parity, and mutation guardrails.
+  - [x] Owner portal Compliance snapshot v1: owner portal preview/account
+    payloads now include owner-safe active compliance checks gated by
+    `check_metadata.owner_portal_visible` and linked to the owner through
+    `PropertyOwner`. The dashboard renders the Compliance snapshot and the
+    local Owner-visible packet includes matching rows/totals. It exposes only
+    high-level property, owner-safe title, check kind/status, next due date,
+    certificate expiry, last checked date, due status, and evidence-present
+    state. It excludes tenant identity or tenant portal detail, internal notes,
+    source document IDs, evidence document IDs, raw metadata, operator history,
+    provider/accounting evidence, document bytes, cross-owner checks, and
+    unflagged checks. Viewing/copying/downloading remains read-only and does
+    not complete checks, upload evidence, apply Smart Intake, send email/SMS,
+    dispatch providers, write Xero/Basiq data, reconcile payments, or mutate
+    provider history.
 - [ ] Tenant portal account lifecycle: invite renewal handling, tenant-side account recovery, multi-login management, and change-email support.
 - [~] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots. Compliance expiry/risk is now included in Insights v1; arrears, maintenance aging, and richer owner/entity dashboards remain open.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.

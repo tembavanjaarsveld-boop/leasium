@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 from stewart.core.models import (
+    ComplianceCheckKind,
+    ComplianceCheckStatus,
     DocumentCategory,
     MaintenanceApprovalStatus,
     MaintenancePriority,
@@ -187,6 +189,32 @@ class OwnerPortalLeaseEventsRead(BaseModel):
     events: list[OwnerPortalLeaseEventRead] = Field(default_factory=list)
 
 
+class OwnerPortalComplianceItemRead(BaseModel):
+    """Owner-safe compliance item without tenant, source document, or operator detail."""
+
+    id: UUID
+    property_id: UUID
+    property_name: str
+    title: str
+    kind: ComplianceCheckKind
+    status: ComplianceCheckStatus
+    due_status: Literal["overdue", "due_soon", "upcoming"]
+    next_due_date: date
+    certificate_expires_on: date | None = None
+    last_checked_at: datetime | None = None
+    evidence_status: Literal["linked", "missing"]
+
+
+class OwnerPortalComplianceRead(BaseModel):
+    """Owner-safe compliance snapshot for linked owner properties."""
+
+    open_count: int
+    overdue_count: int
+    due_soon_count: int
+    missing_evidence_count: int
+    items: list[OwnerPortalComplianceItemRead] = Field(default_factory=list)
+
+
 class OwnerPortalRead(BaseModel):
     """Read response for an operator-previewed owner portal."""
 
@@ -209,6 +237,15 @@ class OwnerPortalRead(BaseModel):
             rent_review_count=0,
             expiry_count=0,
             events=[],
+        )
+    )
+    compliance: OwnerPortalComplianceRead = Field(
+        default_factory=lambda: OwnerPortalComplianceRead(
+            open_count=0,
+            overdue_count=0,
+            due_soon_count=0,
+            missing_evidence_count=0,
+            items=[],
         )
     )
     guardrails: list[str] = Field(default_factory=list)
