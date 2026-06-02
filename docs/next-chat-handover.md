@@ -3556,3 +3556,28 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
 - Next sensible compliance follow-up: evidence upload/linking from the Work tab
   only after the operator review boundary is designed. Avoid building another
   read-only queue.
+
+## Codex continuation 2026-06-02 - Tenant portal recovery mobile hardening
+
+- Chosen backlog slice: tenant portal account lifecycle remains open, but the
+  backend already has fresh-link, revoke/restore/unlink, and co-tenant invite
+  flows. The safe UI follow-up was mobile hardening of the tenant detail Portal
+  access recovery actions.
+- `/tenants/[tenantId]` Portal access now removes stale `h-8` sizing from
+  Unlink, Revoke, Restore, and Fresh link controls, keeping them on the
+  44px touch-target baseline with `min-h-11`.
+- Guardrails: no provider sends, account-linking behavior, recovery semantics,
+  onboarding token generation, tenant data, or backend routes changed.
+- Red/green evidence: the new 390px smoke first failed because the active
+  Unlink button still carried `h-8`; it passed after the recovery controls were
+  lifted to `min-h-11`.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/tenants-ux.spec.ts -g "portal recovery" --workers=1`
+  passed **1 passed**;
+  `./node_modules/.bin/playwright test tests/smoke/tenants-ux.spec.ts --workers=1`
+  passed **3 passed**; the existing app-flow recovery smoke rerun with
+  `PORT=3001` passed **1 passed** after an initial parallel port collision on
+  `127.0.0.1:3000`; focused `eslint`, `tsc --noEmit`, and `git diff --check`
+  passed.
+- Next tenant-portal lifecycle follow-up: tenant-side recovery UX/account
+  switching if a real user hits revoked or conflicting login states.

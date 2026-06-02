@@ -272,3 +272,62 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("mobile tenant portal recovery actions stay touch-safe", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          window.localStorage.setItem("tenantPortalRecoveryLink", text);
+        },
+      },
+    });
+  });
+  await mockLeasiumApi(page);
+
+  await page.goto("/tenants/tenant-1");
+
+  const portalAccess = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Portal access" }),
+    })
+    .first();
+  await expect(portalAccess).toBeVisible();
+
+  const sendInvite = portalAccess.getByRole("button", { name: "Send invite" });
+  const copyLink = portalAccess.getByRole("button", { name: "Copy link" });
+  const unlink = portalAccess.getByRole("button", { name: "Unlink" });
+  const revoke = portalAccess.getByRole("button", { name: "Revoke" });
+  await expectTouchTarget(await sendInvite.boundingBox());
+  await expectTouchTarget(await copyLink.boundingBox());
+  await expectTouchTarget(await unlink.boundingBox());
+  await expectTouchTarget(await revoke.boundingBox());
+  await expect(unlink).not.toHaveClass(/(?:^|\s)h-8(?:\s|$)/);
+  await expect(revoke).not.toHaveClass(/(?:^|\s)h-8(?:\s|$)/);
+
+  await revoke.click();
+  const restore = portalAccess.getByRole("button", { name: "Restore" });
+  await expect(restore).toBeVisible();
+  await expectTouchTarget(await restore.boundingBox());
+  await expect(restore).not.toHaveClass(/(?:^|\s)h-8(?:\s|$)/);
+
+  await restore.click();
+  const restoredUnlink = portalAccess.getByRole("button", { name: "Unlink" });
+  await expect(restoredUnlink).toBeVisible();
+  await expectTouchTarget(await restoredUnlink.boundingBox());
+  await expect(restoredUnlink).not.toHaveClass(/(?:^|\s)h-8(?:\s|$)/);
+
+  await restoredUnlink.click();
+  const freshLink = portalAccess.getByRole("button", { name: "Fresh link" });
+  await expect(freshLink).toBeVisible();
+  await expectTouchTarget(await freshLink.boundingBox());
+  await expect(freshLink).not.toHaveClass(/(?:^|\s)h-8(?:\s|$)/);
+
+  await freshLink.click();
+  await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
+});

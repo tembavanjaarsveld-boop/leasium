@@ -588,6 +588,7 @@ Official Re-Leased pages position their product around a few mature modules that
     dispatch providers, write Xero/Basiq data, reconcile payments, or mutate
     provider history.
 - [ ] Tenant portal account lifecycle: invite renewal handling, tenant-side account recovery, multi-login management, and change-email support.
+  - [x] Tenant portal recovery action mobile hardening: the tenant detail Portal access recovery controls now keep Unlink, Revoke, Restore, and Fresh link on the 44px touch-target baseline instead of carrying stale `h-8` sizing. Mobile smoke coverage walks the active → revoked → restored → unlinked → fresh-link path and verifies the action classes stay touch-safe while preserving the existing recovery mutations and no-provider behavior.
 - [~] Portfolio Insights: rent roll health, lease events, arrears, invoice status, maintenance aging, compliance expiry, owner/entity dashboards, and shareable snapshots. Compliance expiry/risk is now included in Insights v1; arrears, maintenance aging, and richer owner/entity dashboards remain open.
 - [ ] Communications hub: email templates, outbound logs, tenant/contractor threads, and record-linked correspondence.
   - [x] Tenant correspondence timeline v1: tenant detail now surfaces a read-only Correspondence panel from stored inbound messages and reviewed comms audit receipts, with guardrails that opening the panel never sends providers or mutates queue/tenant state. Broader hub threads/templates/log workflows remain open.

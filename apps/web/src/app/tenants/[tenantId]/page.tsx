@@ -2855,7 +2855,7 @@ function TenantDetail() {
                           <div className="flex shrink-0 flex-wrap gap-2">
                             <SecondaryButton
                               type="button"
-                              className="h-8"
+                              className="min-h-11 px-3"
                               onClick={() =>
                                 unlinkPortalAccountMutation.mutate(account.id)
                               }
@@ -2866,7 +2866,7 @@ function TenantDetail() {
                             </SecondaryButton>
                             <SecondaryButton
                               type="button"
-                              className="h-8 border-danger/30 text-danger hover:bg-danger/5"
+                              className="min-h-11 border-danger/30 px-3 text-danger hover:bg-danger/5"
                               onClick={() =>
                                 revokePortalAccountMutation.mutate(account.id)
                               }
@@ -2880,7 +2880,7 @@ function TenantDetail() {
                           <div className="flex shrink-0 flex-wrap gap-2">
                             <SecondaryButton
                               type="button"
-                              className="h-8"
+                              className="min-h-11 px-3"
                               onClick={() =>
                                 restorePortalAccountMutation.mutate(account.id)
                               }
@@ -2895,7 +2895,7 @@ function TenantDetail() {
                           <div className="flex shrink-0 flex-wrap gap-2">
                             <SecondaryButton
                               type="button"
-                              className="h-8"
+                              className="min-h-11 px-3"
                               onClick={() =>
                                 freshLinkMutation.mutate({
                                   onboardingId: accountOnboarding.id,
