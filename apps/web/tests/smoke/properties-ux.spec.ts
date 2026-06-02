@@ -97,6 +97,97 @@ test("mobile properties calendar view keeps filters and review actions touch saf
   await expectTouchTarget(page.getByRole("link", { name: "Open next" }).first());
 });
 
+test("properties calendar creates lease follow-up tasks without provider side effects", async ({
+  page,
+}) => {
+  const followUpRequests: Array<Record<string, unknown>> = [];
+  const blockedCalls: string[] = [];
+  await page.route("**/api/v1/obligations/lease-event-follow-ups", async (route) => {
+    followUpRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        entity_id: "entity-1",
+        as_of: "2026-06-02",
+        horizon_days: 90,
+        property_ids: ["property-1"],
+        created_count: 1,
+        skipped_count: 1,
+        guardrails: [
+          "Lease calendar follow-up creation only creates internal obligation tasks.",
+          "It does not send email or SMS, dispatch providers, post invoices, sync Xero/Basiq, reconcile payments, or mutate leases.",
+        ],
+        created: [],
+        skipped: [],
+      }),
+    });
+  });
+  await page.route("**/api/v1/{work-assignments,comms,xero,basiq}/**", async (route) => {
+    blockedCalls.push(new URL(route.request().url()).pathname);
+    await route.fulfill({
+      status: 418,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Provider side effect must stay unused." }),
+    });
+  });
+
+  await page.goto("/properties?view=calendar&owner_tag=queen%20street%20property%20trust");
+
+  await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("button", { name: "Create next 90 tasks" }).click();
+  await expect(
+    page.getByText("Created 1 lease follow-up task. 1 already existed."),
+  ).toBeVisible();
+  expect(followUpRequests).toHaveLength(1);
+  expect(followUpRequests[0]).toMatchObject({
+    entity_id: "entity-1",
+    horizon_days: 90,
+  });
+  expect(followUpRequests[0].property_ids).toEqual(["property-1", "property-2"]);
+  expect(blockedCalls).toEqual([]);
+});
+
+test("properties calendar leaves full portfolio follow-up runs unscoped", async ({
+  page,
+}) => {
+  const followUpRequests: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/obligations/lease-event-follow-ups", async (route) => {
+    followUpRequests.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        entity_id: "entity-1",
+        as_of: "2026-06-02",
+        horizon_days: 90,
+        property_ids: [],
+        created_count: 0,
+        skipped_count: 0,
+        guardrails: [
+          "Lease calendar follow-up creation only creates internal obligation tasks.",
+          "It does not send email or SMS, dispatch providers, post invoices, sync Xero/Basiq, reconcile payments, or mutate leases.",
+        ],
+        created: [],
+        skipped: [],
+      }),
+    });
+  });
+
+  await page.goto("/properties?view=calendar");
+  await page.getByRole("button", { name: "Create next 90 tasks" }).click();
+
+  expect(followUpRequests).toHaveLength(1);
+  expect(followUpRequests[0]).toMatchObject({
+    entity_id: "entity-1",
+    horizon_days: 90,
+    property_ids: [],
+  });
+});
+
 test("mobile properties map view keeps focus controls touch safe", async ({
   page,
 }) => {

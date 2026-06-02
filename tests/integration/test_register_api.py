@@ -1,5 +1,6 @@
 """Register API integration tests using a real app and database session."""
 
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -427,6 +428,260 @@ def test_obligation_crud_filters_scope_and_writes_audit(
     assert [row.action for row in audit_rows] == ["create", "update", "delete"]
     assert (
         session.scalar(select(Obligation).where(Obligation.id == UUID(obligation_id))) is not None
+    )
+
+
+def test_lease_event_follow_up_run_creates_missing_obligations_without_duplicates(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    as_of = date(2026, 6, 2)
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Calendar Follow Up Centre",
+            "street_address": "20 Eagle Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_retail",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    other_property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Outside Calendar Centre",
+            "street_address": "44 Creek Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_office",
+        },
+    )
+    assert other_property_response.status_code == 201
+    other_property_id = other_property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 4"},
+    )
+    assert unit_response.status_code == 201
+    unit_id = unit_response.json()["id"]
+
+    other_unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": other_property_id, "unit_label": "Suite 9"},
+    )
+    assert other_unit_response.status_code == 201
+    other_unit_id = other_unit_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Calendar Tenant Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    other_tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Outside Tenant Pty Ltd"},
+    )
+    assert other_tenant_response.status_code == 201
+    other_tenant_id = other_tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2024-07-01",
+            "expiry_date": "2026-08-15",
+            "annual_rent_cents": 1200000,
+            "rent_frequency": "annual",
+            "next_review_date": "2026-06-18",
+        },
+    )
+    assert lease_response.status_code == 201
+    lease_id = lease_response.json()["id"]
+
+    other_lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": other_unit_id,
+            "tenant_id": other_tenant_id,
+            "status": "active",
+            "commencement_date": "2024-07-01",
+            "expiry_date": "2026-07-30",
+            "annual_rent_cents": 900000,
+            "rent_frequency": "annual",
+            "next_review_date": "2026-06-12",
+        },
+    )
+    assert other_lease_response.status_code == 201
+
+    existing_response = client.post(
+        "/api/v1/obligations",
+        json={
+            "entity_id": entity_id,
+            "lease_id": lease_id,
+            "title": "Existing lease expiry follow-up",
+            "category": "lease_expiry",
+            "status": "upcoming",
+            "due_date": "2026-08-15",
+            "priority": 1,
+            "owner_role": "ops",
+            "metadata": {"source": "manual"},
+        },
+    )
+    assert existing_response.status_code == 201
+    existing_obligation_id = existing_response.json()["id"]
+
+    response = client.post(
+        "/api/v1/obligations/lease-event-follow-ups",
+        json={
+            "entity_id": entity_id,
+            "property_ids": [property_id],
+            "as_of": as_of.isoformat(),
+            "horizon_days": 90,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["created_count"] == 1
+    assert body["skipped_count"] == 1
+    assert body["guardrails"] == [
+        "Lease calendar follow-up creation only creates internal obligation tasks.",
+        (
+            "It does not send email or SMS, dispatch providers, post invoices, sync Xero/Basiq, "
+            "reconcile payments, or mutate leases."
+        ),
+    ]
+    created = body["created"][0]
+    assert created["lease_id"] == lease_id
+    assert created["property_id"] == property_id
+    assert created["tenancy_unit_id"] == unit_id
+    assert created["category"] == "rent_review"
+    assert created["due_date"] == "2026-06-18"
+    assert created["status"] == "due_soon"
+    assert created["priority"] == 1
+    assert created["owner_role"] == "ops"
+    assert created["metadata"]["source"] == "lease_calendar_follow_up"
+    assert created["metadata"]["source_event"] == "rent_review"
+    assert created["metadata"]["source_lease_id"] == lease_id
+    assert body["skipped"][0]["reason"] == "existing_obligation"
+    assert body["skipped"][0]["obligation_id"] == existing_obligation_id
+
+    repeat_response = client.post(
+        "/api/v1/obligations/lease-event-follow-ups",
+        json={
+            "entity_id": entity_id,
+            "property_ids": [property_id],
+            "as_of": as_of.isoformat(),
+            "horizon_days": 90,
+        },
+    )
+    assert repeat_response.status_code == 201
+    repeat_body = repeat_response.json()
+    assert repeat_body["created_count"] == 0
+    assert repeat_body["skipped_count"] == 2
+
+    obligations = session.scalars(
+        select(Obligation)
+        .where(Obligation.entity_id == UUID(entity_id))
+        .where(Obligation.deleted_at.is_(None))
+        .order_by(Obligation.due_date)
+    ).all()
+    assert [(row.category.value, row.due_date.isoformat()) for row in obligations] == [
+        ("rent_review", "2026-06-18"),
+        ("lease_expiry", "2026-08-15"),
+    ]
+
+
+def test_lease_event_follow_up_run_skips_deleted_tenants(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Deleted Tenant Calendar Centre",
+            "street_address": "5 Queen Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_office",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Level 3"},
+    )
+    assert unit_response.status_code == 201
+    unit_id = unit_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Deleted Calendar Tenant Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2024-07-01",
+            "expiry_date": "2026-08-15",
+            "annual_rent_cents": 1200000,
+            "rent_frequency": "annual",
+            "next_review_date": "2026-06-18",
+        },
+    )
+    assert lease_response.status_code == 201
+
+    tenant = session.get(Tenant, UUID(tenant_id))
+    assert tenant is not None
+    tenant.deleted_at = datetime.now(UTC)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/obligations/lease-event-follow-ups",
+        json={
+            "entity_id": entity_id,
+            "property_ids": [property_id],
+            "as_of": "2026-06-02",
+            "horizon_days": 90,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["created_count"] == 0
+    assert body["skipped_count"] == 0
+    assert (
+        session.scalar(
+            select(Obligation)
+            .where(Obligation.property_id == UUID(property_id))
+            .where(Obligation.deleted_at.is_(None))
+        )
+        is None
     )
 
 

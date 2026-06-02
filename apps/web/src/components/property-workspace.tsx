@@ -72,6 +72,7 @@ import {
   cancelTenantOnboarding,
   createChargeRule,
   createDocumentIntake,
+  createLeaseEventFollowUps,
   createObligation,
   createLease,
   createLeaseIntake,
@@ -88,6 +89,7 @@ import {
   getLeaseIntake,
   getInsightsOverview,
   InsightsOverviewRecord,
+  LeaseEventFollowUpRunRecord,
   LeaseRecord,
   LeaseEventRecord,
   LeaseIntakeExtraction,
@@ -1864,6 +1866,18 @@ function calendarReviewBrief(rows: CalendarReviewRow[]) {
     );
   }
   return lines.join("\n");
+}
+
+function leaseEventFollowUpReceipt(result: LeaseEventFollowUpRunRecord) {
+  const created =
+    result.created_count === 1
+      ? "Created 1 lease follow-up task."
+      : `Created ${result.created_count} lease follow-up tasks.`;
+  const skipped =
+    result.skipped_count === 1
+      ? "1 already existed."
+      : `${result.skipped_count} already existed.`;
+  return `${created} ${skipped}`;
 }
 
 function propertyPortfolioViewFromSearch(): PropertyPortfolioView {
@@ -5770,11 +5784,17 @@ function Workspace({
                 />
               ) : (
                 <PropertyCalendarView
+                  entityId={selectedEntityId || null}
                   events={leaseCalendarEvents}
                   isLoading={
                     insightsOverviewQuery.isLoading ||
                     rentRollQuery.isLoading ||
                     calendarRentRollQuery.isLoading
+                  }
+                  propertyIds={
+                    ownerTagFilter || occupancyFilter !== "all"
+                      ? displayedProperties.map((property) => property.id)
+                      : []
                   }
                 />
               )}
@@ -7572,18 +7592,24 @@ function PropertyMapView({
 }
 
 function PropertyCalendarView({
+  entityId,
   events,
   isLoading,
+  propertyIds,
 }: {
+  entityId: string | null;
   events: LeaseEventRecord[];
   isLoading: boolean;
+  propertyIds: string[];
 }) {
+  const queryClient = useQueryClient();
   const [eventKindFilter, setEventKindFilter] = useState<
     "all" | "rent_review" | "lease_expiry"
   >("all");
   const [horizonFilter, setHorizonFilter] =
     useState<CalendarHorizonFilter>("all");
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
+  const [taskReceipt, setTaskReceipt] = useState<string | null>(null);
   const kindFilteredEvents = events.filter((event) =>
     eventKindFilter === "all" ? true : event.kind === eventKindFilter,
   );
@@ -7640,6 +7666,29 @@ function PropertyCalendarView({
     await navigator.clipboard.writeText(calendarReviewBrief(reviewRows));
     setCopyReceipt("Review queue copied.");
   };
+  const createFollowUpMutation = useMutation({
+    mutationFn: (horizonDays: number) => {
+      if (!entityId) {
+        throw new Error("Select an entity before creating follow-up tasks.");
+      }
+      return createLeaseEventFollowUps({
+        entity_id: entityId,
+        property_ids: propertyIds,
+        horizon_days: horizonDays,
+      });
+    },
+    onSuccess: (result) => {
+      setTaskReceipt(leaseEventFollowUpReceipt(result));
+      queryClient.invalidateQueries({ queryKey: ["obligations"] });
+      queryClient.invalidateQueries({ queryKey: ["insights-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll"] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll-calendar"] });
+    },
+    onError: (error) => {
+      setTaskReceipt(friendlyError(error));
+    },
+  });
+  const followUpHorizonDays = horizonFilter === "next_30" ? 30 : 90;
 
   if (isLoading) {
     return (
@@ -7736,11 +7785,41 @@ function PropertyCalendarView({
           {copyReceipt ? (
             <p className="text-sm font-medium text-success">{copyReceipt}</p>
           ) : null}
+          {taskReceipt ? (
+            <p
+              className={`text-sm font-medium ${
+                createFollowUpMutation.isError ? "text-danger" : "text-success"
+              }`}
+            >
+              {taskReceipt}
+            </p>
+          ) : null}
         </div>
-        <SecondaryButton type="button" onClick={copyCalendarBrief}>
-          <Copy size={15} />
-          Copy schedule
-        </SecondaryButton>
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton type="button" onClick={copyCalendarBrief}>
+            <Copy size={15} />
+            Copy schedule
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={() => {
+              setTaskReceipt(null);
+              createFollowUpMutation.mutate(followUpHorizonDays);
+            }}
+            disabled={
+              !entityId ||
+              !reviewRows.length ||
+              createFollowUpMutation.isPending
+            }
+          >
+            {createFollowUpMutation.isPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <ClipboardList size={15} />
+            )}
+            Create next {followUpHorizonDays} tasks
+          </SecondaryButton>
+        </div>
       </div>
 
       <div className="grid gap-2 md:grid-cols-4">

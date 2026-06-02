@@ -655,3 +655,32 @@ class ObligationRead(ApiModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+
+class LeaseEventFollowUpRunCreate(BaseModel):
+    entity_id: UUID
+    property_ids: list[UUID] = Field(default_factory=list)
+    as_of: date | None = None
+    horizon_days: int = Field(default=90, ge=1, le=365)
+
+
+class LeaseEventFollowUpSkippedRead(BaseModel):
+    lease_id: UUID
+    property_id: UUID
+    tenancy_unit_id: UUID
+    category: ObligationCategory
+    due_date: date
+    reason: Literal["existing_obligation"]
+    obligation_id: UUID
+
+
+class LeaseEventFollowUpRunRead(BaseModel):
+    entity_id: UUID
+    as_of: date
+    horizon_days: int
+    property_ids: list[UUID] = Field(default_factory=list)
+    created_count: int
+    skipped_count: int
+    guardrails: list[str] = Field(default_factory=list)
+    created: list[ObligationRead] = Field(default_factory=list)
+    skipped: list[LeaseEventFollowUpSkippedRead] = Field(default_factory=list)

@@ -7,6 +7,37 @@ Last updated: 2026-06-02
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Properties calendar follow-up task creation
+- `/api/v1/obligations/lease-event-follow-ups` now creates missing internal
+  obligation tasks for active/holding-over lease calendar events in a reviewed
+  forward runway. The default UI action is 90 days; the API accepts 1-365 days
+  and optional property filters.
+- The run is idempotent by lease/category/due date: existing non-deleted
+  obligations are returned as skipped rows instead of creating duplicates.
+- Created tasks are normal `Obligation` rows scoped to entity/property/unit/
+  lease with `source: lease_calendar_follow_up`, `source_event`, and source
+  ids in metadata, so Work/Notifications can pick them up through the existing
+  critical-date machinery.
+- The Properties Calendar now has `Create next 90 tasks`, using the currently
+  visible property filter set when filtered; the default full-portfolio run is
+  intentionally unscoped so large portfolios do not post every property id.
+  Success refreshes obligations, insights, and rent-roll caches.
+- Guardrails: the run only creates internal obligation tasks. It does not send
+  email/SMS, dispatch providers, post invoices, sync Xero/Basiq, reconcile
+  payments, or mutate leases.
+- Verification: focused backend regression passed **2 passed**; full register
+  integration passed **11 passed**; focused Properties smoke passed
+  **12 passed**; targeted backend `ruff`, frontend eslint, `tsc --noEmit`,
+  and `git diff --check` passed.
+- Follow-up from code review: if multiple operators can run the same calendar
+  creation concurrently, add a DB-level uniqueness/upsert guard for generated
+  lease-calendar obligations. The route is idempotent for normal repeat runs
+  today, but the duplicate guard is still read-before-insert.
+- Next small backend cleanup found by the Work scout: inspection-report Smart
+  Intake apply appears to report `obligation_count` from `work_order_ids` in
+  `apps/api/routers/document_intakes.py`; add a regression so inspection apply
+  reports `work_order_count > 0` and `obligation_count == 0`.
+
 ### Owner portal compliance snapshot
 - Owner portal preview and owner account session responses now include a
   read-only `compliance` section for linked owner properties.

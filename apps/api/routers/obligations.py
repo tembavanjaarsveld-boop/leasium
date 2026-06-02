@@ -1,16 +1,18 @@
 """Obligation and critical date CRUD routes with entity scoped access checks."""
 
+from datetime import timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     Lease,
+    LeaseStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -23,7 +25,14 @@ from stewart.core.settings import get_settings
 from stewart.integrations.communications import send_work_assignment_email
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
-from apps.api.schemas.register import ObligationCreate, ObligationRead, ObligationUpdate
+from apps.api.schemas.register import (
+    LeaseEventFollowUpRunCreate,
+    LeaseEventFollowUpRunRead,
+    LeaseEventFollowUpSkippedRead,
+    ObligationCreate,
+    ObligationRead,
+    ObligationUpdate,
+)
 from apps.api.work_assignments import (
     assignment_notification_sent,
     record_work_assignment_delivery,
@@ -37,6 +46,13 @@ router = APIRouter(prefix="/obligations", tags=["obligations"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+LEASE_EVENT_FOLLOW_UP_GUARDRAILS = [
+    "Lease calendar follow-up creation only creates internal obligation tasks.",
+    (
+        "It does not send email or SMS, dispatch providers, post invoices, sync Xero/Basiq, "
+        "reconcile payments, or mutate leases."
+    ),
+]
 
 
 def _property_for_access(
@@ -219,6 +235,192 @@ def create_obligation(
     session.commit()
     session.refresh(obligation)
     return obligation
+
+
+def _lease_event_follow_up_title(
+    *,
+    category: ObligationCategory,
+    prop: Property,
+    unit: TenancyUnit,
+) -> str:
+    if category == ObligationCategory.rent_review:
+        return f"Prepare rent review for {prop.name} {unit.unit_label}"
+    return f"Prepare lease expiry decision for {prop.name} {unit.unit_label}"
+
+
+def _lease_event_follow_up_notes(category: ObligationCategory) -> str:
+    if category == ObligationCategory.rent_review:
+        return "Generated from the Properties lease calendar for operator review."
+    return "Generated from the Properties lease calendar for renewal, holdover, or vacancy review."
+
+
+def _lease_event_follow_up_status(
+    *,
+    as_of: Any,
+    due_date: Any,
+) -> ObligationStatus:
+    if due_date <= as_of + timedelta(days=30):
+        return ObligationStatus.due_soon
+    return ObligationStatus.upcoming
+
+
+def _existing_lease_event_obligation(
+    *,
+    lease_id: UUID,
+    category: ObligationCategory,
+    due_date: Any,
+    session: Session,
+) -> Obligation | None:
+    return session.scalar(
+        select(Obligation).where(
+            Obligation.lease_id == lease_id,
+            Obligation.category == category,
+            Obligation.due_date == due_date,
+            Obligation.deleted_at.is_(None),
+        )
+    )
+
+
+@router.post(
+    "/lease-event-follow-ups",
+    response_model=LeaseEventFollowUpRunRead,
+    status_code=http_status.HTTP_201_CREATED,
+)
+def create_lease_event_follow_ups(
+    payload: LeaseEventFollowUpRunCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> LeaseEventFollowUpRunRead:
+    assert_entity_role(session, user, payload.entity_id, WRITE_ROLES)
+    property_ids = list(dict.fromkeys(payload.property_ids))
+    for property_id in property_ids:
+        prop = _property_for_access(property_id, user, session, WRITE_ROLES)
+        if prop.entity_id != payload.entity_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Property must belong to the follow-up entity.",
+            )
+
+    as_of = payload.as_of or utcnow().date()
+    until = as_of + timedelta(days=payload.horizon_days)
+    statement = (
+        select(Lease, TenancyUnit, Property)
+        .join(TenancyUnit, Lease.tenancy_unit_id == TenancyUnit.id)
+        .join(Property, TenancyUnit.property_id == Property.id)
+        .join(Tenant, Tenant.id == Lease.tenant_id)
+        .where(
+            Property.entity_id == payload.entity_id,
+            Tenant.entity_id == payload.entity_id,
+            Property.deleted_at.is_(None),
+            TenancyUnit.deleted_at.is_(None),
+            Tenant.deleted_at.is_(None),
+            Lease.deleted_at.is_(None),
+            Lease.status.in_([LeaseStatus.active, LeaseStatus.holding_over]),
+            or_(Lease.commencement_date.is_(None), Lease.commencement_date <= as_of),
+            or_(
+                Lease.next_review_date.between(as_of, until),
+                Lease.expiry_date.between(as_of, until),
+            ),
+        )
+        .order_by(Property.name, TenancyUnit.unit_label, Lease.expiry_date)
+    )
+    if property_ids:
+        statement = statement.where(Property.id.in_(property_ids))
+
+    created: list[Obligation] = []
+    skipped: list[LeaseEventFollowUpSkippedRead] = []
+    for lease, unit, prop in session.execute(statement).all():
+        events = [
+            (ObligationCategory.rent_review, lease.next_review_date),
+            (ObligationCategory.lease_expiry, lease.expiry_date),
+        ]
+        for category, due_date in events:
+            if due_date is None or due_date < as_of or due_date > until:
+                continue
+            existing = _existing_lease_event_obligation(
+                lease_id=lease.id,
+                category=category,
+                due_date=due_date,
+                session=session,
+            )
+            if existing is not None:
+                skipped.append(
+                    LeaseEventFollowUpSkippedRead(
+                        lease_id=lease.id,
+                        property_id=prop.id,
+                        tenancy_unit_id=unit.id,
+                        category=category,
+                        due_date=due_date,
+                        reason="existing_obligation",
+                        obligation_id=existing.id,
+                    )
+                )
+                continue
+            obligation = Obligation(
+                entity_id=payload.entity_id,
+                property_id=prop.id,
+                tenancy_unit_id=unit.id,
+                lease_id=lease.id,
+                title=_lease_event_follow_up_title(
+                    category=category,
+                    prop=prop,
+                    unit=unit,
+                ),
+                category=category,
+                status=_lease_event_follow_up_status(
+                    as_of=as_of,
+                    due_date=due_date,
+                ),
+                due_date=due_date,
+                priority=1,
+                owner_role=UserRole.ops,
+                notes=_lease_event_follow_up_notes(category),
+                obligation_metadata={
+                    "source": "lease_calendar_follow_up",
+                    "source_event": category.value,
+                    "source_lease_id": str(lease.id),
+                    "source_property_id": str(prop.id),
+                    "source_tenancy_unit_id": str(unit.id),
+                    "generated_at": utcnow().isoformat(),
+                    "as_of": as_of.isoformat(),
+                    "horizon_days": payload.horizon_days,
+                },
+            )
+            session.add(obligation)
+            session.flush()
+            audit_log(
+                session,
+                actor=user.actor,
+                user_id=user.id,
+                entity_id=obligation.entity_id,
+                action="create",
+                target_table="obligation",
+                target_id=obligation.id,
+                tool_name="lease_calendar.follow_up_create",
+                tool_input={
+                    "lease_id": str(lease.id),
+                    "category": category.value,
+                    "due_date": due_date.isoformat(),
+                },
+                tool_output_summary="Created internal lease calendar follow-up obligation.",
+            )
+            created.append(obligation)
+
+    session.commit()
+    for obligation in created:
+        session.refresh(obligation)
+
+    return LeaseEventFollowUpRunRead(
+        entity_id=payload.entity_id,
+        as_of=as_of,
+        horizon_days=payload.horizon_days,
+        property_ids=property_ids,
+        created_count=len(created),
+        skipped_count=len(skipped),
+        guardrails=LEASE_EVENT_FOLLOW_UP_GUARDRAILS,
+        created=created,
+        skipped=skipped,
+    )
 
 
 def _get_obligation_for_user(
