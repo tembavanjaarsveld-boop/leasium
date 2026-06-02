@@ -64,6 +64,74 @@ test("mobile properties default uses cards instead of a panning table", async ({
   await expectTouchTarget(editButton);
 });
 
+test("mobile properties calendar view keeps filters and review actions touch safe", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/properties?view=calendar");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Calendar" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/view=calendar/);
+
+  await expect(page.getByText("Review queue")).toBeVisible();
+  await expect(
+    page.getByText(/Queen Street Retail Centre.*rent review/).first(),
+  ).toBeVisible();
+
+  await expectTouchTarget(page.getByRole("tab", { name: "Calendar" }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Rent reviews/ }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Next 90/ }).first(),
+  );
+  await expectTouchTarget(page.getByRole("button", { name: "Copy schedule" }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Copy follow-ups" }),
+  );
+  await expectTouchTarget(page.getByRole("link", { name: "Open next" }).first());
+});
+
+test("mobile properties map view keeps focus controls touch safe", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/properties?view=map");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Map" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page).toHaveURL(/view=map/);
+
+  await expect(page.getByText("Portfolio map")).toBeVisible();
+  await expect(page.getByText("Map planning")).toBeVisible();
+  await expect(page.getByText("Regional focus")).toBeVisible();
+
+  await expectTouchTarget(page.getByRole("tab", { name: "Map" }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Lease risk/ }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Vacancy\s+\d/ }).first(),
+  );
+  await expectTouchTarget(page.getByRole("button", { name: "Copy map brief" }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Queen Street Retail Centre/ }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Vacancy focus/ }).first(),
+  );
+});
+
 test("properties table density toggle trims row padding in compact mode", async ({
   page,
 }) => {

@@ -314,6 +314,10 @@ def _tenant_portal_account_read(account: TenantPortalAccount) -> TenantPortalAcc
     )
 
 
+def _tenant_portal_preferred_email(tenant: Tenant) -> str | None:
+    return tenant.billing_email or tenant.contact_email
+
+
 def _tenant_portal_account_for_user(
     tenant: Tenant,
     account_id: UUID,
@@ -968,6 +972,19 @@ def apply_contact_change_request(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Contact change request has no applicable fields.",
         )
+    if {"contact_email", "billing_email"} & set(applied_fields):
+        preferred_email = _tenant_portal_preferred_email(tenant)
+        linked_accounts = session.scalars(
+            select(TenantPortalAccount).where(
+                TenantPortalAccount.tenant_id == tenant.id,
+                TenantPortalAccount.entity_id == tenant.entity_id,
+                TenantPortalAccount.status == TenantPortalAccountStatus.active,
+                TenantPortalAccount.revoked_at.is_(None),
+                TenantPortalAccount.deleted_at.is_(None),
+            )
+        )
+        for account in linked_accounts:
+            account.email = preferred_email
 
     now = utcnow()
     entry = {

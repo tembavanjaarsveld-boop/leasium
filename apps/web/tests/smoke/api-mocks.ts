@@ -437,6 +437,81 @@ const obligations = [
   },
 ];
 
+const complianceChecks = [
+  {
+    id: "compliance-check-fire-1",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    assigned_user_id: assigneeId,
+    source_document_id: "document-compliance-fire-1",
+    current_obligation_id: "obligation-compliance-1",
+    title: "Annual fire safety statement",
+    kind: "fire_safety",
+    status: "active",
+    jurisdiction: "QLD",
+    authority: "Queensland Fire and Emergency Services",
+    recurrence_interval: 1,
+    recurrence_unit: "years",
+    last_checked_at: "2025-05-10T00:00:00.000Z",
+    next_due_date: "2026-05-10",
+    certificate_expires_on: "2026-06-30",
+    owner_role: "ops",
+    notes: "QFES statement needs certificate evidence before rollover.",
+    metadata: {
+      evidence_history: [
+        {
+          document_id: "document-compliance-fire-1",
+          added_at: "2025-05-10T01:00:00.000Z",
+          actor: "ops@example.test",
+        },
+      ],
+      completion_history: [
+        {
+          completed_at: "2025-05-10T01:00:00.000Z",
+          next_due_date: "2026-05-10",
+          source_document_id: "document-compliance-fire-1",
+        },
+      ],
+    },
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-20T00:00:00.000Z",
+    deleted_at: null,
+  },
+  {
+    id: "compliance-check-bank-1",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    assigned_user_id: null,
+    source_document_id: null,
+    current_obligation_id: "obligation-compliance-2",
+    title: "Bank guarantee expiry",
+    kind: "bank_guarantee",
+    status: "active",
+    jurisdiction: "QLD",
+    authority: "Lease schedule",
+    recurrence_interval: 6,
+    recurrence_unit: "months",
+    last_checked_at: "2025-12-01T00:00:00.000Z",
+    next_due_date: "2026-06-01",
+    certificate_expires_on: null,
+    owner_role: "property_manager",
+    notes: "=Review tenant guarantee before the expiry window.",
+    metadata: {
+      evidence_history: [],
+      completion_history: [],
+    },
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-20T00:00:00.000Z",
+    deleted_at: null,
+  },
+];
+
 const initialMaintenanceWorkOrders = [
   {
     id: "work-order-1",
@@ -611,6 +686,71 @@ const initialMaintenanceWorkOrders = [
   },
 ];
 let maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
+
+function inspectionWorkOrderFixture() {
+  return {
+    ...jsonClone(initialMaintenanceWorkOrders[0]),
+    id: "inspection-work-order-1",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    title: "Repair leaking tap",
+    description: "Kitchen mixer is leaking at the base.",
+    status: "requested",
+    priority: "high",
+    requested_at: "2026-05-29T00:00:00.000Z",
+    contractor_name: null,
+    contractor_email: null,
+    contractor_phone: null,
+    contractor_assigned_at: null,
+    approval_required: false,
+    approval_status: "not_required",
+    approval_limit_cents: null,
+    quote_amount_cents: null,
+    approved_by_user_id: null,
+    approved_at: null,
+    approval_notes: null,
+    source_document_id: "document-inspection-1",
+    invoice_draft_id: null,
+    invoice_reference: null,
+    invoice_amount_cents: null,
+    source_reference: "Inspection item 4",
+    due_date: "2026-06-04",
+    completed_at: null,
+    notes:
+      "Created from the reviewed inspection report. Contractor dispatch still needs operator approval.",
+    document_ids: ["document-inspection-1"],
+    photo_document_ids: ["document-inspection-photo-1"],
+    metadata: {
+      source: "document_intake",
+      document_intake_id: "intake-inspection-1",
+      document_type: "inspection_report",
+      guardrail:
+        "Created from reviewed inspection intake only; no contractor dispatch, provider message, billing draft, or Xero action ran.",
+      inspection_finding: {
+        location: "Kitchen",
+        category: "plumbing",
+        confidence: 0.88,
+      },
+      activity_history: [
+        {
+          timestamp: "2026-05-29T00:00:00.000Z",
+          actor: operatorId,
+          source: "document_intake",
+          event: "inspection_work_order_created",
+          summary: "Prepared work order from reviewed inspection finding.",
+          status: "requested",
+        },
+      ],
+    },
+    created_at: "2026-05-29T00:00:00.000Z",
+    updated_at: "2026-05-29T00:00:00.000Z",
+    deleted_at: null,
+    channel_receipts: [],
+  };
+}
 
 function maintenanceStatusMatrixWorkOrders() {
   const base = maintenanceWorkOrders[0];
@@ -2246,6 +2386,7 @@ type MockLeasiumApiOptions = {
   xeroDiagnosticsUnavailable?: boolean;
   xeroDiagnosticsDraftReady?: boolean;
   vendorPortalPriorExposure?: boolean;
+  operationsComplianceDemo?: boolean;
 };
 
 export async function mockLeasiumApi(
@@ -2254,6 +2395,9 @@ export async function mockLeasiumApi(
 ) {
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
+  if (options.operationsComplianceDemo) {
+    maintenanceWorkOrders.unshift(inspectionWorkOrderFixture());
+  }
   if (options.vendorPortalPriorExposure) {
     const priorExposureAt = "2026-05-20T01:19:00.000Z";
     const metadata = jsonRecord(maintenanceWorkOrders[0].metadata);
@@ -3757,6 +3901,66 @@ export async function mockLeasiumApi(
               invoice_draft_id: null,
             },
             rank: 43,
+          },
+        ],
+      },
+      compliance_snapshot: {
+        open_count: 2,
+        overdue_count: 1,
+        due_soon_count: 1,
+        missing_evidence_count: 1,
+        evidence_linked_count: 1,
+        delegated_owner_count: 2,
+        fire_safety_count: 1,
+        inspection_report_count: 1,
+        category_counts: { compliance: 1, bank_guarantee: 1 },
+        status_counts: { overdue: 1, upcoming: 1 },
+        next_items: [
+          {
+            id: "obligation-compliance-1",
+            title: "Fire safety certificate renewal",
+            category: "compliance",
+            status: "overdue",
+            due_date: "2026-05-10",
+            chip: "9d overdue",
+            href: "/tasks",
+            property_id: propertyId,
+            property_name: "Queen Street Retail Centre",
+            tenancy_unit_id: unitId,
+            unit_label: "Shop 3",
+            lease_id: leaseId,
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            owner_role: "ops",
+            evidence_count: 1,
+            evidence_event_count: 1,
+            latest_evidence_at: "2026-05-11T01:02:03.000Z",
+            latest_evidence_actor: "ops@example.test",
+            inspection_type: "fire_safety",
+            rank: -9,
+          },
+          {
+            id: "obligation-compliance-2",
+            title: "Bank guarantee expiry",
+            category: "bank_guarantee",
+            status: "upcoming",
+            due_date: "2026-06-01",
+            chip: "In 13d",
+            href: "/tasks",
+            property_id: propertyId,
+            property_name: "Queen Street Retail Centre",
+            tenancy_unit_id: unitId,
+            unit_label: "Shop 3",
+            lease_id: leaseId,
+            tenant_id: tenantId,
+            tenant_name: "Bright Cafe Pty Ltd",
+            owner_role: "finance",
+            evidence_count: 0,
+            evidence_event_count: 0,
+            latest_evidence_at: null,
+            latest_evidence_actor: null,
+            inspection_type: null,
+            rank: 13,
           },
         ],
       },
@@ -6285,6 +6489,32 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/compliance/checks") {
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        requestedEntityId
+          ? complianceChecks.filter(
+              (check) => check.entity_id === requestedEntityId,
+            )
+          : complianceChecks,
+      );
+      return;
+    }
+
+    const complianceCheckDetail = path.match(/^\/compliance\/checks\/([^/]+)$/);
+    if (method === "GET" && complianceCheckDetail) {
+      const check = complianceChecks.find(
+        (item) => item.id === complianceCheckDetail[1],
+      );
+      await fulfillJson(
+        route,
+        check ?? { detail: "Compliance check not found." },
+        check ? 200 : 404,
+      );
+      return;
+    }
+
     if (method === "PATCH" && path === "/obligations/obligation-1") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
       const nextPayload = { ...payload };
@@ -6318,8 +6548,18 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (method === "GET" && path === "/maintenance/work-orders/work-order-1") {
-      await fulfillJson(route, maintenanceWorkOrders[0]);
+    const maintenanceWorkOrderDetail = path.match(
+      /^\/maintenance\/work-orders\/([^/]+)$/,
+    );
+    if (method === "GET" && maintenanceWorkOrderDetail) {
+      const workOrder = maintenanceWorkOrders.find(
+        (item) => item.id === maintenanceWorkOrderDetail[1],
+      );
+      await fulfillJson(
+        route,
+        workOrder ?? { detail: "Maintenance work order not found." },
+        workOrder ? 200 : 404,
+      );
       return;
     }
 

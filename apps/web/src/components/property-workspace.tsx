@@ -7384,7 +7384,7 @@ function PropertyMapView({
                   type="button"
                   onClick={() => setMapFocus(option.key)}
                   aria-pressed={isActive}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                  className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-3 py-2 font-semibold transition ${
                     isActive
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border bg-white text-muted-foreground hover:bg-muted"
@@ -7687,7 +7687,7 @@ function PropertyCalendarView({
                   type="button"
                   onClick={() => setEventKindFilter(option.key)}
                   aria-pressed={isActive}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                  className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-3 py-2 font-semibold transition ${
                     isActive
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border bg-white text-muted-foreground hover:bg-muted"
@@ -7713,7 +7713,7 @@ function PropertyCalendarView({
                   type="button"
                   onClick={() => setHorizonFilter(option.key)}
                   aria-pressed={isActive}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold transition ${
+                  className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-3 py-2 font-semibold transition ${
                     isActive
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border bg-white text-muted-foreground hover:bg-muted"
@@ -7782,7 +7782,7 @@ function PropertyCalendarView({
               {lane.nextEvent ? (
                 <Link
                   href={lane.nextEvent.href}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                  className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs font-semibold text-primary transition hover:bg-primary/10 hover:text-primary-hover"
                 >
                   Open next
                   <ExternalLink size={13} />
@@ -7840,7 +7840,6 @@ function PropertyCalendarView({
             type="button"
             onClick={copyReviewBrief}
             disabled={!reviewRows.length}
-            className="min-h-9"
           >
             <Copy size={15} />
             Copy follow-ups

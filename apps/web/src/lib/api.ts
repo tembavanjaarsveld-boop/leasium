@@ -1478,6 +1478,51 @@ export type ObligationRecord = {
   metadata: Record<string, unknown>;
 };
 
+export type ComplianceCheckKind =
+  | "fire_safety"
+  | "insurance"
+  | "bank_guarantee"
+  | "make_good"
+  | "certificate"
+  | "inspection"
+  | "other";
+
+export type ComplianceCheckStatus =
+  | "active"
+  | "paused"
+  | "completed"
+  | "archived";
+
+export type ComplianceRecurrenceUnit = "days" | "months" | "years";
+
+export type ComplianceCheckRecord = {
+  id: string;
+  entity_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string | null;
+  lease_id: string | null;
+  assigned_user_id: string | null;
+  source_document_id: string | null;
+  current_obligation_id: string | null;
+  title: string;
+  kind: ComplianceCheckKind;
+  status: ComplianceCheckStatus;
+  jurisdiction: string | null;
+  authority: string | null;
+  recurrence_interval: number;
+  recurrence_unit: ComplianceRecurrenceUnit;
+  last_checked_at: string | null;
+  next_due_date: string;
+  certificate_expires_on: string | null;
+  owner_role: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
 export type ObligationPayload = Omit<
   ObligationRecord,
   "id" | "completed_at"
@@ -2223,6 +2268,44 @@ export type LeaseEventSnapshotRecord = {
   next_events: LeaseEventRecord[];
 };
 
+export type ComplianceRiskItemRecord = {
+  id: string;
+  title: string;
+  category: string;
+  status: string;
+  due_date: string;
+  chip: string;
+  href: string;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  owner_role: string | null;
+  evidence_count: number;
+  evidence_event_count: number;
+  latest_evidence_at: string | null;
+  latest_evidence_actor: string | null;
+  inspection_type: string | null;
+  rank: number;
+};
+
+export type ComplianceSnapshotRecord = {
+  open_count: number;
+  overdue_count: number;
+  due_soon_count: number;
+  missing_evidence_count: number;
+  evidence_linked_count: number;
+  delegated_owner_count: number;
+  fire_safety_count: number;
+  inspection_report_count: number;
+  category_counts: Record<string, number>;
+  status_counts: Record<string, number>;
+  next_items: ComplianceRiskItemRecord[];
+};
+
 export type InsightsOverviewRecord = {
   entity: InsightsEntityRecord;
   as_of: string;
@@ -2233,6 +2316,7 @@ export type InsightsOverviewRecord = {
   finance_snapshot: FinanceSnapshotRecord;
   owner_entity_snapshot: OwnerEntitySnapshotRecord;
   lease_event_snapshot: LeaseEventSnapshotRecord;
+  compliance_snapshot: ComplianceSnapshotRecord;
   guardrails: string[];
 };
 
@@ -3729,6 +3813,19 @@ export function listObligations(filters: {
     params.set("property_id", filters.property_id);
   }
   return request<ObligationRecord[]>(`/obligations?${params.toString()}`);
+}
+
+export function listComplianceChecks(filters: {
+  entity_id: string;
+  include_deleted?: boolean;
+}) {
+  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  if (filters.include_deleted) {
+    params.set("include_deleted", "true");
+  }
+  return request<ComplianceCheckRecord[]>(
+    `/compliance/checks?${params.toString()}`,
+  );
 }
 
 export function createObligation(payload: ObligationPayload) {

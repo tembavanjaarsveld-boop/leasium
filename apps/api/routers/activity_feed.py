@@ -112,6 +112,7 @@ _TARGET_TABLE_LABEL: dict[str, str] = {
     "arrears_case": "Arrears case",
     "ask_leasium": "Ask Leasium",
     "billing_draft": "Billing draft",
+    "compliance_check": "Compliance check",
     "document_intake": "Smart Intake document",
     "entity": "Entity",
     "insights_snapshot": "Insights snapshot",
@@ -164,6 +165,8 @@ def _target_href(table: str | None, target_id: UUID | None) -> str | None:
     if table == "lease":
         return "/properties"
     if table == "obligation":
+        return "/operations"
+    if table == "compliance_check":
         return "/operations"
     if table == "arrears_case":
         return "/operations"

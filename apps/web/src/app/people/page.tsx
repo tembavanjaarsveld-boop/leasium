@@ -167,8 +167,8 @@ function PeopleContent() {
                 onClick={() => selectTab(tab.key)}
                 className={
                   isActive
-                    ? "inline-flex min-h-10 items-center rounded-full border border-primary/30 bg-primary-soft px-4 text-sm font-semibold text-primary-hover transition"
-                    : "inline-flex min-h-10 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    ? "inline-flex min-h-11 items-center rounded-full border border-primary/30 bg-primary-soft px-4 text-sm font-semibold text-primary-hover transition"
+                    : "inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 }
               >
                 {tab.label}

@@ -54,11 +54,13 @@ import {
   type ArrearsCaseStatus,
   type ArrearsDisputeStatus,
   type ArrearsEscalationStatus,
+  type ComplianceCheckRecord,
   createArrearsCase,
   createMaintenanceWorkOrder,
   type DocumentIntakeRecord,
   type InvoiceDraftRecord,
   listArrearsCases,
+  listComplianceChecks,
   listDocumentIntakes,
   listEntities,
   listInvoiceDrafts,
@@ -99,6 +101,7 @@ const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_PROPERTIES: PropertyRecord[] = [];
 const EMPTY_TENANTS: TenantRecord[] = [];
 const EMPTY_OBLIGATIONS: ObligationRecord[] = [];
+const EMPTY_COMPLIANCE_CHECKS: ComplianceCheckRecord[] = [];
 const EMPTY_ONBOARDINGS: TenantOnboardingRecord[] = [];
 const EMPTY_INTAKES: DocumentIntakeRecord[] = [];
 const EMPTY_MAINTENANCE: MaintenanceWorkOrderRecord[] = [];
@@ -113,6 +116,18 @@ const OPERATIONS_QUEUE_EXPORT_GUARDRAIL =
   "Local-only review export: downloading this file does not send SendGrid or Twilio messages, send tenant, owner, or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, perform Xero/Basiq writes, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.";
 const ARREARS_REVIEW_PACKET_GUARDRAIL =
   "Review-only arrears packet: downloading or copying this file does not send email, SMS, tenant messages, owner messages, provider dispatch, Xero/Basiq writes, payment reconciliation, invoice updates, arrears status changes, reminder updates, escalation updates, or assignment updates.";
+const COMPLIANCE_REVIEW_PACKET_GUARDRAIL =
+  "Review-only compliance packet: copying or downloading this file does not complete checks, upload evidence, create or update obligations, apply Smart Intake, create or update work orders, send email/SMS, dispatch providers, create billing drafts, call Xero/Basiq, or reconcile payments.";
+const COMPLIANCE_CATEGORIES = new Set([
+  "insurance",
+  "bank_guarantee",
+  "make_good",
+  "compliance",
+]);
+const COMPLIANCE_DOCUMENT_TYPES = new Set([
+  "insurance_certificate",
+  "inspection_report",
+]);
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
@@ -120,6 +135,11 @@ const tabs = [
     id: "maintenance",
     label: "Maintenance",
     description: "Repairs and approvals",
+  },
+  {
+    id: "compliance",
+    label: "Compliance",
+    description: "Checks and inspections",
   },
   { id: "arrears", label: "Arrears", description: "Balances and escalation" },
 ] as const;
@@ -902,6 +922,279 @@ function operationsQueueReviewCsv(items: QueueItem[]) {
       "",
       "",
       OPERATIONS_QUEUE_EXPORT_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function complianceCheckTone(check: ComplianceCheckRecord): StatusTone {
+  if (check.status === "completed") {
+    return "success";
+  }
+  if (check.status === "paused" || check.status === "archived") {
+    return "neutral";
+  }
+  const days = dueRank(check.next_due_date);
+  if (days < 0) {
+    return "danger";
+  }
+  if (days <= 30) {
+    return "warning";
+  }
+  return "primary";
+}
+
+function complianceCheckStatusLabel(check: ComplianceCheckRecord) {
+  if (check.status !== "active") {
+    return sentenceLabel(check.status);
+  }
+  const days = dueRank(check.next_due_date);
+  if (days < 0) {
+    return "Overdue";
+  }
+  if (days <= 30) {
+    return "Due soon";
+  }
+  return "Active";
+}
+
+function complianceEvidenceCount(check: ComplianceCheckRecord) {
+  const evidenceHistory = Array.isArray(check.metadata.evidence_history)
+    ? check.metadata.evidence_history.length
+    : 0;
+  const completionHistory = Array.isArray(check.metadata.completion_history)
+    ? check.metadata.completion_history.length
+    : 0;
+  return Math.max(
+    evidenceHistory,
+    completionHistory,
+    check.source_document_id ? 1 : 0,
+  );
+}
+
+function complianceEvidenceLabel(check: ComplianceCheckRecord) {
+  const count = complianceEvidenceCount(check);
+  if (count === 0) {
+    return "No evidence yet";
+  }
+  return count === 1 ? "Evidence linked" : `${count} evidence events`;
+}
+
+function recurrenceLabel(check: ComplianceCheckRecord) {
+  const unit =
+    check.recurrence_interval === 1
+      ? check.recurrence_unit.replace(/s$/, "")
+      : check.recurrence_unit;
+  return `Every ${check.recurrence_interval} ${unit}`;
+}
+
+function memberNameById(
+  members: SecurityMemberRecord[],
+  memberId: string | null | undefined,
+) {
+  if (!memberId) {
+    return null;
+  }
+  return members.find((member) => member.id === memberId)
+    ? memberLabel(members.find((member) => member.id === memberId)!)
+    : "Assigned";
+}
+
+function complianceOwnerLabel(
+  check: ComplianceCheckRecord,
+  members: SecurityMemberRecord[],
+) {
+  return (
+    memberNameById(members, check.assigned_user_id) ??
+    (check.owner_role ? sentenceLabel(check.owner_role) : "Unassigned")
+  );
+}
+
+function complianceScopeContext(
+  scope: {
+    property_id?: string | null;
+    tenant_id?: string | null;
+    jurisdiction?: string | null;
+    authority?: string | null;
+  },
+  properties: PropertyRecord[],
+  tenants: TenantRecord[],
+) {
+  return [
+    propertyName(properties, scope.property_id),
+    scope.tenant_id ? tenantName(tenants, scope.tenant_id) : null,
+    scope.jurisdiction,
+    scope.authority,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function complianceCheckNextAction(check: ComplianceCheckRecord) {
+  if (check.status === "paused") {
+    return "Review paused check";
+  }
+  if (check.status === "archived" || check.status === "completed") {
+    return "No open action";
+  }
+  const days = dueRank(check.next_due_date);
+  if (days < 0) {
+    return "Review overdue evidence and roll forward";
+  }
+  if (days <= 30) {
+    return "Request evidence before due date";
+  }
+  return "Monitor next due date";
+}
+
+function isComplianceObligation(obligation: ObligationRecord) {
+  return (
+    COMPLIANCE_CATEGORIES.has(obligation.category) &&
+    !["completed", "waived"].includes(obligation.status)
+  );
+}
+
+function complianceIntakeTitle(intake: DocumentIntakeRecord) {
+  if (intake.document_type === "inspection_report") {
+    return "Inspection report waiting review";
+  }
+  if (intake.document_type === "insurance_certificate") {
+    return "Insurance certificate waiting review";
+  }
+  return "Compliance document waiting review";
+}
+
+function isComplianceIntake(intake: DocumentIntakeRecord) {
+  return (
+    intakeIsOpen(intake) &&
+    COMPLIANCE_DOCUMENT_TYPES.has(intake.document_type ?? "")
+  );
+}
+
+function inspectionWorkOrderIntakeId(workOrder: MaintenanceWorkOrderRecord) {
+  const metadata = workOrder.metadata;
+  return stringValue(metadata, "document_intake_id");
+}
+
+function isInspectionWorkOrder(workOrder: MaintenanceWorkOrderRecord) {
+  const metadata = workOrder.metadata;
+  return (
+    maintenanceIsOpen(workOrder) &&
+    stringValue(metadata, "source") === "document_intake" &&
+    stringValue(metadata, "document_type") === "inspection_report"
+  );
+}
+
+function inspectionWorkOrderFinding(workOrder: MaintenanceWorkOrderRecord) {
+  const finding = workOrder.metadata.inspection_finding;
+  return isPlainRecord(finding) ? finding : {};
+}
+
+function complianceReviewCsv({
+  checks,
+  obligations,
+  intakes,
+  workOrders,
+  properties,
+  tenants,
+  members,
+}: {
+  checks: ComplianceCheckRecord[];
+  obligations: ObligationRecord[];
+  intakes: DocumentIntakeRecord[];
+  workOrders: MaintenanceWorkOrderRecord[];
+  properties: PropertyRecord[];
+  tenants: TenantRecord[];
+  members: SecurityMemberRecord[];
+}) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Kind",
+      "Title",
+      "Context",
+      "Due",
+      "Status",
+      "Owner",
+      "Evidence",
+      "Next action",
+      "Guardrail",
+    ],
+    ...checks.map((check) => [
+      "Compliance check",
+      check.title,
+      [
+        complianceScopeContext(check, properties, tenants),
+        recurrenceLabel(check),
+        check.notes,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      formatDate(check.next_due_date),
+      complianceCheckStatusLabel(check),
+      complianceOwnerLabel(check, members),
+      complianceEvidenceLabel(check),
+      complianceCheckNextAction(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    ...obligations.map((obligation) => [
+      "Compliance obligation",
+      obligation.title,
+      [
+        complianceScopeContext(obligation, properties, tenants),
+        obligation.notes,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      formatDate(obligation.due_date),
+      sentenceLabel(obligation.status),
+      obligation.owner_role ? sentenceLabel(obligation.owner_role) : "",
+      obligation.metadata.source_document_id ? "Evidence linked" : "",
+      "Review obligation before marking complete",
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    ...intakes.map((intake) => [
+      "Inspection intake",
+      complianceIntakeTitle(intake),
+      [documentTypeLabel(intake.document_type), intake.filename, intake.summary]
+        .filter(Boolean)
+        .join(" - "),
+      formatDateTime(intake.created_at),
+      intakeChip(intake),
+      "",
+      intake.document_id ? "Source document linked" : "",
+      "Open Smart Intake review",
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    ...workOrders.map((workOrder) => [
+      "Inspection work order",
+      workOrder.title,
+      [
+        complianceScopeContext(workOrder, properties, tenants),
+        stringValue(inspectionWorkOrderFinding(workOrder), "location"),
+        workOrder.source_reference,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      formatDate(workOrder.due_date),
+      `${sentenceLabel(workOrder.status)} / ${sentenceLabel(workOrder.priority)}`,
+      assignmentSummary(workOrder.metadata),
+      workOrder.document_ids.length
+        ? `${workOrder.document_ids.length} document link`
+        : "",
+      "Review work order before contractor dispatch",
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "",
+      "Review-only",
+      "",
+      "",
+      "",
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
     ],
   ];
 
@@ -1979,6 +2272,12 @@ function OperationsWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
+  const complianceChecksQuery = useQuery({
+    queryKey: ["operations-compliance-checks", selectedEntityId],
+    queryFn: () => listComplianceChecks({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId),
+  });
+
   const onboardingQuery = useQuery({
     queryKey: ["operations-onboarding", selectedEntityId],
     queryFn: () => listTenantOnboardings(selectedEntityId),
@@ -2012,6 +2311,9 @@ function OperationsWorkspace() {
   const invalidateOperations = () => {
     queryClient.invalidateQueries({
       queryKey: ["operations-obligations", selectedEntityId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-compliance-checks", selectedEntityId],
     });
     queryClient.invalidateQueries({
       queryKey: ["operations-maintenance", selectedEntityId],
@@ -2256,6 +2558,7 @@ function OperationsWorkspace() {
       (propertiesQuery.isLoading ||
         tenantsQuery.isLoading ||
         obligationsQuery.isLoading ||
+        complianceChecksQuery.isLoading ||
         onboardingQuery.isLoading ||
         documentIntakesQuery.isLoading ||
         maintenanceQuery.isLoading ||
@@ -2266,17 +2569,20 @@ function OperationsWorkspace() {
   const properties = propertiesQuery.data ?? EMPTY_PROPERTIES;
   const tenants = tenantsQuery.data ?? EMPTY_TENANTS;
   const obligations = obligationsQuery.data ?? EMPTY_OBLIGATIONS;
+  const complianceChecks =
+    complianceChecksQuery.data ?? EMPTY_COMPLIANCE_CHECKS;
   const onboardings = onboardingQuery.data ?? EMPTY_ONBOARDINGS;
   const intakes = documentIntakesQuery.data ?? EMPTY_INTAKES;
   const maintenance = maintenanceQuery.data ?? EMPTY_MAINTENANCE;
   const arrears = arrearsQuery.data ?? EMPTY_ARREARS;
   const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const securityMembers = securityWorkspaceQuery.data?.members ?? EMPTY_MEMBERS;
   const assignableMembers = useMemo(
     () =>
-      (securityWorkspaceQuery.data?.members ?? EMPTY_MEMBERS)
+      securityMembers
         .filter((member) => memberCanReceiveWork(member, selectedEntityId))
         .sort((a, b) => memberLabel(a).localeCompare(memberLabel(b))),
-    [securityWorkspaceQuery.data?.members, selectedEntityId],
+    [securityMembers, selectedEntityId],
   );
 
   const queueItems = useMemo(
@@ -2402,6 +2708,43 @@ function OperationsWorkspace() {
   const remindersDue = activeArrears.filter(
     (item) => item.next_reminder_on && dueRank(item.next_reminder_on) <= 0,
   );
+  const openComplianceChecks = complianceChecks.filter(
+    (check) => check.status !== "archived" && !check.deleted_at,
+  );
+  const overdueComplianceChecks = openComplianceChecks.filter(
+    (check) => check.status === "active" && dueRank(check.next_due_date) < 0,
+  );
+  const dueSoonComplianceChecks = openComplianceChecks.filter((check) => {
+    const rank = dueRank(check.next_due_date);
+    return check.status === "active" && rank >= 0 && rank <= 30;
+  });
+  const missingEvidenceComplianceChecks = openComplianceChecks.filter(
+    (check) => complianceEvidenceCount(check) === 0,
+  );
+  const complianceObligations = obligations.filter(isComplianceObligation);
+  const complianceIntakes = intakes.filter(isComplianceIntake);
+  const inspectionWorkOrders = maintenance.filter(isInspectionWorkOrder);
+  const complianceCsvText = () =>
+    complianceReviewCsv({
+      checks: openComplianceChecks,
+      obligations: complianceObligations,
+      intakes: complianceIntakes,
+      workOrders: inspectionWorkOrders,
+      properties,
+      tenants,
+      members: securityMembers,
+    });
+  const copyComplianceCsv = async () => {
+    await copyTextToClipboard(complianceCsvText());
+  };
+  const downloadComplianceCsv = () => {
+    saveBlob(
+      new Blob([complianceCsvText()], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "operations-compliance-review.csv",
+    );
+  };
 
   const filteredMaintenance = maintenance.filter((item) => {
     if (maintenanceStatus !== "all" && item.status !== maintenanceStatus) {
@@ -2428,6 +2771,7 @@ function OperationsWorkspace() {
     propertiesQuery.error ||
     tenantsQuery.error ||
     obligationsQuery.error ||
+    complianceChecksQuery.error ||
     onboardingQuery.error ||
     documentIntakesQuery.error ||
     maintenanceQuery.error ||
@@ -2460,6 +2804,7 @@ function OperationsWorkspace() {
     propertiesQuery.refetch();
     tenantsQuery.refetch();
     obligationsQuery.refetch();
+    complianceChecksQuery.refetch();
     onboardingQuery.refetch();
     documentIntakesQuery.refetch();
     maintenanceQuery.refetch();
@@ -2965,12 +3310,15 @@ function OperationsWorkspace() {
             actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
-            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-3">
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-4">
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Queue
               </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Maintenance
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Compliance
               </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Arrears
@@ -3045,7 +3393,7 @@ function OperationsWorkspace() {
             </section>
 
             <div
-              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-3"
+              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
               role="tablist"
               aria-label="Operations sections"
             >
@@ -3499,6 +3847,305 @@ function OperationsWorkspace() {
                       }
                     />
                   ) : null}
+                </div>
+              </SectionPanel>
+            ) : null}
+
+            {activeTab === "compliance" ? (
+              <SectionPanel
+                title="Compliance & inspections"
+                description="Recurring checks, document reviews, and inspection handoffs."
+                icon={<ShieldCheck size={17} className="text-primary" />}
+                actions={
+                  <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end xl:w-auto">
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-11 w-full px-3 sm:w-auto"
+                      disabled={!selectedEntityId || operationsLoading}
+                      onClick={downloadComplianceCsv}
+                    >
+                      <Download size={15} />
+                      Download compliance CSV
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-11 w-full px-3 sm:w-auto"
+                      disabled={!selectedEntityId || operationsLoading}
+                      onClick={copyComplianceCsv}
+                    >
+                      <Copy size={15} />
+                      Copy compliance CSV
+                    </SecondaryButton>
+                  </div>
+                }
+              >
+                <div className="border-b border-border bg-muted/30 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                      <ShieldCheck size={14} className="text-primary" />
+                      Review queue
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Checks
+                      <span className="text-foreground">
+                        {openComplianceChecks.length}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Overdue
+                      <span className="text-danger">
+                        {overdueComplianceChecks.length}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Due soon
+                      <span className="text-warning">
+                        {dueSoonComplianceChecks.length}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Missing evidence
+                      <span className="text-foreground">
+                        {missingEvidenceComplianceChecks.length}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
+                  <div className="grid gap-4">
+                    <section className="rounded-xl border border-border bg-white">
+                      <div className="border-b border-border px-3 py-2">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Recurring checks
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Register-backed checks and current evidence state.
+                        </p>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {openComplianceChecks.map((check) => (
+                          <div key={check.id} className="grid gap-2 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground">
+                                {check.title}
+                              </span>
+                              <StatusBadge tone={complianceCheckTone(check)}>
+                                {dueLabel(check.next_due_date)}
+                              </StatusBadge>
+                              <StatusBadge tone={complianceCheckTone(check)}>
+                                {complianceCheckStatusLabel(check)}
+                              </StatusBadge>
+                              <StatusBadge tone="neutral">
+                                {sentenceLabel(check.kind)}
+                              </StatusBadge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {[
+                                complianceScopeContext(
+                                  check,
+                                  properties,
+                                  tenants,
+                                ),
+                                recurrenceLabel(check),
+                                check.certificate_expires_on
+                                  ? `Certificate expires ${formatDate(
+                                      check.certificate_expires_on,
+                                    )}`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" - ")}
+                            </p>
+                            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                              <span>{complianceEvidenceLabel(check)}</span>
+                              <span>
+                                Owner {complianceOwnerLabel(check, securityMembers)}
+                              </span>
+                              <span>{complianceCheckNextAction(check)}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {!operationsLoading &&
+                        openComplianceChecks.length === 0 ? (
+                          <EmptyState
+                            icon={<ShieldCheck size={18} />}
+                            title="No recurring checks"
+                            description="Fire safety, insurance, bank guarantee, make-good, and certificate checks will appear here."
+                          />
+                        ) : null}
+                      </div>
+                    </section>
+
+                    <section className="rounded-xl border border-border bg-white">
+                      <div className="border-b border-border px-3 py-2">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Linked obligations
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Existing critical dates that still need review.
+                        </p>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {complianceObligations.map((obligation) => (
+                          <div key={obligation.id} className="grid gap-2 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground">
+                                {obligation.title}
+                              </span>
+                              <StatusBadge tone={obligationTone(obligation)}>
+                                {dueLabel(obligation.due_date)}
+                              </StatusBadge>
+                              <StatusBadge tone={obligationTone(obligation)}>
+                                {sentenceLabel(obligation.status)}
+                              </StatusBadge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {[
+                                complianceScopeContext(
+                                  obligation,
+                                  properties,
+                                  tenants,
+                                ),
+                                sentenceLabel(obligation.category),
+                                obligation.notes,
+                              ]
+                                .filter(Boolean)
+                                .join(" - ")}
+                            </p>
+                          </div>
+                        ))}
+                        {!operationsLoading &&
+                        complianceObligations.length === 0 ? (
+                          <EmptyState
+                            icon={<FileWarning size={18} />}
+                            title="No linked obligations"
+                            description="Open insurance, bank guarantee, make-good, and compliance obligations will appear here."
+                          />
+                        ) : null}
+                      </div>
+                    </section>
+                  </div>
+
+                  <div className="grid gap-4">
+                    <section className="rounded-xl border border-border bg-white">
+                      <div className="border-b border-border px-3 py-2">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Smart Intake reviews
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Compliance and inspection documents waiting for an
+                          operator decision.
+                        </p>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {complianceIntakes.map((intake) => (
+                          <div key={intake.id} className="grid gap-2 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-foreground">
+                                {complianceIntakeTitle(intake)}
+                              </span>
+                              <StatusBadge tone={intakeTone(intake)}>
+                                {intakeChip(intake)}
+                              </StatusBadge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {[
+                                documentTypeLabel(intake.document_type),
+                                intake.filename,
+                                intake.summary,
+                              ]
+                                .filter(Boolean)
+                                .join(" - ")}
+                            </p>
+                            <Link
+                              href={intakeReviewHref(intake)}
+                              className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold text-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-primary"
+                            >
+                              <Link2 size={15} />
+                              Open inspection intake
+                            </Link>
+                          </div>
+                        ))}
+                        {!operationsLoading && complianceIntakes.length === 0 ? (
+                          <EmptyState
+                            icon={<ClipboardList size={18} />}
+                            title="No compliance intakes"
+                            description="Insurance certificates and inspection reports waiting for review will appear here."
+                          />
+                        ) : null}
+                      </div>
+                    </section>
+
+                    <section className="rounded-xl border border-border bg-white">
+                      <div className="border-b border-border px-3 py-2">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Inspection work orders
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Maintenance jobs created from reviewed inspection
+                          findings.
+                        </p>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {inspectionWorkOrders.map((workOrder) => {
+                          const finding = inspectionWorkOrderFinding(workOrder);
+                          return (
+                            <div key={workOrder.id} className="grid gap-2 p-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Link
+                                  href={`/operations/maintenance/${workOrder.id}`}
+                                  className="font-semibold text-foreground hover:text-primary"
+                                >
+                                  {workOrder.title}
+                                </Link>
+                                <StatusBadge tone={maintenanceTone(workOrder)}>
+                                  {dueLabel(workOrder.due_date)}
+                                </StatusBadge>
+                                <StatusBadge tone={maintenanceTone(workOrder)}>
+                                  {sentenceLabel(workOrder.status)}
+                                </StatusBadge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {[
+                                  complianceScopeContext(
+                                    workOrder,
+                                    properties,
+                                    tenants,
+                                  ),
+                                  stringValue(finding, "location"),
+                                  stringValue(finding, "category"),
+                                  workOrder.source_reference,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" - ")}
+                              </p>
+                              {inspectionWorkOrderIntakeId(workOrder) ? (
+                                <Link
+                                  href={intakeReviewHref({
+                                    id: inspectionWorkOrderIntakeId(workOrder)!,
+                                    entity_id: workOrder.entity_id,
+                                  } as DocumentIntakeRecord)}
+                                  className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold text-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-primary"
+                                >
+                                  <Link2 size={15} />
+                                  Source intake
+                                </Link>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                        {!operationsLoading &&
+                        inspectionWorkOrders.length === 0 ? (
+                          <EmptyState
+                            icon={<Wrench size={18} />}
+                            title="No inspection-created work orders"
+                            description="Reviewed inspection findings that create maintenance work will appear here."
+                          />
+                        ) : null}
+                      </div>
+                    </section>
+                  </div>
                 </div>
               </SectionPanel>
             ) : null}
@@ -4385,7 +5032,7 @@ function OperationsWorkspace() {
             <div className="flex shrink-0 flex-wrap gap-2">
               <SecondaryButton
                 type="button"
-                className="min-h-9 px-3"
+                className="min-h-11 px-3"
                 onClick={() => void undoMaintenanceInlineEdit()}
                 disabled={maintenanceInlineUndo.undoing}
               >
@@ -4398,7 +5045,7 @@ function OperationsWorkspace() {
               </SecondaryButton>
               <button
                 type="button"
-                className="min-h-9 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+                className="min-h-11 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
                 onClick={() => setMaintenanceInlineUndo(null)}
               >
                 Dismiss
@@ -4421,7 +5068,7 @@ function OperationsWorkspace() {
             </div>
             <button
               type="button"
-              className="min-h-9 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+              className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
               onClick={() => setObligationConfirmation(null)}
             >
               Dismiss

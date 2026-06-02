@@ -17,10 +17,18 @@ make install
 docker compose up -d
 make migrate
 make seed
+# Optional, but recommended for local product demos and manual browser QA:
+make demo-seed
 make dev
 ```
 
 The API runs on `http://localhost:8000` and the web app runs on `http://localhost:3000`.
+`make seed` creates the minimal local setup. `make demo-seed` adds a fictional
+AU portfolio — Harbour Lane Property Group / Rivergum Property Holdings Pty Ltd
+with Brisbane properties, tenants, owners, contractors, billing, work, and
+arrears examples — so local browser checks exercise real API-backed data instead
+of empty frames. The demo seed is local-only, idempotent, and does not call Xero,
+Basiq, SendGrid, Twilio, payment, or reconciliation providers.
 Lease intake extraction reads `OPENAI_API_KEY` from `.env.local` or `.env` and uses
 `OPENAI_MODEL` for the direct Responses API call.
 Tenant onboarding delivery reads `SENDGRID_*` and `TWILIO_*` settings for email
@@ -43,6 +51,8 @@ password gate. Leave it blank locally to skip the gate.
 - `make install` installs backend and frontend dependencies.
 - `make migrate` applies Alembic migrations.
 - `make seed` creates local sample data.
+- `make demo-seed` creates the richer fictional AU demo portfolio for local
+  browser demos and manual QA.
 - `make dev` runs the API and web app together.
 - `make test` runs the Python test suite.
 - `make lint` runs backend and frontend lint checks.

@@ -387,6 +387,39 @@ def test_tenant_portal_session_is_scoped_to_token_tenant(
     assert body["maintenance_requests"] == []
 
 
+def test_tenant_portal_session_caps_invoice_overpayment_metadata(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    invoice = session.get(InvoiceDraft, UUID(scope["invoice_id"]))
+    assert invoice is not None
+    invoice.invoice_metadata = {
+        **(invoice.invoice_metadata or {}),
+        "payment_status": {
+            "status": "partially_paid",
+            "paid_cents": 990000,
+            "outstanding_cents": 42000,
+        },
+    }
+    session.commit()
+
+    response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["invoices"][0]["total_cents"] == 880000
+    assert body["invoices"][0]["paid_cents"] == 880000
+    assert body["invoices"][0]["outstanding_cents"] == 0
+    assert body["invoices"][0]["payment_status"] == "paid"
+    assert body["payment_summary"]["total_cents"] == 880000
+    assert body["payment_summary"]["paid_cents"] == 880000
+    assert body["payment_summary"]["outstanding_cents"] == 0
+
+
 def test_tenant_portal_query_token_is_labelled_dev_fallback(
     client: TestClient,
     session: Session,
@@ -1179,6 +1212,22 @@ def test_tenant_portal_account_contact_change_request_waits_for_operator_apply(
         json={"portal_token": scope["token"]},
     )
     assert claim_response.status_code == 200
+    account = _account_by_provider(session, "tenant-subject-one")
+    assert account.email == "accounts@portal-one.example"
+    co_tenant_account = TenantPortalAccount(
+        entity_id=UUID(scope["entity_id"]),
+        tenant_id=UUID(scope["tenant_id"]),
+        tenant_onboarding_id=UUID(scope["onboarding_id"]),
+        auth_provider="clerk",
+        auth_provider_id="tenant-subject-two",
+        email="accounts@portal-one.example",
+        status=TenantPortalAccountStatus.active,
+        linked_at=datetime.now(UTC),
+        last_seen_at=datetime.now(UTC),
+        account_metadata={"source": "test_co_tenant_login"},
+    )
+    session.add(co_tenant_account)
+    session.commit()
 
     update_response = client.post(
         "/api/v1/tenant-portal/contact-change-requests",
@@ -1231,6 +1280,19 @@ def test_tenant_portal_account_contact_change_request_waits_for_operator_apply(
     assert tenant.contact_phone == "+61 400 333 444"
     assert tenant.billing_email == "billing.updated@example.test"
     assert tenant.tenant_metadata["portal_contact_change_requests"][0]["status"] == "applied"
+    session.refresh(account)
+    assert account.email == "billing.updated@example.test"
+    session.refresh(co_tenant_account)
+    assert co_tenant_account.email == "billing.updated@example.test"
+    assert co_tenant_account.auth_provider_id == "tenant-subject-two"
+    assert co_tenant_account.status == TenantPortalAccountStatus.active
+
+    status_response = client.get(
+        "/api/v1/tenant-portal/account/status",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["email"] == "billing.updated@example.test"
 
 
 def test_tenant_portal_account_contact_change_request_blocks_duplicate_pending_submission(

@@ -20,9 +20,13 @@ from stewart.core.models import (
     InsightsSnapshot,
     InvoiceDraft,
     InvoiceDraftStatus,
+    Obligation,
+    ObligationCategory,
+    ObligationStatus,
     StoredDocument,
     TenantOnboarding,
     TenantOnboardingStatus,
+    UserRole,
 )
 
 
@@ -270,6 +274,140 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
     assert "tool_input" not in activity[0]
     assert "do-not-return" not in response.text
     assert body["guardrails"][0] == "Insights is read-only and does not mutate portfolio records."
+
+
+def test_insights_overview_summarises_compliance_and_inspection_risk(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    as_of = "2026-05-19"
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Fortitude Valley Arcade",
+            "street_address": "18 Wickham Street",
+            "suburb": "Fortitude Valley",
+            "state": "QLD",
+            "postcode": "4006",
+            "property_type": "commercial_retail",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 6"},
+    )
+    assert unit_response.status_code == 201
+    unit_id = unit_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Valley Books Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2025-07-01",
+            "expiry_date": "2028-06-30",
+            "annual_rent_cents": 960000,
+            "rent_frequency": "monthly",
+        },
+    )
+    assert lease_response.status_code == 201
+    lease_id = lease_response.json()["id"]
+
+    evidence_document_id = uuid4()
+    fire_safety_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        lease_id=UUID(lease_id),
+        title="Fire safety certificate renewal",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.overdue,
+        due_date=date(2026, 5, 10),
+        priority=1,
+        owner_role=UserRole.ops,
+        obligation_metadata={
+            "compliance_type": "fire_safety",
+            "document_type": "inspection_report",
+            "evidence_document_ids": [str(evidence_document_id)],
+            "evidence_history": [
+                {
+                    "document_id": str(evidence_document_id),
+                    "linked_at": "2026-05-11T01:02:03Z",
+                    "actor": "ops@example.test",
+                }
+            ],
+        },
+    )
+    bank_guarantee_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        lease_id=UUID(lease_id),
+        title="Bank guarantee expiry",
+        category=ObligationCategory.bank_guarantee,
+        status=ObligationStatus.upcoming,
+        due_date=date(2026, 6, 1),
+        priority=2,
+        owner_role=UserRole.finance,
+        obligation_metadata={},
+    )
+    maintenance_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        title="HVAC quarterly service",
+        category=ObligationCategory.maintenance,
+        status=ObligationStatus.upcoming,
+        due_date=date(2026, 5, 25),
+        priority=2,
+        obligation_metadata={},
+    )
+    session.add_all(
+        [fire_safety_obligation, bank_guarantee_obligation, maintenance_obligation]
+    )
+    session.commit()
+
+    response = client.get(f"/api/v1/insights/overview?entity_id={entity_id}&as_of={as_of}")
+    assert response.status_code == 200
+    compliance = response.json()["compliance_snapshot"]
+
+    assert compliance["open_count"] == 2
+    assert compliance["overdue_count"] == 1
+    assert compliance["due_soon_count"] == 1
+    assert compliance["missing_evidence_count"] == 1
+    assert compliance["evidence_linked_count"] == 1
+    assert compliance["delegated_owner_count"] == 2
+    assert compliance["fire_safety_count"] == 1
+    assert compliance["inspection_report_count"] == 1
+    assert compliance["category_counts"] == {"compliance": 1, "bank_guarantee": 1}
+
+    titles = [item["title"] for item in compliance["next_items"]]
+    assert titles == ["Fire safety certificate renewal", "Bank guarantee expiry"]
+
+    fire_item = compliance["next_items"][0]
+    assert fire_item["property_name"] == "Fortitude Valley Arcade"
+    assert fire_item["unit_label"] == "Shop 6"
+    assert fire_item["tenant_name"] == "Valley Books Pty Ltd"
+    assert fire_item["owner_role"] == "ops"
+    assert fire_item["evidence_count"] == 1
+    assert fire_item["evidence_event_count"] == 1
+    assert fire_item["latest_evidence_actor"] == "ops@example.test"
+    assert fire_item["inspection_type"] == "fire_safety"
+    assert fire_item["chip"] == "9d overdue"
+    assert fire_item["href"] == "/tasks"
 
 
 def test_insights_snapshots_freeze_public_payload_and_revoke(

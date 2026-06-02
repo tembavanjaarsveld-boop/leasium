@@ -166,6 +166,44 @@ class LeaseEventSnapshotRead(BaseModel):
     next_events: list[LeaseEventRead] = Field(default_factory=list)
 
 
+class ComplianceRiskItemRead(BaseModel):
+    id: UUID
+    title: str
+    category: str
+    status: str
+    due_date: Date
+    chip: str
+    href: str
+    property_id: UUID | None = None
+    property_name: str | None = None
+    tenancy_unit_id: UUID | None = None
+    unit_label: str | None = None
+    lease_id: UUID | None = None
+    tenant_id: UUID | None = None
+    tenant_name: str | None = None
+    owner_role: str | None = None
+    evidence_count: int = 0
+    evidence_event_count: int = 0
+    latest_evidence_at: datetime | None = None
+    latest_evidence_actor: str | None = None
+    inspection_type: str | None = None
+    rank: int = 0
+
+
+class ComplianceSnapshotRead(BaseModel):
+    open_count: int = 0
+    overdue_count: int = 0
+    due_soon_count: int = 0
+    missing_evidence_count: int = 0
+    evidence_linked_count: int = 0
+    delegated_owner_count: int = 0
+    fire_safety_count: int = 0
+    inspection_report_count: int = 0
+    category_counts: dict[str, int] = Field(default_factory=dict)
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    next_items: list[ComplianceRiskItemRead] = Field(default_factory=list)
+
+
 class InsightsOverviewRead(BaseModel):
     entity: InsightsEntityRead
     as_of: Date
@@ -176,6 +214,7 @@ class InsightsOverviewRead(BaseModel):
     finance_snapshot: FinanceSnapshotRead
     owner_entity_snapshot: OwnerEntitySnapshotRead
     lease_event_snapshot: LeaseEventSnapshotRead
+    compliance_snapshot: ComplianceSnapshotRead = Field(default_factory=ComplianceSnapshotRead)
     guardrails: list[str]
 
 

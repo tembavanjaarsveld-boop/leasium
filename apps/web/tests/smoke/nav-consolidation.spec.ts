@@ -1,6 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
+
+async function expectTouchTarget(control: Locator, minSize = 44) {
+  await control.scrollIntoViewIfNeeded();
+  const box = await control.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.width).toBeGreaterThanOrEqual(minSize);
+  expect(box.height).toBeGreaterThanOrEqual(minSize);
+}
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -117,6 +126,22 @@ test("money hub groups finance destinations and legacy links still resolve", asy
 
   await page.goto("/work/comms");
   await expect(page).toHaveURL(/\/comms$/);
+});
+
+test("mobile money hub tabs and actions stay touch-safe", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/money");
+
+  await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
+
+  const moneyTabs = page.getByRole("tablist", { name: "Money areas" });
+  await expect(moneyTabs).toBeVisible();
+  for (const label of ["Billing", "Statements", "Xero", "Basiq"]) {
+    await expectTouchTarget(moneyTabs.getByRole("tab", { name: label }));
+  }
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open Billing Readiness" }),
+  );
 });
 
 test("money hub keeps owner-statement dispatch framing for managing agents", async ({

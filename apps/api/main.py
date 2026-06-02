@@ -19,6 +19,7 @@ from apps.api.routers import (
     branded_templates,
     charge_rules,
     comms,
+    compliance,
     contractors,
     dashboard,
     document_intakes,
@@ -151,6 +152,7 @@ app.include_router(lease_intakes.router, prefix="/api/v1")
 app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(tenant_portal.router, prefix="/api/v1")
 app.include_router(charge_rules.router, prefix="/api/v1")
+app.include_router(compliance.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(document_intakes.router, prefix="/api/v1")

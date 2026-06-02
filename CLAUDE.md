@@ -143,6 +143,12 @@ is a single feature.
   bundled Next WASM SWC.
 - `uv` is not available; use `.venv/bin/python -m pytest`,
   `.venv/bin/alembic`, `.venv/bin/uvicorn`.
+- `make seed` is the minimal local setup. Use `make demo-seed` when a browser
+  check needs meaningful app data: it adds the fictional AU Harbour Lane /
+  Rivergum portfolio under the dev-auth organisation, with properties, tenants,
+  owners, contractors, billing, work, onboarding, and arrears records. It is
+  idempotent and provider-inert: no Xero, Basiq, SendGrid, Twilio, payment, or
+  reconciliation calls.
 - Node.js is installed on Temba's Mac. The default review path for frontend
   changes is the canonical Vercel custom domain at `https://leasium.ai`.
   Treat `https://leasium.vercel.app` as an implementation alias, not a product
@@ -201,6 +207,28 @@ the review-first provider guardrails (§2.1), and AU / Xero / commercial-lease d
 Localise every US analog (Xero not QuickBooks; PayTo/PayID/BPAY not ACH; REA/Domain;
 Equifax/illion). Full benchmark: `docs/doorloop-benchmark-2026-05-31.md`. Design-facing
 IA/nav changes follow the current `docs/design-governance.md` stance (prototype mode today).
+
+### 2.11 Compliance + Insights direction
+
+Insights already exposes a read-only `compliance_snapshot` from existing
+insurance, bank guarantee, make-good, and compliance obligations. It is the
+portfolio-risk layer for overdue/due-soon counts, evidence status, delegated
+owner roles, fire/safety signals, and CSV/copy review packets. Do not duplicate
+that roll-up in a new endpoint without a stronger product reason.
+
+The durable recurring compliance register now exists at the backend/API layer:
+checks with recurrence, owner role/assigned user, latest certificate/evidence,
+current obligation linkage, completion audit/history, and roll-forward to the
+next due obligation.
+
+The operator-facing Work UI now exists at `/operations?tab=compliance`. It
+combines recurring checks, linked compliance obligations, pending compliance /
+inspection Smart Intake rows, and inspection-created work orders, and exports a
+local review-only compliance CSV. Next compliance work should move toward
+operator-approved completion/evidence actions or richer evidence detail, not
+another read-only queue. Keep Smart Intake, comms candidates, and document
+evidence linking compatible, but do not change their shipped behavior unless the
+slice explicitly requires it.
 
 ---
 

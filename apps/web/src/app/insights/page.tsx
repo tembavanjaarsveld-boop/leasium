@@ -38,6 +38,7 @@ import {
 } from "@/components/ui";
 import {
   AutomationActivityRecord,
+  ComplianceRiskItemRecord,
   createInsightsSnapshot,
   getInsightsOverview,
   InsightsOverviewRecord,
@@ -377,6 +378,62 @@ function eventKindLabel(value: string) {
   return labels[value] ?? labelStatus(value);
 }
 
+function complianceTone(item: ComplianceRiskItemRecord): StatusTone {
+  if (item.status === "overdue" || item.rank < 0) {
+    return "danger";
+  }
+  if (item.status === "due_soon" || item.rank <= 30 || item.evidence_count === 0) {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
+  const context = [
+    item.property_name,
+    item.unit_label,
+    item.tenant_name,
+  ].filter(Boolean);
+  const ownerLabel = item.owner_role
+    ? `Owner ${labelStatus(item.owner_role)}`
+    : "No owner";
+  const evidenceLabel =
+    item.evidence_count > 0
+      ? `${item.evidence_count} evidence ${plural(item.evidence_count, "file")}`
+      : "Missing evidence";
+
+  return (
+    <Link
+      href={item.href}
+      className="grid gap-3 border-t border-border px-4 py-4 transition hover:bg-muted/60 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-semibold">{item.title}</div>
+          <StatusBadge tone={complianceTone(item)}>{item.chip}</StatusBadge>
+          <StatusBadge tone="neutral">{labelStatus(item.category)}</StatusBadge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {context.length ? context.join(" · ") : "Portfolio-level obligation"}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+          <span>{ownerLabel}</span>
+          <span>{evidenceLabel}</span>
+          {item.latest_evidence_actor ? (
+            <span>Latest evidence {item.latest_evidence_actor}</span>
+          ) : null}
+          {item.inspection_type ? (
+            <span>{labelStatus(item.inspection_type)}</span>
+          ) : null}
+        </div>
+      </div>
+      <div className="text-xs font-semibold text-muted-foreground">
+        {formatDate(item.due_date)}
+      </div>
+    </Link>
+  );
+}
+
 const INSIGHTS_REVIEW_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.";
 
@@ -387,6 +444,7 @@ function insightsReviewPacketCsv(
   const accounting = overview.finance_snapshot.accounting_readiness;
   const ownerSnapshot = overview.owner_entity_snapshot;
   const leaseSnapshot = overview.lease_event_snapshot;
+  const complianceSnapshot = overview.compliance_snapshot;
   const rows: Array<Array<string | number | null | undefined>> = [
     ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
     [
@@ -456,6 +514,24 @@ function insightsReviewPacketCsv(
         INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
       ],
     ),
+    [
+      "Compliance snapshot",
+      "Compliance & inspections",
+      `${complianceSnapshot.open_count} open`,
+      complianceSnapshot.open_count,
+      "",
+      `${complianceSnapshot.overdue_count} overdue; ${complianceSnapshot.due_soon_count} due soon; ${complianceSnapshot.missing_evidence_count} missing evidence; ${complianceSnapshot.fire_safety_count} fire safety.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...complianceSnapshot.next_items.map((item) => [
+      "Compliance snapshot",
+      item.title,
+      labelStatus(item.status),
+      item.rank,
+      "",
+      `${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? "No tenant"}; ${item.evidence_count} evidence files; latest evidence ${item.latest_evidence_actor ?? "not linked"}; due ${formatDate(item.due_date)}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
     [
       "Lease event",
       "Lease event snapshot",
@@ -696,6 +772,7 @@ function InsightsWorkspace() {
   const financeSnapshot = overview?.finance_snapshot;
   const accountingReadiness = financeSnapshot?.accounting_readiness;
   const leaseEventSnapshot = overview?.lease_event_snapshot;
+  const complianceSnapshot = overview?.compliance_snapshot;
   const snapshots = snapshotsQuery.data ?? [];
 
   function downloadReviewCsv() {
@@ -1085,6 +1162,90 @@ function InsightsWorkspace() {
                 </div>
               </SectionPanel>
             </div>
+
+            <SectionPanel
+              title="Compliance & Inspections"
+              description="Certificate expiry, fire and safety obligations, delegated owners, and evidence status."
+              icon={<ShieldCheck size={17} className="text-primary" />}
+              actions={
+                <StatusBadge
+                  tone={
+                    complianceSnapshot?.overdue_count
+                      ? "danger"
+                      : complianceSnapshot?.due_soon_count
+                        ? "warning"
+                        : "success"
+                  }
+                >
+                  {complianceSnapshot?.open_count ?? 0} open
+                </StatusBadge>
+              }
+            >
+              <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <CountPill
+                    label="Overdue"
+                    value={complianceSnapshot?.overdue_count ?? 0}
+                  />
+                  <CountPill
+                    label="Due soon"
+                    value={complianceSnapshot?.due_soon_count ?? 0}
+                  />
+                  <CountPill
+                    label="Missing evidence"
+                    value={complianceSnapshot?.missing_evidence_count ?? 0}
+                  />
+                  <CountPill
+                    label="Delegated owners"
+                    value={complianceSnapshot?.delegated_owner_count ?? 0}
+                  />
+                  <div className="rounded-2xl border border-border bg-white p-4 text-sm">
+                    <div className="font-semibold">Categories</div>
+                    <div className="mt-3 grid gap-2 text-muted-foreground">
+                      {Object.entries(complianceSnapshot?.category_counts ?? {}).map(
+                        ([category, count]) => (
+                          <div
+                            key={category}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span>{labelStatus(category)}</span>
+                            <span className="font-semibold text-foreground">
+                              {count}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                      {Object.keys(complianceSnapshot?.category_counts ?? {})
+                        .length === 0 ? (
+                        <div>No open compliance categories</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                  <div className="grid gap-1 px-4 py-3">
+                    <div className="text-sm font-semibold">
+                      Certificates and inspection follow-ups
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {complianceSnapshot?.fire_safety_count ?? 0} fire safety;{" "}
+                      {complianceSnapshot?.inspection_report_count ?? 0} inspection
+                      report.
+                    </div>
+                  </div>
+                  {(complianceSnapshot?.next_items ?? []).map((item) => (
+                    <ComplianceRiskRow key={item.id} item={item} />
+                  ))}
+                  {(complianceSnapshot?.next_items.length ?? 0) === 0 ? (
+                    <EmptyState
+                      icon={<ShieldCheck size={18} />}
+                      title="No open compliance follow-ups"
+                      description="Certificate expiries, safety checks, and inspection evidence follow-ups will appear here."
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </SectionPanel>
 
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
               <SectionPanel

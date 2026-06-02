@@ -156,6 +156,29 @@ class ObligationStatus(enum.StrEnum):
     disputed = "disputed"
 
 
+class ComplianceCheckKind(enum.StrEnum):
+    fire_safety = "fire_safety"
+    insurance = "insurance"
+    bank_guarantee = "bank_guarantee"
+    make_good = "make_good"
+    certificate = "certificate"
+    inspection = "inspection"
+    other = "other"
+
+
+class ComplianceCheckStatus(enum.StrEnum):
+    active = "active"
+    paused = "paused"
+    completed = "completed"
+    archived = "archived"
+
+
+class ComplianceRecurrenceUnit(enum.StrEnum):
+    days = "days"
+    months = "months"
+    years = "years"
+
+
 class LeaseIntakeStatus(enum.StrEnum):
     uploaded = "uploaded"
     extracting = "extracting"
@@ -844,6 +867,99 @@ Index(
     "obligation_due_date_idx",
     Obligation.due_date,
     postgresql_where=Obligation.deleted_at.is_(None),
+)
+
+
+class ComplianceCheck(Base):
+    __tablename__ = "compliance_check"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    property_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("property.id"))
+    tenancy_unit_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenancy_unit.id")
+    )
+    tenant_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenant.id"))
+    lease_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lease.id"))
+    assigned_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    source_document_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("stored_document.id")
+    )
+    current_obligation_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("obligation.id")
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[ComplianceCheckKind] = mapped_column(
+        Enum(ComplianceCheckKind, name="compliance_check_kind"),
+        nullable=False,
+        default=ComplianceCheckKind.other,
+    )
+    status: Mapped[ComplianceCheckStatus] = mapped_column(
+        Enum(ComplianceCheckStatus, name="compliance_check_status"),
+        nullable=False,
+        default=ComplianceCheckStatus.active,
+    )
+    jurisdiction: Mapped[str | None] = mapped_column(Text)
+    authority: Mapped[str | None] = mapped_column(Text)
+    recurrence_interval: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    recurrence_unit: Mapped[ComplianceRecurrenceUnit] = mapped_column(
+        Enum(ComplianceRecurrenceUnit, name="compliance_recurrence_unit"),
+        nullable=False,
+        default=ComplianceRecurrenceUnit.years,
+    )
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    certificate_expires_on: Mapped[date | None] = mapped_column(Date)
+    owner_role: Mapped[UserRole | None] = mapped_column(Enum(UserRole, name="user_role"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    check_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship()
+    property: Mapped[Property | None] = relationship()
+    tenancy_unit: Mapped[TenancyUnit | None] = relationship()
+    tenant: Mapped[Tenant | None] = relationship()
+    lease: Mapped[Lease | None] = relationship()
+    assigned_user: Mapped[AppUser | None] = relationship()
+    source_document: Mapped["StoredDocument | None"] = relationship(
+        foreign_keys=[source_document_id]
+    )
+    current_obligation: Mapped[Obligation | None] = relationship(
+        foreign_keys=[current_obligation_id]
+    )
+
+
+Index(
+    "compliance_check_entity_idx",
+    ComplianceCheck.entity_id,
+    postgresql_where=ComplianceCheck.deleted_at.is_(None),
+)
+Index(
+    "compliance_check_property_idx",
+    ComplianceCheck.property_id,
+    postgresql_where=ComplianceCheck.deleted_at.is_(None),
+)
+Index(
+    "compliance_check_next_due_idx",
+    ComplianceCheck.next_due_date,
+    postgresql_where=ComplianceCheck.deleted_at.is_(None),
+)
+Index(
+    "compliance_check_current_obligation_idx",
+    ComplianceCheck.current_obligation_id,
+    postgresql_where=ComplianceCheck.deleted_at.is_(None),
 )
 
 

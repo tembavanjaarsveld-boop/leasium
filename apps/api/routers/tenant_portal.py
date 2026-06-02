@@ -1069,13 +1069,20 @@ def _invoice_payment(invoice: InvoiceDraft) -> tuple[str, int, int]:
     raw = metadata.get("payment_status")
     payment = raw if isinstance(raw, dict) else {}
     status_value = payment.get("status")
-    payment_status = status_value if isinstance(status_value, str) and status_value else "unpaid"
-    paid_cents = _int_metadata(payment.get("paid_cents"), 0)
-    outstanding_cents = _int_metadata(
-        payment.get("outstanding_cents"),
-        max(invoice.total_cents - paid_cents, 0),
-    )
-    return payment_status, max(paid_cents, 0), max(outstanding_cents, 0)
+    total_cents = max(invoice.total_cents, 0)
+    paid_cents = min(max(_int_metadata(payment.get("paid_cents"), 0), 0), total_cents)
+    outstanding_cents = max(total_cents - paid_cents, 0)
+    if total_cents > 0 and paid_cents >= total_cents:
+        payment_status = "paid"
+    elif paid_cents > 0:
+        payment_status = "partially_paid"
+    elif isinstance(status_value, str) and status_value in {"paid", "partially_paid"}:
+        payment_status = "unpaid"
+    else:
+        payment_status = (
+            status_value if isinstance(status_value, str) and status_value else "unpaid"
+        )
+    return payment_status, paid_cents, outstanding_cents
 
 
 def _invoice_read(invoice: InvoiceDraft) -> TenantPortalInvoiceRead:

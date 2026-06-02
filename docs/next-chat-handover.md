@@ -3108,3 +3108,288 @@ now largely white-labelling service delivery to agencies. So Leasium's "software
 open; its real competitor is the **decision to outsource** (an agency / :Different) and inertia
 (spreadsheets) — position against the **management fee**, and match the **NPP real-time + owner-app
 transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
+
+## Codex continuation 2026-06-02 - Tenant portal invoice payment normalization
+
+- Chosen backlog slice after agent scouting: tenant-facing invoice payment
+  summaries should not display impossible balances when stale local payment
+  metadata reports paid cents above the invoice total.
+- `_invoice_payment` in `apps/api/routers/tenant_portal.py` now normalizes the
+  read model only: `paid_cents` is capped at `total_cents`, and
+  `outstanding_cents` is recomputed from that normalized paid amount. The
+  invoice-row payment status label follows the normalized cents, and the
+  response summary derives from those normalized invoice rows.
+- Guardrails: no Xero/Basiq write, payment reconciliation, invoice metadata
+  mutation, provider dispatch, SendGrid/Twilio send, document download, or
+  provider-history write.
+- Verification: red/green
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_session_caps_invoice_overpayment_metadata -q`
+  (`1 passed` after fix),
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q`
+  (`56 passed`), and
+  `.venv/bin/python -m ruff check apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py`
+  (`All checks passed!`).
+
+## Codex continuation 2026-06-02 - Tenant portal account email freshness
+
+- Chosen backlog slice after agent scouting: tenant portal account lifecycle
+  still had change-email support open, and linked portal account rows could keep
+  the old claim-time email after an operator applied a tenant-submitted
+  contact/billing email change.
+- `apply_contact_change_request` in `apps/api/routers/tenants.py` now syncs
+  active, non-revoked, non-deleted linked tenant portal account emails to the
+  tenant's preferred portal email (`billing_email` then `contact_email`) when
+  the applied fields include `contact_email` or `billing_email`.
+- Coverage extends the existing account contact-change flow to prove the
+  account lifecycle/status endpoint reports the new email and that an additional
+  active co-tenant login keeps its provider id, active status, and tenant scope
+  while receiving the same local email freshness update.
+- Guardrails: no Clerk email mutation, invite resend, token rotation, account
+  relink, SendGrid/Twilio send, provider history write, payment, Xero, or Basiq
+  mutation.
+- Verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py::test_tenant_portal_account_contact_change_request_waits_for_operator_apply tests/integration/test_tenant_portal_api.py::test_tenant_portal_session_caps_invoice_overpayment_metadata -q`
+  (`2 passed`),
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_portal_api.py -q`
+  (`56 passed`), and
+  `.venv/bin/python -m ruff check apps/api/routers/tenants.py apps/api/routers/tenant_portal.py tests/integration/test_tenant_portal_api.py`
+  (`All checks passed!`).
+
+## Codex continuation 2026-06-02 - Properties calendar mobile hardening
+
+- Chosen backlog slice after agent scouting: `/properties?view=calendar` existed
+  but did not have focused mobile smoke coverage, and the calendar filter chips
+  plus review actions were smaller than the 44px tap target baseline.
+- Added a 390px Playwright smoke in
+  `apps/web/tests/smoke/properties-ux.spec.ts` that opens the calendar view,
+  checks URL/tab state and review-queue content, and asserts touch-safe sizes for
+  Calendar, Rent reviews, Next 90, Copy schedule, Copy follow-ups, and Open next.
+- `apps/web/src/components/property-workspace.tsx` now gives the calendar
+  event-kind chips, horizon chips, Open next link, and Copy follow-ups button
+  the same 44px mobile touch floor. No data/provider mutation behavior changed.
+- Red/green evidence: the new smoke first failed with a 26px-high calendar chip,
+  then passed after the touch-target patch.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/properties-ux.spec.ts -g "mobile properties calendar view keeps filters and review actions touch safe" --workers=1`
+  (`1 passed`),
+  `./node_modules/.bin/playwright test tests/smoke/properties-ux.spec.ts --workers=1`
+  (`9 passed`),
+  `./node_modules/.bin/eslint src/components/property-workspace.tsx tests/smoke/properties-ux.spec.ts`
+  (clean), and `./node_modules/.bin/tsc --noEmit` (clean).
+
+## Codex continuation 2026-06-02 - Properties map mobile hardening
+
+- Chosen follow-on backlog slice: `/properties?view=map` had the same shape as
+  calendar — the surface existed, but mobile smoke did not prove the map view's
+  focus controls met the 44px tap target baseline.
+- Added a 390px Playwright smoke in
+  `apps/web/tests/smoke/properties-ux.spec.ts` that opens the map view, checks
+  URL/tab state, proves Portfolio map / Map planning / Regional focus content,
+  and asserts touch-safe sizes for Map, Lease risk, Vacancy, Copy map brief,
+  Queen Street map/property action, and Vacancy focus.
+- `apps/web/src/components/property-workspace.tsx` now lifts the map focus chips
+  to `min-h-11` with matching padding. Planning buttons, map pins, and the copy
+  action already met the size check.
+- Red/green evidence: the new smoke first failed with a 26px-high map focus
+  chip, then passed after the chip patch.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/properties-ux.spec.ts -g "mobile properties map view keeps focus controls touch safe" --workers=1`
+  (`1 passed`),
+  `./node_modules/.bin/playwright test tests/smoke/properties-ux.spec.ts --workers=1`
+  (`10 passed`),
+  `./node_modules/.bin/eslint src/components/property-workspace.tsx tests/smoke/properties-ux.spec.ts`
+  (clean), and `./node_modules/.bin/tsc --noEmit` (clean). In-app browser opened
+  `http://127.0.0.1:3000/properties?view=map` and confirmed the Map tab was
+  selected; standalone web content stayed in the app's fetch-failed state
+  because the API backend/mocks were not attached to that manual browser pass.
+
+## Codex continuation 2026-06-02 - Work undo toast mobile hardening
+
+- Chosen backlog slice: Operations mobile polish still had interactive toast
+  controls using explicit `min-h-9` sizing, which could leave phone operators
+  with sub-44px Undo/Dismiss targets after inline maintenance edits.
+- Added a 390px Playwright smoke in
+  `apps/web/tests/smoke/operations-ux.spec.ts` that opens `/operations`, changes
+  the Air conditioning fault status to `triaged`, waits for the inline undo
+  toast, and measures the Undo and Dismiss controls.
+- `apps/web/src/app/operations/page.tsx` now uses `min-h-11` for the maintenance
+  inline undo toast buttons and the related obligation confirmation Dismiss
+  control. No provider send, assignment send, work-order dispatch, invoice,
+  Xero, Basiq, payment, or reconciliation path changed.
+- Red/green evidence: the new smoke first failed with the Undo button at 36px,
+  then passed after the toast controls moved to the 44px baseline.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/operations-ux.spec.ts -g "maintenance inline undo toast controls stay touch-safe on mobile" --workers=1`
+  (`1 passed`),
+  `./node_modules/.bin/playwright test tests/smoke/operations-ux.spec.ts --workers=1`
+  (`11 passed`),
+  `./node_modules/.bin/eslint src/app/operations/page.tsx tests/smoke/operations-ux.spec.ts`
+  (clean), and `./node_modules/.bin/tsc --noEmit` (clean).
+
+## Codex continuation 2026-06-02 - People/Money hub tab mobile hardening
+
+- Chosen backlog slice after closing the scout agent: People had just gained a
+  mobile tab smoke, and the scout found the same short `min-h-10` tab/action
+  pattern still present on `/money`.
+- `apps/web/src/app/people/page.tsx` keeps People hub tabs on the 44px
+  tap-target baseline, and `apps/web/tests/smoke/people-hub.spec.ts` now scopes
+  the mobile check through the named People types tablist.
+- `apps/web/src/app/money/page.tsx` now lifts Money hub tabs and the active
+  panel action link to `min-h-11`. A new 390px smoke in
+  `apps/web/tests/smoke/nav-consolidation.spec.ts` measures Billing,
+  Statements, Xero, Basiq, and Open Billing Readiness.
+- Red/green evidence: the new Money smoke first failed with a 40px-high tab,
+  then passed after the Money sizing patch.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/nav-consolidation.spec.ts -g "mobile money hub tabs and actions stay touch-safe" --workers=1`
+  (`1 passed`),
+  `./node_modules/.bin/playwright test tests/smoke/people-hub.spec.ts --workers=1`
+  (`5 passed`),
+  `./node_modules/.bin/playwright test tests/smoke/nav-consolidation.spec.ts --workers=1`
+  (`5 passed`),
+  `./node_modules/.bin/eslint src/app/people/page.tsx src/app/money/page.tsx tests/smoke/people-hub.spec.ts tests/smoke/nav-consolidation.spec.ts`
+  (clean), and `./node_modules/.bin/tsc --noEmit` (clean).
+
+## Codex continuation 2026-06-02 - Fictional AU local demo seed
+
+- User noted that `http://127.0.0.1:3000` was mostly testing frames rather
+  than meaningful data, and approved a fictional AU-realistic demo portfolio.
+- Added design and implementation docs:
+  `docs/superpowers/specs/2026-06-02-demo-seed-design.md` and
+  `docs/superpowers/plans/2026-06-02-demo-seed.md`.
+- `scripts/seed_demo.py` now exposes `seed_demo(session=None)` and CLI module
+  execution. It uses the dev-auth organisation id so the normal localhost app
+  can see the data, renames that local org to `Harbour Lane Property Group`,
+  and adds `Rivergum Property Holdings Pty Ltd` plus three Brisbane properties:
+  Kingfisher Retail Arcade, Moorooka Trade Warehouse, and Newstead Creative
+  Offices.
+- Seeded real API-backed rows include tenants, owner/trust records, property
+  owner links, units, leases, charge rules, obligations, contractors, stored
+  documents, billing draft/lines, invoice draft/lines, maintenance work,
+  tenant onboarding, and an arrears case. Rows carry demo metadata
+  `demo_seed=fictional_au_v1`.
+- Guardrails: local-only, idempotent, no reset/truncate, no Xero/Basiq writes,
+  no SendGrid/Twilio sends, no payment/reconciliation, and no external document
+  calls.
+- Project docs updated for future sessions: `README.md`, `CLAUDE.md`,
+  `docs/leasium-codex-design-source-of-truth.md`, and
+  `docs/product-roadmap.md`. Use `make demo-seed` after migrations when local
+  browser QA needs meaningful data instead of empty frames.
+- Red/green evidence: the new integration test first failed because
+  `scripts.seed_demo` did not exist, then passed after the seeder landed.
+- Verification so far:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_seed_demo.py -q`
+  (`1 passed`) and
+  `.venv/bin/python -m ruff check scripts/seed_demo.py tests/integration/test_seed_demo.py`
+  (`All checks passed!`).
+- Local DB/browser seed note: `.venv/bin/python -m scripts.seed_demo` was tried
+  after the tests but could not connect to Postgres on `localhost:5432`; trying
+  `docker compose up -d` also failed because `docker` is not available in this
+  session. Once Postgres is running, run `make migrate && make demo-seed`, then
+  reload `http://127.0.0.1:3000` for the real browser-data pass.
+
+## Codex continuation 2026-06-02 - Insights compliance snapshot v1
+
+- User asked to move onto bigger backlog work and explicitly rejected more
+  demo/empty-state polish. Two scout agents inspected compliance/inspection
+  gaps; the shipped slice keeps the work in the portfolio Insights layer while
+  documenting the larger recurring-register follow-up below.
+- Backend: `apps/api/routers/insights.py` now builds a read-only
+  `compliance_snapshot` from existing open obligations in the `insurance`,
+  `bank_guarantee`, `make_good`, and `compliance` categories. It includes
+  open/overdue/due-soon counts, missing/evidence-linked counts, delegated owner
+  counts, fire-safety and inspection-report signals, category/status counts, and
+  next risk rows with property/unit/tenant context plus evidence-history actor
+  metadata. `apps/api/schemas/insights.py` exposes the new response models.
+- Frontend: `/insights` now renders a Compliance & Inspections panel with
+  overdue/due-soon/evidence/owner metrics, category counts, and risk rows. The
+  existing review packet copy/download now includes compliance summary and row
+  detail. Smoke mocks include a realistic fire-safety certificate and bank
+  guarantee scenario.
+- Guardrails: viewing the panel and copying/downloading the CSV remain local
+  and read-only. No provider dispatch, email/SMS, Xero/Basiq, billing draft,
+  payment, reconciliation, Smart Intake apply, or obligation mutation happens
+  from this snapshot/export path.
+- Red/green evidence: the backend test first failed with
+  `KeyError: 'compliance_snapshot'`, and the Insights smoke first failed because
+  the Compliance & Inspections heading was missing. Both passed after the
+  implementation.
+- Larger next backlog candidate from scouts: recurring compliance register v1
+  with durable compliance checks, recurrence, assigned owner, latest evidence,
+  current obligation linkage, completion audit/history, and roll-forward to the
+  next due obligation. Suggested files:
+  `apps/api/routers/compliance.py`, `apps/api/schemas/compliance.py`,
+  `tests/integration/test_compliance_api.py`, model/migration additions, and
+  activity-feed labels. Keep Smart Intake/comms behavior untouched for that
+  slice.
+
+## Codex continuation 2026-06-02 - Recurring compliance register v1 backend
+
+- Followed the larger compliance backlog path after the Insights snapshot:
+  durable recurring checks first, before building the Work tab UI.
+- Added `ComplianceCheckKind`, `ComplianceCheckStatus`,
+  `ComplianceRecurrenceUnit`, and `ComplianceCheck` in
+  `stewart/core/models.py`, plus Alembic revision
+  `migrations/versions/20260602_0033_compliance_checks.py`.
+- Added `apps/api/schemas/compliance.py` and `apps/api/routers/compliance.py`.
+  Routes:
+  `GET/POST /api/v1/compliance/checks`,
+  `GET/PATCH/DELETE /api/v1/compliance/checks/{check_id}`,
+  and `POST /api/v1/compliance/checks/{check_id}/complete`.
+- Create validates all scope links and creates a current local
+  `Obligation(category=compliance)` when no current obligation is supplied.
+  Complete validates evidence, marks the old obligation completed, attaches
+  evidence metadata/history, appends local completion history to the check,
+  advances the next due date from certificate expiry or recurrence, and creates
+  the future current obligation. Repeating the same evidence+completed-at
+  request is idempotent and does not duplicate obligations.
+- Guardrails: backend-only foundation. No provider dispatch, SendGrid/Twilio,
+  Xero/Basiq, billing draft, payment/reconciliation, Smart Intake apply, comms
+  mutation, or provider-history mutation. Existing Smart Intake/comms behavior
+  is untouched.
+- `apps/api/main.py` includes the router, and `apps/api/routers/activity_feed.py`
+  labels `compliance_check` audit targets.
+- Test coverage in `tests/integration/test_compliance_api.py` covers create
+  with current obligation, list/read/update/delete, completion roll-forward,
+  retry idempotency, cross-entity evidence rejection without mutation, and
+  no-role access denial.
+- Red/green evidence: the first test failed with `404` for
+  `/api/v1/compliance/checks`; the completion test then failed because
+  `next_due_date` did not roll forward. Both failures were resolved by the
+  model/router implementation.
+- Follow-up: build the operator-facing Compliance tab in Work
+  (`/operations?tab=compliance`) to combine register checks, inspection-created
+  work orders, and pending compliance/inspection Smart Intake rows, with local
+  copy/download review packet coverage.
+
+## Codex continuation 2026-06-02 - Compliance Work tab v1
+
+- Built the operator-facing Work compliance tab at `/operations?tab=compliance`.
+  It loads the recurring compliance register through the new
+  `listComplianceChecks` web API client and combines it with existing
+  compliance obligations, compliance/inspection Smart Intake rows, and
+  inspection-created maintenance work orders.
+- Frontend files touched:
+  `apps/web/src/app/operations/page.tsx`,
+  `apps/web/src/lib/api.ts`,
+  `apps/web/tests/smoke/api-mocks.ts`, and new
+  `apps/web/tests/smoke/operations-compliance.spec.ts`.
+- The tab renders overdue/due-soon/missing-evidence counts, recurring check
+  rows with recurrence/evidence/owner context, linked obligation rows, Smart
+  Intake review links, and inspection work-order links. It does not mutate
+  compliance checks or related records.
+- Added AU-realistic smoke fixtures for annual fire safety and bank guarantee
+  checks, plus an opt-in inspection-created work order fixture for this smoke so
+  older Work tests keep their baseline queue.
+- Added local copy/download export as `operations-compliance-review.csv`.
+  Guardrail: export/copy does not complete checks, upload evidence,
+  create/update obligations, apply Smart Intake, create/update work orders, send
+  email/SMS, dispatch providers, create billing drafts, call Xero/Basiq, or
+  reconcile payments.
+- Red/green evidence: new smoke first failed because the Compliance tab was
+  missing, then passed after implementation. Verification run:
+  `npx playwright test tests/smoke/operations-ux.spec.ts tests/smoke/operations-compliance.spec.ts`
+  passed 12 tests. Focused ESLint and `tsc --noEmit` also passed.
+- Next sensible compliance follow-up: operator-approved completion/evidence
+  actions in the Work tab, or richer inline evidence detail. Avoid building a
+  second read-only compliance queue unless product direction changes.

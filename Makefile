@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install migrate seed dev test lint typecheck format
+.PHONY: install migrate seed demo-seed dev test lint typecheck format
 
 install:
 	.venv/bin/python -m pip install -e '.[dev]'
@@ -11,6 +11,9 @@ migrate:
 
 seed:
 	.venv/bin/python -m scripts.seed
+
+demo-seed:
+	.venv/bin/python -m scripts.seed_demo
 
 dev:
 	(.venv/bin/uvicorn apps.api.main:app --reload --host $${API_HOST:-0.0.0.0} --port $${API_PORT:-8000}) & \

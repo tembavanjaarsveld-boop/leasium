@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -34,6 +34,15 @@ const OWNERS = [
   },
 ];
 
+async function expectTouchTarget(control: Locator, minSize = 44) {
+  await control.scrollIntoViewIfNeeded();
+  const box = await control.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.width).toBeGreaterThanOrEqual(minSize);
+  expect(box.height).toBeGreaterThanOrEqual(minSize);
+}
+
 test("people hub renders tabs and the owners directory", async ({ page }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
@@ -55,6 +64,22 @@ test("people hub renders tabs and the owners directory", async ({ page }) => {
   // Prospects tab shows the roadmap stub.
   await page.getByRole("tab", { name: "Prospects" }).click();
   await expect(page.getByText(/Prospects are on the roadmap/i)).toBeVisible();
+});
+
+test("mobile people hub tabs stay touch-safe", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await mockOwners(page);
+
+  await page.goto("/people");
+
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+
+  const peopleTabs = page.getByRole("tablist", { name: "People types" });
+  await expect(peopleTabs).toBeVisible();
+  for (const label of ["Tenants", "Owners", "Vendors", "Prospects"]) {
+    await expectTouchTarget(peopleTabs.getByRole("tab", { name: label }));
+  }
 });
 
 test("self-managed people hub hides owner-client tab and falls back from owner URLs", async ({

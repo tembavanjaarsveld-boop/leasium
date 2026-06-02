@@ -206,8 +206,8 @@ function MoneyContent() {
                 onClick={() => selectTab(tab.key)}
                 className={
                   isActive
-                    ? "inline-flex min-h-10 items-center rounded-full border border-primary/30 bg-primary-soft px-4 text-sm font-semibold text-primary-hover transition"
-                    : "inline-flex min-h-10 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    ? "inline-flex min-h-11 items-center rounded-full border border-primary/30 bg-primary-soft px-4 text-sm font-semibold text-primary-hover transition"
+                    : "inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 }
               >
                 {tab.label}
@@ -223,7 +223,7 @@ function MoneyContent() {
           actions={
             <Link
               href={activeDestination.href}
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-primary-hover transition duration-200 ease-leasium hover:bg-primary-soft"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-primary-hover transition duration-200 ease-leasium hover:bg-primary-soft"
             >
               {activeDestination.action}
               <ArrowUpRight size={15} />

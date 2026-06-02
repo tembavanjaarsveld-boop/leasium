@@ -22,6 +22,7 @@ from stewart.core.models import (
     InvoiceDraft,
     Lease,
     Obligation,
+    ObligationCategory,
     ObligationStatus,
     Property,
     TenancyUnit,
@@ -39,6 +40,8 @@ from apps.api.schemas.insights import (
     AccountingReadinessSnapshotRead,
     AutomationActivityRead,
     BillingRiskRead,
+    ComplianceRiskItemRead,
+    ComplianceSnapshotRead,
     FinanceSnapshotRead,
     InsightsEntityRead,
     InsightsOverviewRead,
@@ -73,11 +76,21 @@ WAITING_INTAKE_STATUSES = {
     DocumentIntakeStatus.failed,
 }
 OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
+COMPLIANCE_OBLIGATION_CATEGORIES = {
+    ObligationCategory.insurance,
+    ObligationCategory.bank_guarantee,
+    ObligationCategory.make_good,
+    ObligationCategory.compliance,
+}
 
 
 def _status_label(value: object) -> str:
     raw = getattr(value, "value", value)
     return str(raw).replace("_", " ")
+
+
+def _enum_value(value: object) -> str:
+    return str(getattr(value, "value", value))
 
 
 def _days_until(value: date | None, as_of: date) -> int:
@@ -192,6 +205,127 @@ def _lease_event_title(
     return f"{label} {suffix}{context}"
 
 
+def _metadata_list(metadata: dict[str, object], key: str) -> list[object]:
+    value = metadata.get(key)
+    return value if isinstance(value, list) else []
+
+
+def _metadata_string(metadata: dict[str, object], *keys: str) -> str | None:
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _is_fire_safety_obligation(obligation: Obligation, metadata: dict[str, object]) -> bool:
+    haystack = " ".join(
+        part
+        for part in [
+            obligation.title,
+            _metadata_string(metadata, "compliance_type", "inspection_type", "document_type"),
+        ]
+        if part
+    ).lower()
+    return "fire_safety" in haystack or "fire safety" in haystack
+
+
+def _build_compliance_snapshot(
+    obligations: list[Obligation],
+    *,
+    as_of: date,
+    due_soon_until: date,
+    properties_by_id: dict[UUID, Property],
+    units_by_id: dict[UUID, TenancyUnit],
+    tenants_by_id: dict[UUID, Tenant],
+    leases_by_id: dict[UUID, Lease],
+) -> ComplianceSnapshotRead:
+    open_items = [
+        item
+        for item in obligations
+        if item.status in OPEN_OBLIGATION_STATUSES
+        and item.category in COMPLIANCE_OBLIGATION_CATEGORIES
+    ]
+    rows: list[ComplianceRiskItemRead] = []
+    evidence_linked_count = 0
+    missing_evidence_count = 0
+    fire_safety_count = 0
+    inspection_report_count = 0
+
+    for obligation in open_items:
+        metadata = obligation.obligation_metadata or {}
+        evidence_ids = _metadata_list(metadata, "evidence_document_ids")
+        evidence_history = [
+            item for item in _metadata_list(metadata, "evidence_history") if isinstance(item, dict)
+        ]
+        latest_evidence = evidence_history[-1] if evidence_history else {}
+        evidence_count = len(evidence_ids)
+        has_evidence = evidence_count > 0
+        evidence_linked_count += 1 if has_evidence else 0
+        missing_evidence_count += 0 if has_evidence else 1
+
+        inspection_type = _metadata_string(
+            metadata,
+            "compliance_type",
+            "inspection_type",
+            "document_type",
+        )
+        if _is_fire_safety_obligation(obligation, metadata):
+            fire_safety_count += 1
+        if _metadata_string(metadata, "document_type") == "inspection_report":
+            inspection_report_count += 1
+
+        prop = properties_by_id.get(obligation.property_id) if obligation.property_id else None
+        unit = units_by_id.get(obligation.tenancy_unit_id) if obligation.tenancy_unit_id else None
+        lease = leases_by_id.get(obligation.lease_id) if obligation.lease_id else None
+        tenant = tenants_by_id.get(lease.tenant_id) if lease else None
+        days = _days_until(obligation.due_date, as_of)
+        rows.append(
+            ComplianceRiskItemRead(
+                id=obligation.id,
+                title=obligation.title,
+                category=_enum_value(obligation.category),
+                status=_enum_value(obligation.status),
+                due_date=obligation.due_date,
+                chip=_date_chip(obligation.due_date, as_of),
+                href="/tasks",
+                property_id=obligation.property_id,
+                property_name=prop.name if prop else None,
+                tenancy_unit_id=obligation.tenancy_unit_id,
+                unit_label=unit.unit_label if unit else None,
+                lease_id=obligation.lease_id,
+                tenant_id=tenant.id if tenant else None,
+                tenant_name=tenant.legal_name if tenant else None,
+                owner_role=_enum_value(obligation.owner_role)
+                if obligation.owner_role is not None
+                else None,
+                evidence_count=evidence_count,
+                evidence_event_count=len(evidence_history),
+                latest_evidence_at=latest_evidence.get("linked_at"),
+                latest_evidence_actor=latest_evidence.get("actor"),
+                inspection_type=inspection_type,
+                rank=days,
+            )
+        )
+
+    rows.sort(key=lambda item: (item.rank, item.category, item.title))
+    return ComplianceSnapshotRead(
+        open_count=len(open_items),
+        overdue_count=sum(1 for item in open_items if item.due_date < as_of),
+        due_soon_count=sum(
+            1 for item in open_items if as_of <= item.due_date <= due_soon_until
+        ),
+        missing_evidence_count=missing_evidence_count,
+        evidence_linked_count=evidence_linked_count,
+        delegated_owner_count=sum(1 for item in open_items if item.owner_role is not None),
+        fire_safety_count=fire_safety_count,
+        inspection_report_count=inspection_report_count,
+        category_counts=dict(Counter(_enum_value(item.category) for item in open_items)),
+        status_counts=dict(Counter(_enum_value(item.status) for item in open_items)),
+        next_items=rows[:10],
+    )
+
+
 def _build_insights_overview(
     user: CurrentUser,
     session: Session,
@@ -251,6 +385,7 @@ def _build_insights_overview(
     properties_by_id = {prop.id: prop for prop in properties}
     units_by_id = {unit.id: unit for unit in units}
     tenants_by_id = {tenant.id: tenant for tenant in tenants}
+    leases_by_id = {lease.id: lease for lease in active_leases}
 
     obligations = list(
         session.scalars(
@@ -260,10 +395,36 @@ def _build_insights_overview(
         )
     )
     open_obligations = [item for item in obligations if item.status in OPEN_OBLIGATION_STATUSES]
+    missing_lease_ids = {
+        item.lease_id
+        for item in obligations
+        if item.lease_id is not None and item.lease_id not in leases_by_id
+    }
+    if missing_lease_ids:
+        leases_by_id.update(
+            {
+                lease.id: lease
+                for lease in session.scalars(
+                    select(Lease).where(
+                        Lease.id.in_(missing_lease_ids),
+                        Lease.deleted_at.is_(None),
+                    )
+                )
+            }
+        )
     overdue_obligations = [item for item in open_obligations if item.due_date < as_of]
     due_soon_obligations = [
         item for item in open_obligations if as_of <= item.due_date <= due_soon_until
     ]
+    compliance_snapshot = _build_compliance_snapshot(
+        obligations,
+        as_of=as_of,
+        due_soon_until=due_soon_until,
+        properties_by_id=properties_by_id,
+        units_by_id=units_by_id,
+        tenants_by_id=tenants_by_id,
+        leases_by_id=leases_by_id,
+    )
 
     onboardings = list(
         session.scalars(
@@ -702,6 +863,7 @@ def _build_insights_overview(
             tenant_onboarding_waiting_count=len(waiting_onboardings),
             next_events=lease_events[:8],
         ),
+        compliance_snapshot=compliance_snapshot,
         guardrails=[
             "Insights is read-only and does not mutate portfolio records.",
             (

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -12,6 +12,15 @@ function parseCsvRows(csv: string) {
         cell.replaceAll('""', '"'),
       ),
     );
+}
+
+async function expectTouchTarget(control: Locator, minSize = 44) {
+  await control.scrollIntoViewIfNeeded();
+  const box = await control.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.width).toBeGreaterThanOrEqual(minSize);
+  expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
 test("mobile operations loading and queue actions stay readable", async ({
@@ -254,6 +263,40 @@ test("mobile operations loading and queue actions stay readable", async ({
   expect(forbiddenLocalExportCalls).toEqual([]);
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("maintenance inline undo toast controls stay touch-safe on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/operations");
+  await expect(
+    page.getByRole("heading", { name: "Operations", exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: /Maintenance/ }).click();
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Edit Status for Air conditioning fault" })
+    .click();
+  await page
+    .getByLabel("Status for Air conditioning fault", { exact: true })
+    .selectOption("triaged");
+
+  const undoToast = page
+    .getByRole("status")
+    .filter({ hasText: "Status changed to triaged" });
+  await expect(undoToast).toBeVisible();
+  await expect(
+    undoToast.getByText(
+      "Air conditioning fault was previously awaiting approval.",
+    ),
+  ).toBeVisible();
+
+  await expectTouchTarget(undoToast.getByRole("button", { name: "Undo" }));
+  await expectTouchTarget(undoToast.getByRole("button", { name: "Dismiss" }));
 });
 
 test("arrears review packet mobile controls stay touch-safe without mutations", async ({

@@ -1278,6 +1278,9 @@ Primary hub count is 7; Settings remains visible as the utility destination.
 - **Smart Intake** stays a top-level item — it is the product wedge.
 - **People** is one hub for every human/relationship (Tenants · Owners · Vendors · later Prospects), each sharing one record-page shape. This is the headline DoorLoop-informed change.
 - **Money** groups the finance sprawl (Billing / Statements / Xero / Basiq); **Work** groups operations + comms.
+- **Insights** is the portfolio-risk layer. Compliance expiry, fire/safety risk,
+  delegated owners, and evidence status belong in the Insights compliance
+  snapshot and Work follow-up queues, not a new top-level Compliance nav item.
 - New human/relationship surfaces live under People, not as new top-level items (§10.5.1 cap).
 - Use global search / command palette with `Cmd+K` or `Ctrl+K`.
 
@@ -1680,34 +1683,42 @@ Secondary: Add key date
 ## 20. Demo data mode
 
 Add a `View demo portfolio` action for empty states and early product demos.
+Local API-backed demo data now also exists via `make demo-seed` after migrations.
+It seeds the dev-auth organisation as `Harbour Lane Property Group` and adds the
+fictional entity `Rivergum Property Holdings Pty Ltd`. Use this for local
+browser checks that need meaningful data rather than just frames. The seed is
+idempotent and provider-inert: no Xero, Basiq, SendGrid, Twilio, payment, or
+reconciliation calls.
 
 Demo portfolio example:
 
 ```txt
-Queen Street Retail Centre
-8 active tenants
+Kingfisher Retail Arcade
+Moorooka Trade Warehouse
+Newstead Creative Offices
+4 active tenants
 2 upcoming rent reviews
 1 insurance certificate overdue
-1 lease awaiting approval
+1 tenant onboarding waiting on documents
 2 billing blockers before invoice run
 ```
 
 Demo tenants:
 ```txt
-Acme Retail
-Northside Pharmacy
-Urban Dental
-Harbour Fitness
 Bright Coffee Co.
+Urban Dental
+River Logistics
+Studio North
 ```
 
 Demo workflows:
 ```txt
-Lease awaiting review
+Arcade lighting circuit fault
 Insurance certificate overdue
 Rent review due in 14 days
 Xero contact mapping missing
 Tenant onboarding waiting on documents
+Part-paid invoice with arrears follow-up
 ```
 
 This makes the product value visible before the user has created real data.
