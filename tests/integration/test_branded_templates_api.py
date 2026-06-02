@@ -134,3 +134,119 @@ def test_branded_template_detail_returns_404_for_missing(
         "/api/v1/branded-communication-templates/00000000-0000-0000-0000-000000000000"
     )
     assert response.status_code == 404
+
+
+BASE = "/api/v1/branded-communication-templates"
+
+
+def _create_payload(entity_id: str, **overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "entity_id": entity_id,
+        "key": "invoice_delivery",
+        "version": "v1",
+        "channel": "email",
+        "provider": "sendgrid",
+        "name": "Invoice delivery",
+        "subject_template": "Your invoice {{invoice_number}}",
+        "body_template": "Hi {{tenant_name}}, your invoice is attached.",
+        "notes": "Operator override.",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_operator_can_create_and_list_branded_template(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    resp = client.post(BASE, json=_create_payload(entity_id))
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["key"] == "invoice_delivery"
+    assert body["channel"] == "email"
+    assert body["is_system"] is False
+    assert body["created_by_user_id"]
+    assert body["body_template"].startswith("Hi ")
+
+    listed = client.get(BASE, params={"entity_id": entity_id})
+    assert listed.status_code == 200, listed.text
+    assert any(item["id"] == body["id"] for item in listed.json())
+
+
+def test_branded_template_duplicate_active_conflicts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    first = client.post(BASE, json=_create_payload(entity_id))
+    assert first.status_code == 201, first.text
+
+    duplicate = client.post(BASE, json=_create_payload(entity_id))
+    assert duplicate.status_code == 409
+
+    other_version = client.post(BASE, json=_create_payload(entity_id, version="v2"))
+    assert other_version.status_code == 201, other_version.text
+
+
+def test_branded_template_update_persists_edits(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    created = client.post(BASE, json=_create_payload(entity_id)).json()
+
+    patched = client.patch(
+        f"{BASE}/{created['id']}",
+        json={"name": "Updated invoice delivery", "body_template": "New body copy."},
+    )
+
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["name"] == "Updated invoice delivery"
+    assert body["body_template"] == "New body copy."
+
+
+def test_branded_template_delete_soft_and_system_block(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    created = client.post(BASE, json=_create_payload(entity_id)).json()
+
+    deleted = client.delete(f"{BASE}/{created['id']}")
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted_at"] is not None
+
+    listed = client.get(BASE, params={"entity_id": entity_id})
+    assert all(item["id"] != created["id"] for item in listed.json())
+
+    system = _seed_template(
+        session,
+        entity_id=UUID(entity_id),
+        key="system_only_template",
+        is_system=True,
+    )
+    blocked = client.delete(f"{BASE}/{system.id}")
+    assert blocked.status_code == 409
+
+
+def test_branded_template_writes_require_entity_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert entity is not None
+    other = Entity(organisation_id=entity.organisation_id, name="No Access Pty Ltd")
+    session.add(other)
+    session.commit()
+
+    create = client.post(BASE, json=_create_payload(str(other.id)))
+    assert create.status_code == 403
+
+    foreign = _seed_template(session, entity_id=other.id, key="invoice_delivery")
+    patch = client.patch(f"{BASE}/{foreign.id}", json={"name": "nope"})
+    assert patch.status_code == 403
