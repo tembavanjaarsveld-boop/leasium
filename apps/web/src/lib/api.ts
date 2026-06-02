@@ -2341,6 +2341,42 @@ export type ComplianceSnapshotRecord = {
   next_items: ComplianceRiskItemRecord[];
 };
 
+export type MaintenanceAgingItemRecord = {
+  id: string;
+  title: string;
+  status: MaintenanceWorkOrderStatus;
+  priority: MaintenancePriority;
+  requested_at: string;
+  age_days: number;
+  due_date: string | null;
+  chip: string;
+  href: string;
+  property_id: string | null;
+  property_name: string | null;
+  tenancy_unit_id: string | null;
+  unit_label: string | null;
+  lease_id: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  contractor_name: string | null;
+  approval_status: MaintenanceApprovalStatus | null;
+  quote_amount_cents: number | null;
+  rank: number;
+};
+
+export type MaintenanceSnapshotRecord = {
+  open_count: number;
+  urgent_count: number;
+  overdue_count: number;
+  awaiting_approval_count: number;
+  contractor_assigned_count: number;
+  aged_14_day_count: number;
+  oldest_age_days: number;
+  status_counts: Record<string, number>;
+  priority_counts: Record<string, number>;
+  next_items: MaintenanceAgingItemRecord[];
+};
+
 export type InsightsOverviewRecord = {
   entity: InsightsEntityRecord;
   as_of: string;
@@ -2352,6 +2388,7 @@ export type InsightsOverviewRecord = {
   owner_entity_snapshot: OwnerEntitySnapshotRecord;
   lease_event_snapshot: LeaseEventSnapshotRecord;
   compliance_snapshot: ComplianceSnapshotRecord;
+  maintenance_snapshot: MaintenanceSnapshotRecord;
   guardrails: string[];
 };
 

@@ -19,6 +19,7 @@ import {
   Sparkles,
   TableProperties,
   UserRound,
+  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -48,6 +49,7 @@ import {
   listEntities,
   listInsightsSnapshots,
   LiveExceptionRecord,
+  MaintenanceAgingItemRecord,
   revokeInsightsSnapshot,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
@@ -388,6 +390,21 @@ function complianceTone(item: ComplianceRiskItemRecord): StatusTone {
   return "neutral";
 }
 
+function maintenanceAgingTone(item: MaintenanceAgingItemRecord): StatusTone {
+  if (item.priority === "urgent" || item.rank < 0) {
+    return "danger";
+  }
+  if (
+    item.priority === "high" ||
+    item.status === "awaiting_approval" ||
+    item.approval_status === "pending" ||
+    item.age_days >= 14
+  ) {
+    return "warning";
+  }
+  return "neutral";
+}
+
 function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
   const context = [
     item.property_name,
@@ -434,6 +451,48 @@ function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
   );
 }
 
+function MaintenanceAgingRow({ item }: { item: MaintenanceAgingItemRecord }) {
+  const context = [
+    item.property_name,
+    item.unit_label,
+    item.tenant_name,
+  ].filter(Boolean);
+  const contractorLabel = item.contractor_name ?? "No contractor";
+  const quoteLabel =
+    item.quote_amount_cents !== null
+      ? `${formatMoney(item.quote_amount_cents)} quote`
+      : "No quote";
+
+  return (
+    <Link
+      href={item.href}
+      className="grid gap-3 border-t border-border px-4 py-4 transition hover:bg-muted/60 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="font-semibold">{item.title}</div>
+          <StatusBadge tone={maintenanceAgingTone(item)}>
+            {item.chip}
+          </StatusBadge>
+          <StatusBadge tone="neutral">{labelStatus(item.priority)}</StatusBadge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {context.length ? context.join(" · ") : "Portfolio-level work order"}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+          <span>{item.age_days} days open</span>
+          <span>{contractorLabel}</span>
+          <span>{quoteLabel}</span>
+          <span>Approval {labelStatus(item.approval_status)}</span>
+        </div>
+      </div>
+      <div className="text-xs font-semibold text-muted-foreground">
+        {formatDate(item.due_date)}
+      </div>
+    </Link>
+  );
+}
+
 const INSIGHTS_REVIEW_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not create or revoke snapshots, write Xero data, refresh providers, send SendGrid or Twilio messages, send tenant, owner, or provider email, apply payment reconciliation, generate billing drafts, dispatch providers, or mutate provider history.";
 
@@ -445,6 +504,7 @@ function insightsReviewPacketCsv(
   const ownerSnapshot = overview.owner_entity_snapshot;
   const leaseSnapshot = overview.lease_event_snapshot;
   const complianceSnapshot = overview.compliance_snapshot;
+  const maintenanceSnapshot = overview.maintenance_snapshot;
   const rows: Array<Array<string | number | null | undefined>> = [
     ["Category", "Item", "Status", "Count", "Amount", "Detail", "Guardrail"],
     [
@@ -530,6 +590,24 @@ function insightsReviewPacketCsv(
       item.rank,
       "",
       `${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? "No tenant"}; ${item.evidence_count} evidence files; latest evidence ${item.latest_evidence_actor ?? "not linked"}; due ${formatDate(item.due_date)}.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ]),
+    [
+      "Maintenance snapshot",
+      "Maintenance aging",
+      `${maintenanceSnapshot.open_count} open`,
+      maintenanceSnapshot.open_count,
+      "",
+      `${maintenanceSnapshot.urgent_count} urgent; ${maintenanceSnapshot.overdue_count} overdue; ${maintenanceSnapshot.contractor_assigned_count} assigned to contractors; ${maintenanceSnapshot.aged_14_day_count} aged 14+ days; oldest ${maintenanceSnapshot.oldest_age_days} days open.`,
+      INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
+    ],
+    ...maintenanceSnapshot.next_items.map((item) => [
+      "Maintenance snapshot",
+      item.title,
+      labelStatus(item.status),
+      item.age_days,
+      formatMoney(item.quote_amount_cents),
+      `${item.property_name ?? "Portfolio"}${item.unit_label ? ` ${item.unit_label}` : ""}; ${item.tenant_name ?? "No tenant"}; ${item.contractor_name ?? "No contractor"}; ${item.age_days} days open; ${labelStatus(item.priority)} priority; ${item.chip}; due ${formatDate(item.due_date)}.`,
       INSIGHTS_REVIEW_EXPORT_GUARDRAIL,
     ]),
     [
@@ -773,6 +851,7 @@ function InsightsWorkspace() {
   const accountingReadiness = financeSnapshot?.accounting_readiness;
   const leaseEventSnapshot = overview?.lease_event_snapshot;
   const complianceSnapshot = overview?.compliance_snapshot;
+  const maintenanceSnapshot = overview?.maintenance_snapshot;
   const snapshots = snapshotsQuery.data ?? [];
 
   function downloadReviewCsv() {
@@ -1241,6 +1320,92 @@ function InsightsWorkspace() {
                       icon={<ShieldCheck size={18} />}
                       title="No open compliance follow-ups"
                       description="Certificate expiries, safety checks, and inspection evidence follow-ups will appear here."
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title="Maintenance Aging"
+              description="Open work orders ranked by due date, age, contractor, and approval focus."
+              icon={<Wrench size={17} className="text-primary" />}
+              actions={
+                <StatusBadge
+                  tone={
+                    maintenanceSnapshot?.overdue_count ||
+                    maintenanceSnapshot?.urgent_count
+                      ? "danger"
+                      : maintenanceSnapshot?.aged_14_day_count
+                        ? "warning"
+                        : "success"
+                  }
+                >
+                  {maintenanceSnapshot?.open_count ?? 0} open
+                </StatusBadge>
+              }
+            >
+              <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+                <div className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <CountPill
+                    label="Urgent"
+                    value={maintenanceSnapshot?.urgent_count ?? 0}
+                  />
+                  <CountPill
+                    label="Overdue"
+                    value={maintenanceSnapshot?.overdue_count ?? 0}
+                  />
+                  <CountPill
+                    label="Aged 14+ days"
+                    value={maintenanceSnapshot?.aged_14_day_count ?? 0}
+                  />
+                  <CountPill
+                    label="Oldest open"
+                    value={`${maintenanceSnapshot?.oldest_age_days ?? 0} days`}
+                  />
+                  <div className="rounded-2xl border border-border bg-white p-4 text-sm">
+                    <div className="font-semibold">Status mix</div>
+                    <div className="mt-3 grid gap-2 text-muted-foreground">
+                      {Object.entries(maintenanceSnapshot?.status_counts ?? {}).map(
+                        ([status, count]) => (
+                          <div
+                            key={status}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span>{labelStatus(status)}</span>
+                            <span className="font-semibold text-foreground">
+                              {count}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                      {Object.keys(maintenanceSnapshot?.status_counts ?? {})
+                        .length === 0 ? (
+                        <div>No open maintenance statuses</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                  <div className="grid gap-1 px-4 py-3">
+                    <div className="text-sm font-semibold">
+                      Open work-order aging
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {maintenanceSnapshot?.contractor_assigned_count ?? 0} assigned
+                      to contractors;{" "}
+                      {maintenanceSnapshot?.awaiting_approval_count ?? 0} awaiting
+                      approval.
+                    </div>
+                  </div>
+                  {(maintenanceSnapshot?.next_items ?? []).map((item) => (
+                    <MaintenanceAgingRow key={item.id} item={item} />
+                  ))}
+                  {(maintenanceSnapshot?.next_items.length ?? 0) === 0 ? (
+                    <EmptyState
+                      icon={<Wrench size={18} />}
+                      title="No open maintenance aging"
+                      description="Requested, assigned, approval, and in-progress work orders will appear here."
                     />
                   ) : null}
                 </div>

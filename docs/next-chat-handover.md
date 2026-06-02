@@ -3636,3 +3636,35 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   `./node_modules/.bin/playwright test tests/smoke/comms-template-catalog.spec.ts tests/smoke/comms-outbound-log-export.spec.ts tests/smoke/comms-export-parity.spec.ts tests/smoke/comms-keyboard.spec.ts --workers=1`
   passed **4 passed**; focused `eslint`, `tsc --noEmit`, and
   `git diff --check` passed.
+
+## Codex continuation 2026-06-02 - Insights maintenance aging snapshot v1
+
+- Chosen backlog slice: Portfolio Insights still listed maintenance aging as
+  open after compliance risk landed, so this slice kept the work in the
+  read-only Insights layer instead of adding another mutable operations queue.
+- `/api/v1/insights/overview` now returns `maintenance_snapshot` from open
+  maintenance work orders, with open/urgent/overdue/awaiting-approval/
+  contractor-assigned/aged-14-plus/oldest-open counts, status/priority mixes,
+  and ranked work-order rows carrying property, unit, tenant, contractor, quote,
+  age, due chip, and local work-order handoff links.
+- `/insights` now renders a `Maintenance Aging` panel and includes the same
+  maintenance summary/rows in the local review packet copy and CSV export.
+- Guardrails: viewing, copying, or downloading the Insights packet does not
+  update maintenance work orders, dispatch contractors, send SendGrid/Twilio
+  messages, create invoices, call Xero/Basiq, reconcile payments, generate
+  billing drafts, or write provider history.
+- Red/green evidence: the backend test first failed with
+  `KeyError: 'maintenance_snapshot'`; after the API snapshot landed it passed.
+  The Insights smoke was then extended and first failed because the
+  `Maintenance Aging` heading was missing; after the typed web panel and export
+  rows landed it passed.
+- Verification:
+  `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_insights_api.py -q`
+  passed **4 passed**;
+  `.venv/bin/python -m ruff check apps/api/routers/insights.py apps/api/schemas/insights.py tests/integration/test_insights_api.py`
+  passed;
+  `./node_modules/.bin/playwright test tests/smoke/insights.spec.ts --workers=1`
+  passed **2 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
+- Next sensible Insights follow-up: arrears/invoice status depth in the same
+  review-only portfolio layer, then richer owner/entity dashboard context.

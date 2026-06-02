@@ -1,6 +1,6 @@
 """Insights overview API integration tests."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -20,6 +20,9 @@ from stewart.core.models import (
     InsightsSnapshot,
     InvoiceDraft,
     InvoiceDraftStatus,
+    MaintenancePriority,
+    MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -378,6 +381,47 @@ def test_insights_overview_summarises_compliance_and_inspection_risk(
     session.add_all(
         [fire_safety_obligation, bank_guarantee_obligation, maintenance_obligation]
     )
+    urgent_work_order = MaintenanceWorkOrder(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        lease_id=UUID(lease_id),
+        title="Front counter leak",
+        description="Tenant reports water near the counter.",
+        status=MaintenanceWorkOrderStatus.requested,
+        priority=MaintenancePriority.urgent,
+        requested_at=datetime(2026, 4, 28, tzinfo=UTC),
+        due_date=date(2026, 5, 15),
+        contractor_name="Cool Air Services",
+        quote_amount_cents=220000,
+    )
+    assigned_work_order = MaintenanceWorkOrder(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        lease_id=UUID(lease_id),
+        title="Back door closer",
+        status=MaintenanceWorkOrderStatus.assigned,
+        priority=MaintenancePriority.normal,
+        requested_at=datetime(2026, 5, 14, tzinfo=UTC),
+        due_date=date(2026, 5, 28),
+        contractor_name="Door Tech QLD",
+    )
+    closed_work_order = MaintenanceWorkOrder(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        lease_id=UUID(lease_id),
+        title="Completed light fitting",
+        status=MaintenanceWorkOrderStatus.completed,
+        priority=MaintenancePriority.low,
+        requested_at=datetime(2026, 4, 9, tzinfo=UTC),
+        completed_at=utcnow(),
+    )
+    session.add_all([urgent_work_order, assigned_work_order, closed_work_order])
     session.commit()
 
     response = client.get(f"/api/v1/insights/overview?entity_id={entity_id}&as_of={as_of}")
@@ -408,6 +452,29 @@ def test_insights_overview_summarises_compliance_and_inspection_risk(
     assert fire_item["inspection_type"] == "fire_safety"
     assert fire_item["chip"] == "9d overdue"
     assert fire_item["href"] == "/tasks"
+
+    maintenance = response.json()["maintenance_snapshot"]
+    assert maintenance["open_count"] == 2
+    assert maintenance["urgent_count"] == 1
+    assert maintenance["overdue_count"] == 1
+    assert maintenance["contractor_assigned_count"] == 2
+    assert maintenance["aged_14_day_count"] == 1
+    assert maintenance["oldest_age_days"] == 21
+    assert maintenance["status_counts"] == {"requested": 1, "assigned": 1}
+    assert maintenance["priority_counts"] == {"urgent": 1, "normal": 1}
+
+    maintenance_titles = [item["title"] for item in maintenance["next_items"]]
+    assert maintenance_titles == ["Front counter leak", "Back door closer"]
+
+    maintenance_item = maintenance["next_items"][0]
+    assert maintenance_item["property_name"] == "Fortitude Valley Arcade"
+    assert maintenance_item["unit_label"] == "Shop 6"
+    assert maintenance_item["tenant_name"] == "Valley Books Pty Ltd"
+    assert maintenance_item["contractor_name"] == "Cool Air Services"
+    assert maintenance_item["quote_amount_cents"] == 220000
+    assert maintenance_item["age_days"] == 21
+    assert maintenance_item["chip"] == "4d overdue"
+    assert maintenance_item["href"].startswith("/operations/maintenance/")
 
 
 def test_insights_snapshots_freeze_public_payload_and_revoke(

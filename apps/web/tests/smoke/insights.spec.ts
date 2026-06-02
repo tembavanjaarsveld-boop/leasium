@@ -78,6 +78,15 @@ test("insights exports review packet CSV from loaded overview data", async ({
   });
   await expect(fireSafetyRow).toBeVisible();
   await expect(fireSafetyRow.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Maintenance Aging" }),
+  ).toBeVisible();
+  const maintenanceRow = page.getByRole("link", {
+    name: /Front counter leak/,
+  });
+  await expect(maintenanceRow).toBeVisible();
+  await expect(maintenanceRow.getByText("21 days open")).toBeVisible();
+  await expect(maintenanceRow.getByText("Cool Air Services")).toBeVisible();
 
   await page.getByRole("button", { name: "Copy review packet" }).click();
   await expect(page.getByText("Insights review packet copied.")).toBeVisible();
@@ -106,6 +115,10 @@ test("insights exports review packet CSV from loaded overview data", async ({
   expect(csv).toContain("Owner / entity snapshot");
   expect(csv).toContain("Compliance snapshot");
   expect(csv).toContain("Fire safety certificate renewal");
+  expect(csv).toContain("Maintenance snapshot");
+  expect(csv).toContain("Front counter leak");
+  expect(csv).toContain("21 days open");
+  expect(csv).toContain("Cool Air Services");
   expect(csv).toContain("ops@example.test");
   expect(csv).toContain("Lease event");
   expect(csv).toContain("Bright Cafe Pty Ltd rent review");
@@ -125,6 +138,10 @@ test("insights exports review packet CSV from loaded overview data", async ({
     expect(packet).toContain("Owner / entity snapshot");
     expect(packet).toContain("Compliance snapshot");
     expect(packet).toContain("Fire safety certificate renewal");
+    expect(packet).toContain("Maintenance snapshot");
+    expect(packet).toContain("Front counter leak");
+    expect(packet).toContain("21 days open");
+    expect(packet).toContain("Cool Air Services");
     expect(packet).toContain("ops@example.test");
     expect(packet).toContain("Lease event");
     expect(packet).toContain("Bright Cafe Pty Ltd rent review");
