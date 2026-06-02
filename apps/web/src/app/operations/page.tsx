@@ -55,6 +55,7 @@ import {
   type ArrearsDisputeStatus,
   type ArrearsEscalationStatus,
   type ComplianceCheckRecord,
+  completeComplianceCheck,
   createArrearsCase,
   createMaintenanceWorkOrder,
   type DocumentIntakeRecord,
@@ -1046,6 +1047,27 @@ function complianceCheckNextAction(check: ComplianceCheckRecord) {
     return "Request evidence before due date";
   }
   return "Monitor next due date";
+}
+
+function canCompleteComplianceCheck(check: ComplianceCheckRecord) {
+  return (
+    check.status === "active" &&
+    Boolean(check.source_document_id) &&
+    dueRank(check.next_due_date) <= 30
+  );
+}
+
+function complianceCompletionActionLabel(check: ComplianceCheckRecord) {
+  if (canCompleteComplianceCheck(check)) {
+    return "Complete with linked evidence";
+  }
+  if (!check.source_document_id) {
+    return "Needs evidence";
+  }
+  if (check.status !== "active") {
+    return "No open action";
+  }
+  return "Evidence current";
 }
 
 function isComplianceObligation(obligation: ObligationRecord) {
@@ -2200,6 +2222,13 @@ function OperationsWorkspace() {
     id: string;
     message: string;
   } | null>(null);
+  const [
+    complianceCompletionConfirmation,
+    setComplianceCompletionConfirmation,
+  ] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -2249,6 +2278,16 @@ function OperationsWorkspace() {
     }, 6000);
     return () => window.clearTimeout(timeout);
   }, [obligationConfirmation]);
+
+  useEffect(() => {
+    if (!complianceCompletionConfirmation) return;
+    const timeout = window.setTimeout(() => {
+      setComplianceCompletionConfirmation((current) =>
+        current?.id === complianceCompletionConfirmation.id ? null : current,
+      );
+    }, 6000);
+    return () => window.clearTimeout(timeout);
+  }, [complianceCompletionConfirmation]);
 
   const selectedEntity = entitiesQuery.data?.find(
     (entity) => entity.id === selectedEntityId,
@@ -2354,6 +2393,32 @@ function OperationsWorkspace() {
           payload.status === "completed"
             ? `Marked “${payload.obligation.title}” complete.`
             : `Waived “${payload.obligation.title}”.`,
+      });
+    },
+  });
+
+  const completeComplianceCheckMutation = useMutation({
+    mutationFn: (check: ComplianceCheckRecord) =>
+      completeComplianceCheck(check.id, {
+        source_document_id: check.source_document_id,
+        completed_at: new Date().toISOString(),
+        metadata: {
+          source: "operations_compliance_tab",
+          action: "complete_with_linked_evidence",
+        },
+      }),
+    onSuccess: (completedCheck, check) => {
+      queryClient.setQueryData<ComplianceCheckRecord[]>(
+        ["operations-compliance-checks", selectedEntityId],
+        (current) =>
+          current?.map((row) =>
+            row.id === completedCheck.id ? completedCheck : row,
+          ),
+      );
+      invalidateOperations();
+      setComplianceCompletionConfirmation({
+        id: `${check.id}-${Date.now()}`,
+        message: `Completed “${check.title}” with linked evidence.`,
       });
     },
   });
@@ -3925,7 +3990,11 @@ function OperationsWorkspace() {
                       </div>
                       <div className="divide-y divide-border">
                         {openComplianceChecks.map((check) => (
-                          <div key={check.id} className="grid gap-2 p-3">
+                          <div
+                            key={check.id}
+                            data-testid={`compliance-check-${check.id}`}
+                            className="grid gap-2 p-3"
+                          >
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-foreground">
                                 {check.title}
@@ -3963,6 +4032,44 @@ function OperationsWorkspace() {
                                 Owner {complianceOwnerLabel(check, securityMembers)}
                               </span>
                               <span>{complianceCheckNextAction(check)}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-11 w-full px-3 sm:w-auto"
+                                disabled={
+                                  !canCompleteComplianceCheck(check) ||
+                                  completeComplianceCheckMutation.isPending
+                                }
+                                onClick={() =>
+                                  completeComplianceCheckMutation.mutate(check)
+                                }
+                              >
+                                {completeComplianceCheckMutation.isPending ? (
+                                  <RefreshCw
+                                    size={15}
+                                    className="animate-spin text-primary"
+                                  />
+                                ) : (
+                                  <CheckCircle2
+                                    size={15}
+                                    className="text-success"
+                                  />
+                                )}
+                                {complianceCompletionActionLabel(check)}
+                              </SecondaryButton>
+                              {completeComplianceCheckMutation.isError &&
+                              completeComplianceCheckMutation.variables?.id ===
+                                check.id ? (
+                                <span
+                                  role="alert"
+                                  className="text-xs font-medium text-danger"
+                                >
+                                  {friendlyError(
+                                    completeComplianceCheckMutation.error,
+                                  )}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         ))}
@@ -5070,6 +5177,28 @@ function OperationsWorkspace() {
               type="button"
               className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
               onClick={() => setObligationConfirmation(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {complianceCompletionConfirmation ? (
+        <div
+          className="fixed bottom-5 left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:left-auto md:w-[420px]"
+          role="status"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <ShieldCheck size={16} className="mt-0.5 shrink-0 text-success" />
+              <div className="text-sm font-semibold text-foreground">
+                {complianceCompletionConfirmation.message}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+              onClick={() => setComplianceCompletionConfirmation(null)}
             >
               Dismiss
             </button>

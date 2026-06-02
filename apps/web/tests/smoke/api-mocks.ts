@@ -6515,6 +6515,61 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const complianceCheckCompletion = path.match(
+      /^\/compliance\/checks\/([^/]+)\/complete$/,
+    );
+    if (method === "POST" && complianceCheckCompletion) {
+      const check = complianceChecks.find(
+        (item) => item.id === complianceCheckCompletion[1],
+      );
+      if (!check) {
+        await fulfillJson(route, { detail: "Compliance check not found." }, 404);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const payloadMetadata = jsonRecord(payload.metadata);
+      const currentMetadata = jsonRecord(check.metadata);
+      const completionHistory = Array.isArray(
+        currentMetadata.completion_history,
+      )
+        ? currentMetadata.completion_history
+        : [];
+      const completedAt =
+        typeof payload.completed_at === "string"
+          ? payload.completed_at
+          : "2026-06-02T00:00:00.000Z";
+      const sourceDocumentId =
+        typeof payload.source_document_id === "string"
+          ? payload.source_document_id
+          : check.source_document_id;
+      const nextDueDate =
+        typeof payload.next_due_date === "string"
+          ? payload.next_due_date
+          : check.id === "compliance-check-fire-1"
+            ? "2027-05-10"
+            : "2026-12-01";
+      Object.assign(check, {
+        source_document_id: sourceDocumentId,
+        last_checked_at: completedAt,
+        next_due_date: nextDueDate,
+        updated_at: completedAt,
+        metadata: {
+          ...currentMetadata,
+          completion_history: [
+            ...completionHistory,
+            {
+              ...payloadMetadata,
+              completed_at: completedAt,
+              next_due_date: nextDueDate,
+              source_document_id: sourceDocumentId,
+            },
+          ],
+        },
+      });
+      await fulfillJson(route, check);
+      return;
+    }
+
     if (method === "PATCH" && path === "/obligations/obligation-1") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
       const nextPayload = { ...payload };

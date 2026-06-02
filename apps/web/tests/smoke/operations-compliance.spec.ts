@@ -167,3 +167,78 @@ test("operations compliance tab surfaces recurring checks and exports a local re
   ).toEqual([]);
   expect(forbiddenLocalExportCalls).toEqual([]);
 });
+
+test("operations compliance tab completes a recurring check with linked evidence after review", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page, { operationsComplianceDemo: true });
+
+  const completionPayloads: unknown[] = [];
+  const forbiddenMutationCalls: string[] = [];
+  const forbiddenPathPatterns = [
+    "/providers",
+    "/provider-dispatch",
+    "/provider-history",
+    "/comms",
+    "/document-intakes",
+    "/maintenance/work-orders",
+    "/obligations",
+    "/billing",
+    "/invoice",
+    "/xero",
+    "/basiq",
+    "/payment",
+    "/reconciliation",
+  ];
+  const forbiddenSendPathPattern = /email|sms|sendgrid|twilio/i;
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const apiPath = path.replace("/api/v1", "");
+    if (
+      request.method() === "POST" &&
+      apiPath === "/compliance/checks/compliance-check-fire-1/complete"
+    ) {
+      completionPayloads.push(request.postDataJSON());
+    } else if (
+      request.method() !== "GET" &&
+      (forbiddenPathPatterns.some((pattern) => apiPath.startsWith(pattern)) ||
+        forbiddenSendPathPattern.test(apiPath))
+    ) {
+      forbiddenMutationCalls.push(`${request.method()} ${apiPath}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations?tab=compliance");
+
+  const checkRow = page.getByTestId(
+    "compliance-check-compliance-check-fire-1",
+  );
+  await expect(checkRow).toContainText("Annual fire safety statement");
+  await expect(checkRow).toContainText("Evidence linked");
+  await expect(checkRow).toContainText(/\d+d overdue/);
+
+  const completeButton = checkRow.getByRole("button", {
+    name: "Complete with linked evidence",
+  });
+  await completeButton.click();
+
+  await expect(
+    page.getByText(
+      "Completed “Annual fire safety statement” with linked evidence.",
+    ),
+  ).toBeVisible();
+  await expect(checkRow).toContainText("10 May 2027");
+  expect(completionPayloads).toHaveLength(1);
+  expect(completionPayloads[0]).toMatchObject({
+    source_document_id: "document-compliance-fire-1",
+    metadata: {
+      source: "operations_compliance_tab",
+      action: "complete_with_linked_evidence",
+    },
+  });
+  expect(forbiddenMutationCalls).toEqual([]);
+});

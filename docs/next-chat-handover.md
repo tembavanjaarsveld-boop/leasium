@@ -3486,6 +3486,38 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   missing, then passed after implementation. Verification run:
   `npx playwright test tests/smoke/operations-ux.spec.ts tests/smoke/operations-compliance.spec.ts`
   passed 12 tests. Focused ESLint and `tsc --noEmit` also passed.
-- Next sensible compliance follow-up: operator-approved completion/evidence
-  actions in the Work tab, or richer inline evidence detail. Avoid building a
-  second read-only compliance queue unless product direction changes.
+- Continued below: the next slice wires the operator-approved completion action;
+  remaining compliance follow-up should focus on richer inline evidence detail
+  or a local per-check evidence packet.
+
+## Codex continuation 2026-06-02 - Compliance Work completion action
+
+- Chosen backlog slice: the Work compliance tab had the recurring register and
+  read-only packet, but still lacked the next handover follow-up: an
+  operator-approved completion/evidence action.
+- `/operations?tab=compliance` now enables `Complete with linked evidence` only
+  for active due/overdue recurring checks that already have a linked source
+  document. Checks without evidence stay blocked as `Needs evidence`; checks
+  rolled outside the due window settle to `Evidence current`.
+- The web API client now includes `completeComplianceCheck`, calling only
+  `POST /api/v1/compliance/checks/{id}/complete`. The backend remains the
+  source of truth for completing the current local obligation, linking evidence,
+  appending completion history, and rolling the check forward.
+- Guardrails: this UI path does not call providers, provider history, comms,
+  Smart Intake apply, maintenance work orders, direct obligation mutation,
+  billing/invoice, Xero/Basiq, payment, or reconciliation routes. The existing
+  compliance CSV export remains review-only and still does not complete checks.
+- Red/green evidence: the new smoke first failed because the recurring check row
+  had no completion action/test id, then passed after adding the API helper,
+  mutation, row action, success confirmation, and mock completion route.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/operations-compliance.spec.ts -g "completes a recurring check" --workers=1`
+  passed **1 passed** and
+  `./node_modules/.bin/playwright test tests/smoke/operations-compliance.spec.ts --workers=1`
+  passed **2 passed**. Broader Work smoke
+  `./node_modules/.bin/playwright test tests/smoke/operations-ux.spec.ts --workers=1`
+  passed **11 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
+- Next sensible compliance follow-up: richer inline evidence detail or a local
+  evidence packet per check. Avoid building a second read-only compliance queue
+  unless product direction changes.

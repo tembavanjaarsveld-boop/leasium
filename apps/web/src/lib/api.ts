@@ -1549,6 +1549,15 @@ export type ComplianceCheckRecord = {
   deleted_at: string | null;
 };
 
+export type ComplianceCheckCompletePayload = {
+  source_document_id?: string | null;
+  completed_at?: string | null;
+  next_due_date?: string | null;
+  certificate_expires_on?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
 export type ObligationPayload = Omit<
   ObligationRecord,
   "id" | "completed_at"
@@ -3849,6 +3858,19 @@ export function listComplianceChecks(filters: {
   }
   return request<ComplianceCheckRecord[]>(
     `/compliance/checks?${params.toString()}`,
+  );
+}
+
+export function completeComplianceCheck(
+  checkId: string,
+  payload: ComplianceCheckCompletePayload,
+) {
+  return request<ComplianceCheckRecord>(
+    `/compliance/checks/${checkId}/complete`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
   );
 }
 
