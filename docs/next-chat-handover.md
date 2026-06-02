@@ -3518,6 +3518,41 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   `./node_modules/.bin/playwright test tests/smoke/operations-ux.spec.ts --workers=1`
   passed **11 passed**; focused `eslint`, `tsc --noEmit`, and
   `git diff --check` passed.
-- Next sensible compliance follow-up: richer inline evidence detail or a local
-  evidence packet per check. Avoid building a second read-only compliance queue
-  unless product direction changes.
+- Continued below: the next slice adds richer inline evidence detail and a
+  local per-check evidence packet.
+
+## Codex continuation 2026-06-02 - Compliance per-check evidence packet
+
+- Chosen backlog slice: after the reviewed completion action, the remaining
+  compliance follow-up was richer inline evidence detail/local evidence packet
+  per recurring check.
+- `/operations?tab=compliance` now shows a compact `Completion evidence packet`
+  inside recurring check rows that already have linked source evidence or
+  completion history. The packet exposes source document id, last completion,
+  next due date, owner/context, and local copy/download controls.
+- The per-check CSV downloads as
+  `compliance-evidence-packet-{check_id}.csv`, uses the shared CSV formula-safe
+  helper, and carries the same compliance guardrail as the portfolio-level
+  packet.
+- Guardrails: packet copy/download uses already-loaded page data only. It does
+  not call compliance completion, direct obligations, Smart Intake, maintenance,
+  comms, provider/provider-history, billing/invoice, Xero/Basiq, payment, or
+  reconciliation routes.
+- Test hygiene follow-up: the smoke API mock now resets compliance checks per
+  `mockLeasiumApi(...)` call so the completion-action smoke cannot leak
+  rolled-forward state into later packet/export smokes.
+- Red/green evidence: the new smoke first failed because the recurring check row
+  had no `Completion evidence packet`; after the packet UI landed, it passed.
+  A full compliance smoke then exposed the fixture leak above, which was fixed
+  before final verification.
+- Verification:
+  `./node_modules/.bin/playwright test tests/smoke/operations-compliance.spec.ts -g "per-check evidence packet" --workers=1`
+  passed **1 passed**;
+  `./node_modules/.bin/playwright test tests/smoke/operations-compliance.spec.ts --workers=1`
+  passed **3 passed**; broader Work smoke
+  `./node_modules/.bin/playwright test tests/smoke/operations-ux.spec.ts --workers=1`
+  passed **11 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
+- Next sensible compliance follow-up: evidence upload/linking from the Work tab
+  only after the operator review boundary is designed. Avoid building another
+  read-only queue.

@@ -437,7 +437,7 @@ const obligations = [
   },
 ];
 
-const complianceChecks = [
+const initialComplianceChecks = [
   {
     id: "compliance-check-fire-1",
     entity_id: entityId,
@@ -2395,6 +2395,7 @@ export async function mockLeasiumApi(
 ) {
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
+  let complianceChecks = jsonClone(initialComplianceChecks);
   if (options.operationsComplianceDemo) {
     maintenanceWorkOrders.unshift(inspectionWorkOrderFixture());
   }

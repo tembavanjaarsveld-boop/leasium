@@ -242,3 +242,119 @@ test("operations compliance tab completes a recurring check with linked evidence
   });
   expect(forbiddenMutationCalls).toEqual([]);
 });
+
+test("operations compliance tab exports a per-check evidence packet without mutations", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page, { operationsComplianceDemo: true });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (
+            window as Window & { __copiedComplianceEvidenceCsv?: string }
+          ).__copiedComplianceEvidenceCsv = text;
+        },
+      },
+    });
+  });
+
+  const forbiddenPacketCalls: string[] = [];
+  const forbiddenPathPatterns = [
+    "/providers",
+    "/provider-dispatch",
+    "/provider-history",
+    "/comms",
+    "/compliance/checks",
+    "/document-intakes",
+    "/maintenance/work-orders",
+    "/obligations",
+    "/billing",
+    "/invoice",
+    "/xero",
+    "/basiq",
+    "/payment",
+    "/reconciliation",
+  ];
+  const forbiddenSendPathPattern = /email|sms|sendgrid|twilio/i;
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const apiPath = path.replace("/api/v1", "");
+    if (
+      (request.method() !== "GET" &&
+        forbiddenPathPatterns.some((pattern) => apiPath.startsWith(pattern))) ||
+      forbiddenSendPathPattern.test(apiPath)
+    ) {
+      forbiddenPacketCalls.push(`${request.method()} ${apiPath}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations?tab=compliance");
+
+  const checkRow = page.getByTestId(
+    "compliance-check-compliance-check-fire-1",
+  );
+  await expect(checkRow).toContainText("Completion evidence packet");
+  await expect(checkRow).toContainText("document-compliance-fire-1");
+  await expect(checkRow).toContainText("Last completed");
+  await expect(checkRow).toContainText("10 May 2025");
+  await expect(checkRow).toContainText("Review-only compliance packet");
+
+  const copyButton = checkRow.getByRole("button", {
+    name: "Copy evidence packet",
+  });
+  const downloadButton = checkRow.getByRole("button", {
+    name: "Download evidence packet",
+  });
+  await expectTouchTarget(copyButton);
+  await expectTouchTarget(downloadButton);
+
+  await copyButton.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window & { __copiedComplianceEvidenceCsv?: string }
+          ).__copiedComplianceEvidenceCsv,
+      ),
+    )
+    .toBeTruthy();
+  const copiedCsv = await page.evaluate(
+    () =>
+      (window as Window & { __copiedComplianceEvidenceCsv?: string })
+        .__copiedComplianceEvidenceCsv,
+  );
+
+  const downloadPromise = page.waitForEvent("download");
+  await downloadButton.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(
+    "compliance-evidence-packet-compliance-check-fire-1.csv",
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  expect(copiedCsv).toBe(csv);
+
+  const rows = parseCsvRows(csv);
+  expect(rows[0]).toEqual(["Field", "Value", "Guardrail"]);
+  expect(csv).toContain("Annual fire safety statement");
+  expect(csv).toContain("document-compliance-fire-1");
+  expect(csv).toContain("Last completed");
+  expect(csv).toContain("Next due");
+  expect(csv).toContain("Review-only compliance packet");
+  expect(csv).toContain("does not complete checks");
+  expect(
+    rows
+      .flat()
+      .filter(Boolean)
+      .filter((cell) => /^[=+\-@]/.test(cell)),
+  ).toEqual([]);
+  expect(forbiddenPacketCalls).toEqual([]);
+});

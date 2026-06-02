@@ -1223,6 +1223,108 @@ function complianceReviewCsv({
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function complianceCompletionHistory(check: ComplianceCheckRecord) {
+  const history = check.metadata.completion_history;
+  return Array.isArray(history) ? history.filter(isPlainRecord) : [];
+}
+
+function latestComplianceCompletion(check: ComplianceCheckRecord) {
+  const history = complianceCompletionHistory(check);
+  return history.length ? history[history.length - 1] : null;
+}
+
+function complianceEvidenceDocumentId(check: ComplianceCheckRecord) {
+  const latestCompletion = latestComplianceCompletion(check);
+  return (
+    check.source_document_id ??
+    (latestCompletion
+      ? stringValue(latestCompletion, "source_document_id")
+      : null)
+  );
+}
+
+function complianceCompletionDateLabel(check: ComplianceCheckRecord) {
+  const latestCompletion = latestComplianceCompletion(check);
+  const completedAt = latestCompletion
+    ? stringValue(latestCompletion, "completed_at")
+    : null;
+  return completedAt ? formatDate(completedAt) : "No completion yet";
+}
+
+function complianceCompletionNextDueLabel(check: ComplianceCheckRecord) {
+  const latestCompletion = latestComplianceCompletion(check);
+  const nextDue = latestCompletion
+    ? stringValue(latestCompletion, "next_due_date")
+    : null;
+  return formatDate(nextDue ?? check.next_due_date);
+}
+
+function complianceEvidencePacketCsv({
+  check,
+  properties,
+  tenants,
+  members,
+}: {
+  check: ComplianceCheckRecord;
+  properties: PropertyRecord[];
+  tenants: TenantRecord[];
+  members: SecurityMemberRecord[];
+}) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Field", "Value", "Guardrail"],
+    ["Check", check.title, COMPLIANCE_REVIEW_PACKET_GUARDRAIL],
+    [
+      "Context",
+      complianceScopeContext(check, properties, tenants),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Status",
+      complianceCheckStatusLabel(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    ["Next due", formatDate(check.next_due_date), COMPLIANCE_REVIEW_PACKET_GUARDRAIL],
+    [
+      "Recurrence",
+      recurrenceLabel(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Evidence",
+      complianceEvidenceLabel(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Source document",
+      complianceEvidenceDocumentId(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Last completed",
+      complianceCompletionDateLabel(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Completion next due",
+      complianceCompletionNextDueLabel(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Owner",
+      complianceOwnerLabel(check, members),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    [
+      "Next action",
+      complianceCheckNextAction(check),
+      COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
+    ],
+    ["Guardrail", COMPLIANCE_REVIEW_PACKET_GUARDRAIL, COMPLIANCE_REVIEW_PACKET_GUARDRAIL],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function maintenanceMobileActionSummary(workOrder: MaintenanceWorkOrderRecord) {
   return [
     assignmentSummary(workOrder.metadata),
@@ -2810,6 +2912,24 @@ function OperationsWorkspace() {
       "operations-compliance-review.csv",
     );
   };
+  const complianceEvidencePacketText = (check: ComplianceCheckRecord) =>
+    complianceEvidencePacketCsv({
+      check,
+      properties,
+      tenants,
+      members: securityMembers,
+    });
+  const copyComplianceEvidencePacket = async (check: ComplianceCheckRecord) => {
+    await copyTextToClipboard(complianceEvidencePacketText(check));
+  };
+  const downloadComplianceEvidencePacket = (check: ComplianceCheckRecord) => {
+    saveBlob(
+      new Blob([complianceEvidencePacketText(check)], {
+        type: "text/csv;charset=utf-8",
+      }),
+      `compliance-evidence-packet-${check.id}.csv`,
+    );
+  };
 
   const filteredMaintenance = maintenance.filter((item) => {
     if (maintenanceStatus !== "all" && item.status !== maintenanceStatus) {
@@ -3989,90 +4109,164 @@ function OperationsWorkspace() {
                         </p>
                       </div>
                       <div className="divide-y divide-border">
-                        {openComplianceChecks.map((check) => (
-                          <div
-                            key={check.id}
-                            data-testid={`compliance-check-${check.id}`}
-                            className="grid gap-2 p-3"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-foreground">
-                                {check.title}
-                              </span>
-                              <StatusBadge tone={complianceCheckTone(check)}>
-                                {dueLabel(check.next_due_date)}
-                              </StatusBadge>
-                              <StatusBadge tone={complianceCheckTone(check)}>
-                                {complianceCheckStatusLabel(check)}
-                              </StatusBadge>
-                              <StatusBadge tone="neutral">
-                                {sentenceLabel(check.kind)}
-                              </StatusBadge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {[
-                                complianceScopeContext(
-                                  check,
-                                  properties,
-                                  tenants,
-                                ),
-                                recurrenceLabel(check),
-                                check.certificate_expires_on
-                                  ? `Certificate expires ${formatDate(
-                                      check.certificate_expires_on,
-                                    )}`
-                                  : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" - ")}
-                            </p>
-                            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                              <span>{complianceEvidenceLabel(check)}</span>
-                              <span>
-                                Owner {complianceOwnerLabel(check, securityMembers)}
-                              </span>
-                              <span>{complianceCheckNextAction(check)}</span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-11 w-full px-3 sm:w-auto"
-                                disabled={
-                                  !canCompleteComplianceCheck(check) ||
-                                  completeComplianceCheckMutation.isPending
-                                }
-                                onClick={() =>
-                                  completeComplianceCheckMutation.mutate(check)
-                                }
-                              >
-                                {completeComplianceCheckMutation.isPending ? (
-                                  <RefreshCw
-                                    size={15}
-                                    className="animate-spin text-primary"
-                                  />
-                                ) : (
-                                  <CheckCircle2
-                                    size={15}
-                                    className="text-success"
-                                  />
-                                )}
-                                {complianceCompletionActionLabel(check)}
-                              </SecondaryButton>
-                              {completeComplianceCheckMutation.isError &&
-                              completeComplianceCheckMutation.variables?.id ===
-                                check.id ? (
-                                <span
-                                  role="alert"
-                                  className="text-xs font-medium text-danger"
-                                >
-                                  {friendlyError(
-                                    completeComplianceCheckMutation.error,
-                                  )}
+                        {openComplianceChecks.map((check) => {
+                          const latestCompletion =
+                            latestComplianceCompletion(check);
+                          const sourceDocumentId =
+                            complianceEvidenceDocumentId(check);
+                          const hasEvidencePacket = Boolean(
+                            sourceDocumentId || latestCompletion,
+                          );
+                          return (
+                            <div
+                              key={check.id}
+                              data-testid={`compliance-check-${check.id}`}
+                              className="grid gap-2 p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {check.title}
                                 </span>
+                                <StatusBadge tone={complianceCheckTone(check)}>
+                                  {dueLabel(check.next_due_date)}
+                                </StatusBadge>
+                                <StatusBadge tone={complianceCheckTone(check)}>
+                                  {complianceCheckStatusLabel(check)}
+                                </StatusBadge>
+                                <StatusBadge tone="neutral">
+                                  {sentenceLabel(check.kind)}
+                                </StatusBadge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {[
+                                  complianceScopeContext(
+                                    check,
+                                    properties,
+                                    tenants,
+                                  ),
+                                  recurrenceLabel(check),
+                                  check.certificate_expires_on
+                                    ? `Certificate expires ${formatDate(
+                                        check.certificate_expires_on,
+                                      )}`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" - ")}
+                              </p>
+                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <span>{complianceEvidenceLabel(check)}</span>
+                                <span>
+                                  Owner{" "}
+                                  {complianceOwnerLabel(check, securityMembers)}
+                                </span>
+                                <span>{complianceCheckNextAction(check)}</span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-11 w-full px-3 sm:w-auto"
+                                  disabled={
+                                    !canCompleteComplianceCheck(check) ||
+                                    completeComplianceCheckMutation.isPending
+                                  }
+                                  onClick={() =>
+                                    completeComplianceCheckMutation.mutate(check)
+                                  }
+                                >
+                                  {completeComplianceCheckMutation.isPending ? (
+                                    <RefreshCw
+                                      size={15}
+                                      className="animate-spin text-primary"
+                                    />
+                                  ) : (
+                                    <CheckCircle2
+                                      size={15}
+                                      className="text-success"
+                                    />
+                                  )}
+                                  {complianceCompletionActionLabel(check)}
+                                </SecondaryButton>
+                                {completeComplianceCheckMutation.isError &&
+                                completeComplianceCheckMutation.variables?.id ===
+                                  check.id ? (
+                                  <span
+                                    role="alert"
+                                    className="text-xs font-medium text-danger"
+                                  >
+                                    {friendlyError(
+                                      completeComplianceCheckMutation.error,
+                                    )}
+                                  </span>
+                                ) : null}
+                              </div>
+                              {hasEvidencePacket ? (
+                                <div className="grid gap-2 border-l-2 border-primary/30 bg-muted/30 py-2 pl-3 pr-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                                        Completion evidence packet
+                                      </h4>
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {sourceDocumentId ??
+                                          "Completion history on file"}
+                                      </p>
+                                    </div>
+                                    <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                                      <SecondaryButton
+                                        type="button"
+                                        className="min-h-11 w-full px-3 sm:w-auto"
+                                        onClick={() =>
+                                          copyComplianceEvidencePacket(check)
+                                        }
+                                      >
+                                        <Copy size={15} />
+                                        Copy evidence packet
+                                      </SecondaryButton>
+                                      <SecondaryButton
+                                        type="button"
+                                        className="min-h-11 w-full px-3 sm:w-auto"
+                                        onClick={() =>
+                                          downloadComplianceEvidencePacket(check)
+                                        }
+                                      >
+                                        <Download size={15} />
+                                        Download evidence packet
+                                      </SecondaryButton>
+                                    </div>
+                                  </div>
+                                  <dl className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Source document
+                                      </dt>
+                                      <dd>{sourceDocumentId ?? "Not linked"}</dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Last completed
+                                      </dt>
+                                      <dd>
+                                        {complianceCompletionDateLabel(check)}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Next due
+                                      </dt>
+                                      <dd>
+                                        {complianceCompletionNextDueLabel(check)}
+                                      </dd>
+                                    </div>
+                                  </dl>
+                                  <p className="text-xs text-muted-foreground">
+                                    {COMPLIANCE_REVIEW_PACKET_GUARDRAIL}
+                                  </p>
+                                </div>
                               ) : null}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {!operationsLoading &&
                         openComplianceChecks.length === 0 ? (
                           <EmptyState
