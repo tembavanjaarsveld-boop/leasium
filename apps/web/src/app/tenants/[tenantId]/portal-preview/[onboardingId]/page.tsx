@@ -850,10 +850,62 @@ function PreviewLoaded({
                       {formatMoney(invoice.outstanding_cents, invoice.currency)}{" "}
                       outstanding
                     </div>
+                    {invoice.payment_reference ? (
+                      <div className="text-xs text-muted-foreground">
+                        Payment reference:{" "}
+                        <span className="font-medium text-foreground">
+                          {invoice.payment_reference}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
             </SectionPanel>
+
+            {portal.how_to_pay ? (
+              <SectionPanel
+                title="How to pay"
+                icon={<ReceiptText size={17} className="text-primary" />}
+              >
+                <div className="grid gap-3 p-4 text-sm">
+                  {portal.how_to_pay.bsb && portal.how_to_pay.account_number ? (
+                    <div className="grid gap-1 rounded-lg border border-border p-3">
+                      <div className="font-semibold">Bank transfer (EFT)</div>
+                      {portal.how_to_pay.account_name ? (
+                        <div>Account name: {portal.how_to_pay.account_name}</div>
+                      ) : null}
+                      <div>BSB: {portal.how_to_pay.bsb}</div>
+                      <div>Account number: {portal.how_to_pay.account_number}</div>
+                    </div>
+                  ) : null}
+                  {portal.how_to_pay.payid ? (
+                    <div className="grid gap-1 rounded-lg border border-border p-3">
+                      <div className="font-semibold">PayID</div>
+                      <div>PayID: {portal.how_to_pay.payid}</div>
+                      {portal.how_to_pay.payid_name ? (
+                        <div>Registered to: {portal.how_to_pay.payid_name}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {portal.how_to_pay.bpay_biller_code ? (
+                    <div className="grid gap-1 rounded-lg border border-border p-3">
+                      <div className="font-semibold">BPAY</div>
+                      <div>Biller code: {portal.how_to_pay.bpay_biller_code}</div>
+                    </div>
+                  ) : null}
+                  {portal.how_to_pay.instructions ? (
+                    <p className="text-muted-foreground">
+                      {portal.how_to_pay.instructions}
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    Shown to tenants as how to pay. Leasium does not process
+                    payments or move money.
+                  </p>
+                </div>
+              </SectionPanel>
+            ) : null}
 
             <SectionPanel
               title="Tenant contact"

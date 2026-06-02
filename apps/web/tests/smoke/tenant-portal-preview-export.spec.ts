@@ -288,3 +288,49 @@ test("tenant portal preview CSV copy and download stay local, touch-safe, and CS
   );
   expect(forbiddenMutationCalls).toEqual([]);
 });
+
+test("tenant portal preview shows How to pay instructions and per-invoice reference", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  const payload = {
+    ...previewPayload,
+    how_to_pay: {
+      configured: true,
+      methods: ["eft", "payid", "bpay"],
+      account_name: "SKJ Property Pty Ltd",
+      bsb: "062-000",
+      account_number: "12345678",
+      payid: "rent@skj.example",
+      payid_name: "SKJ Property",
+      bpay_biller_code: "123456",
+      instructions: "Quote your invoice number as the payment reference.",
+    },
+    invoices: [{ ...previewPayload.invoices[0], payment_reference: "INV-1001" }],
+  };
+  await page.route(
+    "**/api/v1/tenant-portal/operator-preview/onboarding-1",
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(payload),
+      });
+    },
+  );
+
+  await page.goto("/tenants/tenant-1/portal-preview/onboarding-1");
+  await expect(
+    page.getByRole("heading", { name: "Tenant portal preview" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByText("How to pay", { exact: true })).toBeVisible();
+  await expect(page.getByText("Bank transfer (EFT)")).toBeVisible();
+  await expect(page.getByText("BSB: 062-000")).toBeVisible();
+  await expect(page.getByText("Account number: 12345678")).toBeVisible();
+  await expect(page.getByText("PayID: rent@skj.example")).toBeVisible();
+  await expect(page.getByText("Biller code: 123456")).toBeVisible();
+  await expect(page.getByText(/Payment reference:/)).toBeVisible();
+  await expect(
+    page.getByText(/Leasium does not process payments/),
+  ).toBeVisible();
+});
