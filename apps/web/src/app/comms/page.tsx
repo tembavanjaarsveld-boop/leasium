@@ -491,6 +491,50 @@ function commsTargetLink(event: CommsCorrespondenceEventRecord) {
   return null;
 }
 
+function commsCandidateTargetLink(candidate: CommsCandidateRecord) {
+  if (!candidate.target_kind || !candidate.target_id) return null;
+  if (candidate.target_kind === "arrears_case") {
+    return { href: "/operations?tab=arrears", label: "Open arrears case" };
+  }
+  if (candidate.target_kind === "maintenance_work_order") {
+    return {
+      href: `/operations/maintenance/${encodeURIComponent(candidate.target_id)}`,
+      label: "Open work order",
+    };
+  }
+  if (
+    candidate.target_kind === "inbound_message" &&
+    candidate.detail?.toLowerCase().includes("smart intake")
+  ) {
+    return { href: "/intake", label: "Open Smart Intake" };
+  }
+  if (candidate.target_kind === "tenant") {
+    return {
+      href: `/tenants/${encodeURIComponent(candidate.target_id)}`,
+      label: "Open tenant",
+    };
+  }
+  if (candidate.target_kind === "tenant_onboarding" && candidate.tenant_id) {
+    return {
+      href: `/tenants/${encodeURIComponent(candidate.tenant_id)}`,
+      label: "Open tenant review",
+    };
+  }
+  if (candidate.target_kind === "lease" && candidate.tenant_id) {
+    return {
+      href: `/tenants/${encodeURIComponent(candidate.tenant_id)}`,
+      label: "Open tenant workflow",
+    };
+  }
+  if (candidate.target_kind === "obligation") {
+    return {
+      href: "/operations?tab=compliance",
+      label: "Open compliance work",
+    };
+  }
+  return null;
+}
+
 function commsEventStatusTone(
   status: string | null | undefined,
 ): StatusTone {
@@ -1528,26 +1572,7 @@ function CandidateCard({
   const smsBodyOverGuide = smsBodyLength > SMS_SINGLE_SEGMENT_GUIDE;
   const dueLabel = formatDateTime(candidate.due_at);
   const generatedLabel = formatDateTime(candidate.generated_at);
-  const handoffLink =
-    candidate.kind === "tenant_lifecycle_stall" && candidate.tenant_id
-      ? {
-          href: `/tenants/${candidate.tenant_id}`,
-          label: "Open tenant review",
-        }
-      : candidate.kind === "inbound_email" &&
-          candidate.detail?.toLowerCase().includes("smart intake")
-        ? {
-            href: "/intake",
-            label: "Open Smart Intake",
-          }
-        : candidate.target_kind === "maintenance_work_order" &&
-            (candidate.kind === "maintenance_contractor_forward" ||
-              candidate.kind === "maintenance_tenant_forward")
-          ? {
-              href: `/operations/maintenance/${candidate.target_id}`,
-              label: "Open work order",
-            }
-          : null;
+  const handoffLink = commsCandidateTargetLink(candidate);
   const dismissedUntilLabel = formatDateTime(dismissedUntil);
   const dispatchReceiptLabel =
     dispatchedStatus === "skipped"

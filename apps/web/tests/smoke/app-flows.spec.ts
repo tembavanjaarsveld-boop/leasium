@@ -929,6 +929,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     .filter({ has: page.getByRole("heading", { name: "Rent review" }) })
     .first();
   await expect(rentReviewCard).toBeVisible();
+  await expect(
+    rentReviewCard.getByRole("link", { name: "Open tenant workflow" }),
+  ).toHaveAttribute("href", "/tenants/tenant-1");
   await rentReviewCard.getByRole("button", { name: "Dismiss" }).click();
   await expect(rentReviewCard.getByRole("status")).toContainText(
     "Draft deferred until 3 June 2026",
@@ -1077,6 +1080,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(complianceCard.getByLabel("Email recipient")).toHaveValue(
     "compliance@bright.example",
   );
+  await expect(
+    complianceCard.getByRole("link", { name: "Open compliance work" }),
+  ).toHaveAttribute("href", "/operations?tab=compliance");
   await expect(
     complianceCard.getByRole("link", { name: "Upload via Smart Intake" }),
   ).toHaveAttribute("href", "/intake");

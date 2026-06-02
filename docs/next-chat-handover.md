@@ -3611,3 +3611,28 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
 - Next sensible Comms follow-up: template editing/override workflow only after
   the operator review boundary is designed; otherwise prefer record-linked
   correspondence depth over another read-only panel.
+
+## Codex continuation 2026-06-02 - Comms queue source links v1
+
+- Chosen backlog slice: record-linked Comms depth. The queue already linked
+  tenant lifecycle drafts, Smart Intake attachment replies, and maintenance
+  forwards, but rent-review lease drafts and compliance obligation reminders
+  were still stranded in the Comms queue without a local source handoff.
+- `/comms` now derives draft-card handoff links from `target_kind` /
+  `target_id`: rent-review lease drafts link to the tenant workflow, compliance
+  obligation reminders link to `/operations?tab=compliance`, and existing
+  arrears, maintenance, Smart Intake, tenant, and tenant-onboarding mappings
+  are centralised through one helper.
+- Guardrails: opening the new source links is local navigation only. It does
+  not approve/send drafts, dismiss candidates, refresh providers, mutate queue
+  state, upload evidence, send email/SMS, or write provider history.
+- Red/green evidence: the existing Comms app-flow smoke was extended first and
+  failed because the rent-review draft had no `Open tenant workflow` link; it
+  passed after adding the candidate target-link helper.
+- Verification:
+  `PORT=3001 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "comms queue" --workers=1`
+  passed **1 passed** after an initial parallel Playwright port collision on
+  `127.0.0.1:3000`; broader Comms smoke
+  `./node_modules/.bin/playwright test tests/smoke/comms-template-catalog.spec.ts tests/smoke/comms-outbound-log-export.spec.ts tests/smoke/comms-export-parity.spec.ts tests/smoke/comms-keyboard.spec.ts --workers=1`
+  passed **4 passed**; focused `eslint`, `tsc --noEmit`, and
+  `git diff --check` passed.
