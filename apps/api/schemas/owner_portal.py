@@ -165,6 +165,28 @@ class OwnerPortalMaintenanceRead(BaseModel):
     items: list[OwnerPortalMaintenanceItemRead] = Field(default_factory=list)
 
 
+class OwnerPortalLeaseEventRead(BaseModel):
+    """Owner-safe lease event without tenant identity or lease notes."""
+
+    lease_id: UUID
+    property_id: UUID
+    property_name: str
+    unit_label: str
+    event_kind: Literal["rent_review", "lease_expiry"]
+    event_date: date
+    lease_status: str
+    annual_rent_cents: int | None = None
+
+
+class OwnerPortalLeaseEventsRead(BaseModel):
+    """Upcoming rent-review and expiry snapshot for linked owner properties."""
+
+    upcoming_count: int
+    rent_review_count: int
+    expiry_count: int
+    events: list[OwnerPortalLeaseEventRead] = Field(default_factory=list)
+
+
 class OwnerPortalRead(BaseModel):
     """Read response for an operator-previewed owner portal."""
 
@@ -179,6 +201,14 @@ class OwnerPortalRead(BaseModel):
             urgent_count=0,
             awaiting_approval_count=0,
             items=[],
+        )
+    )
+    lease_events: OwnerPortalLeaseEventsRead = Field(
+        default_factory=lambda: OwnerPortalLeaseEventsRead(
+            upcoming_count=0,
+            rent_review_count=0,
+            expiry_count=0,
+            events=[],
         )
     )
     guardrails: list[str] = Field(default_factory=list)

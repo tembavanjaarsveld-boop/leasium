@@ -12,6 +12,8 @@ from stewart.core.models import (
     Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
+    Lease,
+    LeaseStatus,
     MaintenanceApprovalStatus,
     MaintenancePriority,
     MaintenanceWorkOrder,
@@ -23,6 +25,7 @@ from stewart.core.models import (
     PropertyOwner,
     PropertyType,
     StoredDocument,
+    TenancyUnit,
     Tenant,
 )
 
@@ -493,6 +496,88 @@ def test_owner_portal_lists_safe_maintenance_snapshot_for_linked_properties(
     assert "sendgrid-secret" not in serialized
     assert "Other owner repair" not in serialized
     assert "Completed gutter clean" not in serialized
+
+
+def test_owner_portal_lists_safe_lease_events_for_linked_properties(
+    client: TestClient,
+    session: Session,
+) -> None:
+    owner = _seed_owner_portal_owner(session)
+    entity = _entity(session)
+    linked_property = _linked_owner_property(session, owner)
+    tenant = Tenant(entity_id=entity.id, legal_name="Private Lease Tenant Pty Ltd")
+    linked_unit = TenancyUnit(property_id=linked_property.id, unit_label="Suite 8")
+    hidden_unit = TenancyUnit(property_id=linked_property.id, unit_label="Suite Hidden")
+    unlinked_property = Property(
+        entity_id=entity.id,
+        name="Unlinked Lease Property",
+        street_address="11 Other Street",
+        property_type=PropertyType.commercial_office,
+    )
+    session.add_all([tenant, linked_unit, hidden_unit, unlinked_property])
+    session.flush()
+    unlinked_unit = TenancyUnit(
+        property_id=unlinked_property.id,
+        unit_label="Suite 99",
+    )
+    session.add(unlinked_unit)
+    session.flush()
+    visible_lease = Lease(
+        tenancy_unit_id=linked_unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        commencement_date=date(2025, 7, 1),
+        expiry_date=date(2026, 7, 31),
+        next_review_date=date(2026, 6, 15),
+        annual_rent_cents=3_600_000,
+        notes="Private lease note should stay hidden.",
+    )
+    expired_lease = Lease(
+        tenancy_unit_id=hidden_unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.expired,
+        expiry_date=date(2026, 6, 30),
+        next_review_date=date(2026, 6, 1),
+    )
+    cross_property_lease = Lease(
+        tenancy_unit_id=unlinked_unit.id,
+        tenant_id=tenant.id,
+        status=LeaseStatus.active,
+        expiry_date=date(2026, 6, 20),
+        next_review_date=date(2026, 6, 5),
+    )
+    session.add_all([visible_lease, expired_lease, cross_property_lease])
+    session.commit()
+
+    response = client.get(
+        f"/api/v1/owner-portal/{owner.id}",
+        params={"month": "2026-05"},
+    )
+
+    assert response.status_code == 200, response.text
+    lease_events = response.json()["lease_events"]
+    assert lease_events["upcoming_count"] == 2
+    assert lease_events["rent_review_count"] == 1
+    assert lease_events["expiry_count"] == 1
+    assert [
+        (row["event_kind"], row["event_date"], row["unit_label"])
+        for row in lease_events["events"]
+    ] == [
+        ("rent_review", "2026-06-15", "Suite 8"),
+        ("lease_expiry", "2026-07-31", "Suite 8"),
+    ]
+    assert lease_events["events"][0]["lease_id"] == str(visible_lease.id)
+    assert lease_events["events"][0]["property_id"] == str(linked_property.id)
+    assert lease_events["events"][0]["property_name"] == linked_property.name
+    assert lease_events["events"][0]["lease_status"] == "active"
+    assert lease_events["events"][0]["annual_rent_cents"] == 3_600_000
+    serialized = response.text
+    assert "Private Lease Tenant Pty Ltd" not in serialized
+    assert "tenant_id" not in serialized
+    assert "Private lease note" not in serialized
+    assert "Suite Hidden" not in serialized
+    assert "Unlinked Lease Property" not in serialized
+    assert "Suite 99" not in serialized
 
 
 def test_owner_portal_preview_hides_deleted_owners(

@@ -5465,6 +5465,24 @@ export type OwnerPortalMaintenanceRecord = {
   items: OwnerPortalMaintenanceItemRecord[];
 };
 
+export type OwnerPortalLeaseEventRecord = {
+  lease_id: string;
+  property_id: string;
+  property_name: string;
+  unit_label: string;
+  event_kind: "rent_review" | "lease_expiry";
+  event_date: string;
+  lease_status: "pending" | "active" | "holding_over" | "expired" | "terminated";
+  annual_rent_cents: number | null;
+};
+
+export type OwnerPortalLeaseEventsRecord = {
+  upcoming_count: number;
+  rent_review_count: number;
+  expiry_count: number;
+  events: OwnerPortalLeaseEventRecord[];
+};
+
 export type OwnerPortalRecord = {
   auth: OwnerPortalAuthRecord;
   owner: OwnerPortalOwnerRecord;
@@ -5472,6 +5490,7 @@ export type OwnerPortalRecord = {
   statement: OwnerPortalStatementRecord | null;
   documents: OwnerPortalDocumentRecord[];
   maintenance: OwnerPortalMaintenanceRecord;
+  lease_events: OwnerPortalLeaseEventsRecord;
   guardrails: string[];
   generated_at: string;
 };

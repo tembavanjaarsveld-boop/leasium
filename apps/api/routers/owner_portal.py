@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
@@ -23,6 +23,8 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     DocumentCategory,
     Entity,
+    Lease,
+    LeaseStatus,
     MaintenancePriority,
     MaintenanceWorkOrder,
     MaintenanceWorkOrderStatus,
@@ -35,6 +37,7 @@ from stewart.core.models import (
     Property,
     PropertyOwner,
     StoredDocument,
+    TenancyUnit,
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
@@ -48,6 +51,8 @@ from apps.api.schemas.owner_portal import (
     OwnerPortalDocumentRead,
     OwnerPortalInvitePreviewRead,
     OwnerPortalInviteRead,
+    OwnerPortalLeaseEventRead,
+    OwnerPortalLeaseEventsRead,
     OwnerPortalMaintenanceItemRead,
     OwnerPortalMaintenanceRead,
     OwnerPortalOwnerRead,
@@ -92,6 +97,7 @@ OWNER_PORTAL_INVITE_TTL_DAYS = 30
 OWNER_PORTAL_DOCUMENT_VISIBLE_KEY = "owner_portal_visible"
 OWNER_PORTAL_MAINTENANCE_VISIBLE_KEY = "owner_portal_visible"
 OWNER_PORTAL_MAINTENANCE_TITLE_KEY = "owner_portal_title"
+OWNER_PORTAL_LEASE_EVENT_WINDOW_DAYS = 180
 OWNER_PORTAL_OPEN_MAINTENANCE_STATUSES = {
     MaintenanceWorkOrderStatus.requested,
     MaintenanceWorkOrderStatus.triaged,
@@ -99,6 +105,11 @@ OWNER_PORTAL_OPEN_MAINTENANCE_STATUSES = {
     MaintenanceWorkOrderStatus.awaiting_approval,
     MaintenanceWorkOrderStatus.approved,
     MaintenanceWorkOrderStatus.in_progress,
+}
+OWNER_PORTAL_LEASE_EVENT_STATUSES = {
+    LeaseStatus.pending,
+    LeaseStatus.active,
+    LeaseStatus.holding_over,
 }
 
 
@@ -574,6 +585,91 @@ def _owner_portal_maintenance(
     )
 
 
+def _owner_portal_month_start(month: str) -> date:
+    year_value, month_value = month.split("-", 1)
+    return date(int(year_value), int(month_value), 1)
+
+
+def _owner_portal_lease_events(
+    owner: Owner,
+    session: Session,
+    properties: list[OwnerPortalPropertyRead],
+    month: str,
+) -> OwnerPortalLeaseEventsRead:
+    property_ids = {row.property_id for row in properties}
+    if not property_ids:
+        return OwnerPortalLeaseEventsRead(
+            upcoming_count=0,
+            rent_review_count=0,
+            expiry_count=0,
+            events=[],
+        )
+
+    window_start = _owner_portal_month_start(month)
+    window_end = window_start + timedelta(days=OWNER_PORTAL_LEASE_EVENT_WINDOW_DAYS)
+    rows = session.execute(
+        select(
+            Lease.id,
+            TenancyUnit.property_id,
+            Property.name.label("property_name"),
+            TenancyUnit.unit_label,
+            Lease.status,
+            Lease.expiry_date,
+            Lease.next_review_date,
+            Lease.annual_rent_cents,
+        )
+        .join(TenancyUnit, TenancyUnit.id == Lease.tenancy_unit_id)
+        .join(Property, Property.id == TenancyUnit.property_id)
+        .join(PropertyOwner, PropertyOwner.property_id == Property.id)
+        .where(
+            Lease.deleted_at.is_(None),
+            Lease.status.in_(OWNER_PORTAL_LEASE_EVENT_STATUSES),
+            TenancyUnit.property_id.in_(list(property_ids)),
+            TenancyUnit.deleted_at.is_(None),
+            PropertyOwner.owner_id == owner.id,
+            Property.entity_id == owner.entity_id,
+            Property.deleted_at.is_(None),
+        )
+    ).all()
+
+    events: list[OwnerPortalLeaseEventRead] = []
+    for row in rows:
+        for event_kind, event_date in (
+            ("rent_review", row.next_review_date),
+            ("lease_expiry", row.expiry_date),
+        ):
+            if event_date is None or event_date < window_start or event_date > window_end:
+                continue
+            events.append(
+                OwnerPortalLeaseEventRead(
+                    lease_id=row.id,
+                    property_id=row.property_id,
+                    property_name=row.property_name,
+                    unit_label=row.unit_label,
+                    event_kind=event_kind,
+                    event_date=event_date,
+                    lease_status=row.status.value,
+                    annual_rent_cents=row.annual_rent_cents,
+                )
+            )
+
+    event_kind_rank = {"rent_review": 0, "lease_expiry": 1}
+    events.sort(
+        key=lambda event: (
+            event.event_date,
+            event_kind_rank[event.event_kind],
+            event.property_name,
+            event.unit_label,
+        )
+    )
+    return OwnerPortalLeaseEventsRead(
+        upcoming_count=len(events),
+        rent_review_count=sum(1 for event in events if event.event_kind == "rent_review"),
+        expiry_count=sum(1 for event in events if event.event_kind == "lease_expiry"),
+        events=events,
+    )
+
+
 def _owner_portal_document(
     owner: Owner,
     document_id: UUID,
@@ -695,6 +791,7 @@ def _portal_read(
         statement=statement,
         documents=_owner_portal_documents(owner, session, properties),
         maintenance=_owner_portal_maintenance(owner, session, properties),
+        lease_events=_owner_portal_lease_events(owner, session, properties, month),
         guardrails=OWNER_PORTAL_GUARDRAILS,
         generated_at=owner_statements.generated_at,
     )

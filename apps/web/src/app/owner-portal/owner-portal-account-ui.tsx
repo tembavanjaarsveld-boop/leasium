@@ -32,6 +32,7 @@ import type {
 
 import {
   OwnerPortalDocumentsPanel,
+  OwnerPortalLeaseEventsPanel,
   OwnerPortalMaintenancePanel,
 } from "./owner-portal-dashboard-sections";
 
@@ -345,6 +346,10 @@ function titleCaseStatus(value: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function ownerPortalLeaseEventLabel(value: string) {
+  return value === "rent_review" ? "Rent review" : "Lease expiry";
+}
+
 function ownerVisiblePacketFilename(
   portal: OwnerPortalRecord,
   selectedMonth?: string | null,
@@ -463,6 +468,29 @@ function ownerVisiblePacketRows(
   );
 
   rows.push(
+    ...portal.lease_events.events.map(
+      (event): [string, string, string, string] => [
+        "Lease events",
+        ownerPortalLeaseEventLabel(event.event_kind),
+        event.unit_label,
+        `${event.property_name}; ${formatDate(event.event_date)}; ${titleCaseStatus(
+          event.lease_status,
+        )}; ${
+          event.annual_rent_cents === null
+            ? "rent not shown"
+            : `${formatMoney(event.annual_rent_cents)} annual rent`
+        }`,
+      ],
+    ),
+  );
+
+  rows.push(
+    [
+      "Lease events",
+      "Snapshot totals",
+      `${portal.lease_events.upcoming_count} upcoming / ${portal.lease_events.rent_review_count} rent reviews / ${portal.lease_events.expiry_count} expiries`,
+      "Owner-safe lease events for linked properties only.",
+    ],
     [
       "Maintenance",
       "Snapshot totals",
@@ -714,6 +742,8 @@ export function OwnerPortalAccountView({
             </SectionPanel>
 
             <OwnerPortalMaintenancePanel maintenance={portal.maintenance} />
+
+            <OwnerPortalLeaseEventsPanel leaseEvents={portal.lease_events} />
 
             <OwnerPortalDocumentsPanel
               accountMode={portal.auth.mode === "owner_portal_account"}

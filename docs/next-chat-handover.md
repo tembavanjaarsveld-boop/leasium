@@ -7,6 +7,26 @@ Last updated: 2026-06-02
 Continuation from the tenant portal account cache hardening and Operations
 review-packet slices.
 
+### Owner portal lease events
+- Owner portal preview and owner account session responses now include a
+  read-only `lease_events` section for linked owner properties, covering
+  upcoming rent reviews and lease expiries in the selected statement period's
+  180-day runway.
+- The projection is owner-safe: it exposes property, unit, event kind/date,
+  lease status, and annual rent only. It does not expose tenant identity,
+  tenant IDs, lease notes, cross-owner properties, expired/deleted leases, or
+  provider/accounting evidence.
+- The shared owner portal dashboard renders a new Lease events panel, and the
+  local Owner-visible packet copy/download now includes the same lease-event
+  rows and totals without sending owner email, generating statement PDFs,
+  downloading shared documents, writing Xero/Basiq data, reconciling payments,
+  calling Comms, or mutating provider history.
+- Verification: focused owner portal API test passed **1 passed**; full owner
+  portal API tests passed **9 passed**; owner portal preview/account smokes
+  passed **13 passed, 4 skipped** (live-Clerk lanes skipped as expected);
+  targeted backend `ruff`, frontend eslint, `tsc --noEmit`, and the frontend
+  production build passed.
+
 ### Correspondence export guardrail wording parity
 - Tenant, vendor, and maintenance correspondence CSV exports now use
   copy/download-aware guardrails: `copying or downloading this file...` rather
@@ -3184,9 +3204,9 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   focus controls met the 44px tap target baseline.
 - Added a 390px Playwright smoke in
   `apps/web/tests/smoke/properties-ux.spec.ts` that opens the map view, checks
-  URL/tab state, proves Portfolio map / Map planning / Regional focus content,
-  and asserts touch-safe sizes for Map, Lease risk, Vacancy, Copy map brief,
-  Queen Street map/property action, and Vacancy focus.
+  URL/tab state, proves Portfolio location plan / Map planning / Regional focus
+  content, and asserts touch-safe sizes for Map, Lease risk, Vacancy, Copy map
+  brief, Queen Street map/property action, and Vacancy focus.
 - `apps/web/src/components/property-workspace.tsx` now lifts the map focus chips
   to `min-h-11` with matching padding. Planning buttons, map pins, and the copy
   action already met the size check.
@@ -3202,6 +3222,21 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
   `http://127.0.0.1:3000/properties?view=map` and confirmed the Map tab was
   selected; standalone web content stayed in the app's fetch-failed state
   because the API backend/mocks were not attached to that manual browser pass.
+
+## Codex continuation 2026-06-02 - Properties map labels
+
+- User report: the Properties map looked like it had not loaded; the canvas was
+  showing grid-only map chrome plus raw `0/0` marker badges.
+- Root cause: `/properties?view=map` is currently a schematic address grouping
+  view, not a tile-backed street map. `PropertyRecord` stores address fields but
+  no latitude/longitude or geocode fields, and no Mapbox/Leaflet/OpenStreetMap
+  provider is wired. The marker position is intentionally derived from a stable
+  address hash in `propertyMapPoint(...)`.
+- Fix scope: renamed the in-canvas heading to `Portfolio location plan`, made
+  the subtitle describe address grouping, and reused the shared occupancy badge
+  label so unknown unit data renders `No units` instead of `0/0`.
+- Regression coverage: the mobile map smoke now asserts the location-plan copy
+  and verifies `0/0` is absent.
 
 ## Codex continuation 2026-06-02 - Work undo toast mobile hardening
 

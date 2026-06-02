@@ -112,6 +112,33 @@ const OWNER_PORTAL_ACCOUNT_RESPONSE = {
       },
     ],
   },
+  lease_events: {
+    upcoming_count: 2,
+    rent_review_count: 1,
+    expiry_count: 1,
+    events: [
+      {
+        lease_id: "lease-owner-visible-1",
+        property_id: "property-1",
+        property_name: "Owner Portal Plaza",
+        unit_label: "Suite 8",
+        event_kind: "rent_review",
+        event_date: "2026-06-15",
+        lease_status: "active",
+        annual_rent_cents: 3600000,
+      },
+      {
+        lease_id: "lease-owner-visible-1",
+        property_id: "property-1",
+        property_name: "Owner Portal Plaza",
+        unit_label: "Suite 8",
+        event_kind: "lease_expiry",
+        event_date: "2026-07-31",
+        lease_status: "active",
+        annual_rent_cents: 3600000,
+      },
+    ],
+  },
   guardrails: [
     "Read-only owner portal: opening this page does not send owner email, dispatch invoices, write Xero data, reconcile payments, refresh providers, or mutate provider history.",
     "Shared document downloads are account-scoped and limited to files explicitly shared by the property team for this owner; no owner statement PDFs are generated or sent from the portal.",
@@ -165,6 +192,12 @@ const OWNER_PORTAL_ACCOUNT_EMPTY_RESPONSE = {
     urgent_count: 0,
     awaiting_approval_count: 0,
     items: [],
+  },
+  lease_events: {
+    upcoming_count: 0,
+    rent_review_count: 0,
+    expiry_count: 0,
+    events: [],
   },
 };
 
@@ -935,8 +968,18 @@ test("owner account entry opens a linked owner portal without owner id", async (
   ).toBeVisible();
   await expect(page.getByText("Lift service approval")).toBeVisible();
   await expect(page.getByText("$2,200 quote")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Lease events" }),
+  ).toBeVisible();
+  await expect(page.getByText("Rent review").first()).toBeVisible();
+  await expect(page.getByText("Lease expiry").first()).toBeVisible();
+  await expect(page.getByText("Suite 8").first()).toBeVisible();
+  await expect(page.getByText("$36,000 annual rent").first()).toBeVisible();
   await expect(page.getByText("contractor@example.test")).toHaveCount(0);
   await expect(page.getByText("twilio-secret")).toHaveCount(0);
+  await expect(page.getByText("Private Lease Tenant Pty Ltd")).toHaveCount(0);
+  await expect(page.getByText("tenant_id")).toHaveCount(0);
+  await expect(page.getByText("Private lease note")).toHaveCount(0);
   await expect(page.getByText("operator_upload")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Owner-visible packet" }),
@@ -956,6 +999,10 @@ test("owner account entry opens a linked owner portal without owner id", async (
   expect(copiedPacket).toContain("owner-visible-report.pdf");
   expect(copiedPacket).toContain("Lift service approval");
   expect(copiedPacket).toContain("$2,200");
+  expect(copiedPacket).toContain("Lease events");
+  expect(copiedPacket).toContain("Rent review");
+  expect(copiedPacket).toContain("Lease expiry");
+  expect(copiedPacket).toContain("Suite 8");
   expect(copiedPacket).toContain("Review-only export");
   expect(copiedPacket).toContain("does not send owner email");
   expect(copiedPacket).toContain("download not triggered by packet export");
@@ -974,6 +1021,10 @@ test("owner account entry opens a linked owner portal without owner id", async (
   expect(packetCsv).toContain("owner-visible-report.pdf");
   expect(packetCsv).toContain("Lift service approval");
   expect(packetCsv).toContain("$2,200");
+  expect(packetCsv).toContain("Lease events");
+  expect(packetCsv).toContain("Rent review");
+  expect(packetCsv).toContain("Lease expiry");
+  expect(packetCsv).toContain("Suite 8");
   expect(packetCsv).toContain("does not send owner email");
   expect(packetCsv).toContain("'=HYPERLINK");
   expect(downloads).toHaveLength(0);
@@ -1055,6 +1106,8 @@ test("owner account entry clears owner data after account session failure", asyn
   ).toBeVisible();
   await expect(page.getByText("Lift service approval")).toBeVisible();
   await expect(page.getByText("$2,200 quote")).toBeVisible();
+  await expect(page.getByText("Rent review", { exact: true })).toBeVisible();
+  await expect(page.getByText("Lease expiry", { exact: true })).toBeVisible();
 
   failSessionReads = true;
 
@@ -1071,6 +1124,8 @@ test("owner account entry clears owner data after account session failure", asyn
   ).toHaveCount(0);
   await expect(page.getByText("Lift service approval")).toHaveCount(0);
   await expect(page.getByText("$2,200 quote")).toHaveCount(0);
+  await expect(page.getByText("Rent review", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Lease expiry", { exact: true })).toHaveCount(0);
 
   await navigateWithAppRouter(page, "/owner-portal?month=2026-05");
   await expect(page).toHaveURL(/month=2026-05/);
@@ -1086,6 +1141,8 @@ test("owner account entry clears owner data after account session failure", asyn
   ).toHaveCount(0);
   await expect(page.getByText("Lift service approval")).toHaveCount(0);
   await expect(page.getByText("$2,200 quote")).toHaveCount(0);
+  await expect(page.getByText("Rent review", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Lease expiry", { exact: true })).toHaveCount(0);
 });
 
 test("owner account entry renders mobile empty states without overflow", async ({
@@ -1158,6 +1215,7 @@ test("owner account entry renders mobile empty states without overflow", async (
   await expect(page.getByText("0 open").first()).toBeVisible();
   await expect(page.getByText("No statement available.")).toBeVisible();
   await expect(page.getByText("No open maintenance.")).toBeVisible();
+  await expect(page.getByText("No upcoming lease events.")).toBeVisible();
   await expect(page.getByText("No shared documents.")).toBeVisible();
   await expect(page.getByText("No linked properties.")).toBeVisible();
   await expect(page.getByText("May 2026").first()).toBeVisible();

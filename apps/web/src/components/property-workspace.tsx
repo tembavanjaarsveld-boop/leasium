@@ -1465,7 +1465,7 @@ function propertyMapPlanningBrief({
     return "No properties match the current map focus.";
   }
   const lines = [
-    `Portfolio map brief - ${
+    `Portfolio location plan brief - ${
       propertyMapFocusOptions.find((option) => option.key === focus)?.label ??
       "All"
     }`,
@@ -1492,6 +1492,13 @@ function propertyMapPlanningBrief({
     );
   }
   return lines.join("\n");
+}
+
+function propertyMapMarkerLabel(occupancy: PropertyOccupancy | undefined) {
+  if (!occupancy) {
+    return "No units";
+  }
+  return occupancyBadgeLabel(occupancy);
 }
 
 function leaseEventKindLabel(kind: LeaseEventRecord["kind"]) {
@@ -7412,9 +7419,9 @@ function PropertyMapView({
         <div className="relative min-h-[420px] overflow-hidden rounded-md border border-border bg-muted/30">
           <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(to_right,rgba(100,116,139,0.16)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.16)_1px,transparent_1px)] [background-size:42px_42px]" />
           <div className="absolute inset-x-4 top-4 rounded-md border border-border bg-white/90 px-3 py-2 text-sm shadow-sm">
-            <div className="font-semibold">Portfolio map</div>
+            <div className="font-semibold">Portfolio location plan</div>
             <div className="text-xs text-muted-foreground">
-              Address-based view for suburb clustering and expiry focus.
+              Address grouping for suburb clusters, vacancies, and expiry focus.
             </div>
           </div>
           {!mapProperties.length ? (
@@ -7427,6 +7434,7 @@ function PropertyMapView({
             const occupancy = occupancyByPropertyId.get(property.id);
             const expiry = nextExpiryByPropertyId.get(property.id);
             const isSelected = property.id === selectedPropertyId;
+            const markerLabel = propertyMapMarkerLabel(occupancy);
             return (
               <button
                 key={property.id}
@@ -7439,18 +7447,16 @@ function PropertyMapView({
                     : "border-white bg-foreground text-background",
                 )}
                 style={{ left: `${point.left}%`, top: `${point.top}%` }}
-                title={`${property.name} - ${propertyRegionLabel(property) || property.street_address}`}
+                title={`${property.name} - ${propertyRegionLabel(property) || property.street_address} - ${markerLabel}`}
               >
                 <MapPin size={18} />
                 {expiry ? (
                   <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-warning ring-2 ring-white" />
                 ) : null}
                 <span className="sr-only">{property.name}</span>
-                {occupancy ? (
-                  <span className="absolute -bottom-5 whitespace-nowrap rounded-full border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-semibold text-foreground shadow-sm">
-                    {occupancy.leasedUnits}/{occupancy.totalUnits}
-                  </span>
-                ) : null}
+                <span className="absolute -bottom-5 whitespace-nowrap rounded-full border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-semibold text-foreground shadow-sm">
+                  {markerLabel}
+                </span>
               </button>
             );
           })}

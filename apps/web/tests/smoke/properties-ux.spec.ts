@@ -112,9 +112,15 @@ test("mobile properties map view keeps focus controls touch safe", async ({
   );
   await expect(page).toHaveURL(/view=map/);
 
-  await expect(page.getByText("Portfolio map")).toBeVisible();
+  await expect(page.getByText("Portfolio location plan")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Address grouping for suburb clusters, vacancies, and expiry focus.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Map planning")).toBeVisible();
   await expect(page.getByText("Regional focus")).toBeVisible();
+  await expect(page.getByText("0/0")).toHaveCount(0);
 
   await expectTouchTarget(page.getByRole("tab", { name: "Map" }));
   await expectTouchTarget(

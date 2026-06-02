@@ -12,6 +12,8 @@ import {
 import {
   downloadOwnerPortalAccountDocument,
   type OwnerPortalDocumentRecord,
+  type OwnerPortalLeaseEventRecord,
+  type OwnerPortalLeaseEventsRecord,
   type OwnerPortalMaintenanceItemRecord,
   type OwnerPortalMaintenanceRecord,
 } from "@/lib/api";
@@ -52,6 +54,13 @@ function formatMoney(cents: number): string {
   }).format(cents / 100);
 }
 
+function formatLeaseRent(cents: number | null): string {
+  if (cents === null) {
+    return "Rent not shown";
+  }
+  return `${formatMoney(cents)} annual rent`;
+}
+
 function formatDate(value: string | null): string {
   if (!value) {
     return "No date";
@@ -64,6 +73,19 @@ function formatDate(value: string | null): string {
     dateStyle: "medium",
   }).format(date);
 }
+
+const leaseEventLabels: Record<OwnerPortalLeaseEventRecord["event_kind"], string> = {
+  lease_expiry: "Lease expiry",
+  rent_review: "Rent review",
+};
+
+const leaseStatusLabels: Record<OwnerPortalLeaseEventRecord["lease_status"], string> = {
+  active: "Active",
+  expired: "Expired",
+  holding_over: "Holding over",
+  pending: "Pending",
+  terminated: "Terminated",
+};
 
 const maintenanceStatusLabels: Record<
   OwnerPortalMaintenanceItemRecord["status"],
@@ -96,6 +118,58 @@ function maintenancePriorityTone(
   if (priority === "high") return "warning";
   if (priority === "normal") return "primary";
   return "neutral";
+}
+
+export function OwnerPortalLeaseEventsPanel({
+  leaseEvents,
+}: {
+  leaseEvents: OwnerPortalLeaseEventsRecord;
+}) {
+  return (
+    <SectionPanel
+      title="Lease events"
+      description={`${leaseEvents.upcoming_count} upcoming / ${leaseEvents.rent_review_count} rent reviews / ${leaseEvents.expiry_count} expiries`}
+      icon={<CalendarDays size={17} />}
+    >
+      {leaseEvents.events.length ? (
+        <div className="divide-y divide-border">
+          {leaseEvents.events.map((event) => (
+            <div
+              key={`${event.lease_id}-${event.event_kind}-${event.event_date}`}
+              className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto]"
+            >
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+                    {leaseEventLabels[event.event_kind]}
+                  </p>
+                  <StatusBadge tone="primary">
+                    {leaseStatusLabels[event.lease_status]}
+                  </StatusBadge>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {event.property_name} - {event.unit_label}
+                </p>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground">
+                  <CalendarDays size={13} />
+                  {formatDate(event.event_date)}
+                </p>
+              </div>
+              <div className="text-sm font-semibold text-foreground md:text-right">
+                {formatLeaseRent(event.annual_rent_cents)}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No upcoming lease events."
+          description="Rent reviews and lease expiries for linked properties will appear here."
+          icon={<CalendarDays size={18} />}
+        />
+      )}
+    </SectionPanel>
+  );
 }
 
 export function OwnerPortalMaintenancePanel({
