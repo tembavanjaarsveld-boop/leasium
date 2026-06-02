@@ -404,9 +404,11 @@ Equifax/illion; RTBA/state RTAs).
   per-invoice `payment_reference`, a tenant-portal "How to pay" panel
   (EFT / PayID / optional BPAY / notes), and a Settings → Organisation operator
   config form. Backend ~5 tests; frontend eslint/tsc/build green.
-  **Remaining:** a tenant-portal smoke, then the actual rails
-  (PayTo/Monoova/Zai/Stripe AU) + in-portal "pay now" — the provider decision
-  still to make.
+  A review-first provider-agnostic rails scaffold now exists (commit `915ffc5`):
+  the `stewart.integrations.payment_rails` boundary + `GET /payments/rail-status`
+  (no money movement, no provider call), ready for an AU adapter to drop in.
+  **Remaining:** the concrete rail adapter (Monoova / Zai / Stripe AU — the
+  provider decision still to make) + an in-portal "pay now" surface.
 - [ ] **Installable PWA (mobile runway).** Operator field use (inspections / photos /
   approvals) + tenant portal on a phone, ahead of any native build.
 
@@ -442,7 +444,12 @@ Equifax/illion; RTBA/state RTAs).
   provider config only** (set `DOCUSIGN_*` env on Render + a DocuSign Connect
   webhook → `/api/v1/tenant-onboarding/webhooks/docusign`); until then it
   soft-skips and tenants sign in-portal.
-- [ ] Communications hub (templates + logs).
+- [~] Communications hub (templates + logs). The queue, dispatch, outbound log,
+  correspondence timelines (tenant/contractor/maintenance), and inbound
+  email/SMS webhooks already exist. Branded communication template CRUD (operator
+  create / update / soft-delete, system-row guarded, audited) now ships too
+  (commit `4b3aea9`), completing the "templates" half. Remaining: an operator
+  template editor UI + optional template preview/variable substitution.
 - [ ] Customisable reporting, a Calendar surface, and a Workflows builder.
 
 **P3 — product-for-the-AU-market bets (low value while SKJ-internal/commercial):**

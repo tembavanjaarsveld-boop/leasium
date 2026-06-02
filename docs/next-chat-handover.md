@@ -8,6 +8,33 @@ Took over from Codex with a clean, fully-pushed tree (no unstaged slice to
 preserve, despite the older "Active Local Tree" note further down). Picked the
 DoorLoop P2 **vendor portal authenticated login** off the backlog.
 
+### Communications hub — branded template CRUD (commit `4b3aea9`, pushed)
+Recon confirmed the comms plumbing already exists (queue, dispatch, outbound log,
+tenant/contractor/maintenance correspondence timelines, inbound email/SMS
+webhooks, `BrandedCommunicationTemplate` model, read-only template list/detail).
+The gap was template management: `apps/api/routers/branded_templates.py` was
+read-only and the `BrandedTemplateCreate/Update` schemas already existed but were
+unused. Wired operator POST/PATCH/DELETE (owner/admin/finance): create
+(is_system=false; duplicate active key/version → 409 via pre-check +
+IntegrityError), update (system rows' content stays editable; re-activation
+conflict → 409), soft-delete (system rows blocked → 409), all audited
+(`branded_template.*`, internal). Editing never sends. Tests: **8 passed**
+(5 new + 3 read), ruff clean. Remaining: an operator template editor UI in
+Settings/Comms + optional template preview / variable substitution.
+
+### Payment rails scaffold (commit `915ffc5`, pushed)
+Provider-agnostic, review-first boundary for tenant online payments — built like
+the DocuSign/Basiq adapters (inert until configured, never auto-charges).
+`stewart/integrations/payment_rails.py`: `configured_rail` (reads the new
+`settings.payment_rail_provider`; supports monoova/zai/stripe_au; None today) +
+`build_payment_intent_preview` returning a review-only "manual_only" preview
+(amount / reference / available methods; no money movement, no provider call).
+`GET /api/v1/payments/rail-status` reports `online_payment_enabled=false` + the
+entity's available manual methods + a guardrail. Tests: **10 passed** (boundary
+unit + rail-status integration), ruff clean. Remaining: pick an AU provider →
+write the concrete adapter behind this boundary, plus a tenant-portal "Pay"
+surface (preview + "online coming soon").
+
 ### Tenant payment-instructions foundation (backend `ad71aa5` + frontend, pushed)
 Review-first first slice of DoorLoop P1 tenant payments. Display-only: no money
 movement, no rails provider, no Basiq/Xero/reconciliation change.
