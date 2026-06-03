@@ -5131,18 +5131,22 @@ function TenantPortalContent({
               title="Documents"
               icon={<FileText size={18} />}
               actions={
-                documentsRequired && !documentsComplete ? (
+                !documentsComplete ? (
                   <StatusBadge tone="warning">Action needed</StatusBadge>
                 ) : undefined
               }
             >
-              <div className="grid gap-3 p-4">
-                {actionableDocuments.length > 0 ? (
+              <div className="grid gap-4 p-4">
+                {requiredDocuments.length > 0 ? (
                   <div className="grid gap-3 md:grid-cols-3">
-                    {actionableDocuments.map((item) => (
+                    {requiredDocuments.map((item) => (
                       <div
                         key={item.key}
-                        className="rounded-md border border-warning/30 bg-warning/5 p-3"
+                        className={`rounded-md border p-3 ${
+                          ["missing", "expired"].includes(item.status)
+                            ? "border-warning/30 bg-warning/5"
+                            : "border-border"
+                        }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-semibold">{item.label}</div>
@@ -5162,16 +5166,16 @@ function TenantPortalContent({
                   </div>
                 ) : null}
 
-                <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
-                  <Field label="Upload a document">
-                    <Input
-                      type="file"
-                      onChange={(event) =>
-                        setUploadFile(event.target.files?.[0] ?? null)
-                      }
-                    />
-                  </Field>
-                  <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="grid gap-3">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px_minmax(0,1fr)]">
+                    <Field label="File">
+                      <Input
+                        type="file"
+                        onChange={(event) =>
+                          setUploadFile(event.target.files?.[0] ?? null)
+                        }
+                      />
+                    </Field>
                     <Field label="Type">
                       <Select
                         value={uploadCategory}
