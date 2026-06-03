@@ -93,6 +93,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   calm single-scroll, no tabs (deferred per the decision that a tenant's sparse sections don't
   warrant tab navigation yet). Verified by eslint + tsc + tenant smokes (38 passed) +
   production build.
+- **Tenant portal Documents upload collapsed behind a button (2026-06-03, prototype mode, no Remba gate):**
+  on the established-tenant "Documents" panel, the always-open upload form (raw `type=file`
+  input + Type + Notes + Upload) now sits behind a calm "Upload a document" button that reveals
+  the form on demand, with Cancel and close-on-success. The card reads as status tiles + your
+  files + one upload affordance instead of a raw form parked mid-card (which read as
+  unfinished/"sketchy"). The onboarding "Required Documents" panel keeps its form open —
+  uploading is the tenant's active task there. Verified by eslint + tsc + tenant smokes
+  (38 passed) + production build.
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

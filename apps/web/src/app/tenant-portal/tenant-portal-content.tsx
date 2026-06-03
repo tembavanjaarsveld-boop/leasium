@@ -3844,6 +3844,7 @@ function TenantPortalContent({
   const [uploadCategory, setUploadCategory] =
     useState<DocumentCategory>("insurance");
   const [uploadNotes, setUploadNotes] = useState("");
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [maintenanceTitle, setMaintenanceTitle] = useState("");
   const [maintenancePriority, setMaintenancePriority] =
     useState<MaintenancePriority>("normal");
@@ -3954,6 +3955,7 @@ function TenantPortalContent({
     onSuccess: () => {
       setUploadFile(null);
       setUploadNotes("");
+      setUploadOpen(false);
       void refreshPortal();
     },
   });
@@ -5231,62 +5233,80 @@ function TenantPortalContent({
                   </div>
                 ) : null}
 
-                <div className="grid gap-3">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px_minmax(0,1fr)]">
-                    <Field label="File">
-                      <Input
-                        type="file"
-                        className="py-2 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-primary-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-primary-hover hover:file:bg-primary/15"
-                        onChange={(event) =>
-                          setUploadFile(event.target.files?.[0] ?? null)
-                        }
-                      />
-                    </Field>
-                    <Field label="Type">
-                      <Select
-                        value={uploadCategory}
-                        onChange={(event) =>
-                          setUploadCategory(
-                            event.target.value as DocumentCategory,
-                          )
-                        }
+                {uploadOpen ? (
+                  <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3">
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_200px_minmax(0,1fr)]">
+                      <Field label="File">
+                        <Input
+                          type="file"
+                          className="py-2 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-primary-soft file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-primary-hover hover:file:bg-primary/15"
+                          onChange={(event) =>
+                            setUploadFile(event.target.files?.[0] ?? null)
+                          }
+                        />
+                      </Field>
+                      <Field label="Type">
+                        <Select
+                          value={uploadCategory}
+                          onChange={(event) =>
+                            setUploadCategory(
+                              event.target.value as DocumentCategory,
+                            )
+                          }
+                        >
+                          {visibleCategories.map((category) => (
+                            <option key={category} value={category}>
+                              {categoryLabels[category]}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label="Notes">
+                        <Input
+                          value={uploadNotes}
+                          onChange={(event) =>
+                            setUploadNotes(event.target.value)
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {uploadMutation.error ? (
+                        <span className="text-sm text-danger">
+                          {uploadMutation.error.message}
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setUploadOpen(false)}
+                        className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-muted-foreground transition hover:text-foreground"
                       >
-                        {visibleCategories.map((category) => (
-                          <option key={category} value={category}>
-                            {categoryLabels[category]}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
-                    <Field label="Notes">
-                      <Input
-                        value={uploadNotes}
-                        onChange={(event) =>
-                          setUploadNotes(event.target.value)
-                        }
-                      />
-                    </Field>
+                        Cancel
+                      </button>
+                      <Button
+                        type="button"
+                        onClick={() => uploadMutation.mutate()}
+                        disabled={!uploadFile || uploadMutation.isPending}
+                      >
+                        {uploadMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <UploadCloud size={16} />
+                        )}
+                        Upload
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    {uploadMutation.error ? (
-                      <span className="text-sm text-danger">
-                        {uploadMutation.error.message}
-                      </span>
-                    ) : null}
-                    <Button
-                      type="button"
-                      onClick={() => uploadMutation.mutate()}
-                      disabled={!uploadFile || uploadMutation.isPending}
-                    >
-                      {uploadMutation.isPending ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <UploadCloud size={16} />
-                      )}
-                      Upload
-                    </Button>
-                  </div>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setUploadOpen(true)}
+                    className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-medium text-foreground transition duration-200 ease-leasium hover:bg-muted"
+                  >
+                    <UploadCloud size={16} />
+                    Upload a document
+                  </button>
+                )}
 
                 <div className="grid gap-2">
                   {portal.compliance.uploaded_documents.map((document) =>

@@ -2,14 +2,42 @@
 
 Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-03 (Tenant portal calm status header — latest)
+## Claude continuation — 2026-06-03 (Tenant Documents upload collapse — latest)
+
+Cowork session, seventh slice. After the status-header slice, Temba said the
+Documents section "still [looks] sketchy." The culprit (confirmed from his
+uploaded render) was the always-open raw upload form parked mid-card — a native
+file input + Type + Notes + a big Upload button, visible even though a tenant
+rarely uploads. **Not yet committed** — inspect `git status --short` first.
+(Pushed so far: `08163cc`, `1791e55`, `b304473`, `10b3837`, `1ef411d`, `04281d6`.)
+
+### Tenant Documents upload collapse (uncommitted)
+`apps/web/src/app/tenant-portal/tenant-portal-content.tsx`: added `uploadOpen`
+state. On the established-tenant "Documents" panel the upload form is now gated —
+collapsed it shows a single outline "Upload a document" button; expanded it shows
+the File/Type/Notes form in a bordered container with a Cancel button; the upload
+mutation's `onSuccess` now also `setUploadOpen(false)`. The onboarding
+"Required Documents" panel is deliberately left always-open (uploading is the
+tenant's active task there). No smoke uploads through this panel (file-upload
+smokes target vendor portal / maintenance closeout / smart-intake / custom-lease),
+so no smoke change was needed.
+
+Possible follow-up flagged to Temba but not changed: the checklist tiles can read
+inconsistently — e.g. "Onboarding files: Not required, 0 files" while a lease pack
+is listed below as "uploaded as the onboarding lease pack." That's a
+category/count mapping question (the uploaded doc is category `lease`, the
+compliance item is `onboarding`), not a visual bug — left alone pending a product
+call.
+Verification: eslint clean, tsc clean, tenant smokes 38 passed / 9 skipped,
+production build green.
+
+## Claude continuation — 2026-06-03 (Tenant portal calm status header)
 
 Cowork session, sixth slice. Temba felt the tenant page was "too busy" and wanted
 the tenant to "feel safe and assured." After a mockup + discussion he was undecided
 on direction; the agreed first pass (no-regret, carries over whether or not tabs
-land later) is a calm status header + warmer copy. **Not yet committed** — inspect
-`git status --short` first. (Pushed so far: `08163cc`, `1791e55`, `b304473`,
-`10b3837`, `1ef411d`.)
+land later) is a calm status header + warmer copy. Committed + pushed as `04281d6`.
+(Pushed so far: `08163cc`, `1791e55`, `b304473`, `10b3837`, `1ef411d`.)
 
 Direction decision: **calm single-scroll, not tabs.** A tenant's sections are
 sparse, so tabs would mostly hide near-empty panels behind clicks. Tabs stay a
