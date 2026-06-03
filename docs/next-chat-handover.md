@@ -2,7 +2,25 @@
 
 Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-03 (Work queue urgency buckets — latest)
+## Claude continuation — 2026-06-03 (Queue assignment declutter — latest)
+
+Cowork session, third slice. Temba flagged the per-row assignment widget in the
+`/operations` queue (repeated boilerplate caption on every row). **Not yet
+committed** — inspect `git status --short` first. (Insights tabs = `08163cc`,
+queue urgency buckets = `1791e55`, both pushed.)
+
+### Queue assignment control declutter (uncommitted)
+`apps/web/src/app/operations/page.tsx` (`WorkAssignmentControl`): the footnote
+("Assign the owner and prepare the Leasium notification.") now renders only when it
+carries information — `showFootnote = assignedAt || notificationReady ||
+notificationDelivered || notificationProblem` — so untouched unassigned rows drop
+the repeated boilerplate line and shrink by a row. Assigned-state detail, status
+badges, controls, recent-activity history, and the mobile disclosure are unchanged.
+Verification: eslint clean, tsc clean, 17/17 operations smokes pass, production
+build green. Docs: product-roadmap.md (`[~]`) + design-governance.md (prototype
+entry).
+
+## Claude continuation — 2026-06-03 (Work queue urgency buckets)
 
 Cowork session, second slice. Same "ugly and long" complaint applied to the
 `/operations` **Work** queue: the Queue tab rendered every open item in one flat

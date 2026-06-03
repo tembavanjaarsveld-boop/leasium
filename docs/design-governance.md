@@ -57,6 +57,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   existing urgency-sorted queue; row internals, assignment controls, keyboard navigation,
   assignee/workload filters, notice inbox, digest, and the review-only CSV are unchanged.
   Verified by eslint + tsc + the operations Playwright smokes (17/17) + production build.
+- **Work queue assignment control declutter (2026-06-03, prototype mode, no Remba gate):**
+  the per-row `WorkAssignmentControl` footnote ("Assign the owner and prepare the Leasium
+  notification.") now renders only when it carries information — once an item is assigned or
+  has a notification ready/delivered/problem state — so untouched unassigned queue rows drop
+  the repeated boilerplate line and shrink by a row. Behaviour and the assigned-state detail
+  are unchanged. Verified by eslint + tsc + operations smokes (17/17) + production build.
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

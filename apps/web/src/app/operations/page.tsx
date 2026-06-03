@@ -5612,6 +5612,12 @@ function WorkAssignmentControl({
         : assignment?.assignedAt
           ? "In-app reminder only; provider email has not been sent."
           : "Assign the owner and prepare the Leasium notification.";
+  const showFootnote = Boolean(
+    assignment?.assignedAt ||
+      notificationReady ||
+      notificationDelivered ||
+      notificationProblem,
+  );
 
   return (
     <div className="grid min-w-[min(100%,22rem)] gap-2 rounded-xl border border-border bg-muted/30 p-2 text-sm">
@@ -5770,13 +5776,15 @@ function WorkAssignmentControl({
           </div>
         </details>
       ) : null}
-      <div className="text-xs text-muted-foreground">
-        {assignment?.assignedAt
-          ? `Updated ${formatDateTime(assignment.assignedAt)} by ${
-              assignment.assignedByName ?? "Leasium"
-            }. ${notificationFootnote}`
-          : notificationFootnote}
-      </div>
+      {showFootnote ? (
+        <div className="text-xs text-muted-foreground">
+          {assignment?.assignedAt
+            ? `Updated ${formatDateTime(assignment.assignedAt)} by ${
+                assignment.assignedByName ?? "Leasium"
+              }. ${notificationFootnote}`
+            : notificationFootnote}
+        </div>
+      ) : null}
     </div>
   );
 }
