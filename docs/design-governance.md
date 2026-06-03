@@ -72,6 +72,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   mobile "Work controls" disclosure and the maintenance/arrears detail controls keep the full
   inline control, so there is no double-collapse on mobile. Assigned rows are unchanged.
   Verified by eslint + tsc + operations smokes (17/17) + production build.
+- **Tenant portal Documents card layout fix (2026-06-03, prototype mode, no Remba gate):**
+  on the tenant portal, document-checklist tiles (Insurance / Bank guarantee / Onboarding
+  files) no longer clip the status chip when the title is long — the title now wraps
+  (`min-w-0`, `items-start`) and the chip stays put (`shrink-0`) — and the native file input
+  is styled via `file:` classes to match the design system instead of the raw browser
+  control. Applied to both the "Documents" and "Required Documents" panels. Layout/styling
+  only, no copy or behaviour change. Verified by eslint + tsc + tenant smokes (38 passed) +
+  production build.
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

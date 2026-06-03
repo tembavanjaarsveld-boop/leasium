@@ -2,13 +2,35 @@
 
 Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-03 (Queue assign-on-expand — latest)
+## Claude continuation — 2026-06-03 (Tenant portal Documents card — latest)
+
+Cowork session, fifth slice. Temba flagged the Documents card on the tenant portal
+(screenshot: the "not on file" status chip clipping off the Onboarding-files tile,
+and the raw browser file input). **Not yet committed** — inspect `git status
+--short` first. (Pushed so far: Insights tabs `08163cc`, queue urgency buckets
+`1791e55`, footnote declutter `b304473`, assign-on-expand `10b3837`.)
+
+### Tenant portal Documents card layout fix (uncommitted)
+`apps/web/src/app/tenant-portal/tenant-portal-content.tsx`: the document-checklist
+tiles had a `flex items-center justify-between` header where the title didn't shrink,
+so a long title (Bank guarantee / Onboarding files) pushed the `whitespace-nowrap`
+status chip past the tile edge. Fixed: header is `items-start`, title is `min-w-0`
+(wraps), chip is `shrink-0`. Also styled the native `type="file"` input via Tailwind
+`file:` classes (soft primary button) instead of the raw control. Applied to **both**
+the "Documents" panel (account/portal view, ~L5129) and the duplicated
+"Required Documents" panel (~L4438). Layout/styling only — text, statuses, upload
+behaviour unchanged.
+Verification: eslint clean, tsc clean, tenant smokes 38 passed / 9 skipped,
+production build green. Docs: product-roadmap.md (`[~]`) + design-governance.md
+(prototype entry).
+
+## Claude continuation — 2026-06-03 (Queue assign-on-expand)
 
 Cowork session, fourth slice. Temba said "Go" to the further declutter offered
 after the footnote removal: collapse the desktop queue assignment widget behind a
-single "Assign owner" button. **Not yet committed** — inspect `git status --short`
-first. (Pushed so far: Insights tabs `08163cc`, queue urgency buckets `1791e55`,
-footnote declutter `b304473`.)
+single "Assign owner" button. Committed + pushed as `10b3837`. (Pushed so far:
+Insights tabs `08163cc`, queue urgency buckets `1791e55`, footnote declutter
+`b304473`.)
 
 ### Queue assign-on-expand affordance (uncommitted)
 `apps/web/src/app/operations/page.tsx` (`WorkAssignmentControl`): added a
