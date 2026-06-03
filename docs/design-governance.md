@@ -80,6 +80,19 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   control. Applied to both the "Documents" and "Required Documents" panels. Layout/styling
   only, no copy or behaviour change. Verified by eslint + tsc + tenant smokes (38 passed) +
   production build.
+- **Tenant portal calm status header + warmer copy (2026-06-03, prototype mode, no Remba gate):**
+  the tenant portal now opens with one always-on status hero that folds the identity header
+  and the previously attention-only strip together and answers "do I need to do anything?" —
+  a calm green "You're all set" when `attentionItems` is empty, or an amber "One thing to do /
+  N things to do" with the items and an "Upload documents" link (anchors to the Documents
+  panel) when not. Softened the cold copy: Documents badge "Action needed" → "{n} to upload";
+  tile statuses missing / not_on_file / expired → "Not uploaded yet" / "Not required" /
+  "Needs renewing" (a tenant-facing label helper; the shared `label()` is untouched so the
+  operator side is unaffected); empty states warmed ("Nothing due right now", "No open
+  requests", "No documents on file yet"). First pass of the "safe and assured" direction —
+  calm single-scroll, no tabs (deferred per the decision that a tenant's sparse sections don't
+  warrant tab navigation yet). Verified by eslint + tsc + tenant smokes (38 passed) +
+  production build.
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

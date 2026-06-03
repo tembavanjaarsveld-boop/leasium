@@ -196,6 +196,22 @@ function complianceTone(status: string) {
   return "neutral" as const;
 }
 
+function tenantDocStatusLabel(status: string) {
+  if (status === "missing") {
+    return "Not uploaded yet";
+  }
+  if (status === "expired") {
+    return "Needs renewing";
+  }
+  if (status === "not_on_file") {
+    return "Not required";
+  }
+  if (status === "received") {
+    return "Received";
+  }
+  return status.replaceAll("_", " ");
+}
+
 function maintenanceTone(status: string) {
   if (status === "completed") {
     return "success" as const;
@@ -2222,14 +2238,19 @@ function Panel({
   icon,
   actions,
   children,
+  id,
 }: {
   title: string;
   icon: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
+  id?: string;
 }) {
   return (
-    <section className="overflow-hidden rounded-md border border-border bg-white">
+    <section
+      id={id}
+      className="scroll-mt-24 overflow-hidden rounded-md border border-border bg-white"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-primary">{icon}</span>
@@ -4468,7 +4489,7 @@ function TenantPortalContent({
                             tone={complianceTone(item.status)}
                             className="shrink-0"
                           >
-                            {label(item.status)}
+                            {tenantDocStatusLabel(item.status)}
                           </StatusBadge>
                         </div>
                         <div className="mt-2 text-sm text-muted-foreground">
@@ -4720,36 +4741,66 @@ function TenantPortalContent({
     <PortalShell>
       <div className="mx-auto grid max-w-4xl gap-5 px-5 py-6">
 
-        {/* Clean header */}
-        <section className="rounded-md border border-border bg-white p-5">
-          <p className="text-sm text-muted-foreground">
-            {portal.lease.property_name}
-            {portal.lease.unit_label ? ` · ${portal.lease.unit_label}` : ""}
-          </p>
-          <h2 className="mt-0.5 text-2xl font-semibold">
-            {portal.tenant.trading_name || portal.tenant.legal_name}
-          </h2>
-          {portal.lease.property_address ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              {portal.lease.property_address}
+        {/* Status hero — identity plus one clear answer to "do I need to do anything?" */}
+        <section className="grid gap-4 rounded-md border border-border bg-white p-5">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              {portal.lease.property_name}
+              {portal.lease.unit_label ? ` · ${portal.lease.unit_label}` : ""}
             </p>
-          ) : null}
-        </section>
+            <h2 className="mt-0.5 text-2xl font-semibold">
+              {portal.tenant.trading_name || portal.tenant.legal_name}
+            </h2>
+            {portal.lease.property_address ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {portal.lease.property_address}
+              </p>
+            ) : null}
+          </div>
 
-        {/* Action strip — only shown when something needs attention */}
-        {attentionItems.length ? (
-          <section className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 px-4 py-3">
-            {attentionItems.map((item) => (
-              <div
-                key={item.key}
-                className="flex flex-wrap items-start gap-3 text-sm"
-              >
-                <StatusBadge tone={item.tone}>{item.title}</StatusBadge>
-                <span className="text-muted-foreground">{item.detail}</span>
+          {attentionItems.length === 0 ? (
+            <div className="flex items-start gap-3 rounded-md border border-success/30 bg-success/5 p-3">
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-success" />
+              <div className="min-w-0">
+                <div className="font-medium text-success">You&apos;re all set</div>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Your tenancy is active and up to date — nothing needs your
+                  attention right now.
+                </p>
               </div>
-            ))}
-          </section>
-        ) : null}
+            </div>
+          ) : (
+            <div className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 p-3">
+              <div className="flex items-center gap-2">
+                <Clock3 size={18} className="shrink-0 text-warning" />
+                <div className="font-medium text-warning">
+                  {attentionItems.length === 1
+                    ? "One thing to do"
+                    : `${attentionItems.length} things to do`}
+                </div>
+              </div>
+              <div className="grid gap-1.5 pl-7">
+                {attentionItems.map((item) => (
+                  <div key={item.key} className="min-w-0 text-sm">
+                    <span className="font-medium text-foreground">
+                      {item.title}
+                    </span>{" "}
+                    <span className="text-muted-foreground">{item.detail}</span>
+                  </div>
+                ))}
+              </div>
+              {!documentsComplete ? (
+                <a
+                  href="#tenant-documents"
+                  className="ml-7 inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-warning/40 bg-white px-3 text-sm font-medium text-warning transition hover:bg-warning/5"
+                >
+                  <UploadCloud size={15} />
+                  Upload documents
+                </a>
+              ) : null}
+            </div>
+          )}
+        </section>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="grid gap-5">
@@ -4878,8 +4929,8 @@ function TenantPortalContent({
                 ))}
                 {!portal.invoices.length ? (
                   <div className="rounded-md border border-border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No invoices yet. Payment details will appear here when
-                    approved.
+                    Nothing due right now. Anything to pay will appear here,
+                    with how to pay it.
                   </div>
                 ) : null}
               </div>
@@ -5124,8 +5175,8 @@ function TenantPortalContent({
                   ))}
                   {!sortedMaintenanceRequests.length ? (
                     <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
-                      No maintenance requests yet. Use the form above to
-                      report an issue.
+                      No open requests. Report an issue above and we&apos;ll
+                      keep you posted on its status.
                     </div>
                   ) : null}
                 </div>
@@ -5134,11 +5185,14 @@ function TenantPortalContent({
 
             {/* Documents */}
             <Panel
+              id="tenant-documents"
               title="Documents"
               icon={<FileText size={18} />}
               actions={
                 !documentsComplete ? (
-                  <StatusBadge tone="warning">Action needed</StatusBadge>
+                  <StatusBadge tone="warning">
+                    {actionableDocuments.length} to upload
+                  </StatusBadge>
                 ) : undefined
               }
             >
@@ -5162,7 +5216,7 @@ function TenantPortalContent({
                             tone={complianceTone(item.status)}
                             className="shrink-0"
                           >
-                            {label(item.status)}
+                            {tenantDocStatusLabel(item.status)}
                           </StatusBadge>
                         </div>
                         <div className="mt-2 text-sm text-muted-foreground">
@@ -5273,7 +5327,7 @@ function TenantPortalContent({
                   ) : null}
                   {!portal.compliance.uploaded_documents.length ? (
                     <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
-                      No documents yet.
+                      No documents on file yet.
                     </div>
                   ) : null}
                 </div>

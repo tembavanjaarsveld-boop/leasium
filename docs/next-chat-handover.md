@@ -2,13 +2,46 @@
 
 Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-03 (Tenant portal Documents card — latest)
+## Claude continuation — 2026-06-03 (Tenant portal calm status header — latest)
+
+Cowork session, sixth slice. Temba felt the tenant page was "too busy" and wanted
+the tenant to "feel safe and assured." After a mockup + discussion he was undecided
+on direction; the agreed first pass (no-regret, carries over whether or not tabs
+land later) is a calm status header + warmer copy. **Not yet committed** — inspect
+`git status --short` first. (Pushed so far: `08163cc`, `1791e55`, `b304473`,
+`10b3837`, `1ef411d`.)
+
+Direction decision: **calm single-scroll, not tabs.** A tenant's sections are
+sparse, so tabs would mostly hide near-empty panels behind clicks. Tabs stay a
+later option if a section grows deep. The mockup explored a status-first + tabs
+layout; we deliberately took only the status-first half for now.
+
+### Tenant portal calm status header + warmer copy (uncommitted)
+`apps/web/src/app/tenant-portal/tenant-portal-content.tsx`:
+- Folded the identity "Clean header" and the attention-only action strip into one
+  always-on status hero. `attentionItems` (existing — `actionItems` minus the
+  success all-clear) drives it: empty → calm green "You're all set"; non-empty →
+  amber "One thing to do / N things to do" listing the items, plus an
+  "Upload documents" anchor to `#tenant-documents` when `!documentsComplete`.
+- Added optional `id` (+ `scroll-mt-24`) to the local `Panel` so the hero link can
+  anchor to the Documents panel.
+- Warmer copy: Documents badge "Action needed" → "{n} to upload"; new
+  `tenantDocStatusLabel` maps missing/not_on_file/expired/received →
+  "Not uploaded yet"/"Not required"/"Needs renewing"/"Received" for the doc tiles
+  in both the Documents and Required Documents panels (shared `label()` untouched —
+  operator side unaffected); empty states warmed (payments → "Nothing due right
+  now…", maintenance → "No open requests…", documents → "No documents on file yet").
+Verification: eslint clean, tsc clean, tenant smokes 38 passed / 9 skipped,
+production build green. No smoke asserted the changed copy. Docs:
+product-roadmap.md (`[~]`) + design-governance.md (prototype entry).
+
+## Claude continuation — 2026-06-03 (Tenant portal Documents card)
 
 Cowork session, fifth slice. Temba flagged the Documents card on the tenant portal
 (screenshot: the "not on file" status chip clipping off the Onboarding-files tile,
-and the raw browser file input). **Not yet committed** — inspect `git status
---short` first. (Pushed so far: Insights tabs `08163cc`, queue urgency buckets
-`1791e55`, footnote declutter `b304473`, assign-on-expand `10b3837`.)
+and the raw browser file input). Committed + pushed as `1ef411d`. (Pushed so far:
+Insights tabs `08163cc`, queue urgency buckets `1791e55`, footnote declutter
+`b304473`, assign-on-expand `10b3837`.)
 
 ### Tenant portal Documents card layout fix (uncommitted)
 `apps/web/src/app/tenant-portal/tenant-portal-content.tsx`: the document-checklist
