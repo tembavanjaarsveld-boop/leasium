@@ -4255,49 +4255,28 @@ function SettingsWorkspace() {
                   return (
                     <div
                       key={`${member.id}-notifications`}
-                      className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(170px,.8fr)_minmax(0,2fr)_minmax(205px,.75fr)_minmax(170px,.65fr)] lg:items-start"
+                      className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(160px,.7fr)_minmax(0,1.8fr)_minmax(190px,.7fr)_minmax(140px,.55fr)] lg:items-start"
                     >
+                      {/* Name + role */}
                       <div className="min-w-0 lg:pt-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className="truncate font-medium">
                             {member.display_name}
                           </div>
                           <StatusBadge tone="neutral">
                             {currentRole
-                              ? `${roleLabel(currentRole.role)} access`
+                              ? roleLabel(currentRole.role)
                               : "No access"}
                           </StatusBadge>
                         </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
                           {member.email}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <StatusBadge
-                            tone={workEmailEnabled ? "success" : "neutral"}
-                          >
-                            {workEmailEnabled ? "Work email on" : "Email off"}
-                          </StatusBadge>
-                          <StatusBadge
-                            tone={
-                              workSmsEnabled && smsPhone ? "primary" : "neutral"
-                            }
-                          >
-                            {workSmsEnabled && smsPhone
-                              ? "SMS ready"
-                              : "SMS not ready"}
-                          </StatusBadge>
-                          <StatusBadge
-                            tone={
-                              digestCadence === "off" ? "neutral" : "primary"
-                            }
-                          >
-                            {digestCadenceLabel(digestCadence)}
-                          </StatusBadge>
                         </div>
                       </div>
 
-                      <div className="grid gap-2 xl:grid-cols-[minmax(160px,.65fr)_minmax(0,1.35fr)]">
-                        <label className="flex min-h-11 items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
+                      {/* Email + SMS — flat, no inner boxes */}
+                      <div className="grid gap-1.5">
+                        <label className="flex min-h-10 items-center gap-3 rounded-md border border-border px-3 text-sm">
                           <input
                             aria-label={`${member.display_name} assignment email notifications`}
                             checked={workEmailEnabled}
@@ -4317,22 +4296,17 @@ function SettingsWorkspace() {
                             }
                             type="checkbox"
                           />
-                          <span className="min-w-0">
-                            <span className="flex items-center gap-1 font-medium">
-                              {workEmailEnabled ? (
-                                <Bell size={14} />
-                              ) : (
-                                <BellOff size={14} />
-                              )}
-                              Assignment email
-                            </span>
-                            <span className="block text-xs leading-5 text-muted-foreground">
-                              Immediate notices
-                            </span>
+                          <span className="flex items-center gap-1.5 font-medium">
+                            {workEmailEnabled ? (
+                              <Bell size={13} className="text-primary" />
+                            ) : (
+                              <BellOff size={13} className="text-muted-foreground" />
+                            )}
+                            Assignment email
                           </span>
                         </label>
-                        <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-2 sm:grid-cols-[minmax(150px,.75fr)_minmax(0,1fr)_auto] sm:items-center">
-                          <label className="flex min-h-11 items-center gap-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border px-3 py-1.5">
+                          <label className="flex min-h-8 items-center gap-3 text-sm">
                             <input
                               aria-label={`${member.display_name} assignment SMS notifications`}
                               checked={workSmsEnabled}
@@ -4352,58 +4326,56 @@ function SettingsWorkspace() {
                               }
                               type="checkbox"
                             />
-                            <span className="min-w-0">
-                              <span className="flex items-center gap-1 font-medium">
-                                <Smartphone size={14} />
-                                Assignment SMS
-                              </span>
-                              <span className="block text-xs leading-5 text-muted-foreground">
-                                Recovery phone
-                              </span>
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <Smartphone size={13} className={workSmsEnabled ? "text-primary" : "text-muted-foreground"} />
+                              SMS
                             </span>
                           </label>
                           {showSmsPhoneControls ? (
-                            <Input
-                              aria-label={`${member.display_name} assignment SMS phone`}
-                              placeholder="+61400111222"
-                              value={smsPhoneDraft}
-                              disabled={!canManageSecurity}
-                              onChange={(event) =>
-                                setSmsPhoneDrafts((drafts) => ({
-                                  ...drafts,
-                                  [member.id]: event.target.value,
-                                }))
-                              }
-                            />
+                            <>
+                              <Input
+                                aria-label={`${member.display_name} assignment SMS phone`}
+                                placeholder="+61400111222"
+                                value={smsPhoneDraft}
+                                disabled={!canManageSecurity}
+                                className="h-8 min-h-0 flex-1 text-xs"
+                                onChange={(event) =>
+                                  setSmsPhoneDrafts((drafts) => ({
+                                    ...drafts,
+                                    [member.id]: event.target.value,
+                                  }))
+                                }
+                              />
+                              <SecondaryButton
+                                type="button"
+                                className="h-8 min-h-0 rounded-lg px-2 text-xs"
+                                disabled={!canManageSecurity || !smsPhoneChanged}
+                                onClick={() =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    payload: {
+                                      notification_preferences:
+                                        nextNotificationPreferences(member, {
+                                          work_assignment_sms_phone:
+                                            smsPhoneDraft.trim() || null,
+                                        }),
+                                    },
+                                  })
+                                }
+                              >
+                                {isUpdating ? (
+                                  <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                  <CheckCircle2 size={12} />
+                                )}
+                                Save
+                              </SecondaryButton>
+                            </>
                           ) : (
-                            <div className="flex min-h-11 items-center rounded-md bg-white px-3 text-xs text-muted-foreground">
-                              Enable SMS to add a phone.
-                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              Enable to add phone
+                            </span>
                           )}
-                          <SecondaryButton
-                            type="button"
-                            className="justify-self-start rounded-lg px-3 text-xs"
-                            disabled={!canManageSecurity || !smsPhoneChanged}
-                            onClick={() =>
-                              memberMutation.mutate({
-                                memberId: member.id,
-                                payload: {
-                                  notification_preferences:
-                                    nextNotificationPreferences(member, {
-                                      work_assignment_sms_phone:
-                                        smsPhoneDraft.trim() || null,
-                                    }),
-                                },
-                              })
-                            }
-                          >
-                            {isUpdating ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <CheckCircle2 size={14} />
-                            )}
-                            Save SMS
-                          </SecondaryButton>
                         </div>
                       </div>
 
