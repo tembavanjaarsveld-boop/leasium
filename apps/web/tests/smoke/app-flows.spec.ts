@@ -1690,6 +1690,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Overdue/ })).toBeVisible();
   await page
     .getByLabel("Assignee for Air conditioning fault")
     .selectOption({ label: "Temba van Jaarsveld" });
@@ -1719,7 +1720,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   expect(queueCsv).toContain("Temba van Jaarsveld");
   expect(queueCsv).toContain("Notification ready");
   expect(queueCsv).toContain(
-    "Review-only export: downloading this file does not send SendGrid or Twilio messages, send tenant owner or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.",
+    "Local-only review export: downloading this file does not send SendGrid or Twilio messages, send tenant, owner, or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, perform Xero/Basiq writes, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.",
   );
   const tenantInsuranceReviewLink = page
     .locator("a")

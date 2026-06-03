@@ -6,6 +6,7 @@ import {
   Ban,
   Building2,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Clock3,
   Copy,
@@ -574,6 +575,41 @@ function dueRank(value: string | null | undefined) {
   const today = new Date(dateOnly(new Date())).getTime();
   const due = new Date(`${value.slice(0, 10)}T00:00:00`).getTime();
   return Math.ceil((due - today) / 86_400_000);
+}
+
+const QUEUE_BUCKETS = [
+  { id: "overdue", label: "Overdue" },
+  { id: "due_soon", label: "Due soon" },
+  { id: "scheduled", label: "Scheduled" },
+  { id: "no_date", label: "No date" },
+] as const;
+
+type QueueBucketId = (typeof QUEUE_BUCKETS)[number]["id"];
+
+const QUEUE_BUCKET_PREVIEW = 12;
+
+function queueBucketId(item: QueueItem): QueueBucketId {
+  if (!item.dueDate) {
+    return "no_date";
+  }
+  const rank = dueRank(item.dueDate);
+  if (rank < 0) {
+    return "overdue";
+  }
+  if (rank <= 7) {
+    return "due_soon";
+  }
+  return "scheduled";
+}
+
+function queueBucketTone(id: QueueBucketId): StatusTone {
+  if (id === "overdue") {
+    return "danger";
+  }
+  if (id === "due_soon") {
+    return "warning";
+  }
+  return "neutral";
 }
 
 function dueLabel(value: string | null | undefined) {
@@ -2222,6 +2258,12 @@ function buildQueueItems(
 function OperationsWorkspace() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
+  const [queueBucketCollapsed, setQueueBucketCollapsed] = useState<
+    Record<QueueBucketId, boolean>
+  >({ overdue: false, due_soon: false, scheduled: true, no_date: true });
+  const [queueBucketShowAll, setQueueBucketShowAll] = useState<
+    Record<QueueBucketId, boolean>
+  >({ overdue: false, due_soon: false, scheduled: false, no_date: false });
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [maintenanceStatus, setMaintenanceStatus] = useState<
     MaintenanceWorkOrderStatus | "all"
@@ -2779,6 +2821,13 @@ function OperationsWorkspace() {
   const filteredOpenQueueItems = openQueueItems.filter((item) =>
     matchesAssigneeFilter(item, assigneeFilter, currentUser?.id),
   );
+  const queueBuckets = QUEUE_BUCKETS.map((bucket) => ({
+    id: bucket.id,
+    label: bucket.label,
+    items: filteredOpenQueueItems.filter(
+      (item) => queueBucketId(item) === bucket.id,
+    ),
+  }));
   const readyNotificationItems = filteredOpenQueueItems
     .filter(isAssignableQueueItem)
     .filter((item) =>
@@ -3420,6 +3469,63 @@ function OperationsWorkspace() {
     );
   }
 
+  const renderQueueRow = (item: QueueItem) => (
+    <div
+      key={item.id}
+      className="grid gap-2 px-4 py-3 sm:gap-3 sm:py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
+    >
+      <Link
+        href={item.href}
+        data-ops-row
+        className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-leasium-body-compact font-medium leading-5 text-foreground">
+            {item.title}
+          </span>
+          <StatusBadge tone={item.tone}>{queueDateLabel(item)}</StatusBadge>
+          <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
+          <StatusBadge tone={queueKindTone(item)}>
+            {queueKindLabel(item)}
+          </StatusBadge>
+        </div>
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+          {item.description}
+        </p>
+      </Link>
+      {isAssignableQueueItem(item) ? (
+        <>
+          <div className="hidden w-full xl:block xl:w-[22rem]">
+            {renderQueueAssignmentControl(item)}
+          </div>
+          <MobileRowDisclosure
+            title="Work controls"
+            subtitle={queueMobileActionSummary(item)}
+            icon={<UserRound size={15} />}
+          >
+            {renderQueueAssignmentControl(
+              item,
+              `Work controls owner selector: ${item.title}`,
+            )}
+            <div className="grid gap-2">
+              {renderQueueActions(item, {
+                compactLabels: true,
+              })}
+            </div>
+          </MobileRowDisclosure>
+        </>
+      ) : null}
+      <div
+        className={cn(
+          "grid w-full gap-2 sm:w-auto sm:grid-flow-col xl:grid-flow-row xl:justify-items-stretch",
+          isAssignableQueueItem(item) && "hidden xl:grid",
+        )}
+      >
+        {renderQueueActions(item)}
+      </div>
+    </div>
+  );
+
   return (
     <main className="min-h-screen">
       <AppHeader>
@@ -3916,70 +4022,73 @@ function OperationsWorkspace() {
                     <AssignmentDigestPreview result={digestResult} />
                   ) : null}
                 </div>
-                <div
-                  className="divide-y divide-border"
-                  onKeyDown={handleQueueKeyDown}
-                >
-                  {filteredOpenQueueItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="grid gap-2 px-4 py-3 sm:gap-3 sm:py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
-                    >
-                      <Link
-                        href={item.href}
-                        data-ops-row
-                        className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-leasium-body-compact font-medium leading-5 text-foreground">
-                            {item.title}
-                          </span>
-                          <StatusBadge tone={item.tone}>
-                            {queueDateLabel(item)}
-                          </StatusBadge>
-                          <StatusBadge tone={item.tone}>
-                            {item.chip}
-                          </StatusBadge>
-                          <StatusBadge tone={queueKindTone(item)}>
-                            {queueKindLabel(item)}
-                          </StatusBadge>
-                        </div>
-                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                          {item.description}
-                        </p>
-                      </Link>
-                      {isAssignableQueueItem(item) ? (
-                        <>
-                          <div className="hidden w-full xl:block xl:w-[22rem]">
-                            {renderQueueAssignmentControl(item)}
-                          </div>
-                          <MobileRowDisclosure
-                            title="Work controls"
-                            subtitle={queueMobileActionSummary(item)}
-                            icon={<UserRound size={15} />}
-                          >
-                            {renderQueueAssignmentControl(
-                              item,
-                              `Work controls owner selector: ${item.title}`,
-                            )}
-                            <div className="grid gap-2">
-                              {renderQueueActions(item, {
-                                compactLabels: true,
-                              })}
-                            </div>
-                          </MobileRowDisclosure>
-                        </>
-                      ) : null}
+                <div onKeyDown={handleQueueKeyDown}>
+                  {queueBuckets.map((bucket) => {
+                    if (bucket.items.length === 0) {
+                      return null;
+                    }
+                    const collapsed = queueBucketCollapsed[bucket.id];
+                    const showAll = queueBucketShowAll[bucket.id];
+                    const visibleItems = showAll
+                      ? bucket.items
+                      : bucket.items.slice(0, QUEUE_BUCKET_PREVIEW);
+                    return (
                       <div
-                        className={cn(
-                          "grid w-full gap-2 sm:w-auto sm:grid-flow-col xl:grid-flow-row xl:justify-items-stretch",
-                          isAssignableQueueItem(item) && "hidden xl:grid",
-                        )}
+                        key={bucket.id}
+                        className="border-b border-border last:border-b-0"
                       >
-                        {renderQueueActions(item)}
+                        <button
+                          type="button"
+                          aria-expanded={!collapsed}
+                          onClick={() =>
+                            setQueueBucketCollapsed((prev) => ({
+                              ...prev,
+                              [bucket.id]: !prev[bucket.id],
+                            }))
+                          }
+                          className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-3 text-left transition duration-200 ease-leasium hover:bg-muted/40"
+                        >
+                          <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                            <ChevronDown
+                              size={16}
+                              className={cn(
+                                "text-muted-foreground transition duration-200 ease-leasium",
+                                collapsed && "-rotate-90",
+                              )}
+                            />
+                            {bucket.label}
+                            <StatusBadge tone={queueBucketTone(bucket.id)}>
+                              {bucket.items.length}
+                            </StatusBadge>
+                          </span>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {collapsed ? "Show" : "Hide"}
+                          </span>
+                        </button>
+                        {!collapsed ? (
+                          <div className="divide-y divide-border border-t border-border">
+                            {visibleItems.map((item) => renderQueueRow(item))}
+                            {bucket.items.length > QUEUE_BUCKET_PREVIEW ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setQueueBucketShowAll((prev) => ({
+                                    ...prev,
+                                    [bucket.id]: !prev[bucket.id],
+                                  }))
+                                }
+                                className="flex min-h-11 w-full items-center justify-center px-4 py-3 text-sm font-semibold text-primary transition duration-200 ease-leasium hover:bg-muted/40"
+                              >
+                                {showAll
+                                  ? "Show fewer"
+                                  : `Show all ${bucket.items.length}`}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {!operationsLoading && filteredOpenQueueItems.length === 0 ? (
                     <EmptyState
                       title={

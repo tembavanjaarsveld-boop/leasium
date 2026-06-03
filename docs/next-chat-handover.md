@@ -2,7 +2,32 @@
 
 Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-03 (Insights tabbed layout — latest)
+## Claude continuation — 2026-06-03 (Work queue urgency buckets — latest)
+
+Cowork session, second slice. Same "ugly and long" complaint applied to the
+`/operations` **Work** queue: the Queue tab rendered every open item in one flat
+scroll. **Not yet committed** — inspect `git status --short` / `git diff --stat`
+first. (The earlier Insights tab slice this session is committed + pushed as
+`08163cc`.)
+
+### Work queue urgency buckets (uncommitted)
+`apps/web/src/app/operations/page.tsx`: the Queue tab now groups
+`filteredOpenQueueItems` into collapsible **Overdue / Due soon (≤7d) / Scheduled
+(>7d) / No date** buckets via a `queueBucketId` helper over the existing `dueRank`.
+Urgent buckets open by default, Scheduled + No date collapsed; each header shows a
+tone-coloured count and each bucket caps at `QUEUE_BUCKET_PREVIEW` (12) rows with a
+"Show all / Show fewer" toggle. The row JSX was extracted verbatim into
+`renderQueueRow`; assignment controls, `handleQueueKeyDown` keyboard nav, the
+assignee/workload filters, notice inbox, digest, and review CSV are untouched.
+Display-only — no data or provider behaviour changed.
+`apps/web/tests/smoke/app-flows.spec.ts`: added an Overdue bucket-header assertion,
+and synced one stale `OPERATIONS_QUEUE_EXPORT_GUARDRAIL` assertion that was already
+failing (test still expected the old "Review-only export…" copy; the code ships
+"Local-only review export… perform Xero/Basiq writes…").
+Verification: eslint clean, tsc clean, 17/17 operations Playwright smokes pass,
+production build green.
+
+## Claude continuation — 2026-06-03 (Insights tabbed layout)
 
 Cowork session. Single design slice off the "ugly and long" Insights page: turned
 the `/insights` single ~2,600px scroll (~12 stacked panels) into a persistent

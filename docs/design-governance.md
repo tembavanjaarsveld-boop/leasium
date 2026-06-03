@@ -49,6 +49,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   and tablist styling; tab state syncs to the URL. Read-only and provider-inert — no data,
   copy, or guardrail behaviour changed, only grouping and density. Verified by eslint + tsc
   + the Insights Playwright smoke (rewritten to click through tabs).
+- **Work queue urgency buckets (2026-06-03, prototype mode, no Remba gate):**
+  the `/operations` Queue tab no longer renders every open item in one flat scroll. Open
+  work now groups into collapsible **Overdue / Due soon / Scheduled / No date** buckets
+  (urgent buckets open, the rest collapsed) with tone-coloured counts, each capped at a
+  12-row preview with a "Show all / Show fewer" toggle. Display-only re-grouping over the
+  existing urgency-sorted queue; row internals, assignment controls, keyboard navigation,
+  assignee/workload filters, notice inbox, digest, and the review-only CSV are unchanged.
+  Verified by eslint + tsc + the operations Playwright smokes (17/17) + production build.
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 
