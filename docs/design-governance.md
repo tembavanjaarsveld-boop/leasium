@@ -63,6 +63,15 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   has a notification ready/delivered/problem state — so untouched unassigned queue rows drop
   the repeated boilerplate line and shrink by a row. Behaviour and the assigned-state detail
   are unchanged. Verified by eslint + tsc + operations smokes (17/17) + production build.
+- **Work queue assign-on-expand affordance (2026-06-03, prototype mode, no Remba gate):**
+  on the desktop `/operations` Queue, an unassigned row's assignment widget now collapses to
+  a single dashed "Assign owner" button that expands inline to the assignee picker +
+  Assign/Cancel on click, so unassigned rows become a one-liner. Gated by a new `collapsible`
+  prop on `WorkAssignmentControl` (threaded via `renderAssignmentControl` /
+  `renderQueueAssignmentControl`), set true only for the desktop queue inline control — the
+  mobile "Work controls" disclosure and the maintenance/arrears detail controls keep the full
+  inline control, so there is no double-collapse on mobile. Assigned rows are unchanged.
+  Verified by eslint + tsc + operations smokes (17/17) + production build.
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 

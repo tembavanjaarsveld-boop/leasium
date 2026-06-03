@@ -1692,6 +1692,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
   await expect(page.getByRole("button", { name: /Overdue/ })).toBeVisible();
   await page
+    .getByRole("button", { name: "Assign owner for Air conditioning fault" })
+    .click();
+  await page
     .getByLabel("Assignee for Air conditioning fault")
     .selectOption({ label: "Temba van Jaarsveld" });
   await page

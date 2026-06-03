@@ -2,12 +2,36 @@
 
 Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-03 (Queue assignment declutter — latest)
+## Claude continuation — 2026-06-03 (Queue assign-on-expand — latest)
+
+Cowork session, fourth slice. Temba said "Go" to the further declutter offered
+after the footnote removal: collapse the desktop queue assignment widget behind a
+single "Assign owner" button. **Not yet committed** — inspect `git status --short`
+first. (Pushed so far: Insights tabs `08163cc`, queue urgency buckets `1791e55`,
+footnote declutter `b304473`.)
+
+### Queue assign-on-expand affordance (uncommitted)
+`apps/web/src/app/operations/page.tsx` (`WorkAssignmentControl`): added a
+`collapsible` prop + per-instance `expanded` state. When `collapsible && !isAssigned`
+an unassigned row shows a dashed "Assign owner" button (aria-label
+`Assign owner for {title}`) that expands inline to the assignee `Select` + `Assign`
++ `Cancel`; assigning flips it to the full assigned control. `collapsible` is
+threaded through `renderAssignmentControl` / `renderQueueAssignmentControl` and set
+**true only for the desktop queue inline control** — the mobile "Work controls"
+disclosure and the maintenance/arrears detail controls pass the default (false) and
+keep the full inline control, so there is no double-collapse on mobile.
+`apps/web/tests/smoke/app-flows.spec.ts`: the desktop queue test now clicks
+"Assign owner for Air conditioning fault" to expand before selecting the assignee;
+the mobile "keeps mobile rows compact" test is unchanged (mobile control stays full).
+Verification: eslint clean, tsc clean, 17/17 operations smokes pass, production build
+green.
+
+## Claude continuation — 2026-06-03 (Queue assignment declutter)
 
 Cowork session, third slice. Temba flagged the per-row assignment widget in the
-`/operations` queue (repeated boilerplate caption on every row). **Not yet
-committed** — inspect `git status --short` first. (Insights tabs = `08163cc`,
-queue urgency buckets = `1791e55`, both pushed.)
+`/operations` queue (repeated boilerplate caption on every row). Committed +
+pushed as `b304473`. (Insights tabs = `08163cc`, queue urgency buckets = `1791e55`,
+both pushed.)
 
 ### Queue assignment control declutter (uncommitted)
 `apps/web/src/app/operations/page.tsx` (`WorkAssignmentControl`): the footnote

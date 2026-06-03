@@ -3315,6 +3315,7 @@ function OperationsWorkspace() {
     onAction,
     onNotify,
     assigneeAriaLabel,
+    collapsible,
   }: {
     itemId: string;
     title: string;
@@ -3323,11 +3324,13 @@ function OperationsWorkspace() {
     onAction: (action: WorkAssignmentAction) => void;
     onNotify: () => void;
     assigneeAriaLabel?: string;
+    collapsible?: boolean;
   }) {
     return (
       <WorkAssignmentControl
         title={title}
         assigneeAriaLabel={assigneeAriaLabel}
+        collapsible={collapsible}
         assignment={workAssignment(metadata)}
         members={assignableMembers}
         value={assignmentValue(itemId, metadata)}
@@ -3344,12 +3347,14 @@ function OperationsWorkspace() {
   function renderQueueAssignmentControl(
     item: AssignableQueueItem,
     assigneeAriaLabel?: string,
+    collapsible?: boolean,
   ) {
     return renderAssignmentControl({
       itemId: item.id,
       title: item.title,
       metadata: item.record.metadata,
       assigneeAriaLabel,
+      collapsible,
       onAssign: (assigneeId) => assignQueueItem(item, assigneeId),
       onAction: (action) => actionQueueItem(item, action),
       onNotify: () => sendAssignmentNotification(item),
@@ -3496,7 +3501,7 @@ function OperationsWorkspace() {
       {isAssignableQueueItem(item) ? (
         <>
           <div className="hidden w-full xl:block xl:w-[22rem]">
-            {renderQueueAssignmentControl(item)}
+            {renderQueueAssignmentControl(item, undefined, true)}
           </div>
           <MobileRowDisclosure
             title="Work controls"
@@ -5555,6 +5560,7 @@ function WorkAssignmentControl({
   onNotify,
   disabled,
   membersLoading,
+  collapsible,
 }: {
   title: string;
   assigneeAriaLabel?: string;
@@ -5567,7 +5573,9 @@ function WorkAssignmentControl({
   onNotify: () => void;
   disabled: boolean;
   membersLoading: boolean;
+  collapsible?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const currentAssigneeId = assignment?.assignedUserId ?? "";
   const hasMembers = members.length > 0;
   const canAssign = Boolean(value) && value !== currentAssigneeId;
@@ -5618,6 +5626,69 @@ function WorkAssignmentControl({
       notificationDelivered ||
       notificationProblem,
   );
+
+  if (collapsible && !isAssigned) {
+    if (!expanded) {
+      return (
+        <div className="flex min-w-[min(100%,22rem)]">
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            aria-label={`Assign owner for ${title}`}
+            className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-dashed border-border bg-white/60 px-3 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:border-primary/40 hover:bg-white hover:text-foreground"
+          >
+            <UserRound size={15} />
+            Assign owner
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="grid min-w-[min(100%,22rem)] gap-2 rounded-xl border border-border bg-muted/30 p-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            aria-label={assigneeAriaLabel ?? `Assignee for ${title}`}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            disabled={disabled || membersLoading || !hasMembers}
+            className="h-9 w-44"
+          >
+            <option value="">
+              {membersLoading
+                ? "Checking members"
+                : hasMembers
+                  ? "Choose assignee"
+                  : "No members"}
+            </option>
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {memberLabel(member)}
+              </option>
+            ))}
+          </Select>
+          <SecondaryButton
+            type="button"
+            className="h-9 px-3"
+            disabled={disabled || !canAssign}
+            onClick={() => onAssign(value)}
+          >
+            <MailCheck size={15} />
+            Assign
+          </SecondaryButton>
+          <button
+            type="button"
+            onClick={() => {
+              onChange("");
+              setExpanded(false);
+            }}
+            className="inline-flex h-9 items-center px-2 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-w-[min(100%,22rem)] gap-2 rounded-xl border border-border bg-muted/30 p-2 text-sm">
