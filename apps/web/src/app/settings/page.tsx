@@ -4380,52 +4380,42 @@ function SettingsWorkspace() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="grid gap-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                          <span className="font-medium text-foreground">
-                            Digest
-                          </span>
-                          <Select
-                            aria-label={`${member.display_name} work digest`}
-                            value={digestCadence}
-                            disabled={!canManageSecurity}
-                            onChange={(event) =>
-                              memberMutation.mutate({
-                                memberId: member.id,
-                                payload: {
-                                  notification_preferences:
-                                    nextNotificationPreferences(member, {
-                                      work_assignment_digest_cadence: event
-                                        .target
-                                        .value as SecurityWorkAssignmentDigestCadence,
-                                    }),
-                                },
-                              })
-                            }
-                          >
-                            <option value="daily">Daily digest</option>
-                            <option value="weekly">Weekly digest</option>
-                            <option value="off">Digest off</option>
-                          </Select>
-                        </label>
+                        <Select
+                          aria-label={`${member.display_name} work digest cadence`}
+                          value={digestCadence}
+                          disabled={!canManageSecurity}
+                          onChange={(event) =>
+                            memberMutation.mutate({
+                              memberId: member.id,
+                              payload: {
+                                notification_preferences:
+                                  nextNotificationPreferences(member, {
+                                    work_assignment_digest_cadence: event
+                                      .target
+                                      .value as SecurityWorkAssignmentDigestCadence,
+                                  }),
+                              },
+                            })
+                          }
+                        >
+                          <option value="daily">Daily digest</option>
+                          <option value="weekly">Weekly digest</option>
+                          <option value="off">Digest off</option>
+                        </Select>
                         <DigestReceiptSummary member={member} />
                       </div>
 
-                      <details className="overflow-hidden rounded-md border border-border bg-muted/20 lg:open:col-span-4">
-                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <Tags size={14} className="text-primary" />
-                            <span>Template defaults</span>
-                            <span className="hidden text-xs font-normal text-muted-foreground xl:inline">
-                              Advanced
-                            </span>
+                      <details className="overflow-hidden rounded-md border border-border lg:open:col-span-4">
+                        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+                          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                            <Tags size={13} />
+                            <span className="font-medium text-foreground">Templates</span>
                           </span>
-                          <span className="flex shrink-0 items-center gap-2">
-                            <StatusBadge
-                              tone={templatesChanged ? "warning" : "neutral"}
-                            >
-                              {templatesChanged ? "Unsaved" : "Current"}
-                            </StatusBadge>
-                          </span>
+                          <StatusBadge
+                            tone={templatesChanged ? "warning" : "neutral"}
+                          >
+                            {templatesChanged ? "Unsaved" : "Current"}
+                          </StatusBadge>
                         </summary>
                         <div className="grid gap-3 border-t border-border p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                           <div className="grid gap-2">
