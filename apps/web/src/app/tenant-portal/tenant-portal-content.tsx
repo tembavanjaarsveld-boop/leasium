@@ -4330,10 +4330,11 @@ function TenantPortalContent({
   const onboardingAppliedComplete = onboardingApplied(portal);
   const fullPortalUnlocked = onboardingAppliedComplete && leaseAgreementSigned;
   const requiredDocuments = portal.compliance.items;
+  const actionableDocuments = requiredDocuments.filter((item) =>
+    ["missing", "expired"].includes(item.status),
+  );
   const documentsRequired = requiredDocuments.length > 0;
-  const documentsComplete =
-    !documentsRequired ||
-    requiredDocuments.every((item) => item.status === "received");
+  const documentsComplete = actionableDocuments.length === 0;
   const onboardingReviewReady = detailsSubmitted && documentsComplete;
 
   if (view === "lease") {
@@ -4454,10 +4455,10 @@ function TenantPortalContent({
                       : "No documents are required right now. You can still upload supporting files if your property team asks for them."}
                   </p>
                   <div className="grid gap-3 md:grid-cols-3">
-                    {requiredDocuments.map((item) => (
+                    {actionableDocuments.map((item) => (
                       <div
                         key={item.key}
-                        className="rounded-md border border-border p-3"
+                        className="rounded-md border border-warning/30 bg-warning/5 p-3"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-semibold">{item.label}</div>
@@ -4474,7 +4475,7 @@ function TenantPortalContent({
                         </div>
                       </div>
                     ))}
-                    {!requiredDocuments.length ? (
+                    {!actionableDocuments.length ? (
                       <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground md:col-span-3">
                         No required document checklist for this onboarding.
                       </div>
@@ -5136,12 +5137,12 @@ function TenantPortalContent({
               }
             >
               <div className="grid gap-3 p-4">
-                {documentsRequired ? (
+                {actionableDocuments.length > 0 ? (
                   <div className="grid gap-3 md:grid-cols-3">
-                    {portal.compliance.items.map((item) => (
+                    {actionableDocuments.map((item) => (
                       <div
                         key={item.key}
-                        className="rounded-md border border-border p-3"
+                        className="rounded-md border border-warning/30 bg-warning/5 p-3"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-semibold">{item.label}</div>
