@@ -5653,18 +5653,14 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(
     page.getByRole("heading", { exact: true, name: "Insights" }),
   ).toBeVisible();
+  // Overview tab (default): exceptions and billing risk.
   await expect(
     page.getByRole("heading", { name: "Live Exceptions" }),
   ).toBeVisible();
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Automation Activity" }),
-  ).toBeVisible();
-  await expect(page.getByText("Created reviewed lease records")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
-  ).toBeVisible();
-  await expect(page.getByText("Trust", { exact: true })).toBeVisible();
+
+  // Money tab: finance, invoices, arrears.
+  await page.getByRole("tab", { name: /Money/ }).click();
   await expect(
     page.getByRole("heading", { name: "Finance Snapshot" }),
   ).toBeVisible();
@@ -5686,10 +5682,24 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(financeSnapshotPanel.getByText("Chart")).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Tax")).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Open in Xero")).toBeVisible();
+
+  // Operations tab: maintenance, compliance, lease events.
+  await page.getByRole("tab", { name: /Operations/ }).click();
   await expect(
     page.getByRole("heading", { name: "Lease Events" }),
   ).toBeVisible();
   await expect(page.getByText("Bright Cafe Pty Ltd rent review")).toBeVisible();
+
+  // Portfolio tab: owner/entity, activity, and sharing.
+  await page.getByRole("tab", { name: /Portfolio/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Automation Activity" }),
+  ).toBeVisible();
+  await expect(page.getByText("Created reviewed lease records")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("Trust", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Generate link" }).click();
   await expect(page.getByText("Snapshot link ready")).toBeVisible();

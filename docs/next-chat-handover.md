@@ -1,8 +1,35 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
-## Claude continuation — 2026-06-02 (vendor portal contractor login — latest)
+## Claude continuation — 2026-06-03 (Insights tabbed layout — latest)
+
+Cowork session. Single design slice off the "ugly and long" Insights page: turned
+the `/insights` single ~2,600px scroll (~12 stacked panels) into a persistent
+five-card KPI band + four tabs. **Not yet committed** — sits on top of any prior
+unstaged work; inspect `git status --short` and `git diff --stat` before
+committing.
+
+### Insights tabs (uncommitted)
+`apps/web/src/app/insights/page.tsx`: added `INSIGHTS_TABS` + `activeTab` state
+with `?tab=` URL sync (mirrors Operations), an Operations-style `role="tablist"`
+bar after the KPI band, and wrapped each panel in a tab conditional:
+- **Overview** (default): Live Exceptions + Billing Risk (existing 2-col).
+- **Money**: Arrears, Invoice Status, Finance Snapshot.
+- **Operations**: Compliance & Inspections, Maintenance Aging, Lease Events.
+- **Portfolio**: Shareable Snapshots, Automation Activity + Owner/Entity, Controls.
+
+Only structural surgery was splitting the old Finance+Lease 2-col div (Finance →
+Money, Lease → Operations) and re-indenting those two panels. Read-only and
+provider-inert; no data, copy, or guardrail change — grouping + density only.
+`apps/web/tests/smoke/app-flows.spec.ts`: the Insights smoke now clicks through
+Money / Operations / Portfolio tabs (the Generate-link snapshot flow lives on the
+Portfolio tab). Docs touched: `product-roadmap.md` (`[~]` Insights tabbed layout),
+`design-governance.md` (2026-06-03 prototype-mode entry).
+Verification: eslint clean, `tsc --noEmit` clean, Insights Playwright smoke
+**1 passed (15.2s)** via `PORT=3999 NODE_ENV=development playwright test -g "insights shows overview"`.
+
+## Claude continuation — 2026-06-02 (vendor portal contractor login)
 
 Took over from Codex with a clean, fully-pushed tree (no unstaged slice to
 preserve, despite the older "Active Local Tree" note further down). Picked the

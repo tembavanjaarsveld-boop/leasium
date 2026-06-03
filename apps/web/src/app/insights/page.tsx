@@ -62,6 +62,19 @@ import { cn, friendlyError } from "@/lib/utils";
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
+const INSIGHTS_TABS = [
+  { id: "overview", label: "Overview", description: "Exceptions & billing risk" },
+  { id: "money", label: "Money", description: "Finance, invoices, arrears" },
+  {
+    id: "operations",
+    label: "Operations",
+    description: "Maintenance, compliance, leases",
+  },
+  { id: "portfolio", label: "Portfolio", description: "Owner, activity & sharing" },
+] as const;
+
+type InsightsTab = (typeof INSIGHTS_TABS)[number]["id"];
+
 type AccountingReadinessView = NonNullable<
   InsightsOverviewRecord["finance_snapshot"]["accounting_readiness"]
 > & {
@@ -919,6 +932,7 @@ function SnapshotHistoryRow({
 function InsightsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [activeTab, setActiveTab] = useState<InsightsTab>("overview");
   const [snapshotType, setSnapshotType] = useState<InsightsSnapshotType>("owner");
   const [latestSnapshot, setLatestSnapshot] =
     useState<InsightsSnapshotCreateRecord | null>(null);
@@ -940,6 +954,29 @@ function InsightsWorkspace() {
       setSelectedEntityId(stored);
     }
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && INSIGHTS_TABS.some((entry) => entry.id === tab)) {
+      setActiveTab(tab as InsightsTab);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (activeTab === "overview") {
+      params.delete("tab");
+    } else {
+      params.set("tab", activeTab);
+    }
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      query ? `${window.location.pathname}?${query}` : window.location.pathname,
+    );
+  }, [activeTab]);
 
   useEffect(() => {
     if (!entitiesQuery.isSuccess) {
@@ -1274,6 +1311,42 @@ function InsightsWorkspace() {
               ))}
             </section>
 
+            <div
+              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs sm:grid-cols-2 lg:grid-cols-4"
+              role="tablist"
+              aria-label="Insights sections"
+            >
+              {INSIGHTS_TABS.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <span className="text-sm font-semibold">{tab.label}</span>
+                    <span
+                      className={cn(
+                        "text-xs",
+                        isActive && "text-primary-foreground/80",
+                      )}
+                    >
+                      {tab.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeTab === "portfolio" ? (
             <SectionPanel
               title="Shareable Snapshots"
               description="Freeze the current owner, finance, or lease-event view into a revocable link."
@@ -1350,7 +1423,9 @@ function InsightsWorkspace() {
                 </div>
               </div>
             </SectionPanel>
+            ) : null}
 
+            {activeTab === "overview" ? (
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
               <SectionPanel
                 title="Live Exceptions"
@@ -1410,7 +1485,10 @@ function InsightsWorkspace() {
                 </div>
               </SectionPanel>
             </div>
+            ) : null}
 
+            {activeTab === "operations" ? (
+            <>
             <SectionPanel
               title="Compliance & Inspections"
               description="Certificate expiry, fire and safety obligations, delegated owners, and evidence status."
@@ -1580,7 +1658,11 @@ function InsightsWorkspace() {
                 </div>
               </div>
             </SectionPanel>
+            </>
+            ) : null}
 
+            {activeTab === "money" ? (
+            <>
             <SectionPanel
               title="Arrears Snapshot"
               description="Credit-control balances, reminder timing, disputes, promises, and escalation focus."
@@ -1757,91 +1839,95 @@ function InsightsWorkspace() {
               </div>
             </SectionPanel>
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <SectionPanel
-                title="Finance Snapshot"
-                description="A share-ready summary of billing readiness and draft invoice risk."
-                icon={<LineChart size={17} className="text-primary" />}
-                actions={
-                  accountingReadiness ? (
-                    <StatusBadge tone={accountingTone(accountingReadiness.status)}>
-                      Accounting {labelStatus(accountingReadiness.status)}
-                    </StatusBadge>
-                  ) : null
-                }
-              >
-                <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <CountPill
-                    label="Configured charges"
-                    value={formatMoney(financeSnapshot?.configured_charges_cents ?? 0)}
-                  />
-                  <CountPill
-                    label="Ready to bill"
-                    value={financeSnapshot?.ready_to_bill_count ?? 0}
-                  />
-                  <CountPill
-                    label="Blocked rows"
-                    value={financeSnapshot?.blocked_row_count ?? 0}
-                  />
-                  <CountPill
-                    label="Approved not synced"
-                    value={financeSnapshot?.approved_unsynced_invoice_count ?? 0}
-                  />
-                  <CountPill
-                    label="Unpaid invoices"
-                    value={financeSnapshot?.unpaid_invoice_count ?? 0}
-                  />
-                  <CountPill
-                    label="Contacts ready"
-                    value={`${accountingReadiness?.contact_ready ?? 0} / ${
-                      (accountingReadiness?.contact_ready ?? 0) +
-                      (accountingReadiness?.contact_missing ?? 0)
-                    }`}
-                  />
-                </div>
-                {accountingReadiness ? (
-                  <AccountingReadinessTrail accounting={accountingReadiness} />
-                ) : null}
-              </SectionPanel>
-
-              <SectionPanel
-                title="Lease Events"
-                description="Upcoming reviews, expiries, obligations, and onboarding follow-ups."
-                icon={<Clock3 size={17} className="text-primary" />}
-                actions={
-                  <StatusBadge tone={leaseEventSnapshot?.next_events.length ? "warning" : "success"}>
-                    {leaseEventSnapshot?.next_events.length ?? 0} upcoming
+            <SectionPanel
+              title="Finance Snapshot"
+              description="A share-ready summary of billing readiness and draft invoice risk."
+              icon={<LineChart size={17} className="text-primary" />}
+              actions={
+                accountingReadiness ? (
+                  <StatusBadge tone={accountingTone(accountingReadiness.status)}>
+                    Accounting {labelStatus(accountingReadiness.status)}
                   </StatusBadge>
-                }
-              >
-                <div className="divide-y divide-border">
-                  {(leaseEventSnapshot?.next_events ?? []).map((event) => (
-                    <Link
-                      key={event.id}
-                      href={event.href}
-                      className="grid gap-2 px-4 py-3 transition hover:bg-muted/60"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-semibold">{event.title}</div>
-                        <StatusBadge tone="primary">{eventKindLabel(event.kind)}</StatusBadge>
-                        <StatusBadge tone="neutral">{event.chip}</StatusBadge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {formatDate(event.date)}
-                      </div>
-                    </Link>
-                  ))}
-                  {(leaseEventSnapshot?.next_events.length ?? 0) === 0 ? (
-                    <EmptyState
-                      icon={<Clock3 size={18} />}
-                      title="No upcoming lease events"
-                      description="Rent reviews, expiries, obligations, and onboarding follow-ups will appear here."
-                    />
-                  ) : null}
-                </div>
-              </SectionPanel>
-            </div>
+                ) : null
+              }
+            >
+              <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                <CountPill
+                  label="Configured charges"
+                  value={formatMoney(financeSnapshot?.configured_charges_cents ?? 0)}
+                />
+                <CountPill
+                  label="Ready to bill"
+                  value={financeSnapshot?.ready_to_bill_count ?? 0}
+                />
+                <CountPill
+                  label="Blocked rows"
+                  value={financeSnapshot?.blocked_row_count ?? 0}
+                />
+                <CountPill
+                  label="Approved not synced"
+                  value={financeSnapshot?.approved_unsynced_invoice_count ?? 0}
+                />
+                <CountPill
+                  label="Unpaid invoices"
+                  value={financeSnapshot?.unpaid_invoice_count ?? 0}
+                />
+                <CountPill
+                  label="Contacts ready"
+                  value={`${accountingReadiness?.contact_ready ?? 0} / ${
+                    (accountingReadiness?.contact_ready ?? 0) +
+                    (accountingReadiness?.contact_missing ?? 0)
+                  }`}
+                />
+              </div>
+              {accountingReadiness ? (
+                <AccountingReadinessTrail accounting={accountingReadiness} />
+              ) : null}
+            </SectionPanel>
+            </>
+            ) : null}
 
+            {activeTab === "operations" ? (
+            <SectionPanel
+              title="Lease Events"
+              description="Upcoming reviews, expiries, obligations, and onboarding follow-ups."
+              icon={<Clock3 size={17} className="text-primary" />}
+              actions={
+                <StatusBadge tone={leaseEventSnapshot?.next_events.length ? "warning" : "success"}>
+                  {leaseEventSnapshot?.next_events.length ?? 0} upcoming
+                </StatusBadge>
+              }
+            >
+              <div className="divide-y divide-border">
+                {(leaseEventSnapshot?.next_events ?? []).map((event) => (
+                  <Link
+                    key={event.id}
+                    href={event.href}
+                    className="grid gap-2 px-4 py-3 transition hover:bg-muted/60"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-semibold">{event.title}</div>
+                      <StatusBadge tone="primary">{eventKindLabel(event.kind)}</StatusBadge>
+                      <StatusBadge tone="neutral">{event.chip}</StatusBadge>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {formatDate(event.date)}
+                    </div>
+                  </Link>
+                ))}
+                {(leaseEventSnapshot?.next_events.length ?? 0) === 0 ? (
+                  <EmptyState
+                    icon={<Clock3 size={18} />}
+                    title="No upcoming lease events"
+                    description="Rent reviews, expiries, obligations, and onboarding follow-ups will appear here."
+                  />
+                ) : null}
+              </div>
+            </SectionPanel>
+            ) : null}
+
+            {activeTab === "portfolio" ? (
+            <>
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
               <SectionPanel
                 title="Automation Activity"
@@ -1956,6 +2042,8 @@ function InsightsWorkspace() {
                 ))}
               </div>
             </SectionPanel>
+            </>
+            ) : null}
           </>
         ) : null}
       </div>

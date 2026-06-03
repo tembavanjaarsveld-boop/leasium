@@ -40,6 +40,15 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   per-invoice payment reference; display-only (no in-portal "pay now", no rails). Operator
   config is a Settings form (next slice). Plan:
   [`superpowers/plans/2026-06-02-tenant-payment-instructions.md`](superpowers/plans/2026-06-02-tenant-payment-instructions.md).
+- **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
+  `/insights` keeps the five-card KPI band always visible and replaces the former single
+  long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing
+  risk), **Money** (finance snapshot, invoice status, arrears), **Operations** (maintenance
+  aging, compliance & inspections, lease events), and **Portfolio** (owner/entity snapshot,
+  automation activity, shareable snapshots, controls). Reuses the Operations `?tab=` pattern
+  and tablist styling; tab state syncs to the URL. Read-only and provider-inert — no data,
+  copy, or guardrail behaviour changed, only grouping and density. Verified by eslint + tsc
+  + the Insights Playwright smoke (rewritten to click through tabs).
 
 ## 2026-05-31 DoorLoop Benchmark — IA + UX Direction (prototype mode)
 
