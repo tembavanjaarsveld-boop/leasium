@@ -2624,25 +2624,29 @@ function TenantAccountPanel({
   }
 
   if (accountPortal && accountTenantMatches) {
+    const signedInEmailAddress =
+      user?.primaryEmailAddress?.emailAddress ?? user?.fullName ?? null;
     return (
       <Panel
-        title="Account Access"
+        title="Your account"
         icon={<UserRound size={18} />}
         actions={<UserButton />}
       >
-        <div className="grid gap-2 p-4 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone="success">Account ready</StatusBadge>
-            <span className="text-muted-foreground">
-              {user?.primaryEmailAddress?.emailAddress ??
-                user?.fullName ??
-                "Signed in"}
-            </span>
+        <div className="grid gap-3 p-4 text-sm">
+          {signedInEmailAddress ? (
+            <p className="font-medium text-foreground">{signedInEmailAddress}</p>
+          ) : null}
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <p className="font-medium text-foreground">How to get back in</p>
+            <p className="mt-1 leading-6 text-muted-foreground">
+              Go to{" "}
+              <span className="font-medium text-foreground">
+                leasium.ai/tenant-portal
+              </span>
+              , enter your email and we&apos;ll send a 6-digit sign-in code.
+              No password needed.
+            </p>
           </div>
-          <p className="text-muted-foreground">
-            Future portal sessions use this tenant account, even after the
-            original invite link expires.
-          </p>
           {accountStatus?.recovery_action === "restored" &&
           accountStatus.recovery_at ? (
             <p className="text-xs text-muted-foreground">
@@ -2650,10 +2654,6 @@ function TenantAccountPanel({
               {formatDateTime(accountStatus.recovery_at)}.
             </p>
           ) : null}
-          <p className="text-xs text-muted-foreground">
-            If this account should move to another tenant, ask the property team
-            to update the portal access.
-          </p>
         </div>
       </Panel>
     );
@@ -4707,85 +4707,47 @@ function TenantPortalContent({
     portal,
     maintenanceSummary.openCount,
   );
+  const attentionItems = actionItems.filter((item) => item.tone !== "success");
 
   return (
     <PortalShell>
-      <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+      <div className="mx-auto grid max-w-4xl gap-5 px-5 py-6">
+
+        {/* Clean header */}
         <section className="rounded-md border border-border bg-white p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-primary">Tenant Portal</p>
-              <h2 className="mt-1 text-2xl font-semibold">
-                {portal.tenant.trading_name || portal.tenant.legal_name}
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {portal.lease.property_name} - {portal.lease.unit_label}
-              </p>
-            </div>
-            <div className="grid gap-2 text-right">
-              <StatusBadge
-                tone={portal.auth.dev_fallback ? "warning" : "primary"}
+          <p className="text-sm text-muted-foreground">
+            {portal.lease.property_name}
+            {portal.lease.unit_label ? ` · ${portal.lease.unit_label}` : ""}
+          </p>
+          <h2 className="mt-0.5 text-2xl font-semibold">
+            {portal.tenant.trading_name || portal.tenant.legal_name}
+          </h2>
+          {portal.lease.property_address ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {portal.lease.property_address}
+            </p>
+          ) : null}
+        </section>
+
+        {/* Action strip — only shown when something needs attention */}
+        {attentionItems.length ? (
+          <section className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 px-4 py-3">
+            {attentionItems.map((item) => (
+              <div
+                key={item.key}
+                className="flex flex-wrap items-start gap-3 text-sm"
               >
-                {portalScopeLabel(portal)}
-              </StatusBadge>
-              <span className="text-xs text-muted-foreground">
-                {portal.auth.boundary}
-              </span>
-            </div>
-          </div>
-        </section>
+                <StatusBadge tone={item.tone}>{item.title}</StatusBadge>
+                <span className="text-muted-foreground">{item.detail}</span>
+              </div>
+            ))}
+          </section>
+        ) : null}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <Metric
-            label="Onboarding"
-            value={tenantOnboardingStatusLabel(portal.onboarding.status)}
-            detail={
-              portal.onboarding.submitted_at
-                ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}`
-                : portal.onboarding.due_date
-                  ? `Due ${formatDate(portal.onboarding.due_date)}`
-                  : undefined
-            }
-          />
-          <Metric
-            label="Outstanding"
-            value={formatMoney(portal.payment_summary.outstanding_cents)}
-            detail={`${portal.payment_summary.invoice_count} invoice${
-              portal.payment_summary.invoice_count === 1 ? "" : "s"
-            }`}
-          />
-          <Metric
-            label="Next Due"
-            value={formatDate(portal.payment_summary.next_due_date)}
-            detail={label(portal.payment_summary.status)}
-          />
-          <Metric
-            label="Documents"
-            value={String(portal.compliance.uploaded_documents.length)}
-            detail="Tenant files"
-          />
-          <Metric
-            label="Maintenance"
-            value={String(portal.maintenance_requests.length)}
-            detail="Submitted requests"
-          />
-        </section>
-
-        <TenantPortalOverviewPanel
-          actionItems={actionItems}
-          recentActivity={recentActivity}
-          maintenanceSummary={maintenanceSummary}
-        />
-
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
           <div className="grid gap-5">
-            <OnboardingPanel
-              portal={portal}
-              token={token}
-              accountAuthToken={accountAuthToken}
-              getAccountAuthToken={getFreshAccountAuthToken}
-              onSaved={refreshPortal}
-            />
+
+            {/* Lease signing — only if not yet signed */}
             {portal.lease_agreement.status !== "signed" ? (
               <LeaseAgreementPanel
                 portal={portal}
@@ -4795,12 +4757,20 @@ function TenantPortalContent({
                 onSaved={refreshPortal}
               />
             ) : null}
+
+            {/* Payments */}
             <Panel
               title="Payments"
               icon={<ReceiptText size={18} />}
               actions={
                 <StatusBadge tone={paymentTone(portal.payment_summary.status)}>
-                  {label(portal.payment_summary.status)}
+                  {portal.payment_summary.status === "paid"
+                    ? "All paid"
+                    : portal.payment_summary.status === "overdue"
+                      ? "Overdue"
+                      : portal.payment_summary.status === "unpaid"
+                        ? `${formatMoney(portal.payment_summary.outstanding_cents)} due`
+                        : "No invoices"}
                 </StatusBadge>
               }
             >
@@ -4824,12 +4794,12 @@ function TenantPortalContent({
                         </StatusBadge>
                       </div>
                       <div className="mt-1 text-sm text-muted-foreground">
-                        Due {formatDate(invoice.due_date)} - Total{" "}
+                        Due {formatDate(invoice.due_date)} — Total{" "}
                         {formatMoney(invoice.total_cents, invoice.currency)}
                       </div>
                       {invoice.payment_reference ? (
                         <div className="mt-1 text-sm text-muted-foreground">
-                          Payment reference:{" "}
+                          Pay reference:{" "}
                           <span className="font-medium text-foreground">
                             {invoice.payment_reference}
                           </span>
@@ -4901,7 +4871,8 @@ function TenantPortalContent({
                 ))}
                 {!portal.invoices.length ? (
                   <div className="rounded-md border border-border bg-muted/30 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No approved invoices are available.
+                    No invoices yet. Payment details will appear here when
+                    approved.
                   </div>
                 ) : null}
               </div>
@@ -4910,29 +4881,38 @@ function TenantPortalContent({
             {portal.how_to_pay ? (
               <Panel title="How to pay" icon={<ReceiptText size={18} />}>
                 <div className="grid gap-3 p-4 text-sm">
-                  {portal.how_to_pay.bsb && portal.how_to_pay.account_number ? (
+                  {portal.how_to_pay.bsb &&
+                  portal.how_to_pay.account_number ? (
                     <div className="grid gap-1 rounded-md border border-border p-3">
                       <div className="font-semibold">Bank transfer (EFT)</div>
                       {portal.how_to_pay.account_name ? (
-                        <div>Account name: {portal.how_to_pay.account_name}</div>
+                        <div>
+                          Account name: {portal.how_to_pay.account_name}
+                        </div>
                       ) : null}
                       <div>BSB: {portal.how_to_pay.bsb}</div>
-                      <div>Account number: {portal.how_to_pay.account_number}</div>
+                      <div>
+                        Account: {portal.how_to_pay.account_number}
+                      </div>
                     </div>
                   ) : null}
                   {portal.how_to_pay.payid ? (
                     <div className="grid gap-1 rounded-md border border-border p-3">
                       <div className="font-semibold">PayID</div>
-                      <div>PayID: {portal.how_to_pay.payid}</div>
+                      <div>{portal.how_to_pay.payid}</div>
                       {portal.how_to_pay.payid_name ? (
-                        <div>Registered to: {portal.how_to_pay.payid_name}</div>
+                        <div className="text-muted-foreground">
+                          Registered to {portal.how_to_pay.payid_name}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
                   {portal.how_to_pay.bpay_biller_code ? (
                     <div className="grid gap-1 rounded-md border border-border p-3">
                       <div className="font-semibold">BPAY</div>
-                      <div>Biller code: {portal.how_to_pay.bpay_biller_code}</div>
+                      <div>
+                        Biller code: {portal.how_to_pay.bpay_biller_code}
+                      </div>
                     </div>
                   ) : null}
                   {portal.how_to_pay.instructions ? (
@@ -4941,27 +4921,26 @@ function TenantPortalContent({
                     </p>
                   ) : null}
                   <p className="text-xs text-muted-foreground">
-                    Quote your invoice payment reference when paying. These details
-                    are shown for convenience; Leasium does not process payments.
+                    Quote your invoice reference when paying. Leasium does
+                    not process payments.
                   </p>
                 </div>
               </Panel>
             ) : null}
 
+            {/* Maintenance */}
             <Panel
               title="Maintenance"
               icon={<Wrench size={18} />}
               actions={
-                <StatusBadge
-                  tone={openMaintenanceCount ? "primary" : "neutral"}
-                >
-                  {openMaintenanceCount} open
-                </StatusBadge>
+                openMaintenanceCount ? (
+                  <StatusBadge tone="primary">
+                    {openMaintenanceCount} open
+                  </StatusBadge>
+                ) : undefined
               }
             >
               <div className="grid gap-4 p-4">
-                <MaintenanceSummaryPanel summary={maintenanceSummary} />
-
                 <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
                     <Field label="Request title">
@@ -5005,7 +4984,7 @@ function TenantPortalContent({
                       onChange={(event) =>
                         setMaintenanceSourceReference(event.target.value)
                       }
-                      placeholder="Front counter, rear entry, invoice reference..."
+                      placeholder="e.g. bathroom, front entry, invoice ref…"
                     />
                   </Field>
                   <Field label="Photo">
@@ -5092,16 +5071,8 @@ function TenantPortalContent({
                           </div>
                         ) : null}
                         <div className="mt-2">
-                          <MaintenanceVisibilityCard request={request} />
-                        </div>
-                        <div className="mt-2">
                           <MaintenanceStatusTimeline request={request} />
                         </div>
-                        {request.source_reference ? (
-                          <div className="mt-2 text-sm">
-                            {request.source_reference}
-                          </div>
-                        ) : null}
                         {request.history.length ? (
                           <div className="mt-3 grid gap-2 rounded-md border border-border bg-muted/30 p-2">
                             {request.history.map((entry, index) => (
@@ -5134,24 +5105,11 @@ function TenantPortalContent({
                       </div>
                       <div className="grid content-start justify-items-end gap-1 text-xs text-muted-foreground">
                         <span>
-                          Requested {formatDateTime(request.requested_at)}
+                          Submitted {formatDateTime(request.requested_at)}
                         </span>
                         {request.completed_at ? (
                           <span>
                             Completed {formatDateTime(request.completed_at)}
-                          </span>
-                        ) : null}
-                        {request.document_ids.length ||
-                        request.photo_document_ids.length ? (
-                          <span>
-                            {request.document_ids.length +
-                              request.photo_document_ids.length}{" "}
-                            file
-                            {request.document_ids.length +
-                              request.photo_document_ids.length ===
-                            1
-                              ? ""
-                              : "s"}
                           </span>
                         ) : null}
                       </div>
@@ -5159,67 +5117,52 @@ function TenantPortalContent({
                   ))}
                   {!sortedMaintenanceRequests.length ? (
                     <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
-                      No maintenance requests are open.
+                      No maintenance requests yet. Use the form above to
+                      report an issue.
                     </div>
                   ) : null}
                 </div>
               </div>
             </Panel>
 
+            {/* Documents */}
             <Panel
-              title="Compliance"
-              icon={<ShieldCheck size={18} />}
+              title="Documents"
+              icon={<FileText size={18} />}
               actions={
-                <StatusBadge tone={documentsComplete ? "success" : "warning"}>
-                  {!documentsRequired
-                    ? "Not required"
-                    : documentsComplete
-                      ? "Received"
-                      : "Needed"}
-                </StatusBadge>
+                documentsRequired && !documentsComplete ? (
+                  <StatusBadge tone="warning">Action needed</StatusBadge>
+                ) : undefined
               }
             >
               <div className="grid gap-3 p-4">
-                <p className="text-sm text-muted-foreground">
-                  {documentsRequired
-                    ? "Keep required compliance documents current here."
-                    : "No compliance documents are required right now. You can still upload supporting files if your property team asks for them."}
-                </p>
-                <div className="grid gap-3 md:grid-cols-3">
-                  {portal.compliance.items.map((item) => (
-                    <div
-                      key={item.key}
-                      className="rounded-md border border-border p-3"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold">{item.label}</div>
-                        <StatusBadge tone={complianceTone(item.status)}>
-                          {label(item.status)}
-                        </StatusBadge>
+                {documentsRequired ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {portal.compliance.items.map((item) => (
+                      <div
+                        key={item.key}
+                        className="rounded-md border border-border p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold">{item.label}</div>
+                          <StatusBadge tone={complianceTone(item.status)}>
+                            {label(item.status)}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-2 text-sm text-muted-foreground">
+                          {item.document_count} file
+                          {item.document_count === 1 ? "" : "s"}
+                          {item.due_date
+                            ? ` · expires ${formatDate(item.due_date)}`
+                            : ""}
+                        </div>
                       </div>
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        {item.document_count} file
-                        {item.document_count === 1 ? "" : "s"}
-                        {item.due_date ? ` - ${formatDate(item.due_date)}` : ""}
-                      </div>
-                    </div>
-                  ))}
-                  {!portal.compliance.items.length ? (
-                    <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground md:col-span-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold">Required documents</div>
-                        <StatusBadge tone="success">Not required</StatusBadge>
-                      </div>
-                      <div className="mt-2">
-                        No compliance document checklist is active for this
-                        tenancy.
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="grid gap-3 rounded-md border border-border bg-muted/30 p-3">
-                  <Field label="Document">
+                  <Field label="Upload a document">
                     <Input
                       type="file"
                       onChange={(event) =>
@@ -5247,7 +5190,9 @@ function TenantPortalContent({
                     <Field label="Notes">
                       <Input
                         value={uploadNotes}
-                        onChange={(event) => setUploadNotes(event.target.value)}
+                        onChange={(event) =>
+                          setUploadNotes(event.target.value)
+                        }
                       />
                     </Field>
                   </div>
@@ -5311,7 +5256,7 @@ function TenantPortalContent({
                   ) : null}
                   {!portal.compliance.uploaded_documents.length ? (
                     <div className="rounded-md border border-border bg-muted/30 px-3 py-4 text-sm text-muted-foreground">
-                      No tenant documents are available.
+                      No documents yet.
                     </div>
                   ) : null}
                 </div>
@@ -5320,51 +5265,7 @@ function TenantPortalContent({
           </div>
 
           <aside className="grid content-start gap-5">
-            <RecentActivityPanel activities={recentActivity} />
-
-            <ContactDetailsPanel
-              portal={portal}
-              token={token}
-              accountAuthToken={
-                portal.auth.mode === "tenant_portal_account"
-                  ? accountAuthToken
-                  : null
-              }
-              getAccountAuthToken={getFreshAccountAuthToken}
-              onSaved={refreshPortal}
-            />
-
-            <Panel title="Lease" icon={<Building2 size={18} />}>
-              <dl className="grid gap-3 p-4 text-sm">
-                <div>
-                  <dt className="text-muted-foreground">Property</dt>
-                  <dd className="font-medium">{portal.lease.property_name}</dd>
-                  {portal.lease.property_address ? (
-                    <dd className="text-muted-foreground">
-                      {portal.lease.property_address}
-                    </dd>
-                  ) : null}
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Unit</dt>
-                  <dd className="font-medium">{portal.lease.unit_label}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Lease dates</dt>
-                  <dd className="font-medium">
-                    {formatDate(portal.lease.commencement_date)} to{" "}
-                    {formatDate(portal.lease.expiry_date)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Next review</dt>
-                  <dd className="font-medium">
-                    {formatDate(portal.lease.next_review_date)}
-                  </dd>
-                </div>
-              </dl>
-            </Panel>
-
+            {/* Account — with email OTP login explanation */}
             <TenantAccountPanel
               token={token}
               tokenTenantId={tokenTenantId}
@@ -5381,31 +5282,62 @@ function TenantPortalContent({
               onAccountPortal={handleAccountPortal}
             />
 
+            {/* Lease details */}
+            <Panel title="Your lease" icon={<Building2 size={18} />}>
+              <dl className="grid gap-3 p-4 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">Property</dt>
+                  <dd className="font-medium">
+                    {portal.lease.property_name}
+                  </dd>
+                  {portal.lease.property_address ? (
+                    <dd className="text-muted-foreground">
+                      {portal.lease.property_address}
+                    </dd>
+                  ) : null}
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Unit</dt>
+                  <dd className="font-medium">{portal.lease.unit_label}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Lease period</dt>
+                  <dd className="font-medium">
+                    {formatDate(portal.lease.commencement_date)} to{" "}
+                    {formatDate(portal.lease.expiry_date)}
+                  </dd>
+                </div>
+                {portal.lease.next_review_date ? (
+                  <div>
+                    <dt className="text-muted-foreground">Next review</dt>
+                    <dd className="font-medium">
+                      {formatDate(portal.lease.next_review_date)}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            </Panel>
+
+            {/* Contact details */}
+            <ContactDetailsPanel
+              portal={portal}
+              token={token}
+              accountAuthToken={
+                portal.auth.mode === "tenant_portal_account"
+                  ? accountAuthToken
+                  : null
+              }
+              getAccountAuthToken={getFreshAccountAuthToken}
+              onSaved={refreshPortal}
+            />
+
+            {/* Notification preferences */}
             <PreferencesForm
               token={token}
               portal={portal}
               getAccountAuthToken={getFreshAccountAuthToken}
               onSaved={refreshPortal}
             />
-
-            <Panel
-              title="Access Boundary"
-              icon={<ShieldCheck size={18} />}
-              actions={
-                <StatusBadge
-                  tone={portal.auth.dev_fallback ? "warning" : "primary"}
-                >
-                  {label(portal.auth.mode)}
-                </StatusBadge>
-              }
-            >
-              <div className="grid gap-2 p-4 text-sm text-muted-foreground">
-                <p>{portal.auth.detail}</p>
-                {portal.guardrails.map((guardrail) => (
-                  <p key={guardrail}>{guardrail}</p>
-                ))}
-              </div>
-            </Panel>
           </aside>
         </div>
       </div>
