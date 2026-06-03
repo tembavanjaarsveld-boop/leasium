@@ -207,6 +207,9 @@ function TenantWorkspace() {
     if (isTenantFilterKey(initialFilter)) {
       setFilter(initialFilter);
     }
+    if (params.get("action") === "invite") {
+      setShowCreate(true);
+    }
     const initialSearch = params.get("q") ?? "";
     if (initialSearch) {
       setSearch(initialSearch);

@@ -10,7 +10,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Sparkles, Users, Wrench } from "lucide-react";
+import { ArrowUpRight, Send, Sparkles, Users, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -205,6 +205,15 @@ function TenantsTab({ entityId }: { entityId: string }) {
       title="Tenants"
       icon={<Users size={17} />}
       description="Tenant relationships, contacts, billing details, and portal-ready records."
+      actions={
+        <Link
+          href="/tenants?action=invite"
+          className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-transparent bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
+        >
+          <Send size={14} />
+          Add tenant
+        </Link>
+      }
     >
       <div className="p-4">
         {tenantsQuery.isLoading ? <SkeletonRows rows={3} /> : null}
