@@ -630,7 +630,7 @@ function MessagePreviewDisclosure({
   const template = templateLabel(preview.template_key, preview.template_version);
   return (
     <details className="mt-2 rounded-lg border border-border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
+      <summary className="min-h-11 cursor-pointer px-3 py-3 text-xs font-semibold text-primary hover:text-primary-hover">
         Message preview
       </summary>
       <div className="border-t border-border px-3 py-2 text-xs">
@@ -651,7 +651,7 @@ function MessagePreviewDisclosure({
         {preview.action_label && preview.action_url ? (
           <a
             href={preview.action_url}
-            className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-primary-hover"
+            className="mt-2 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-semibold text-primary hover:text-primary-hover"
           >
             {preview.action_label}
           </a>

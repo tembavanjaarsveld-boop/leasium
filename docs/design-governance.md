@@ -80,6 +80,10 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the Comms outbound-log filter tabs and stored receipt "Open work queue" links now use the
   44px minimum target baseline while preserving read-only receipt filtering, links, and local
   CSV export guardrails. Remba should review the receipt-log density with the wider Comms pass.
+- **Notifications message-preview touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the notification-center message preview summary and its "Open assigned work" action links now
+  use the 44px minimum target baseline while preserving read-only notification review and explicit
+  Work handoff links. Remba should review the expanded notice density with the wider Work notice pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
   self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
   metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty

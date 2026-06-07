@@ -2,6 +2,30 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Notifications preview touch targets - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: hidden
+message-preview links on `/notifications` measured 16px high once expanded. The
+message preview summary opener and the expanded "Open assigned work" action links
+now use the 44px target baseline while preserving read-only notification review
+and explicit Work handoff links.
+
+Files changed:
+- `apps/web/src/app/notifications/page.tsx` raises the message preview summary
+  and preview action link targets to the 44px baseline.
+- `apps/web/tests/smoke/notifications.spec.ts` adds a focused touch-target smoke
+  for the expanded message preview handoff link.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Notifications follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- notifications.spec.ts -g "notifications message preview action links stay touch-safe")` first failed with height `16`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the Notifications target-size change.
+- `(cd apps/web && npm run test:smoke -- notifications.spec.ts app-flows.spec.ts -g "notification")` - 5 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+
 ## Codex continuation - 2026-06-07 (Comms outbound log touch targets - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: `/comms`

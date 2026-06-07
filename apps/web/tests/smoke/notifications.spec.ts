@@ -1,10 +1,34 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
+});
+
+async function expectTouchTarget(control: Locator, minSize = 44) {
+  await control.scrollIntoViewIfNeeded();
+  const box = await control.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.width).toBeGreaterThanOrEqual(minSize);
+  expect(box.height).toBeGreaterThanOrEqual(minSize);
+}
+
+test("notifications message preview action links stay touch-safe", async ({
+  page,
+}) => {
+  await page.goto("/notifications");
+
+  await expect(page.getByText("Work notice center")).toBeVisible();
+  const messagePreview = page.getByText("Message preview").first();
+  await expectTouchTarget(messagePreview);
+  await messagePreview.click();
+
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open assigned work" }).first(),
+  );
 });
 
 test("notifications exports provider readiness review CSV", async ({ page }) => {
