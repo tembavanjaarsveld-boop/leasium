@@ -67,6 +67,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   counts and CSV exports remain active-only. Remba should review drawer density, inactive
   reactivation discoverability, and whether rendered template preview/variable substitution
   belongs in this surface before send-time consumption is wired.
+- **Comms tenant lifecycle signed-agreement settle (2026-06-07, prototype mode, no Remba gate):**
+  `/comms` no longer surfaces a stale "DocuSign setup needed" tenant lifecycle draft when
+  the lease agreement already has a recorded signed timestamp, even if older provider metadata
+  still says `skipped` / retry. Pre-signing provider setup/retry candidates and signed-envelope
+  activation-review candidates remain visible. No provider send or external mutation runs.
+  Remba should review whether the settled/signed lifecycle state needs an explicit quiet receipt
+  in the Comms queue or whether absence is the clearest operator experience.
 - **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
   `/insights` keeps the five-card KPI band always visible and replaces the former single
   long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing

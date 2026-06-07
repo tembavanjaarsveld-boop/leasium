@@ -71,6 +71,7 @@ from apps.api.schemas.comms import (
     CommsQueueRead,
     CommsTenantCorrespondenceRead,
 )
+from apps.api.tenant_lease_agreement import lease_agreement_signed
 from apps.api.webhook_auth import twilio_signature_valid
 
 router = APIRouter(prefix="/comms", tags=["comms"])
@@ -1163,6 +1164,7 @@ def _tenant_lifecycle_stall_candidates(
         signing = lease_agreement.get("signing")
         if not isinstance(signing, dict):
             continue
+        agreement_signed = lease_agreement_signed(onboarding)
         signing_provider = signing.get("provider")
         if signing_provider not in {"docusign", "tenant_upload"}:
             continue
@@ -1252,6 +1254,7 @@ def _tenant_lifecycle_stall_candidates(
         elif (
             signing_provider == "docusign"
             and signing_status in RETRY_DOCUSIGN_SIGNING_STATUSES
+            and not agreement_signed
         ):
             event_at = _parse_iso_datetime(
                 signing.get("last_event_at") or signing.get("sent_at")

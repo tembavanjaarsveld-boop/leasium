@@ -1670,6 +1670,38 @@ def test_comms_queue_returns_skipped_docusign_setup_retry_candidate(
     assert "before sending live lease envelopes" not in candidate["body"]
 
 
+def test_comms_queue_suppresses_docusign_setup_after_agreement_signed(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_lifecycle_onboarding(
+        session,
+        signing={
+            "provider": "docusign",
+            "status": "skipped",
+            "document_id": "lease-doc-skipped-then-signed-1",
+            "error": "DocuSign production endpoints are not configured.",
+            "sent_at": (date.today() - timedelta(days=4)).isoformat(),
+            "signed_at": (date.today() - timedelta(days=1)).isoformat(),
+            "signed_by_actor": "provider:docusign",
+            "source": "docusign_webhook",
+        },
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+
+    assert response.status_code == 200
+    candidates = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "tenant_lifecycle_stall"
+    ]
+    assert candidates == []
+
+
 def test_comms_queue_returns_completed_signing_pending_activation_candidate(
     client: TestClient,
     session: Session,

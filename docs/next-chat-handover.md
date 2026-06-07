@@ -2,7 +2,36 @@
 
 Last updated: 2026-06-07
 
-## Codex continuation — 2026-06-07 (Live UX audit + Settings notification polish — latest)
+## Codex continuation — 2026-06-07 (Comms signed-agreement lifecycle settle — latest)
+
+Follow-up from the live Comms review: the stale "DocuSign setup needed"
+tenant lifecycle draft for the signed test lease is now blocked at the queue
+scanner. The scanner still surfaces DocuSign setup/retry drafts before signing,
+and still surfaces signed-envelope / tenant-upload activation-review candidates
+when the lease needs operator activation review, but stale retry metadata cannot
+create a recovery email once the lease agreement has a recorded `signed_at`.
+
+Files changed:
+- `apps/api/routers/comms.py` imports the canonical `lease_agreement_signed`
+  helper and requires unsigned agreements before adding DocuSign retry/setup
+  lifecycle candidates.
+- `tests/integration/test_comms_api.py` adds the regression: `status=skipped`
+  plus `signed_at` returns no tenant-lifecycle candidate.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Comms queue behavior as Remba-pending/prototype-mode UX.
+
+Verification:
+- New regression failed before the code change, then passed after the scanner
+  gate.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -k "docusign_setup_after_agreement_signed or skipped_docusign_setup_retry_candidate or completed_signing_pending_activation_candidate or tenant_upload_activation_review_candidate" -q` — 4 passed.
+- `.venv/bin/ruff check apps/api/routers/comms.py tests/integration/test_comms_api.py` — passed.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -q` — 51 passed.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py -k "skipped_docusign or failed_docusign_send_enters_lifecycle_queue" -q` — 2 passed.
+
+Guardrail: no email, SMS, DocuSign, Xero, payment, reconciliation, tenant email,
+or provider call runs. This is queue-read filtering only.
+
+## Codex continuation — 2026-06-07 (Live UX audit + Settings notification polish)
 
 Autonomous visual UX pass on `https://leasium.ai` using Chrome + Computer Use,
 covering Dashboard, Smart Intake, Properties, People, Work, Work compliance,
@@ -113,9 +142,10 @@ behind Upgrade-to-Pro.
   sensitive; 3 lack recipients) and 3 near-identical Auto & General
   reminders to the same AP inbox (needs a consolidation/dedup pass —
   product follow-up). Dismissed: the stale "DocuSign setup needed" tenant
-  lifecycle draft for the test tenant — **bug:** the drafter staged a
-  signing-recovery email even though that lease was signed on 3 June; the
-  candidate should settle when lease_agreement.status=signed.
+  lifecycle draft for the test tenant — **resolved in the latest Comms
+  signed-agreement lifecycle settle:** stale retry metadata can no longer
+  stage a signing-recovery email once the lease agreement has a recorded
+  signed timestamp.
 - **Insurance checklist mismatch fixed** (`3a9643c`): new additive
   `confirmed_no_document` compliance status; portal shows calm
   "Confirmed - certificate not on file" instead of red "missing" when the
