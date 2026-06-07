@@ -151,6 +151,169 @@ test("mobile settings users and roles use readable cards", async ({ page }) => {
   await expect(usersPanel.getByRole("table")).toBeHidden();
 });
 
+test("settings Work notification preferences stay inside the desktop viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const notificationPreferences = {
+    work_assignment_email_enabled: true,
+    work_assignment_sms_enabled: false,
+    work_assignment_sms_phone: null,
+    work_assignment_notice_template_key: "work_assignment_notification",
+    work_assignment_notice_template_version: "v1",
+    work_assignment_digest_cadence: "daily",
+    work_assignment_digest_template_key: "work_assignment_digest",
+    work_assignment_digest_template_version: "v1",
+    work_assignment_digest_last_generated_at: null,
+    work_assignment_digest_last_item_count: null,
+    work_assignment_digest_history: [],
+  };
+  const members = [
+    {
+      id: "operator-1",
+      email: "owner@example.com",
+      display_name: "Owner Operator",
+      role: "owner",
+      phone: "+61400111222",
+    },
+    {
+      id: "operator-2",
+      email: "tembavanjaarsveld@gmail.com",
+      display_name: "tembavanjaarsveld@gmail.com",
+      role: "admin",
+      phone: null,
+    },
+    {
+      id: "operator-3",
+      email: "wajahat.ahmed@luckiest.com",
+      display_name: "wajahat.ahmed@luckiest.com",
+      role: "admin",
+      phone: null,
+    },
+    {
+      id: "operator-4",
+      email: "very.long.operator.identity.for.settings@skjcapital.example",
+      display_name: "very.long.operator.identity.for.settings@skjcapital.example",
+      role: "finance",
+      phone: null,
+    },
+  ];
+  await page.route("**/api/v1/security/workspace", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        auth: {
+          auth_mode: "dev",
+          dev_auth_active: true,
+          clerk_secret_configured: false,
+          clerk_jwks_configured: false,
+          operator_login_enforced: false,
+          login_boundary: "Development operator identity",
+          next_steps: [],
+        },
+        current_user: {
+          id: "operator-1",
+          organisation_id: "org-1",
+          email: "owner@example.com",
+          display_name: "Owner Operator",
+        },
+        organisation: {
+          id: "org-1",
+          name: "Acme Holdings",
+          country_code: "AU",
+          timezone: "Australia/Brisbane",
+          operating_mode: "self_managed_owner",
+          created_at: "2026-05-01T00:00:00.000Z",
+        },
+        members: members.map((member) => ({
+          id: member.id,
+          email: member.email,
+          display_name: member.display_name,
+          is_active: true,
+          login_linked: true,
+          invite_email_status: "accepted",
+          invite_email_detail: "Provider login is linked for this operator.",
+          invite_sent_at: "2026-05-01T00:00:00.000Z",
+          invite_expires_at: "2026-05-04T00:00:00.000Z",
+          invite_accepted_at: "2026-05-01T00:00:00.000Z",
+          notification_preferences: {
+            ...notificationPreferences,
+            work_assignment_sms_enabled: Boolean(member.phone),
+            work_assignment_sms_phone: member.phone,
+          },
+          created_at: "2026-05-01T00:00:00.000Z",
+          roles: [
+            {
+              entity_id: "entity-1",
+              entity_name: "Acme Holdings Pty Ltd",
+              role: member.role,
+            },
+          ],
+        })),
+        current_user_roles: [
+          {
+            entity_id: "entity-1",
+            entity_name: "Acme Holdings Pty Ltd",
+            role: "owner",
+          },
+        ],
+        can_manage_security: true,
+      }),
+    });
+  });
+  await page.goto("/settings");
+
+  const workNotifications = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Work notifications" }) })
+    .first();
+  await expect(workNotifications).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+  const templateSummaryFits = await workNotifications
+    .locator("details summary")
+    .evaluateAll((summaries) =>
+      summaries.every((summary) => {
+        const box = summary.getBoundingClientRect();
+        return box.left >= 0 && box.right <= window.innerWidth + 1;
+      }),
+    );
+  expect(templateSummaryFits).toBe(true);
+
+  await workNotifications
+    .locator("details")
+    .evaluateAll((details) =>
+      details.forEach((detail) => detail.setAttribute("open", "")),
+    );
+  const panelOverflowers = await workNotifications.evaluate((panel) => {
+    const panelBox = panel.getBoundingClientRect();
+    return Array.from(panel.querySelectorAll("*"))
+      .filter((element) => {
+        const box = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          (box.left < panelBox.left - 1 || box.right > panelBox.right + 1)
+        );
+      })
+      .map((element) => ({
+        text: (element.textContent ?? "").replace(/\s+/g, " ").trim(),
+        tag: element.tagName.toLowerCase(),
+      }));
+  });
+  expect(panelOverflowers).toEqual([]);
+});
+
 test("settings exports communication template override review CSV", async ({
   page,
 }) => {

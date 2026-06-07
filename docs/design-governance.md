@@ -955,6 +955,18 @@ Thirtieth 2026-05-21 follow-up: Work notice responses now expose additive `chann
 
 Thirty-first 2026-05-21 follow-up: Notifications now keeps full Work notice receipt/provider evidence in inline `Receipt evidence` disclosures instead of opening a separate drawer. The row still shows the latest provider event and channel summary, while timestamps, message IDs, recipients, templates, and full provider history stay one click deeper. Remba should review whether this disclosure pattern is calm enough for support evidence or whether a future dedicated drawer is still needed once more communication channels share the same receipt shape.
 
+2026-06-07 follow-up 1: a Chrome visual audit of `leasium.ai`
+flagged the Settings Work notification preferences as the clearest UX defect:
+long operator rows could push the Templates status chip beyond the panel edge at
+normal desktop width, and the shell entity selector / Clerk avatar trigger were
+below the 44px target baseline used elsewhere. Settings now keeps the Templates
+disclosure on a full-width row at standard desktop sizes, preserves compact row
+height, and lifts the shell controls to 44px without changing notification,
+digest, SMS, SendGrid, Twilio, or provider behavior. Remba should review whether
+the two-line preference row remains scannable enough for long operator lists and
+whether Work notification settings should move out of Security once the
+Communications settings surface matures.
+
 Thirty-second 2026-05-21 follow-up: Notifications now adds collapsed `Message preview` disclosures for Work notice Email/SMS receipts and Work digest receipts. The previews are rendered from the same communication template helpers used for provider sends, so operators can review subject, recipient, template, body text, and action link before choosing Send/Retry. Remba should review whether rendered copy belongs inline on every notice row, or whether previews should become a support-only or modal detail once contractor, tenant, and invoice communication previews join the same pattern.
 
 Thirty-third 2026-05-21 follow-up: Notifications now adds a collapsed `Provider setup checks` section inside the Work notice center channel readiness area. It shows Work email, SendGrid sender/webhook, operator SMS preference, Twilio messaging, Twilio callback, and Leasium receipt readiness without exposing provider tokens, webhook secrets, or tokenized callback URLs. Remba should review whether provider-console checklist language belongs in Notifications or should move to a future Communications settings surface.

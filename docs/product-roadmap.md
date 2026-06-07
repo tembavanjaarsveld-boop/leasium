@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-02
+Last updated: 2026-06-07
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -203,6 +203,7 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [x] Work assignment digest retry/recovery UI v1: Notifications digest receipts that have not sent now expose explicit `Send digest` or `Retry digest` recovery actions, using the approved digest-send endpoint and refreshing receipt state after delivery. Pending Remba review.
 - [x] Work assignment digest recovery audit v1: digest delivery receipts now preserve delivery trigger, recovery source timestamp, provider attempt rows, and delivery attempt count so manual, scheduled, and recovery sends can be distinguished in Notifications and audit history. Pending Remba review.
 - [x] Work notification preferences panel v1: Settings now has a dedicated Work notifications panel for per-operator assignment email toggles, SMS recovery phone controls, digest cadence, compact latest-digest receipts, preference status counts, and a collapsed advanced template-defaults disclosure, while the Users and roles table stays focused on access control. Pending Remba review.
+- [~] Settings Work notification responsive layout polish v1: the Work notifications panel now keeps template controls on a full-width row at standard desktop widths so long operator lists do not push status chips beyond the panel, and the shell entity selector plus Clerk avatar trigger use 44px targets. No notification preference, digest, SMS, SendGrid, Twilio, or provider behavior changed. Pending Remba review.
 - [x] Work notification history filters v1: Notifications now filters Work notices by attention, in-flight, ready, follow-up, and failed email state, and filters digest receipts by needs-send, sent, failed, skipped, and recovery state while keeping send/retry actions explicit. Pending Remba review.
 - [x] Work notification channel and template evidence v1: notification-center responses now expose optional channel, provider, template key, and template version evidence for Work notices and digest receipts; Notifications adds channel filters for notice and digest history without changing send behavior. Pending Remba review.
 - [x] Work notification template preferences v1: Settings lets owner/admin operators edit per-member assignment notice and digest template key/version defaults; provider sends and digest receipts use the reviewed operator defaults while preserving explicit send/retry approval. Pending Remba review.

@@ -338,7 +338,17 @@ function OperatorUserControl() {
   const { isLoaded, isSignedIn } = useUser();
 
   if (isLoaded && isSignedIn) {
-    return <UserButton />;
+    return (
+      <UserButton
+        appearance={{
+          elements: {
+            userButtonAvatarBox: "h-8 w-8",
+            userButtonTrigger:
+              "min-h-11 min-w-11 rounded-lg transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
+          },
+        }}
+      />
+    );
   }
 
   return (
@@ -817,7 +827,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             className="ml-auto flex min-w-0 max-w-full items-center justify-end gap-1 rounded-xl border border-border bg-white/90 p-1 shadow-leasiumXs"
           >
             {children ? (
-              <div className="min-w-0 max-w-[44vw] border-r border-border pr-1 sm:max-w-xs sm:min-w-44 [&_select]:h-9 [&_select]:min-h-9 [&_select]:truncate [&_select]:rounded-lg [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-2 [&_select]:text-sm [&_select]:font-medium [&_select]:shadow-none [&_select]:focus-visible:ring-0">
+              <div className="min-w-0 max-w-[44vw] border-r border-border pr-1 sm:max-w-xs sm:min-w-44 [&_select]:h-11 [&_select]:min-h-11 [&_select]:truncate [&_select]:rounded-lg [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-2 [&_select]:text-sm [&_select]:font-medium [&_select]:shadow-none [&_select]:focus-visible:ring-0">
                 {children}
               </div>
             ) : null}

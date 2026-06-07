@@ -4276,7 +4276,7 @@ function SettingsWorkspace() {
                   return (
                     <div
                       key={`${member.id}-notifications`}
-                      className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(160px,.7fr)_minmax(0,1.8fr)_minmax(190px,.7fr)_minmax(140px,.55fr)] lg:items-start"
+                      className="grid gap-2 px-4 py-2 lg:grid-cols-[minmax(170px,.75fr)_minmax(260px,1.25fr)_minmax(190px,.75fr)] lg:items-start"
                     >
                       {/* Name + role */}
                       <div className="min-w-0 lg:pt-1">
@@ -4297,7 +4297,7 @@ function SettingsWorkspace() {
 
                       {/* Email + SMS — flat, no inner boxes */}
                       <div className="grid gap-1.5">
-                        <label className="flex min-h-10 items-center gap-3 rounded-md border border-border px-3 text-sm">
+                        <label className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 text-sm">
                           <input
                             aria-label={`${member.display_name} assignment email notifications`}
                             checked={workEmailEnabled}
@@ -4329,8 +4329,8 @@ function SettingsWorkspace() {
                             Assignment email
                           </span>
                         </label>
-                        <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border px-3 py-1.5">
-                          <label className="flex min-h-8 items-center gap-3 text-sm">
+                        <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-md border border-border px-3">
+                          <label className="flex min-h-11 items-center gap-3 text-sm">
                             <input
                               aria-label={`${member.display_name} assignment SMS notifications`}
                               checked={workSmsEnabled}
@@ -4369,7 +4369,7 @@ function SettingsWorkspace() {
                                 placeholder="+61400111222"
                                 value={smsPhoneDraft}
                                 disabled={!canManageSecurity}
-                                className="h-8 min-h-0 flex-1 text-xs"
+                                className="min-h-11 flex-1 rounded-lg text-xs"
                                 onChange={(event) =>
                                   setSmsPhoneDrafts((drafts) => ({
                                     ...drafts,
@@ -4379,7 +4379,7 @@ function SettingsWorkspace() {
                               />
                               <SecondaryButton
                                 type="button"
-                                className="h-8 min-h-0 rounded-lg px-2 text-xs"
+                                className="min-h-11 rounded-lg px-2 text-xs"
                                 disabled={
                                   !canManageSecurity || !smsPhoneChanged
                                 }
@@ -4437,8 +4437,8 @@ function SettingsWorkspace() {
                         <DigestReceiptSummary member={member} />
                       </div>
 
-                      <details className="overflow-hidden rounded-md border border-border lg:open:col-span-4">
-                        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+                      <details className="overflow-hidden rounded-md border border-border lg:col-span-3">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
                           <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                             <Tags size={13} />
                             <span className="font-medium text-foreground">

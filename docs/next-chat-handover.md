@@ -2,6 +2,35 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation — 2026-06-07 (Live UX audit + Settings notification polish — latest)
+
+Autonomous visual UX pass on `https://leasium.ai` using Chrome + Computer Use,
+covering Dashboard, Smart Intake, Properties, People, Work, Work compliance,
+Money, Insights, and Settings. Live findings: no console errors across the core
+routes; some first captures needed longer waits for real data; the strongest
+actionable UX defect was Settings → Security → Work notifications. Long
+operator rows pushed the Templates status chip beyond the panel edge at normal
+desktop width, and the shell entity selector / Clerk avatar trigger were below
+the 44px target baseline.
+
+Shipped locally: Settings notification rows now use three compact primary
+columns with Templates on a full-width row at standard desktop widths, preserving
+compact row height while avoiding right-edge clipping. SMS phone/save controls,
+the AppHeader entity select, and the Clerk user trigger are on 44px targets. No
+notification preference, digest, SMS, SendGrid, Twilio, Xero, payment, or
+provider behavior changed.
+
+Verification so far:
+- `npm run test:smoke -- settings.spec.ts app-flows.spec.ts -g "settings (Work notification preferences stay inside the desktop viewport|shows Xero readiness and records mappings)"` — 2 passed.
+- `npm run test:smoke -- app-flows.spec.ts appearance.spec.ts -g "(mobile header keeps utility touch targets at least 44px|appearance header toggle cycles system, light, and dark)"` — 2 passed.
+- Mocked local visual metric at `.codex/leasium-ux-audit-2026-06-07/local-settings-work-notifications-after-2.json`: no Work notification panel overflow; phone/save/template controls measured 44px. Direct local Chrome loaded the patched shell, but local API was not running so full Settings data used mocked smoke rendering.
+
+Docs updated: `docs/product-roadmap.md` adds a `[~]` Settings Work notification
+responsive-layout polish entry; `docs/design-governance.md` adds the Remba
+review follow-up. Still do before final claim/commit: lint, tsc, production
+build, git diff review, then commit/push with the Gmail author path or deploy
+hook as noted below.
+
 ## Claude continuation — 2026-06-07 evening (Testing pass + Vercel deploy unblock — latest)
 
 Autonomous full testing pass on Temba's instruction ("I approve all, create a
