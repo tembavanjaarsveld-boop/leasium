@@ -299,6 +299,34 @@ test("maintenance inline undo toast controls stay touch-safe on mobile", async (
   await expectTouchTarget(undoToast.getByRole("button", { name: "Dismiss" }));
 });
 
+test("operations queue assignment action stays touch-safe", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+
+  await page.goto("/operations");
+  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+
+  const assignOwner = page.getByRole("button", {
+    name: "Assign owner for Air conditioning fault",
+  });
+  await expectTouchTarget(assignOwner);
+
+  await assignOwner.click();
+  const assigneeSelect = page.getByLabel("Assignee for Air conditioning fault");
+  const expandedControl = page
+    .locator("div")
+    .filter({ has: assigneeSelect })
+    .first();
+  await expectTouchTarget(assigneeSelect);
+  await expectTouchTarget(
+    expandedControl.getByRole("button", { exact: true, name: "Assign" }),
+  );
+  await expectTouchTarget(
+    expandedControl.getByRole("button", { exact: true, name: "Cancel" }),
+  );
+});
+
 test("arrears review packet mobile controls stay touch-safe without mutations", async ({
   page,
 }) => {

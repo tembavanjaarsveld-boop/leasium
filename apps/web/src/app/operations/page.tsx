@@ -5856,7 +5856,7 @@ function WorkAssignmentControl({
             type="button"
             onClick={() => setExpanded(true)}
             aria-label={`Assign owner for ${title}`}
-            className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-dashed border-border bg-white/60 px-3 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:border-primary/40 hover:bg-white hover:text-foreground"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-dashed border-border bg-white/60 px-3 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:border-primary/40 hover:bg-white hover:text-foreground"
           >
             <UserRound size={15} />
             Assign owner
@@ -5872,7 +5872,7 @@ function WorkAssignmentControl({
             value={value}
             onChange={(event) => onChange(event.target.value)}
             disabled={disabled || membersLoading || !hasMembers}
-            className="h-9 w-44"
+            className="h-11 w-44"
           >
             <option value="">
               {membersLoading
@@ -5889,7 +5889,7 @@ function WorkAssignmentControl({
           </Select>
           <SecondaryButton
             type="button"
-            className="h-9 px-3"
+            className="h-11 px-3"
             disabled={disabled || !canAssign}
             onClick={() => onAssign(value)}
           >
@@ -5902,7 +5902,7 @@ function WorkAssignmentControl({
               onChange("");
               setExpanded(false);
             }}
-            className="inline-flex h-9 items-center px-2 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:text-foreground"
+            className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-muted-foreground transition duration-200 ease-leasium hover:text-foreground"
           >
             Cancel
           </button>

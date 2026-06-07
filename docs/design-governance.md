@@ -71,6 +71,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the People hub Tenants tab "Add tenant" action now uses the 44px minimum target baseline
   while keeping the same tenant-invite destination and People IA. Remba should review the
   tab action density with the wider People hub pass.
+- **Work queue assignment touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the Operations queue collapsed "Assign owner" action and its immediate expanded assignee
+  controls now use the 44px minimum target baseline while preserving the same assignment
+  workflow and review-first provider guardrails. Remba should review the queue row action
+  density with the wider Work assignment pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
   self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
   metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty

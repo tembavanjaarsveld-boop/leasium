@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Work queue assignment touch target - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: `/operations`
+still had compact queue-row "Assign owner" actions measuring 36px high. The
+collapsed assignment action and the immediate expanded assignee controls now use
+the 44px target baseline while preserving the same Work assignment workflow and
+review-first provider-send guardrails.
+
+Files changed:
+- `apps/web/src/app/operations/page.tsx` changes the collapsed Work assignment
+  action plus the expanded assignee select, Assign button, and Cancel action from
+  36px controls to 44px controls.
+- `apps/web/tests/smoke/operations-ux.spec.ts` adds a focused touch-target smoke
+  for the collapsed and expanded Operations queue assignment interaction.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Work queue follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- operations-ux.spec.ts -g "operations queue assignment action stays touch-safe")` first failed with height `36`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the Work assignment control change.
+- `(cd apps/web && npm run test:smoke -- operations-ux.spec.ts)` - 12 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+
 ## Codex continuation - 2026-06-07 (Entity statements local-reporting copy - latest)
 
 Follow-up from the live Chrome + Computer Use visual review: the self-managed
