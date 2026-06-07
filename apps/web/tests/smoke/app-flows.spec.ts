@@ -215,6 +215,9 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     billingDraftTable.getByRole("link", { name: /Intake intake-1/ }),
   ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
+  await expectTouchTarget(
+    billingDraftTable.getByRole("link", { name: /Intake intake-1/ }),
+  );
 
   await page.getByRole("tab", { name: /Approve invoices/ }).click();
   const invoicePrep = page

@@ -2500,7 +2500,7 @@ function BillingReadinessWorkspace() {
                                   selectedEntityId,
                                   draft.document_intake_id,
                                 )}
-                                className="inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                                className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                               >
                                 Intake {source.intakeId}
                                 <ArrowUpRight size={12} />
@@ -2657,7 +2657,7 @@ function BillingReadinessWorkspace() {
                                       selectedEntityId,
                                       draft.document_intake_id,
                                     )}
-                                    className="inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                                    className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                                   >
                                     Intake {source.intakeId}
                                     <ArrowUpRight size={12} />

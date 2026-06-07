@@ -2,6 +2,41 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Billing source-link target - latest)
+
+Continuation after the Settings accounting handoff link target pass. A final
+source scan found two remaining raw Billing Readiness `Intake …` provenance
+links in the reviewed-draft card/table source rows. The existing mocked
+Dashboard → Billing flow confirmed the desktop source link rendered as a
+16px-tall target.
+
+Files changed:
+- `apps/web/src/app/billing-readiness/page.tsx`: the reviewed-draft
+  `Intake …` source links now use the 44px minimum target baseline in both
+  mobile card and desktop table layouts.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked Dashboard →
+  Billing flow now locks the Billing Readiness source link to the 44px target
+  baseline.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Billing Readiness source-link density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Dashboard/Billing smoke failed with received height `16`
+  for the `Intake intake-1` source link target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "billing readiness mobile actions keep 44px touch targets"` - passed.
+- `npm --prefix apps/web run lint -- src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The source link remains navigation-only to the existing Smart Intake review.
+  No billing draft status change, invoice draft creation, Xero/Basiq provider
+  call, tenant email, provider dispatch, payment reconciliation, provider
+  refresh, upload, download, invite claim, or external mutation was run.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Settings accounting handoff link targets - latest)
 
 Continuation after the Settings Xero invoice handoff link target pass. The

@@ -198,6 +198,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   feed fetch, bank write, payment reconciliation apply, provider dispatch, or provider
   history mutation behaviour changed. Remba/accounting support should review the consent
   card rhythm with the wider Settings finance-provider pass.
+- **Billing Readiness source-link target (2026-06-08, prototype mode, no Remba gate):**
+  the Billing Readiness reviewed-draft `Intake …` source links now use the 44px minimum
+  target baseline in both the mobile card and desktop table layouts. The links still
+  navigate only to the existing Smart Intake review; no billing draft status, invoice
+  draft, Xero, tenant email, provider dispatch, or payment-reconciliation behaviour
+  changed. Remba should review the source/provenance row rhythm with the wider Billing
+  Readiness density pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
