@@ -243,6 +243,17 @@ test("mobile command search overlay keeps controls touch-safe above bottom nav",
   const dialog = page.getByRole("dialog", { name: "Command search" });
   await expect(dialog).toBeVisible();
 
+  const commandInput = dialog.getByRole("textbox", {
+    name: "Command search",
+  });
+  await page.waitForFunction(() => {
+    const input = document.querySelector('input[aria-label="Command search"]');
+    if (!input) return false;
+    const rect = input.getBoundingClientRect();
+    return rect.width >= 44 && rect.height >= 44;
+  });
+  await expectMobileTouchTarget(commandInput);
+
   const closeSearch = dialog.getByRole("button", { name: "Close search" });
   await page.waitForFunction(() => {
     const button = document.querySelector('button[aria-label="Close search"]');

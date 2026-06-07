@@ -50,6 +50,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the command search and keyboard-shortcut overlays while keeping click/backdrop close paths,
   the left-side drawer animation, and the 7-hub IA unchanged. Remba should review this with
   the wider AppHeader/mobile shell pass for keyboard and assistive-tech expectations.
+- **Command search input touch target (2026-06-08, prototype mode, no Remba gate):**
+  the global command search textbox now uses the 44px minimum target baseline, matching the
+  adjacent close control and mobile shell controls. Search, command routing, shortcut behavior,
+  palette content, and navigation destinations are unchanged. Remba should review this with the
+  wider AppHeader/command palette density pass.
 - **Smart Intake quick-add touch targets (2026-06-07, prototype mode, no Remba gate):**
   the setup recovery links under the Smart Intake drop zone ("Add property" and "Add tenant")
   now use the 44px minimum target baseline. Copy, destinations, upload/review behavior, and

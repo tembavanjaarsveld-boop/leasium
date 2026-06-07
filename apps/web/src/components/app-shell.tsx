@@ -989,7 +989,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search tenants, leases, actions..."
-                  className="min-h-10 flex-1 bg-transparent text-sm outline-none"
+                  className="min-h-[44px] flex-1 bg-transparent text-sm outline-none"
                 />
                 <button
                   type="button"

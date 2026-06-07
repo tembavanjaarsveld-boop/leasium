@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Command search input target - latest)
+
+Continuation after the tenant document action target pass. Chrome + Computer Use
+re-anchored the signed-in production app at `https://leasium.ai`; a read-only
+route sweep checked Dashboard, Smart Intake, Properties, People, Work, Billing
+Readiness, Money, Insights, Settings, and Notifications at the first viewport
+and after scrolling. No persistent overflow, stuck loading, or visible
+sub-44px desktop controls were found. The next confirmed shell defect was in the
+global command search overlay: the live command textbox measured 40px high while
+the adjacent close control measured 44px.
+
+Files changed:
+- `apps/web/src/components/app-shell.tsx`: the command search textbox now uses
+  the 44px minimum target baseline.
+- `apps/web/tests/smoke/mobile-bottom-nav.spec.ts`: the existing mobile command
+  overlay smoke now locks the command textbox to the same 44px target baseline
+  as the close control and bottom-nav clearance.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  command-palette density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused mobile command overlay smoke failed with received height
+  `39.318626403808594` for the command search textbox.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/mobile-bottom-nav.spec.ts -g "mobile command search overlay keeps controls touch-safe above bottom nav"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/mobile-bottom-nav.spec.ts tests/smoke/nav-consolidation.spec.ts` - 12 passed.
+- `npm --prefix apps/web run lint -- src/components/app-shell.tsx tests/smoke/mobile-bottom-nav.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- No Xero/Basiq write, SendGrid email, Twilio SMS, tenant email, payment
+  reconciliation, provider refresh, provider dispatch, upload/download, invite
+  claim, external mutation, or command action navigation was run.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Tenant document action targets - latest)
 
 Continuation after the tenant reminder approval gate. After commit `a01066f`
