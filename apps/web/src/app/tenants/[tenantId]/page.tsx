@@ -4456,7 +4456,7 @@ function TenantDetail() {
                         <div>
                           <Link
                             href={targetLink.href}
-                            className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                            className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
                           >
                             <Link2 size={13} />
                             {targetLink.label}

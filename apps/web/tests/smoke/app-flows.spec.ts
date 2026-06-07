@@ -3286,19 +3286,29 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   const dispatchCorrespondenceEvent = page
     .getByTestId("correspondence-event")
     .filter({ hasText: "comms draft email queued" });
-  await expect(
-    dispatchCorrespondenceEvent.getByRole("link", {
+  const dispatchCorrespondenceLink = dispatchCorrespondenceEvent.getByRole(
+    "link",
+    {
       name: "Open arrears case",
-    }),
-  ).toHaveAttribute("href", "/operations?tab=arrears");
+    },
+  );
+  await expect(dispatchCorrespondenceLink).toHaveAttribute(
+    "href",
+    "/operations?tab=arrears",
+  );
+  await expectTouchTarget(dispatchCorrespondenceLink);
   const maintenanceCorrespondenceEvent = page
     .getByTestId("correspondence-event")
     .filter({ hasText: "contractor note copied" });
-  await expect(
+  const maintenanceCorrespondenceLink =
     maintenanceCorrespondenceEvent.getByRole("link", {
       name: "Open work order",
-    }),
-  ).toHaveAttribute("href", "/operations/maintenance/work%2Forder%3F1");
+    });
+  await expect(maintenanceCorrespondenceLink).toHaveAttribute(
+    "href",
+    "/operations/maintenance/work%2Forder%3F1",
+  );
+  await expectTouchTarget(maintenanceCorrespondenceLink);
   await expect(
     page.getByText("Opening it does not send email, send SMS"),
   ).toBeVisible();

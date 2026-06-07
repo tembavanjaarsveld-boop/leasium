@@ -2,6 +2,35 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Tenant correspondence handoff targets - latest)
+
+Continuation after the Billing/Maintenance disclosure target pass. A
+current-state scan found tenant detail correspondence event handoffs still
+using 32px targets (`Open arrears case`, `Open work order`). The existing
+tenant detail smoke already renders both handoffs and verifies their hrefs.
+
+Files changed:
+- `apps/web/src/app/tenants/[tenantId]/page.tsx`: tenant correspondence
+  event handoff links now use the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked tenant detail
+  flow now measures the correspondence handoff links before continuing.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  correspondence-handoff density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused tenant detail smoke failed with received height `32` for
+  the `Open arrears case` correspondence handoff.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "tenant detail shows portal access recovery actions"` - passed.
+- `npm --prefix apps/web run lint -- 'src/app/tenants/[tenantId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The smoke measures the rendered correspondence handoffs without opening them.
+  It does not send email/SMS, create portal accounts, submit tenant details,
+  upload/delete/download documents, fetch document bytes, write Xero data,
+  dispatch providers, refresh providers, or mutate provider history.
+
 ## Codex continuation - 2026-06-08 (Billing and maintenance disclosure targets - latest)
 
 Continuation after the maintenance live action dock pass. A conservative

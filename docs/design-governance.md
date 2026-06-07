@@ -249,6 +249,15 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   upload/download documents, or mutate maintenance records. Remba should review
   the taller disclosure rows with the wider Billing Readiness and Work detail
   density pass.
+- **Tenant correspondence handoff link targets (2026-06-08, prototype mode, no Remba gate):**
+  tenant record correspondence event handoffs such as `Open arrears case` and
+  `Open work order` now use the 44px minimum target baseline. Destinations and
+  correspondence CSV/export behaviour are unchanged; smoke coverage measures
+  the mocked handoffs without opening them and does not send email/SMS, create
+  portal accounts, submit tenant details, upload/delete/download documents,
+  fetch document bytes, write Xero data, dispatch providers, refresh providers,
+  or mutate provider history. Remba should review the event-row density with
+  the wider People record correspondence pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
