@@ -2,6 +2,36 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Maintenance live action dock targets - latest)
+
+Continuation after the maintenance correspondence handoff target pass. A
+current-state scan found the maintenance detail `Live action dock` quick-jump
+links still using 36px targets. The existing mocked maintenance detail smoke
+renders the full dock before any provider send/retry/download action.
+
+Files changed:
+- `apps/web/src/app/operations/maintenance/[workOrderId]/page.tsx`: live
+  action dock primary and secondary quick-jump links now use the 44px minimum
+  target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked maintenance
+  detail smoke now verifies `Call`, `SMS app`, email/SMS review, closeout, and
+  billing recovery dock links are 44px targets.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  maintenance live-action-dock density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused maintenance detail smoke failed with received height `36`
+  for the `Call` live-action-dock target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "maintenance detail route shows quote evidence"` - passed after the fix; the first green attempt hit the existing intermittent `Recover in Billing` click miss after the dock assertions, and the immediate isolated rerun passed.
+- `npm --prefix apps/web run lint -- 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The smoke measures rendered links only. It does not click call/SMS links,
+  send SendGrid/Twilio comms, retry provider dispatch, upload evidence, download
+  documents, run Xero/Basiq/payment paths, or mutate maintenance records.
+
 ## Codex continuation - 2026-06-08 (Maintenance correspondence handoff targets - latest)
 
 Continuation after the Billing handoff/command navigation pass. A conservative

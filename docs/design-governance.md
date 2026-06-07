@@ -231,6 +231,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   provider-history write, queue mutation, or maintenance mutation behaviour
   changed. Remba should review the correspondence handoff density with the wider
   Work detail page pass.
+- **Maintenance live action dock link targets (2026-06-08, prototype mode, no Remba gate):**
+  maintenance work-order live action dock quick-jump links now use the 44px
+  minimum target baseline for primary and secondary actions (`Call`, `SMS app`,
+  email/SMS review, closeout, and billing recovery handoffs). Destinations and
+  copy are unchanged; the smoke measures only rendered links and does not call,
+  open SMS, send provider comms, retry dispatch, upload evidence, download
+  documents, or mutate maintenance records. Remba should review the action-dock
+  density with the wider Work detail page pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

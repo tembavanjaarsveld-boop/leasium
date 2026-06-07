@@ -2319,6 +2319,26 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByText("shopfront-ac-photo.jpg")).toBeVisible();
   await expect(page.getByText("Edit work-order details")).toBeVisible();
   await expect(page.getByText("Latest update")).toBeVisible();
+  const liveActionDock = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Live action dock" }) });
+  await expect(liveActionDock).toBeVisible();
+  await expectTouchTarget(liveActionDock.getByRole("link", { name: "Call" }));
+  await expectTouchTarget(
+    liveActionDock.getByRole("link", { name: "SMS app" }),
+  );
+  await expectTouchTarget(
+    liveActionDock.getByRole("link", { name: "Review email" }),
+  );
+  await expectTouchTarget(
+    liveActionDock.getByRole("link", { name: "Review SMS" }),
+  );
+  await expectTouchTarget(
+    liveActionDock.getByRole("link", { name: "Review closeout" }),
+  );
+  await expectTouchTarget(
+    liveActionDock.getByRole("link", { name: "Review link" }),
+  );
   await expect(page.getByText("External visibility")).toBeVisible();
   await expect(
     page.getByText("2 tenant-visible · 0 contractor-visible"),

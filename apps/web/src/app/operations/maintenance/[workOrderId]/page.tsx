@@ -3390,7 +3390,7 @@ function LiveActionDock({ items }: { items: LiveActionReviewItem[] }) {
               {item.href ? (
                 <a
                   href={item.href}
-                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                 >
                   <ArrowUpRight size={13} />
                   {item.actionLabel}
@@ -3401,7 +3401,7 @@ function LiveActionDock({ items }: { items: LiveActionReviewItem[] }) {
               {item.secondaryHref && item.secondaryLabel ? (
                 <a
                   href={item.secondaryHref}
-                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 text-xs font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 text-xs font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
                 >
                   {item.secondaryLabel}
                 </a>
