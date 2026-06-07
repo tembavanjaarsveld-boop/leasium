@@ -7442,7 +7442,7 @@ function SettingsWorkspace() {
                                   entityId: selectedEntityId,
                                   invoiceDraftId: result.invoice_draft_id,
                                 })}
-                                className="inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                                className="inline-flex min-h-11 w-fit items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                               >
                                 <ExternalLink size={13} />
                                 Open Billing handoff
@@ -7575,7 +7575,7 @@ function SettingsWorkspace() {
                                       ? "ready_dispatch"
                                       : "needs_action",
                                 })}
-                                className="mt-2 inline-flex items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                                className="mt-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                               >
                                 <ExternalLink size={13} />
                                 Open dispatch handoff

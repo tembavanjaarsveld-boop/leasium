@@ -186,9 +186,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   exception packet copy/download actions, desktop `Apply suggestion` row actions, and
   `Open property` handoff links. The accounting freshness next-step handoffs and
   chart/tax mapping table `Open property` / local `Apply` controls now use the same
-  baseline. No provider behaviour changed: applying mappings, payment previews, Xero
-  draft creation, provider dispatch, and reconciliation remain explicit reviewed actions.
-  Remba/accounting support should review the taller table action rhythm.
+  baseline. The invoice-posting preview `Open Billing handoff` link and Xero draft
+  creation result `Open dispatch handoff` link now also use the same target baseline.
+  No provider behaviour changed: applying mappings, payment previews, Xero draft creation,
+  provider dispatch, and reconciliation remain explicit reviewed actions. Remba/accounting
+  support should review the taller table action rhythm.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

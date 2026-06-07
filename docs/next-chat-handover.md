@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Settings Xero handoff link targets - latest)
+
+Continuation after the command search input target pass. The next deep-scroll
+scan ruled out a Settings Work-notification checkbox false positive: the visible
+16px checkbox inputs sit inside 44px label targets. The next confirmed mocked
+UX defect was in Settings → Xero invoice posting: raw `Open Billing handoff`
+and `Open dispatch handoff` links in the invoice-posting preview/result panels
+rendered as 16px-tall targets.
+
+Files changed:
+- `apps/web/src/app/settings/page.tsx`: the Xero invoice-posting preview
+  `Open Billing handoff` link and Xero draft-creation result `Open dispatch
+  handoff` link now use the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked Settings/Xero
+  readiness smoke now locks both handoff links to the 44px target baseline.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: extend the
+  Settings/Xero accounting-support touch-target note as prototype-mode/Remba-
+  pending.
+
+Verification:
+- Red test: focused Settings/Xero smoke failed with received height `16` for
+  the `Open Billing handoff` link target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/settings.spec.ts` - 7 passed.
+- `npm --prefix apps/web run lint -- src/app/settings/page.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The failing/proving surface uses mocked Xero endpoints only. No live Xero
+  provider read/write, Xero draft creation, provider dispatch, SendGrid email,
+  Twilio SMS, tenant email, payment reconciliation, provider refresh, upload,
+  download, invite claim, or external mutation was run.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Command search input target - latest)
 
 Continuation after the tenant document action target pass. Chrome + Computer Use

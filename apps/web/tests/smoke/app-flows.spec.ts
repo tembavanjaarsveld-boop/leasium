@@ -5433,11 +5433,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       .getByTestId("xero-exception-desktop-row")
       .filter({ hasText: "Run idempotent Xero draft creation when ready." }),
   ).toBeVisible();
-  await expect(
-    xeroInvoicePostingPreviewPanel.getByRole("link", {
-      name: "Open Billing handoff",
-    }),
-  ).toBeVisible();
+  const billingHandoffLink = xeroInvoicePostingPreviewPanel.getByRole("link", {
+    name: "Open Billing handoff",
+  });
+  await expect(billingHandoffLink).toBeVisible();
+  await expectTouchTarget(billingHandoffLink);
 
   await page.getByRole("button", { name: "Create Xero drafts" }).click();
   const xeroDraftCreationResultPanel = page.locator("section").filter({
@@ -5454,11 +5454,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     xeroDraftCreationResultPanel.getByText("xero-invoice-smoke-1"),
   ).toBeVisible();
-  await expect(
-    xeroDraftCreationResultPanel.getByRole("link", {
-      name: "Open dispatch handoff",
-    }),
-  ).toBeVisible();
+  const dispatchHandoffLink = xeroDraftCreationResultPanel.getByRole("link", {
+    name: "Open dispatch handoff",
+  });
+  await expect(dispatchHandoffLink).toBeVisible();
+  await expectTouchTarget(dispatchHandoffLink);
   await expect(
     exceptionQueuePanel
       .getByTestId("xero-exception-desktop-row")
