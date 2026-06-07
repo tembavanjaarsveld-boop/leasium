@@ -1,6 +1,63 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-03
+Last updated: 2026-06-07
+
+## Claude continuation — 2026-06-07 (Xero Settings simplification + compliance evidence linking — latest)
+
+Cowork session, autonomous run on Temba's "you pick, keep going" instruction.
+Two slices landed and pushed; the tree is clean apart from an intentionally
+untracked real lease PDF (`Lease_TembavJaarsveld_153CamelotPl.pdf`) at the repo
+root — likely the custom lease file for the outstanding live lease-pack send
+(tenant `019e6272-9879-786a-aa88-abfd1aa9fa48`, requires explicit operator
+approval; deliberately not committed and not sent).
+
+### Settings Xero connection simplification (commit `a015180`, pushed)
+
+Found uncommitted on takeover (~965 changed lines, author unknown — treat as a
+prior session's in-flight slice); verified and shipped as-is. Settings → Xero
+now leads with a plain-language "Connect Xero" panel ("Connect this trust"
+per-trust action, organisation matching guidance, friendlier connected copy),
+collapses diagnostics / manual tenant ID / setup packet behind an "Advanced
+support details" disclosure, gates the sync exception queue behind "Review N
+follow-ups", renames "Template defaults" → "Templates", and compacts Work
+notification chips to counted badges ("2 email on / 1 SMS ready"). No provider
+behaviour change. Verification: eslint + tsc clean; `settings-xero-ux` smokes
+2/2; app-flows "settings shows Xero readiness" 1/1; reformatted operations +
+maintenance app-flows specs 2/2; production build green. This is useful prep
+for the Xero production rehearsal (runbook in "Xero Monday Verification").
+
+### Compliance evidence linking v1 (commit `f30c2b8`, pushed)
+
+The named compliance follow-up from 2026-06-02 ("evidence upload/linking from
+the Work tab only after the operator review boundary is designed"). Built
+TDD-style, red first on both layers:
+
+- Backend: `POST /api/v1/compliance/checks/{id}/evidence`
+  (`ComplianceCheckEvidenceLink`: source_document_id + optional
+  certificate_expires_on/notes) links an already-stored same-entity document
+  to a check **without completing it or rolling the obligation forward**.
+  Appends `check_metadata.evidence_link_history` (actor/timestamp/source),
+  audit-logs `link_evidence`, idempotent for re-linking the same document,
+  cross-entity document → 422 with no mutation. No provider call.
+- Frontend: `Needs evidence` rows on `/operations?tab=compliance` get an
+  `Add evidence` button expanding to an inline review form — stored-document
+  picker (`listDocuments`, fetched only while the form is open), optional
+  certificate expiry, Link evidence / Cancel, local confirmation toast.
+  Completion remains the separate reviewed `Complete with linked evidence`
+  action, which the linked row then enables.
+- Verification: backend ruff clean + `test_compliance_api.py` 7/7 (2 new);
+  eslint + tsc clean; `operations-compliance.spec.ts` 4/4 (1 new, proving no
+  forbidden completion/provider/billing calls fire from the link path);
+  `operations-ux.spec.ts` 11/11; production build green.
+- Named follow-up: direct file upload from the form (today the file must
+  arrive via Smart Intake or an existing document upload first).
+
+Docs updated in the same commits: `docs/product-roadmap.md` (new `[~]`
+compliance evidence linking entry) and `docs/design-governance.md` (prototype
+entries for both slices). Roadmap staleness noticed but not yet fixed: the
+"Installable PWA (mobile runway)" item still shows `[ ]` although PWA v1
+shipped (see "Installable PWA mobile runway v1" section) — corrected in the
+handover-refresh commit if present, otherwise still open.
 
 ## Claude continuation — 2026-06-03 (Tenant Documents upload collapse — latest)
 

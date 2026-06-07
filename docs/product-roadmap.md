@@ -416,8 +416,15 @@ Equifax/illion; RTBA/state RTAs).
   (no money movement, no provider call), ready for an AU adapter to drop in.
   **Remaining:** the concrete rail adapter (Monoova / Zai / Stripe AU — the
   provider decision still to make) + an in-portal "pay now" surface.
-- [ ] **Installable PWA (mobile runway).** Operator field use (inspections / photos /
-  approvals) + tenant portal on a phone, ahead of any native build.
+- [~] **Installable PWA (mobile runway).** Operator field use (inspections / photos /
+  approvals) + tenant portal on a phone, ahead of any native build. **v1 shipped**
+  (was stale `[ ]` until 2026-06-07): typed `app/manifest.ts` (id/scope/standalone,
+  192/512/maskable PNG icons, Smart Intake / People / Money shortcuts), public
+  manifest+icon routes through the access gate, apple-touch-icon + standalone
+  metadata, and a mobile bottom nav for the five field hubs. Deliberately no
+  service worker / offline cache in v1. Red-green proof in
+  `apps/web/tests/smoke/pwa-mobile.spec.ts`. Remaining: real-device install
+  review on iOS/Android, then decide on a cautious offline/service-worker story.
 
 **P2 — rounds it out:**
 
