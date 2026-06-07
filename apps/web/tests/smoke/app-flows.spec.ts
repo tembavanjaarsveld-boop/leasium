@@ -3233,9 +3233,14 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Evidence drawer" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Intake intake-1/ }),
-  ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
+  const propertySourceIntakeLink = page.getByRole("link", {
+    name: /Intake intake-1/,
+  });
+  await expect(propertySourceIntakeLink).toHaveAttribute(
+    "href",
+    "/intake?entity_id=entity-1&review=intake-1",
+  );
+  await expectTouchTarget(propertySourceIntakeLink);
   await expect(page.getByText("Purchase contract").first()).toBeVisible();
   await expect(page.getByText("Street address").first()).toBeVisible();
   await expect(page.getByText("12 Queen St").first()).toBeVisible();

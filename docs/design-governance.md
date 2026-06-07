@@ -266,6 +266,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   assignment notification, billing draft, Xero action, or provider history is
   created. Remba should review the success-panel action rhythm with the wider
   Smart Intake outcome pass.
+- **Property source-history intake handoff target (2026-06-08, prototype mode, no Remba gate):**
+  the Property workspace Documents tab `Intake …` source-history handoff now
+  uses the 44px minimum target baseline. The link destination, evidence drawer,
+  source citation content, image workflow, ownership filter, and Smart Intake
+  review behaviour are unchanged. Remba should review the source-history header
+  rhythm with the wider Property documents/evidence pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

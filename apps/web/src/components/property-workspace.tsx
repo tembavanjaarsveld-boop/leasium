@@ -6026,7 +6026,7 @@ function Workspace({
                       selectedEntityId,
                       latestPropertyApply.document_intake_id,
                     )}
-                    className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                   >
                     <FileText size={15} />
                     Intake {shortId(latestPropertyApply.document_intake_id)}

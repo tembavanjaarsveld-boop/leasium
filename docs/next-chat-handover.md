@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Property source-history handoff target - latest)
+
+Continuation after the Smart Intake inspection outcome target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Property workspace
+Documents tab source-history `Intake …` handoff still using a 36px target. The
+existing property source-trail smoke already renders the handoff and verifies
+its Smart Intake review destination.
+
+Files changed:
+- `apps/web/src/components/property-workspace.tsx`: source-history `Intake …`
+  handoff now uses the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked property
+  source-trail flow now measures that handoff.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Property documents/evidence density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused property source-trail smoke failed with received height
+  `36` for the `Intake intake-1` source-history handoff.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "property workspace shows the evidence source trail"` - passed.
+- `npm --prefix apps/web run lint -- src/components/property-workspace.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke verifies the rendered source-history handoff and existing evidence
+  drawer content only. It does not upload/download documents, apply Smart Intake
+  changes, mutate property records, call providers, or alter ownership filters
+  beyond the existing mocked filter interaction.
+
 ## Codex continuation - 2026-06-08 (Smart Intake inspection outcome target - latest)
 
 Continuation after the tenant correspondence handoff target pass. Because
