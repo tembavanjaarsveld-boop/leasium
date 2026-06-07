@@ -327,6 +327,99 @@ test("operations queue assignment action stays touch-safe", async ({
   );
 });
 
+test("operations assignment recent activity disclosure stays touch-safe", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/maintenance/work-orders**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "work-order-history",
+          entity_id: "entity-1",
+          property_id: "property-1",
+          tenancy_unit_id: "unit-1",
+          tenant_id: "tenant-1",
+          lease_id: "lease-1",
+          title: "Air conditioning fault",
+          description: "Tenant reported warm air from the shopfront unit.",
+          status: "awaiting_approval",
+          priority: "urgent",
+          requested_at: "2026-05-19T01:00:00.000Z",
+          contractor_name: "Cool Air Services",
+          contractor_email: "service@coolair.example",
+          contractor_phone: "07 3000 1111",
+          contractor_assigned_at: "2026-05-19T02:00:00.000Z",
+          approval_required: true,
+          approval_status: "pending",
+          approval_limit_cents: 50000,
+          quote_amount_cents: 64000,
+          approved_by_user_id: null,
+          approved_at: null,
+          approval_notes: null,
+          source_document_id: null,
+          invoice_draft_id: null,
+          invoice_reference: null,
+          invoice_amount_cents: null,
+          source_reference: "Tenant email",
+          due_date: "2026-05-20",
+          completed_at: null,
+          notes: "Needs owner approval before work proceeds.",
+          document_ids: [],
+          photo_document_ids: [],
+          metadata: {
+            work_assignment: {
+              assigned_user_id: "operator-1",
+              assigned_user_name: "Owner Operator",
+              assigned_user_email: "temba@example.com",
+              assigned_at: "2026-05-20T01:00:00.000Z",
+              assigned_by_name: "Owner Operator",
+              notification: {
+                status: "queued",
+                detail: "Assignment email was queued by SendGrid.",
+              },
+              history: [
+                {
+                  event: "provider_notification_attempted",
+                  at: "2026-05-20T01:15:00.000Z",
+                  actor_name: "Owner Operator",
+                  assigned_user_name: "Owner Operator",
+                  assigned_user_email: "temba@example.com",
+                  notification_status: "queued",
+                  summary: "Assignment notification email was queued.",
+                },
+                {
+                  event: "assigned",
+                  at: "2026-05-20T01:00:00.000Z",
+                  actor_name: "Owner Operator",
+                  assigned_user_name: "Owner Operator",
+                  assigned_user_email: "temba@example.com",
+                  notification_status: "ready",
+                  summary: "Maintenance assigned to Owner Operator.",
+                },
+              ],
+            },
+          },
+          created_at: "2026-05-19T01:00:00.000Z",
+          updated_at: "2026-05-20T01:15:00.000Z",
+          deleted_at: null,
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/operations");
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault/ }).first(),
+  ).toBeVisible();
+
+  await expectTouchTarget(
+    page.locator("summary").filter({ hasText: "Recent activity" }).first(),
+  );
+});
+
 test("arrears review packet mobile controls stay touch-safe without mutations", async ({
   page,
 }) => {

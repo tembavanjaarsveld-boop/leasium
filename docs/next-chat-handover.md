@@ -2,6 +2,28 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Work recent activity touch target - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: the
+Operations assignment-control "Recent activity" disclosure summary measured
+16px high when assignment history was present. It now uses the 44px target
+baseline while preserving assignment history, notification receipts, and
+provider-send guardrails.
+
+Files changed:
+- `apps/web/src/app/operations/page.tsx` raises the assignment recent-activity
+  disclosure summary to the 44px baseline.
+- `apps/web/tests/smoke/operations-ux.spec.ts` adds focused touch-target
+  coverage with a mocked work order carrying assignment history.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Work follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- operations-ux.spec.ts -g "operations assignment recent activity disclosure stays touch-safe")`
+  first failed with height `16`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the Work disclosure target-size
+  change.
+
 ## Codex continuation - 2026-06-07 (Dashboard Manage links touch target - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: the

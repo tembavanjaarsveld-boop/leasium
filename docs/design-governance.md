@@ -85,6 +85,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   controls now use the 44px minimum target baseline while preserving the same assignment
   workflow and review-first provider guardrails. Remba should review the queue row action
   density with the wider Work assignment pass.
+- **Work assignment recent-activity touch target (2026-06-07, prototype mode, no Remba gate):**
+  the Operations assignment-control "Recent activity" disclosure summary now uses the 44px
+  minimum target baseline while preserving assignment history, notification receipts, and
+  provider-send guardrails. Remba should review the expanded assignment history density with
+  the wider Work assignment pass.
 - **Comms outbound log touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Comms outbound-log filter tabs and stored receipt "Open work queue" links now use the
   44px minimum target baseline while preserving read-only receipt filtering, links, and local

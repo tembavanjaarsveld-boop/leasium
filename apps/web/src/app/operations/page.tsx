@@ -6032,7 +6032,7 @@ function WorkAssignmentControl({
       </div>
       {recentHistory.length > 0 ? (
         <details className="rounded-lg border border-border bg-white px-2.5 py-2">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-muted-foreground">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <History size={13} className="text-primary" />
               Recent activity
