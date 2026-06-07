@@ -369,6 +369,17 @@ test("smart intake quick-add links keep 44px touch targets", async ({
   await expectTouchTarget(page.getByRole("link", { name: "Add tenant" }));
 });
 
+test("smart intake review filter keeps a 44px touch target", async ({
+  page,
+}) => {
+  await page.goto("/intake");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+  ).toBeVisible();
+  await expectTouchTarget(page.getByLabel("Review filter"));
+});
+
 test("billing readiness mobile actions keep 44px touch targets", async ({
   page,
 }) => {

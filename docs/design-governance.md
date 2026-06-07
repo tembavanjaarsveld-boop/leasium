@@ -50,6 +50,10 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   now use the 44px minimum target baseline. Copy, destinations, upload/review behavior, and
   provider guardrails are unchanged. Remba should review the drop-zone/action density with
   the existing Smart Intake spreadsheet and review-queue pass.
+- **Smart Intake review filter touch target (2026-06-07, prototype mode, no Remba gate):**
+  the shared Dashboard/Smart Intake review-queue filter select now uses the 44px minimum
+  target baseline while keeping the same filter options, queue behavior, and CSV/export
+  paths. Remba should review the review-queue control density with the wider Smart Intake pass.
 - **Properties density toggle touch targets (2026-06-07, prototype mode, no Remba gate):**
   the desktop Properties table row-density controls ("Comfortable" and "Compact") now use
   the 44px minimum target baseline while keeping the same table-density behavior, labels,

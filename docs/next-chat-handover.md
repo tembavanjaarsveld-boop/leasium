@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Smart Intake review filter touch target - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX scan: the shared
+Dashboard/Smart Intake review-queue filter select measured 36px high on both
+`/` and `/intake`. The select now keeps the same options, review-queue behavior,
+and CSV/export paths but uses a 44px minimum target.
+
+Files changed:
+- `apps/web/src/components/dashboard.tsx` changes the Review filter select from
+  `h-9 min-h-9` to the 44px `h-11 min-h-11` baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts` adds a focused touch-target smoke
+  for the Review filter on `/intake`.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  shared Smart Intake follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- app-flows.spec.ts -g "smart intake review filter keeps a 44px touch target")` first failed with height `36`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the Review filter select change.
+- `(cd apps/web && npm run test:smoke -- app-flows.spec.ts -g "smart intake")` - 7 passed.
+- `(cd apps/web && npm run test:smoke -- smart-intake-export-parity.spec.ts)` - 1 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (Properties image-panel toggle touch target - latest)
 
 Follow-up from the live Chrome + Computer Use UX review: after the density and

@@ -3948,7 +3948,7 @@ export function Dashboard({
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <Select
                         aria-label="Review filter"
-                        className="h-9 min-h-9 w-52 rounded-md"
+                        className="h-11 min-h-11 w-52 rounded-md"
                         value={reviewQueueFilter}
                         onChange={(event) => {
                           setReviewQueueFilter(
