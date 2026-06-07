@@ -5606,7 +5606,7 @@ function MaintenanceDetailRoute() {
                           <a
                             key={document.id}
                             href={documentDownloadUrl(document.id)}
-                            className="inline-flex items-center gap-2 font-semibold text-primary hover:text-primary-hover"
+                            className="inline-flex min-h-11 w-fit items-center gap-2 rounded-lg px-3 font-semibold text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                             target="_blank"
                             rel="noreferrer"
                           >
@@ -5652,7 +5652,7 @@ function MaintenanceDetailRoute() {
                                     <a
                                       key={document.id}
                                       href={documentDownloadUrl(document.id)}
-                                      className="inline-flex items-center gap-1 font-semibold text-primary hover:text-primary-hover"
+                                      className="inline-flex min-h-11 w-fit items-center gap-1 rounded-lg px-3 font-semibold text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                                       target="_blank"
                                       rel="noreferrer"
                                     >

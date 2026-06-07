@@ -2653,6 +2653,12 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(page.getByText("closeout-ac-photo.jpg").first()).toBeVisible();
+  const closeoutPhotoLinks = page.getByRole("link", {
+    name: "closeout-ac-photo.jpg",
+  });
+  await expect(closeoutPhotoLinks).toHaveCount(2);
+  await expectTouchTarget(closeoutPhotoLinks.first());
+  await expectTouchTarget(closeoutPhotoLinks.nth(1));
   await expect(page.getByText("Closeout history")).toBeVisible();
   await expect(page.getByText("1 closeout photo")).toBeVisible();
   await expect(page.getByText("Source evidence")).toBeVisible();

@@ -205,6 +205,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   draft, Xero, tenant email, provider dispatch, or payment-reconciliation behaviour
   changed. Remba should review the source/provenance row rhythm with the wider Billing
   Readiness density pass.
+- **Maintenance closeout evidence link targets (2026-06-08, prototype mode, no Remba gate):**
+  the maintenance work-order closeout photo and closeout-history source-evidence
+  document links now use the 44px minimum target baseline. The links still open
+  the existing document download URL only when the operator clicks them; no closeout
+  status, upload, provider dispatch, tenant/contractor/owner message, Xero, Basiq,
+  or payment-reconciliation behaviour changed. Remba should review the closeout
+  evidence density with the wider Work detail page pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

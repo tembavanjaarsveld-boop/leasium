@@ -2,6 +2,41 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Maintenance closeout evidence targets - latest)
+
+Continuation after the Billing Readiness source-link target pass. A source scan
+found two remaining raw maintenance detail evidence links in the closeout
+handoff area: the uploaded closeout photo link and the closeout-history source
+evidence link. The existing mocked maintenance detail flow renders both after a
+closeout upload/complete action, so the target-size regression could be covered
+without touching live document downloads or provider paths.
+
+Files changed:
+- `apps/web/src/app/operations/maintenance/[workOrderId]/page.tsx`: closeout
+  photo and closeout-history source-evidence document links now use the 44px
+  minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked maintenance
+  detail smoke now verifies both `closeout-ac-photo.jpg` links are 44px
+  touch targets.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  maintenance closeout evidence density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused maintenance detail smoke failed with received height `16`
+  for the `closeout-ac-photo.jpg` source link target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "maintenance detail route shows quote evidence"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "maintenance detail mobile billing actions keep 44px touch targets"` - passed.
+- `npm --prefix apps/web run lint -- 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The smoke uses mocked local API/file upload behaviour and does not click
+  document-download links. No closeout status, upload, provider dispatch,
+  tenant/contractor/owner message, Xero/Basiq provider call, payment
+  reconciliation, provider refresh, invite claim, live document download, or
+  external mutation was run.
+
 ## Codex continuation - 2026-06-08 (Billing source-link target - latest)
 
 Continuation after the Settings accounting handoff link target pass. A final
