@@ -2,7 +2,79 @@
 
 Last updated: 2026-06-08
 
-## Codex continuation - 2026-06-08 (Settings Xero accounting touch targets - latest)
+## Codex continuation - 2026-06-08 (Operator shell contrast sweep - latest)
+
+Follow-up from the autonomous Chrome + Computer Use production UX sweep on
+`https://leasium.ai`: after the Xero touch-target pass deployed cleanly, a fresh
+route-by-route visual audit found no remaining target-size or overflow issue,
+but did find real contrast dips in dense operator shell states. The shipped work
+kept the existing navigation/queue/provider behaviour and only strengthened
+visible labels, badges, and tab states.
+
+Files changed across the shipped contrast pass:
+- `apps/web/tailwind.config.ts`: maps the light-mode `text-muted-foreground`
+  alias to slate-500 so muted copy clears the normal-text contrast baseline on
+  the grey workspace canvas.
+- `apps/web/src/components/app-shell.tsx`: raises the desktop sidebar keyboard
+  shortcut footer and urgent Work comms badge onto stronger existing tokens.
+- `apps/web/src/components/property-workspace.tsx`,
+  `apps/web/src/app/operations/page.tsx`,
+  `apps/web/src/app/insights/page.tsx`,
+  `apps/web/src/app/portfolio-qa/page.tsx`,
+  `apps/web/src/app/billing-readiness/page.tsx`,
+  `apps/web/src/app/comms/page.tsx`, and `apps/web/src/app/settings/page.tsx`:
+  strengthen active tab subtitles, compact count badges, warning/danger count
+  labels, the Settings deactivate action, and Settings section tab labels.
+- `apps/web/tests/smoke/nav-consolidation.spec.ts`: adds rendered contrast
+  coverage for the shell text, urgent badge, active subtitles/count badges, and
+  Settings tab row, including a guard that Settings tab colour/background states
+  do not tween through low-contrast intermediate frames.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and
+  `docs/leasium-codex-design-source-of-truth.md`: record the Remba-pending
+  visible contrast follow-up and token source-of-truth update.
+
+Commits and deployment status:
+- `cd09e11` `Improve shell contrast` pushed to `main`; production deployment
+  `dpl_3A9XayRWoNQ1REuW7CsDuD8PPMCe` reached `READY`.
+- `833e0fc` `Harden active contrast` pushed to `main`; production deployment
+  `dpl_5Rjg2vtUYne16sNBndQwUBKhWdi6` reached `READY`.
+- `dcac7a3` `Harden settings tab contrast` pushed to `main`; production
+  deployment `dpl_4CUaa3FV2jFogpLtp4YXA5gpwB4K` reached `READY`.
+- `e46b4e2` `Stop settings tab color tween` pushed to `main`; production
+  deployment `dpl_VDyV7DNqS6hrswH3BcGftpYYEhVD` reached `READY` and was aliased
+  to `leasium.ai`, `www.leasium.ai`, and `leasium.vercel.app`.
+
+Verification:
+- Focused contrast smoke:
+  `npm run test:smoke -- nav-consolidation.spec.ts -g "operator shell muted text and urgent badges keep readable contrast"` passed.
+- Full nav smoke after the final Settings transition change:
+  `npm run test:smoke -- nav-consolidation.spec.ts` - 7 passed.
+- `npm run lint -- src/app/settings/page.tsx tests/smoke/nav-consolidation.spec.ts` - passed.
+- `npx tsc --noEmit` - passed.
+- `npm run build` - passed after clearing local generated Next output and running
+  sequentially. Earlier parallel smoke/build runs collided on `.next`; rerunning
+  sequentially produced clean evidence.
+- `git diff --check` - passed.
+- Live Chrome proof on `leasium.ai` after `e46b4e2`: 25 routes covering
+  Dashboard, Smart Intake, Properties, People, Operations, Compliance, Billing
+  Readiness, Money, Statements, Portfolio QA, Insights, Comms, Notifications,
+  Settings, Owner portal, Tenant portal, and Vendor portal were measured at top
+  and scrolled positions (50 measurements). There were no unresolved auth
+  checking screens, no horizontal overflow, no visible sub-44px controls, no
+  contrast issues, and no Chrome warning/error logs. Settings tab samples now
+  render active labels at 5.23:1 and inactive labels at 10.46:1, with
+  `transition-shadow` only.
+- Vercel production runtime logs had no error/warning/fatal entries in the last
+  30 minutes after the final deployment, and Vercel toolbar feedback on `main`
+  had no unresolved threads.
+
+No provider mutation, Xero write, SendGrid email, Twilio SMS, tenant email,
+payment reconciliation, provider refresh, or approval action was run; production
+browser work was visual/read-only.
+
+Active local state after this handover update should be clean once committed.
+
+## Codex continuation - 2026-06-08 (Settings Xero accounting touch targets)
 
 Follow-up from the autonomous Chrome + Computer Use production UX sweep on
 `https://leasium.ai`: the fresh route-by-route pass found one true remaining
