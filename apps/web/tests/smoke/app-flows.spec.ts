@@ -1901,7 +1901,11 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByRole("button", { name: "Generate digest" }).click();
   await expect(page.getByText("Work digest generated")).toBeVisible();
   await expect(page.getByText("No messages sent")).toBeVisible();
-  await page.getByText("Message preview").click();
+  const digestMessagePreview = page
+    .locator("summary")
+    .filter({ hasText: "Message preview" });
+  await expectTouchTarget(digestMessagePreview);
+  await digestMessagePreview.click();
   await expect(
     page.getByText("Leasium Daily Work digest: 4 items"),
   ).toBeVisible();

@@ -6188,7 +6188,7 @@ function WorkDigestMessagePreview({
   }
   return (
     <details className="mt-2 rounded-md border border-border bg-muted/30">
-      <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-primary hover:text-primary-hover">
+      <summary className="min-h-11 cursor-pointer px-2 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
         Message preview
       </summary>
       <div className="border-t border-border px-2 py-2 text-xs">

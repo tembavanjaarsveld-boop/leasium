@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Operations digest preview target - latest)
+
+Continuation after the Property source-history handoff target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Operations Work digest
+`Message preview` disclosure still using a 28px rendered target. The existing
+Operations smoke already generates the mocked digest, opens the preview, and
+checks the digest send path under mocked provider behaviour.
+
+Files changed:
+- `apps/web/src/app/operations/page.tsx`: Work digest `Message preview`
+  summary now uses the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked Operations
+  flow now measures the digest preview summary before opening it.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the Work
+  digest preview density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Operations smoke failed with received height `28` for the
+  digest `Message preview` summary.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "operations workspace surfaces maintenance and arrears work"` - passed.
+- `npm --prefix apps/web run lint -- src/app/operations/page.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data and the existing Operations provider guards.
+  This slice does not change digest generation, digest send, SendGrid/Twilio,
+  assignment, maintenance, arrears, billing, Xero/Basiq, payment, provider
+  refresh, or provider-history behaviour.
+
 ## Codex continuation - 2026-06-08 (Property source-history handoff target - latest)
 
 Continuation after the Smart Intake inspection outcome target pass. Because

@@ -272,6 +272,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   source citation content, image workflow, ownership filter, and Smart Intake
   review behaviour are unchanged. Remba should review the source-history header
   rhythm with the wider Property documents/evidence pass.
+- **Operations digest message-preview target (2026-06-08, prototype mode, no Remba gate):**
+  the Work digest `Message preview` disclosure now uses the 44px minimum target
+  baseline after generating the mocked digest preview. Digest generation/send
+  copy and provider guardrails are unchanged; smoke coverage keeps the existing
+  mocked SendGrid/Twilio checks and verifies no external provider state is
+  touched. Remba should review the digest preview density with the wider Work
+  notice center pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
