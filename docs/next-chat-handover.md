@@ -30,6 +30,13 @@ Verification:
 - `npm --prefix apps/web run lint -- src/app/billing-readiness/page.tsx 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: Billing changed from
+  `billing-readiness/page-59057a17eb8dba58.js` to
+  `billing-readiness/page-04c741958ba39595.js`, maintenance changed from
+  `operations/maintenance/%5BworkOrderId%5D/page-f3556d94c284ef12.js` to
+  `operations/maintenance/%5BworkOrderId%5D/page-77415883585cb976.js`, both
+  chunks contained the new 44px disclosure-summary classes, and neither
+  contained the old compact disclosure-summary classes on the fourth poll.
 
 Guardrails:
 - The smoke opens mocked read-only disclosure content only. It does not dispatch
