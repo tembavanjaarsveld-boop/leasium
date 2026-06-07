@@ -29,6 +29,11 @@ Verification:
 - `npm --prefix apps/web run lint -- 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live maintenance detail route chunk
+  changed from `page-fbb9199c3952a403.js` to
+  `page-ca5f4f1690381b05.js` on the third poll, contained both new 44px
+  closeout evidence link classes, and no longer contained the old raw
+  `inline-flex items-center gap-* ...` evidence link classes.
 
 Guardrails:
 - The smoke uses mocked local API/file upload behaviour and does not click
