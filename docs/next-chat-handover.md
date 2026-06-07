@@ -23,13 +23,16 @@ provider behavior changed.
 Verification so far:
 - `npm run test:smoke -- settings.spec.ts app-flows.spec.ts -g "settings (Work notification preferences stay inside the desktop viewport|shows Xero readiness and records mappings)"` — 2 passed.
 - `npm run test:smoke -- app-flows.spec.ts appearance.spec.ts -g "(mobile header keeps utility touch targets at least 44px|appearance header toggle cycles system, light, and dark)"` — 2 passed.
-- Mocked local visual metric at `.codex/leasium-ux-audit-2026-06-07/local-settings-work-notifications-after-2.json`: no Work notification panel overflow; phone/save/template controls measured 44px. Direct local Chrome loaded the patched shell, but local API was not running so full Settings data used mocked smoke rendering.
+- `npm run lint`, `./node_modules/.bin/tsc --noEmit`, `npm run build`, and `git diff --check` — passed.
+- Mocked local visual metric: no Work notification panel overflow; phone/save/template controls measured 44px. Temporary `.codex` evidence was removed before commit. Direct local Chrome loaded the patched shell, but local API was not running so full Settings data used mocked smoke rendering.
 
 Docs updated: `docs/product-roadmap.md` adds a `[~]` Settings Work notification
 responsive-layout polish entry; `docs/design-governance.md` adds the Remba
-review follow-up. Still do before final claim/commit: lint, tsc, production
-build, git diff review, then commit/push with the Gmail author path or deploy
-hook as noted below.
+review follow-up. Shipped in `7dc977e` (`Polish Settings notification layout`)
+and pushed to `origin/main` with the Gmail author path. The `main-deploy`
+Vercel deploy hook was triggered afterwards; `https://leasium.ai` returned a
+fresh Vercel 200 from the public edge, but authenticated Settings content was
+not re-opened in Chrome after the final browser session was closed.
 
 ## Claude continuation — 2026-06-07 evening (Testing pass + Vercel deploy unblock — latest)
 
