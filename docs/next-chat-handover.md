@@ -30,6 +30,10 @@ Verification:
 - `npm --prefix apps/web run lint -- src/components/app-shell.tsx tests/smoke/mobile-bottom-nav.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy Chrome check on `https://leasium.ai/operations`: production
+  propagation completed on the fourth poll; the command search textbox rendered
+  with `min-h-[44px]`, measured 44px high, and the old `min-h-10` class was no
+  longer present. No command action was clicked.
 
 Guardrails:
 - No Xero/Basiq write, SendGrid email, Twilio SMS, tenant email, payment
