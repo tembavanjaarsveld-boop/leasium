@@ -3694,7 +3694,7 @@ function Workspace({
                     <span className="text-sm font-semibold">{tab.label}</span>
                     <span
                       className={`text-xs ${
-                        isActive ? "text-primary-foreground/80" : ""
+                        isActive ? "text-primary-foreground" : ""
                       }`}
                     >
                       {tab.description}

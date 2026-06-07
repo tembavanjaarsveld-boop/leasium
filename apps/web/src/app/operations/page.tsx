@@ -3783,7 +3783,7 @@ function OperationsWorkspace() {
                     <span
                       className={cn(
                         "text-xs",
-                        isActive && "text-primary-foreground/80",
+                        isActive && "text-primary-foreground",
                       )}
                     >
                       {tab.description}
@@ -4074,12 +4074,12 @@ function OperationsWorkspace() {
                           </span>
                           <span className="text-foreground">{row.count}</span>
                           {row.urgentCount ? (
-                            <span className="text-danger">
+                            <span className="text-danger-strong">
                               {row.urgentCount} urgent
                             </span>
                           ) : null}
                           {row.followUpCount ? (
-                            <span className="text-warning">
+                            <span className="text-warning-strong">
                               {row.followUpCount} follow-up
                             </span>
                           ) : null}
@@ -4262,13 +4262,13 @@ function OperationsWorkspace() {
                     </span>
                     <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Overdue
-                      <span className="text-danger">
+                      <span className="text-danger-strong">
                         {overdueComplianceChecks.length}
                       </span>
                     </span>
                     <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Due soon
-                      <span className="text-warning">
+                      <span className="text-warning-strong">
                         {dueSoonComplianceChecks.length}
                       </span>
                     </span>

@@ -149,6 +149,21 @@ test("operator shell muted text and urgent badges keep readable contrast", async
     name: "Work, 9 drafts in the comms queue, 3 urgent",
   });
   await expectContrast(workLink.locator("span").filter({ hasText: /^3$/ }));
+  await expectContrast(
+    page.getByRole("tab", { name: /All drafts \d+/ }).locator("span").last(),
+  );
+
+  await page.goto("/billing-readiness?tab=delivery");
+  await expectContrast(page.getByText("Send, sync, record payment"));
+  await expectContrast(
+    page.getByRole("button", { name: /All \d+/ }).locator("span").last(),
+  );
+
+  await page.goto("/operations?tab=compliance");
+  await expectContrast(page.getByText("Checks and inspections"));
+
+  await page.goto("/settings?tab=security");
+  await expectContrast(page.getByRole("button", { name: "Deactivate" }).first());
 
   await page.goto("/people");
   await expectContrast(

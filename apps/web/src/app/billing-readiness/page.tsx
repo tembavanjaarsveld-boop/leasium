@@ -2369,7 +2369,7 @@ function BillingReadinessWorkspace() {
                     <span className="text-sm font-semibold">{tab.label}</span>
                     <span
                       className={`text-xs ${
-                        isActive ? "text-primary-foreground/80" : ""
+                        isActive ? "text-primary-foreground" : ""
                       }`}
                     >
                       {tab.description}
@@ -3442,7 +3442,7 @@ function BillingReadinessWorkspace() {
                           <span
                             className={`rounded-full px-2 py-0.5 text-xs ${
                               isActive
-                                ? "bg-white/20 text-primary-foreground"
+                                ? "bg-white text-primary-pressed"
                                 : "bg-muted text-muted-foreground"
                             }`}
                           >

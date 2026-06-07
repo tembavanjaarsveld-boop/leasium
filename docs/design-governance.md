@@ -151,9 +151,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
-  canvas. The sidebar keyboard-shortcut footer uses slate-300 on navy, and the
+  canvas. The sidebar keyboard-shortcut footer uses slate-300 on navy, the
   urgent Work comms badge uses the existing `danger-strong` background for
-  small white numerals. Layout, navigation, queue counts, command shortcuts,
+  small white numerals, active tab subtitles and compact count badges use
+  fully opaque foregrounds, and measured warning/danger count labels use their
+  `*-strong` text tokens. Layout, navigation, queue counts, command shortcuts,
   and provider guardrails are unchanged. Remba should review the slightly
   firmer muted-text tone with the wider AppHeader/sidebar density pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**

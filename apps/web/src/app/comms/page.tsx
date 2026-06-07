@@ -1632,7 +1632,7 @@ function CommsFilterButton({
       <span>{label}</span>
       <span
         className={`rounded-full px-2 py-0.5 text-leasium-micro font-semibold ${
-          active ? "bg-white/20 text-primary-foreground" : "bg-white text-muted-foreground"
+          active ? "bg-white text-primary-pressed" : "bg-white text-muted-foreground"
         }`}
       >
         {count}

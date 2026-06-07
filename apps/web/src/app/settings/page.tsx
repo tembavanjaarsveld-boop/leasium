@@ -3933,7 +3933,7 @@ function SettingsWorkspace() {
                         <SecondaryButton
                           type="button"
                           className={`min-h-10 justify-center ${
-                            member.is_active ? "text-danger" : ""
+                            member.is_active ? "text-danger-strong" : ""
                           }`}
                           disabled={
                             isSelf ||
@@ -4152,7 +4152,7 @@ function SettingsWorkspace() {
                               <SecondaryButton
                                 type="button"
                                 className={
-                                  member.is_active ? "text-danger" : ""
+                                  member.is_active ? "text-danger-strong" : ""
                                 }
                                 disabled={
                                   isSelf ||

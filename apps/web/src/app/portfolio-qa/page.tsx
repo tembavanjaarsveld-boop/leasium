@@ -4430,7 +4430,7 @@ function PortfolioQaWorkspace() {
               <div
                 className={cn(
                   "mt-1 text-xs text-muted-foreground",
-                  activeTab === tab.id && "text-primary-foreground/80",
+                  activeTab === tab.id && "text-primary-foreground",
                 )}
               >
                 {tab.description}

@@ -1336,7 +1336,7 @@ function InsightsWorkspace() {
                     <span
                       className={cn(
                         "text-xs",
-                        isActive && "text-primary-foreground/80",
+                        isActive && "text-primary-foreground",
                       )}
                     >
                       {tab.description}
