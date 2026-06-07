@@ -435,6 +435,16 @@ test("tenant detail document review links stay touch-safe without document actio
   }
 });
 
+test("tenant portal invoice PDF controls stay on the touch-target baseline", async () => {
+  const source = await readFile(
+    "src/app/tenant-portal/tenant-portal-content.tsx",
+    "utf8",
+  );
+
+  expect(source).not.toMatch(/invoice\.pdf_document_id[\s\S]{0,700}min-h-9/);
+  expect(source).toMatch(/invoice\.pdf_document_id[\s\S]{0,700}min-h-11/);
+});
+
 test("mobile tenant portal recovery actions stay touch-safe", async ({
   page,
 }) => {

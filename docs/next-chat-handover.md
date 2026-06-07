@@ -2,6 +2,47 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Tenant portal invoice PDF target - latest)
+
+Continuation after the Settings template copy alignment. A source/UX scan found
+one remaining gated tenant-facing density issue: signed-in tenant portal invoice
+PDF controls were still using the older 36px target class even though the wider
+tenant/operator surfaces have moved to the 44px baseline.
+
+Files changed:
+- `apps/web/src/app/tenant-portal/tenant-portal-content.tsx`: tenant portal
+  invoice PDF download controls now use `min-h-11` with the shared 200ms
+  `ease-leasium` interaction timing. Account-scoped and token-scoped download
+  destinations are unchanged.
+- `apps/web/tests/smoke/tenants-ux.spec.ts`: adds source smoke coverage for the
+  gated signed-in tenant account path. Local unauthenticated smoke correctly
+  stops at the account setup gate before rendering invoice rows.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  tenant portal density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused tenant UX smoke failed on the old `min-h-9` invoice PDF
+  control class.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts -g "tenant portal invoice PDF controls"` - passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts` - passed, 8 tests.
+- `npm --prefix apps/web run lint -- src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/tenants-ux.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed on clean rerun. A first concurrent
+  build while the smoke server was still active compiled but failed during page
+  data collection with `Cannot find module for page: /_document`; the clean
+  rerun completed page generation and optimization.
+- Chrome + Computer Use local visual check on
+  `http://127.0.0.1:3110/tenant-portal/tenant-token-1`: the public trust/error
+  state rendered without clipping or overflow. The signed-in invoice list remains
+  intentionally hidden in unauthenticated local mode and is covered by source
+  smoke until a live Clerk/session pass is run.
+
+Guardrails:
+- This is CSS class and source-smoke coverage only. It does not fetch document
+  bytes in smoke, upload tenant documents, change invoice visibility, process
+  payments, send email/SMS, call Xero/Basiq/SendGrid/Twilio, refresh providers,
+  reconcile payments, or mutate provider history.
+
 ## Codex continuation - 2026-06-08 (Settings template copy alignment - latest)
 
 Continuation after the grouped compliance source handoffs. Because Vercel

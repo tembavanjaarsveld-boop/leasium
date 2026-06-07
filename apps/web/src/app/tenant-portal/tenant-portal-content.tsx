@@ -4913,7 +4913,7 @@ function TenantPortalContent({
                       </div>
                       {invoice.pdf_document_id && accountScoped ? (
                         <button
-                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition duration-200 ease-leasium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                           type="button"
                           disabled={documentDownloadMutation.isPending}
                           onClick={() =>
@@ -4928,7 +4928,7 @@ function TenantPortalContent({
                         </button>
                       ) : invoice.pdf_document_id && token ? (
                         <a
-                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold hover:bg-muted"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition duration-200 ease-leasium hover:bg-muted"
                           href={tenantPortalDocumentDownloadUrl(
                             token,
                             invoice.pdf_document_id,

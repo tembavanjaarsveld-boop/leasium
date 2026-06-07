@@ -71,6 +71,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   link itself remains navigation-only; the SendGrid-backed tenant invite still fires only
   from the reviewed "Send invite" submit action. Remba should review whether Smart Intake
   should keep this manual quick-add shortcut beside the document-first upload path.
+- **Tenant portal invoice PDF touch target (2026-06-08, prototype mode, no Remba gate):**
+  signed-in tenant portal invoice PDF controls now use the 44px minimum target baseline.
+  Download destinations, account/token scoping, invoice visibility, payment rails, document
+  bytes, uploads, and provider behavior are unchanged. Remba should review this with the
+  wider tenant portal density pass because local unauthenticated smoke intentionally stops
+  at the account setup gate before the invoice list.
 - **Command palette tenant invite handoff (2026-06-08, prototype mode, no Remba gate):**
   the Cmd-K "Add tenant" frequent action now opens `/tenants?action=invite`, matching
   the People hub and Smart Intake quick-add entrypoints instead of landing on the tenant
