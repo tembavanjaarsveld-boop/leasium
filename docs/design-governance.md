@@ -61,6 +61,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   link itself remains navigation-only; the SendGrid-backed tenant invite still fires only
   from the reviewed "Send invite" submit action. Remba should review whether Smart Intake
   should keep this manual quick-add shortcut beside the document-first upload path.
+- **Command palette tenant invite handoff (2026-06-08, prototype mode, no Remba gate):**
+  the Cmd-K "Add tenant" frequent action now opens `/tenants?action=invite`, matching
+  the People hub and Smart Intake quick-add entrypoints instead of landing on the tenant
+  register root. This is navigation-only; tenant invite delivery still requires the
+  reviewed "Send invite" submit. Remba should review whether manual tenant creation
+  shortcuts should all use invite-first language in the command surface.
 - **Smart Intake review filter touch target (2026-06-07, prototype mode, no Remba gate):**
   the shared Dashboard/Smart Intake review-queue filter select now uses the 44px minimum
   target baseline while keeping the same filter options, queue behavior, and CSV/export

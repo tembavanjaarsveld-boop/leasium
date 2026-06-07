@@ -187,7 +187,7 @@ const frequentActions: CommandAction[] = [
     meta: "Portfolio",
   },
   {
-    href: "/tenants",
+    href: "/tenants?action=invite",
     label: "Add tenant",
     meta: "People",
   },

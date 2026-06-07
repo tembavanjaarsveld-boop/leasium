@@ -2,6 +2,35 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Command palette tenant invite handoff - latest)
+
+Continuation after the mobile navigation Escape-close slice. Chrome +
+Computer Use re-anchored the signed-in production app at `https://leasium.ai`
+with the command palette open. The live command/search surface showed the
+"Add tenant" frequent action still pointing to `/tenants`, while the already
+fixed page-level tenant shortcuts pointed to `/tenants?action=invite`.
+
+The confirmed UX defect was an inconsistent shortcut destination: the operator
+intent "Add tenant" should land in the existing invite-start workflow rather
+than a register root when launched from the command palette.
+
+Files changed:
+- `apps/web/src/components/app-shell.tsx`: the command palette "Add tenant"
+  frequent action now points to `/tenants?action=invite`.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing command palette smoke
+  now locks the tenant shortcut href and first failed against `/tenants`.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  command/search workflow change as prototype-mode/Remba-pending.
+
+Guardrails:
+- The link change is navigation-only. It does not create tenants, submit invite
+  forms, send SendGrid/Twilio messages, mutate tenant records, refresh providers,
+  write Xero/Basiq data, reconcile payments, upload/download files, or dispatch
+  external communications. Tenant invite delivery still requires the explicit
+  reviewed "Send invite" submit inside the tenant workflow.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Mobile nav Escape close - latest)
 
 Continuation after the Smart Intake tenant quick-add handoff. Chrome +

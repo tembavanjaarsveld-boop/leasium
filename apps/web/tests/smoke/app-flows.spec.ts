@@ -143,6 +143,12 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("link", { name: /Data cleanup \/ Portfolio QA/ }),
   ).toBeVisible();
+  await commandSearch.fill("add tenant");
+  await expect(
+    page
+      .getByRole("list", { name: "Command actions" })
+      .getByRole("link", { name: /Add tenant/ }),
+  ).toHaveAttribute("href", "/tenants?action=invite");
   await commandSearch.fill("comms");
   await expect(
     page.getByRole("list", { name: "Command actions" }),
