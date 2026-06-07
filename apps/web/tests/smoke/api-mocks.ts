@@ -883,7 +883,7 @@ let tenantPortalNotificationPreferences = {
   ...initialTenantPortalNotificationPreferences,
 };
 
-const brandedCommunicationTemplates = [
+const initialBrandedCommunicationTemplates = [
   {
     id: "branded-template-1",
     entity_id: entityId,
@@ -2539,6 +2539,9 @@ export async function mockLeasiumApi(
   tenantPortalNotificationPreferences = {
     ...initialTenantPortalNotificationPreferences,
   };
+  let brandedCommunicationTemplates = jsonClone(
+    initialBrandedCommunicationTemplates,
+  );
 
   const xeroConnection = () => ({
     entity_id: entityId,
@@ -8162,7 +8165,191 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/branded-communication-templates") {
-      await fulfillJson(route, brandedCommunicationTemplates);
+      const includeInactive = url.searchParams.get("include_inactive") === "true";
+      await fulfillJson(
+        route,
+        brandedCommunicationTemplates.filter(
+          (template) =>
+            !template.deleted_at && (includeInactive || template.is_active),
+        ),
+      );
+      return;
+    }
+
+    if (method === "POST" && path === "/branded-communication-templates") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const key = String(payload.key ?? "");
+      const version = String(payload.version ?? "v1");
+      const payloadEntityId = String(payload.entity_id ?? entityId);
+      const duplicateActive = brandedCommunicationTemplates.some(
+        (template) =>
+          template.entity_id === payloadEntityId &&
+          template.key === key &&
+          template.version === version &&
+          template.is_active &&
+          !template.deleted_at,
+      );
+      if (duplicateActive) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "An active template already exists for this key and version. Edit it or use a new version.",
+          },
+          409,
+        );
+        return;
+      }
+
+      const created = {
+        id: `branded-template-${brandedCommunicationTemplates.length + 1}`,
+        entity_id: payloadEntityId,
+        key,
+        version,
+        channel:
+          payload.channel === "sms" || payload.channel === "in_app"
+            ? payload.channel
+            : "email",
+        provider: String(payload.provider ?? "sendgrid"),
+        name: String(payload.name ?? "Untitled template"),
+        subject_template:
+          typeof payload.subject_template === "string"
+            ? payload.subject_template
+            : null,
+        body_template: String(payload.body_template ?? ""),
+        action_label:
+          typeof payload.action_label === "string" ? payload.action_label : null,
+        action_url_template:
+          typeof payload.action_url_template === "string"
+            ? payload.action_url_template
+            : null,
+        notes: typeof payload.notes === "string" ? payload.notes : null,
+        is_active: payload.is_active !== false,
+        is_system: false,
+        created_by_user_id: operatorId,
+        created_at: "2026-05-22T00:20:00.000Z",
+        updated_at: "2026-05-22T00:20:00.000Z",
+        deleted_at: null,
+        metadata: jsonRecord(payload.metadata),
+      } as (typeof brandedCommunicationTemplates)[number];
+      brandedCommunicationTemplates.push(created);
+      await fulfillJson(route, created, 201);
+      return;
+    }
+
+    const brandedTemplateMatch = path.match(
+      /^\/branded-communication-templates\/([^/]+)$/,
+    );
+    if (method === "PATCH" && brandedTemplateMatch) {
+      const templateIndex = brandedCommunicationTemplates.findIndex(
+        (template) => template.id === brandedTemplateMatch[1],
+      );
+      if (templateIndex < 0) {
+        await fulfillJson(route, { detail: "Template not found." }, 404);
+        return;
+      }
+
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const template = brandedCommunicationTemplates[templateIndex];
+      const reactivating = payload.is_active === true && !template.is_active;
+      const duplicateActive =
+        reactivating &&
+        brandedCommunicationTemplates.some(
+          (candidate) =>
+            candidate.id !== template.id &&
+            candidate.entity_id === template.entity_id &&
+            candidate.key === template.key &&
+            candidate.version === template.version &&
+            candidate.is_active &&
+            !candidate.deleted_at,
+        );
+      if (duplicateActive) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "An active template already exists for this key and version. Edit it or use a new version.",
+          },
+          409,
+        );
+        return;
+      }
+
+      const hasPayloadKey = (key: string) =>
+        Object.prototype.hasOwnProperty.call(payload, key);
+      const updated = {
+        ...template,
+        name:
+          hasPayloadKey("name") && typeof payload.name === "string"
+            ? payload.name
+            : template.name,
+        subject_template: hasPayloadKey("subject_template")
+          ? typeof payload.subject_template === "string"
+            ? payload.subject_template
+            : null
+          : template.subject_template,
+        body_template:
+          hasPayloadKey("body_template") &&
+          typeof payload.body_template === "string"
+            ? payload.body_template
+            : template.body_template,
+        action_label: hasPayloadKey("action_label")
+          ? typeof payload.action_label === "string"
+            ? payload.action_label
+            : null
+          : template.action_label,
+        action_url_template: hasPayloadKey("action_url_template")
+          ? typeof payload.action_url_template === "string"
+            ? payload.action_url_template
+            : null
+          : template.action_url_template,
+        notes: hasPayloadKey("notes")
+          ? typeof payload.notes === "string"
+            ? payload.notes
+            : null
+          : template.notes,
+        is_active:
+          typeof payload.is_active === "boolean"
+            ? payload.is_active
+            : template.is_active,
+        metadata: hasPayloadKey("metadata")
+          ? jsonRecord(payload.metadata)
+          : template.metadata,
+        updated_at: "2026-05-22T00:25:00.000Z",
+      } as (typeof brandedCommunicationTemplates)[number];
+      brandedCommunicationTemplates.splice(templateIndex, 1, updated);
+      await fulfillJson(route, updated);
+      return;
+    }
+
+    if (method === "DELETE" && brandedTemplateMatch) {
+      const templateIndex = brandedCommunicationTemplates.findIndex(
+        (template) => template.id === brandedTemplateMatch[1],
+      );
+      if (templateIndex < 0) {
+        await fulfillJson(route, { detail: "Template not found." }, 404);
+        return;
+      }
+      const template = brandedCommunicationTemplates[templateIndex];
+      if (template.is_system) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "System templates cannot be deleted; deactivate them instead.",
+          },
+          409,
+        );
+        return;
+      }
+      const deleted = {
+        ...template,
+        is_active: false,
+        updated_at: "2026-05-22T00:30:00.000Z",
+        deleted_at: "2026-05-22T00:30:00.000Z",
+      } as (typeof brandedCommunicationTemplates)[number];
+      brandedCommunicationTemplates.splice(templateIndex, 1, deleted);
+      await fulfillJson(route, deleted);
       return;
     }
 

@@ -2,6 +2,33 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation — 2026-06-07 (Comms branded-template editor — latest)
+
+Implemented the `/comms` operator editor for branded communication templates
+from `docs/superpowers/plans/2026-06-07-comms-template-editor.md`, using
+red-first smoke coverage. Scope stayed on the planned files, including the
+coordination-sensitive `apps/web/tests/smoke/api-mocks.ts`.
+
+- API client: added branded-template create/update/delete payload types and
+  helpers beside the existing catalog list helper.
+- Smoke mocks: branded templates are now reset per `mockLeasiumApi` call and
+  support POST/PATCH/DELETE with duplicate-active 409s, system-delete 409s,
+  reactivation conflict checks, and soft delete.
+- `/comms`: template catalog now fetches inactive rows for editor/reactivation
+  while keeping the active badge and CSV export active-only. Cards have Edit
+  actions, a New template button, an inactive group, and the editor drawer.
+- Drawer: create/edit form with immutable key/version/channel/provider on edit,
+  runtime-key datalist on create, active toggle, deactivate/reactivate, guarded
+  delete confirmation for non-system rows, system "deactivate instead" copy,
+  inline API conflict messages, and the no-send/provider-dispatch footer note.
+- Guardrail: smoke watcher traps provider/send/dispatch/notification/invoice
+  paths and any non-template API mutation so template CRUD cannot send messages.
+
+Final verification: touched-file eslint clean; `tsc --noEmit` clean;
+Playwright `comms-template-editor.spec.ts` + `comms-template-catalog.spec.ts` +
+`settings.spec.ts` passed 11/11; production `next build` passed. Commit locally
+only; push still needs Temba's explicit go.
+
 ## Claude continuation — 2026-06-07 (Xero Settings simplification + compliance evidence linking — latest)
 
 Cowork session, autonomous run on Temba's "you pick, keep going" instruction.

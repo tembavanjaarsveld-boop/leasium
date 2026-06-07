@@ -24,6 +24,8 @@ import {
   Inbox,
   Loader2,
   Paperclip,
+  Pencil,
+  Plus,
   RefreshCw,
   RotateCcw,
   Send,
@@ -41,6 +43,10 @@ import {
 } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import {
+  CommsTemplateEditorDrawer,
+  type CommsTemplateEditorAction,
+} from "@/components/comms-template-editor-drawer";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -61,12 +67,15 @@ import {
   type CommsCorrespondenceEventRecord,
   type CommsKind,
   type CommsSeverity,
+  createBrandedCommunicationTemplate,
+  deleteBrandedCommunicationTemplate,
   dismissCommsCandidate,
   dispatchCommsDraft,
   getCommsOutboundLog,
   getCommsQueue,
   listBrandedCommunicationTemplates,
   listEntities,
+  updateBrandedCommunicationTemplate,
   uploadDocument,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
@@ -684,9 +693,76 @@ function CommsContent() {
   const templateCatalogQuery = useQuery({
     queryKey: ["comms-template-catalog", selectedEntityId],
     queryFn: () =>
-      listBrandedCommunicationTemplates({ entityId: selectedEntityId }),
+      listBrandedCommunicationTemplates({
+        entityId: selectedEntityId,
+        includeInactive: true,
+      }),
     enabled: Boolean(selectedEntityId),
   });
+  const [templateEditorState, setTemplateEditorState] = useState<{
+    mode: "create" | "edit";
+    template: BrandedCommunicationTemplateRecord | null;
+  } | null>(null);
+  const invalidateTemplateCatalog = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["comms-template-catalog", selectedEntityId],
+    });
+  const storeTemplateCatalogRecord = (
+    record: BrandedCommunicationTemplateRecord,
+  ) => {
+    queryClient.setQueryData<BrandedCommunicationTemplateRecord[]>(
+      ["comms-template-catalog", selectedEntityId],
+      (previous) => {
+        if (!previous) return previous;
+        const withoutRecord = previous.filter(
+          (template) => template.id !== record.id,
+        );
+        if (record.deleted_at) {
+          return withoutRecord;
+        }
+        return [...withoutRecord, record];
+      },
+    );
+    void invalidateTemplateCatalog();
+  };
+  const createTemplateMutation = useMutation({
+    mutationFn: createBrandedCommunicationTemplate,
+    onSuccess: (record) => {
+      storeTemplateCatalogRecord(record);
+    },
+  });
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({
+      templateId,
+      payload,
+    }: Extract<CommsTemplateEditorAction, { type: "update" }>) =>
+      updateBrandedCommunicationTemplate(templateId, payload),
+    onSuccess: (record) => {
+      storeTemplateCatalogRecord(record);
+    },
+  });
+  const deleteTemplateMutation = useMutation({
+    mutationFn: ({
+      templateId,
+    }: Extract<CommsTemplateEditorAction, { type: "delete" }>) =>
+      deleteBrandedCommunicationTemplate(templateId),
+    onSuccess: (record) => {
+      storeTemplateCatalogRecord(record);
+    },
+  });
+  const handleTemplateEditorSaved = async (
+    action: CommsTemplateEditorAction,
+  ) => {
+    if (action.type === "create") {
+      await createTemplateMutation.mutateAsync(action.payload);
+      return;
+    }
+    if (action.type === "update") {
+      await updateTemplateMutation.mutateAsync(action);
+      return;
+    }
+    await deleteTemplateMutation.mutateAsync(action);
+  };
 
   const [selectedFilter, setSelectedFilter] = useState<CommsFilter>("all");
   const [settledCandidateIds, setSettledCandidateIds] = useState<Set<string>>(
@@ -760,12 +836,23 @@ function CommsContent() {
   const selectedEntityName =
     entitiesQuery.data?.find((entity) => entity.id === selectedEntityId)?.name ??
     "Selected entity";
+  const storedTemplates = useMemo(
+    () => templateCatalogQuery.data ?? [],
+    [templateCatalogQuery.data],
+  );
   const activeTemplates = useMemo(
     () =>
-      (templateCatalogQuery.data ?? []).filter(
+      storedTemplates.filter(
         (template) => template.is_active && !template.deleted_at,
       ),
-    [templateCatalogQuery.data],
+    [storedTemplates],
+  );
+  const inactiveTemplates = useMemo(
+    () =>
+      storedTemplates.filter(
+        (template) => !template.is_active && !template.deleted_at,
+      ),
+    [storedTemplates],
   );
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
   const [reviewCsvCopyReceipt, setReviewCsvCopyReceipt] = useState<string | null>(
@@ -955,12 +1042,19 @@ function CommsContent() {
         </section>
         <TemplateCatalogPanel
           templates={activeTemplates}
+          inactiveTemplates={inactiveTemplates}
           entityName={selectedEntityName}
           isLoading={templateCatalogQuery.isLoading}
           error={templateCatalogQuery.error}
           onCopy={copyTemplateCatalogCsv}
           onDownload={downloadTemplateCatalogCsv}
           copyReceipt={templateCatalogCsvCopyReceipt}
+          onCreate={() =>
+            setTemplateEditorState({ mode: "create", template: null })
+          }
+          onEdit={(template) =>
+            setTemplateEditorState({ mode: "edit", template })
+          }
         />
         <OutboundLogPanel
           events={outboundLogEvents}
@@ -1078,6 +1172,14 @@ function CommsContent() {
           </div>
         ) : null}
       </div>
+      <CommsTemplateEditorDrawer
+        open={Boolean(templateEditorState)}
+        mode={templateEditorState?.mode ?? "create"}
+        template={templateEditorState?.template ?? null}
+        entityId={selectedEntityId || null}
+        onClose={() => setTemplateEditorState(null)}
+        onSaved={handleTemplateEditorSaved}
+      />
     </main>
   );
 }
@@ -1113,34 +1215,49 @@ function Metric({
 
 function TemplateCatalogPanel({
   templates,
+  inactiveTemplates,
   entityName,
   isLoading,
   error,
   onCopy,
   onDownload,
   copyReceipt,
+  onCreate,
+  onEdit,
 }: {
   templates: BrandedCommunicationTemplateRecord[];
+  inactiveTemplates: BrandedCommunicationTemplateRecord[];
   entityName: string;
   isLoading: boolean;
   error: unknown;
   onCopy: (download: TemplateCatalogDownload) => void | Promise<void>;
   onDownload: (download: TemplateCatalogDownload) => void;
   copyReceipt: string | null;
+  onCreate: () => void;
+  onEdit: (template: BrandedCommunicationTemplateRecord) => void;
 }) {
   const download: TemplateCatalogDownload = { templates, entityName };
   const templateCountLabel = `${templates.length} active ${
     templates.length === 1 ? "template" : "templates"
   }`;
   const actionDisabled = isLoading || Boolean(error) || templates.length === 0;
+  const editorDisabled = isLoading || Boolean(error);
 
   return (
     <SectionPanel
       title="Template catalog"
-      description="Active stored communication templates for the selected entity."
+      description="Stored communication templates for the selected entity."
       icon={<Sparkles size={17} />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          <SecondaryButton
+            type="button"
+            onClick={onCreate}
+            disabled={editorDisabled}
+          >
+            <Plus size={15} />
+            New template
+          </SecondaryButton>
           <StatusBadge tone="neutral">{templateCountLabel}</StatusBadge>
           <SecondaryButton
             type="button"
@@ -1182,52 +1299,31 @@ function TemplateCatalogPanel({
         </div>
       ) : null}
       {!isLoading && !error && templates.length > 0 ? (
-        <div className="divide-y divide-border">
+        <div aria-label="Active templates" className="divide-y divide-border">
           {templates.map((template) => (
-            <div key={template.id} className="grid gap-2 p-4 text-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-foreground">{template.name}</p>
-                  <p className="mt-1 break-words text-xs text-muted-foreground">
-                    {template.key}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge tone="neutral">{template.version}</StatusBadge>
-                  <StatusBadge
-                    tone={template.channel === "sms" ? "primary" : "neutral"}
-                  >
-                    {templateChannelProviderLabel(template)}
-                  </StatusBadge>
-                  <StatusBadge tone={template.is_system ? "neutral" : "primary"}>
-                    {templateSourceLabel(template)}
-                  </StatusBadge>
-                </div>
-              </div>
-              {template.subject_template ? (
-                <p className="text-xs text-muted-foreground">
-                  Subject: {template.subject_template}
-                </p>
-              ) : null}
-              <p className="text-xs leading-5 text-muted-foreground">
-                {template.body_template}
-              </p>
-              {template.notes ? (
-                <p className="text-xs text-muted-foreground">{template.notes}</p>
-              ) : null}
-              {template.action_label || template.action_url_template ? (
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {template.action_label ? (
-                    <span>Action {template.action_label}</span>
-                  ) : null}
-                  {template.action_url_template ? (
-                    <span>{template.action_url_template}</span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            <TemplateCatalogCard
+              key={template.id}
+              template={template}
+              onEdit={onEdit}
+            />
           ))}
         </div>
+      ) : null}
+      {!isLoading && !error && inactiveTemplates.length > 0 ? (
+        <details className="border-t border-border bg-muted/10" open>
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">
+            Inactive templates ({inactiveTemplates.length})
+          </summary>
+          <div aria-label="Disabled templates" className="divide-y divide-border">
+            {inactiveTemplates.map((template) => (
+              <TemplateCatalogCard
+                key={template.id}
+                template={template}
+                onEdit={onEdit}
+              />
+            ))}
+          </div>
+        </details>
       ) : null}
       <div className="border-t border-border bg-muted/20 px-4 py-3">
         <p className="text-xs text-muted-foreground">
@@ -1235,6 +1331,71 @@ function TemplateCatalogPanel({
         </p>
       </div>
     </SectionPanel>
+  );
+}
+
+function TemplateCatalogCard({
+  template,
+  onEdit,
+}: {
+  template: BrandedCommunicationTemplateRecord;
+  onEdit: (template: BrandedCommunicationTemplateRecord) => void;
+}) {
+  return (
+    <article
+      aria-label={template.name}
+      className="grid gap-2 p-4 text-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium text-foreground">{template.name}</p>
+          <p className="mt-1 break-words text-xs text-muted-foreground">
+            {template.key}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">{template.version}</StatusBadge>
+          <StatusBadge tone={template.channel === "sms" ? "primary" : "neutral"}>
+            {templateChannelProviderLabel(template)}
+          </StatusBadge>
+          <StatusBadge tone={template.is_system ? "neutral" : "primary"}>
+            {templateSourceLabel(template)}
+          </StatusBadge>
+          {!template.is_active ? (
+            <StatusBadge tone="warning">Inactive</StatusBadge>
+          ) : null}
+          <SecondaryButton
+            type="button"
+            onClick={() => onEdit(template)}
+            aria-label={`Edit ${template.name}`}
+          >
+            <Pencil size={15} />
+            Edit
+          </SecondaryButton>
+        </div>
+      </div>
+      {template.subject_template ? (
+        <p className="text-xs text-muted-foreground">
+          Subject: {template.subject_template}
+        </p>
+      ) : null}
+      <p className="text-xs leading-5 text-muted-foreground">
+        {template.body_template}
+      </p>
+      {template.notes ? (
+        <p className="text-xs text-muted-foreground">{template.notes}</p>
+      ) : null}
+      {template.action_label || template.action_url_template ? (
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {template.action_label ? (
+            <span>Action {template.action_label}</span>
+          ) : null}
+          {template.action_url_template ? (
+            <span>{template.action_url_template}</span>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
   );
 }
 

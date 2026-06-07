@@ -124,6 +124,33 @@ export type BrandedCommunicationTemplateRecord = {
   metadata: Record<string, unknown>;
 };
 
+export type BrandedCommunicationTemplateCreatePayload = {
+  entity_id: string;
+  key: string;
+  version?: string;
+  channel: BrandedCommunicationTemplateRecord["channel"];
+  provider: string;
+  name: string;
+  subject_template?: string | null;
+  body_template: string;
+  action_label?: string | null;
+  action_url_template?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+export type BrandedCommunicationTemplateUpdatePayload = {
+  name?: string | null;
+  subject_template?: string | null;
+  body_template?: string | null;
+  action_label?: string | null;
+  action_url_template?: string | null;
+  notes?: string | null;
+  is_active?: boolean | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 export type WorkAssignmentDigestItemRecord = {
   target_id: string;
   target_type: WorkAssignmentTargetType;
@@ -4341,6 +4368,40 @@ export function listBrandedCommunicationTemplates({
   }
   return request<BrandedCommunicationTemplateRecord[]>(
     `/branded-communication-templates?${params.toString()}`,
+  );
+}
+
+export function createBrandedCommunicationTemplate(
+  payload: BrandedCommunicationTemplateCreatePayload,
+) {
+  return request<BrandedCommunicationTemplateRecord>(
+    "/branded-communication-templates",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function updateBrandedCommunicationTemplate(
+  templateId: string,
+  payload: BrandedCommunicationTemplateUpdatePayload,
+) {
+  return request<BrandedCommunicationTemplateRecord>(
+    `/branded-communication-templates/${templateId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function deleteBrandedCommunicationTemplate(templateId: string) {
+  return request<BrandedCommunicationTemplateRecord>(
+    `/branded-communication-templates/${templateId}`,
+    {
+      method: "DELETE",
+    },
   );
 }
 

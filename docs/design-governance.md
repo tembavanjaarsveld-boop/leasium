@@ -58,6 +58,15 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   compliance smokes (4/4) + operations smokes (11/11) + production build. Same-day follow-up
   shipped: an optional "Upload a new file" input in the same form (file takes precedence,
   button becomes "Upload & link evidence"; local storage write only), compliance smokes 5/5.
+- **Comms branded-template editor (2026-06-07, prototype mode, no Remba gate):**
+  `/comms` now adds operator CRUD controls to the template catalog: a New template button,
+  per-card Edit buttons, a right-side editor drawer, active/inactive grouping, system-template
+  delete guard copy, and deactivate/reactivate actions. The drawer edits only branded-template
+  records and carries the no-send footer note; smoke coverage traps provider/send/dispatch,
+  notification-center, dismiss, invoice, and non-template mutation paths. Active template
+  counts and CSV exports remain active-only. Remba should review drawer density, inactive
+  reactivation discoverability, and whether rendered template preview/variable substitution
+  belongs in this surface before send-time consumption is wired.
 - **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
   `/insights` keeps the five-card KPI band always visible and replaces the former single
   long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing
