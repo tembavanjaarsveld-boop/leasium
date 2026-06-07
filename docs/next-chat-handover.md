@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Dashboard AI guardrails target - latest)
+
+Continuation after the Dashboard review queue action target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Dashboard Ask Leasium
+answer `Guardrails` disclosure rendering as a 16px-tall target after the mocked
+AI answer appears.
+
+Files changed:
+- `apps/web/src/components/dashboard/AskLeasiumPanel.tsx`: the answer
+  `Guardrails` disclosure summary now uses the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked Ask Leasium
+  flow now measures the guardrails disclosure after checking the cited source
+  link.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: fold the
+  follow-up into the existing Dashboard Leasium AI touch-target/Remba-pending
+  notes.
+
+Verification:
+- Red test: focused Ask Leasium smoke failed with received height `16` for the
+  answer `Guardrails` disclosure.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "dashboard Leasium AI panel answers with cited record"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/components/dashboard/AskLeasiumPanel.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data, asks the mocked read-only Leasium AI endpoint,
+  and measures the disclosure without sending messages, mutating records,
+  applying Smart Intake rows, or calling provider/payment/Xero/Basiq paths.
+
 ## Codex continuation - 2026-06-08 (Dashboard review queue action target - latest)
 
 Continuation after the Comms candidate handoff target pass. Because Vercel

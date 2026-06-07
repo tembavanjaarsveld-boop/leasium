@@ -629,6 +629,9 @@ test("dashboard Leasium AI panel answers with cited record", async ({
   });
   await expect(sourceLink).toBeVisible();
   await expectTouchTarget(sourceLink);
+  await expectTouchTarget(
+    askPanel.locator("summary").filter({ hasText: "Guardrails" }),
+  );
 });
 
 test("Properties multi-view toggles between table and board", async ({

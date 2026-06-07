@@ -694,7 +694,9 @@ scale, typography) and the provider-mutation guardrail.
 - Dashboard AI touch targets: the read-only Leasium AI suggestion chips now
   meet the 44px target baseline while keeping the same question text, answer
   flow, citations, and no-mutation guardrail. Citation source links now use the
-  same touch-target baseline.
+  same touch-target baseline. 2026-06-08 follow-up: the answer `Guardrails`
+  disclosure summary also uses the 44px baseline while preserving the same
+  read-only answer, citation, and warning content.
 - Dashboard entity-title de-duplication: the live dashboard no longer repeats
   the selected entity as a large content H1 because the AppHeader entity selector
   already owns that context. Daily command center is now the first visible

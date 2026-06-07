@@ -231,7 +231,9 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
             )}
             {answer.guardrails.length ? (
               <details className="text-xs text-muted-foreground">
-                <summary className="cursor-pointer">Guardrails</summary>
+                <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-primary hover:text-primary-hover">
+                  Guardrails
+                </summary>
                 <ul className="mt-1.5 ml-4 list-disc space-y-0.5">
                   {answer.guardrails.map((line, idx) => (
                     <li key={idx}>{line}</li>
