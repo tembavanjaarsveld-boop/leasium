@@ -1784,6 +1784,9 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   await expect(onboardingPanel.getByText("Ready invites")).toBeVisible();
   await expect(onboardingPanel.getByText("Existing invites")).toBeVisible();
   await expect(onboardingPanel.getByText("Northwind Fitness")).toBeVisible();
+  await expectTouchTarget(
+    onboardingPanel.getByRole("link", { name: "Recover link" }),
+  );
   await page.getByRole("button", { name: "Select ready" }).click();
   await page.getByRole("button", { name: "Send selected invites" }).click();
   await expect(page.getByText("1 invite links created.")).toBeVisible();

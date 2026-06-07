@@ -2,6 +2,37 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Portfolio QA recovery handoff target - latest)
+
+Continuation after the tenant portal preview document target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Portfolio QA
+onboarding-prep `Recover link` tenant handoff rendering as a 36px target. The
+existing Portfolio QA app-flow smoke already opens the onboarding-prep panel,
+checks blocker summaries, and runs the mocked local invite flow.
+
+Files changed:
+- `apps/web/src/app/portfolio-qa/page.tsx`: onboarding-prep `Recover link`
+  now uses the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing Portfolio QA cleanup
+  flow now measures that handoff before running the mocked invite action.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Portfolio QA density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Portfolio QA app-flow smoke failed with received height
+  `36` for the `Recover link` handoff.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "portfolio QA guides cleanup fixes and source trails"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/portfolio-qa/page.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data. The measured handoff is not opened, and the
+  existing flow preserves local-only invite, source-history, billing draft,
+  Xero, SendGrid/Twilio, provider, payment, and provider-history guardrails.
+
 ## Codex continuation - 2026-06-08 (Tenant portal preview document target - latest)
 
 Continuation after the AI Inbox guardrails target pass. Because Vercel

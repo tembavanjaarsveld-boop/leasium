@@ -5083,7 +5083,7 @@ function PortfolioQaWorkspace() {
                     ) : row.tenantId && row.onboarding ? (
                       <Link
                         href={`/tenants/${row.tenantId}`}
-                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                       >
                         <ArrowRight size={15} />
                         Recover link

@@ -292,6 +292,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   keeps the no tenant-account creation, no invite/send, no document-byte fetch,
   no provider, no Xero/Basiq, and no provider-history guardrails. Remba should
   review the Documents row density with the wider tenant portal preview pass.
+- **Portfolio QA onboarding recovery handoff target (2026-06-08, prototype mode, no Remba gate):**
+  the Portfolio QA onboarding-prep `Recover link` tenant handoff now uses the
+  44px minimum target baseline. The tenant destination, batch invite workflow,
+  source-history review, and billing draft guardrails are unchanged; smoke
+  coverage measures the mocked handoff before running the existing local
+  invite flow. Remba should review the onboarding-prep row density with the
+  wider Portfolio QA cleanup pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
