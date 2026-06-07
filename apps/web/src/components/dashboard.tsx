@@ -3927,14 +3927,14 @@ export function Dashboard({
                 <div className="flex flex-wrap gap-2">
                   <Link
                     href="/properties"
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                   >
                     <Layers3 size={16} />
                     Add property
                   </Link>
                   <Link
                     href="/tenants"
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                   >
                     <UserRound size={16} />
                     Add tenant

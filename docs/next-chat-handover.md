@@ -2,6 +2,24 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation — 2026-06-07 (Smart Intake quick-add touch targets — latest)
+
+Follow-up from the live Chrome + Computer Use UX review: the Smart Intake
+drop-zone recovery links "Add property" and "Add tenant" measured 36px high,
+below the 44px target baseline used by the operator shell. The links now keep
+the same destinations and copy but use a 44px minimum hit target.
+
+Files changed:
+- `apps/web/src/components/dashboard.tsx` changes the Smart Intake quick-add
+  links from fixed 36px height to 44px minimum height.
+- `apps/web/tests/smoke/app-flows.spec.ts` adds a focused touch-target smoke.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Smart Intake follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- app-flows.spec.ts -g "smart intake quick-add links keep 44px touch targets")` first failed with height `36`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the quick-add link change.
+
 ## Codex continuation — 2026-06-07 (Sidebar shortcut touch target — latest)
 
 Follow-up from the live Chrome + Computer Use UX review: the persistent desktop

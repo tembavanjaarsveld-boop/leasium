@@ -357,6 +357,18 @@ test("mobile header keeps utility touch targets at least 44px", async ({
   ).toBeHidden();
 });
 
+test("smart intake quick-add links keep 44px touch targets", async ({
+  page,
+}) => {
+  await page.goto("/intake");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+  ).toBeVisible();
+  await expectTouchTarget(page.getByRole("link", { name: "Add property" }));
+  await expectTouchTarget(page.getByRole("link", { name: "Add tenant" }));
+});
+
 test("billing readiness mobile actions keep 44px touch targets", async ({
   page,
 }) => {
