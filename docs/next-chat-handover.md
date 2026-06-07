@@ -2,6 +2,83 @@
 
 Last updated: 2026-06-07
 
+## Claude continuation — 2026-06-07 evening (Testing pass + Vercel deploy unblock — latest)
+
+Autonomous full testing pass on Temba's instruction ("I approve all, create a
+list of fixes and start fixing them"). Approved scope: provider emails to
+temba@skjcapital.com / tembavj@outlook.com, Twilio SMS, Xero writes; commit +
+push per verified fix.
+
+### Suite results
+- Backend: ruff clean; pytest 486 passed / 1 skipped (TEST_DATABASE_URL).
+- Frontend: eslint clean; tsc clean; production build green.
+- Playwright smokes: 4 failed / 211 passed on takeover; all four were test
+  drift, fixed in `af404b5` (suite then fully green):
+  - `insights.spec.ts` x2 predated the tabbed Insights layout — now click
+    through Money/Operations/Portfolio tabs before asserting panels.
+  - `app-flows.spec.ts` 44px touch-target spec: ambiguous `Preview` link
+    locator vs `Open vendor preview` — now exact.
+  - `settings-basiq-ux.spec.ts`: the known "Not configured" strict-mode
+    ambiguity — now exact against the status chip.
+
+### Vercel production deploy was BLOCKED (root cause + workaround)
+The repo went private on GitHub between the `eca3f7b` and `ab9901f` pushes.
+On the Vercel Hobby plan, production deploys of commits whose author is not
+the Vercel-connected GitHub account (`tembavanjaarsveld-boop`) are BLOCKED for
+private repos ("commit author did not have contributing access"). Commits are
+authored `temba@skjcapital.com`, which GitHub maps to the `TembaSKJ` account,
+so `ab9901f` (carrying the comms editor `8dbb7e0`) never deployed and
+leasium.ai silently served `eca3f7b`. Redeploy in the dashboard is also gated
+behind Upgrade-to-Pro.
+- Workaround proven: pushing `af404b5` authored as
+  `Temba van Jaarsveld <tembavanjaarsveld@gmail.com>` deployed READY and
+  re-aliased leasium.ai; the comms editor is now live in production.
+- Durable fix is Temba's call: (a) make the repo public again, (b) add
+  temba@skjcapital.com as a verified email on the `tembavanjaarsveld-boop`
+  GitHub account, or (c) Vercel Pro. Until then author pushes with the gmail
+  identity or deploys stay blocked.
+
+### Live E2E verified on leasium.ai (production, real data)
+- All 7 hubs + Dashboard load clean; no console errors; workspace APIs 200.
+- Work: queue urgency buckets, collapsible Assign owner control; assigned
+  "Insurance expiry - Covey Associates (T105+T106)" to temba@skjcapital.com
+  (left assigned — it is a real due-soon item, due 10 June).
+- Notification email lifecycle end-to-end: assignment staged a notice →
+  Send notice queued SendGrid → email received in the temba@skjcapital.com
+  Outlook inbox at 17:56 from no-reply@leasium.ai. Receipt evidence and
+  provider history rendered correctly.
+- SMS: enabled Assignment SMS for temba@skjcapital.com (+61431144423, saved
+  via Settings); Send SMS produced the honest "Skipped — Twilio Messaging is
+  not configured" receipt. Real SMS needs the Twilio env/console setup from
+  docs/deployment.md; the receipts path is correct.
+- Comms editor (post-deploy): created an operator template via the drawer,
+  verified catalog render/Override badge, then guarded-deleted it. CRUD works
+  live.
+- Tenant side: tenant record for the Temba van Jaarsveld test tenant renders
+  fully (onboarding signed, portal account active); operator portal preview
+  renders the calm status hero and checklist.
+- Settings Connect: Xero is **Not connected** — connecting requires Temba's
+  OAuth login, so approved Xero writes were untestable this session. The
+  simplified Connect panel (a015180) renders correctly in production.
+
+### Open fix list (not yet built)
+1. Lease-pack delivery gap: the test tenant's onboarding shows
+   "Delivery: Not sent / Delivery has not been attempted yet" with **no
+   operator affordance to attempt/resend delivery** once onboarding is
+   complete. Needs a small reviewed "Send pack email" action slice; the send
+   itself (to tembavj@outlook.com) is operator-approved this session.
+2. Tenant checklist vs profile mismatch: portal checklist shows
+   "Insurance missing / 0 documents" while the profile shows Insurance
+   Confirmed (onboarding answered Yes without a document). Known
+   category/count mapping product call.
+3. Twilio + SendGrid webhook console setup remain outstanding (Provider setup
+   checks show 3-4 to review); Xero OAuth connection needed before the Monday
+   rehearsal.
+4. Data cleanup queues are real but not bugs: 44 blocked tenancies, 8 missing
+   billing details, 142 missing Xero mappings, comms queue holding 22 staged
+   drafts (11 urgent) — drafts deliberately NOT approved since they would
+   email real tenants.
+
 ## Codex continuation — 2026-06-07 (Comms branded-template editor — latest)
 
 Implemented the `/comms` operator editor for branded communication templates
