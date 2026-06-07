@@ -62,11 +62,13 @@ behind Upgrade-to-Pro.
   simplified Connect panel (a015180) renders correctly in production.
 
 ### Open fix list (not yet built)
-1. Lease-pack delivery gap: the test tenant's onboarding shows
-   "Delivery: Not sent / Delivery has not been attempted yet" with **no
-   operator affordance to attempt/resend delivery** once onboarding is
-   complete. Needs a small reviewed "Send pack email" action slice; the send
-   itself (to tembavj@outlook.com) is operator-approved this session.
+1. ~~Lease-pack delivery gap~~ RESOLVED in `5e342b3`: this was not a missing
+   send affordance — resend is deliberately gated to failed/declined DocuSign
+   states and the endpoint 409s once signed. The actual bug was misleading
+   copy: a DocuSign-signed onboarding with no email receipts showed
+   "Delivery: Not sent / Delivery has not been attempted yet". delivery.ts
+   now reports "Signed via DocuSign" (success tone) with an explanatory
+   detail; verified live on the test tenant after deploy.
 2. Tenant checklist vs profile mismatch: portal checklist shows
    "Insurance missing / 0 documents" while the profile shows Insurance
    Confirmed (onboarding answered Yes without a document). Known
