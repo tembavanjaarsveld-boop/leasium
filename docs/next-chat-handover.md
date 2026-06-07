@@ -24,6 +24,13 @@ Verification:
 - `npm --prefix apps/web run lint -- 'src/app/tenants/[tenantId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Live deployment proof pending: two deploy-hook calls returned pending jobs
+  (`dhVRJxsSW7Eb9Xgx9FVM`, `j77xjt96J0YTuJiE0BQV`), but GitHub commit status
+  for `32feeda95d7e7ce1f814150e121221314700ecb7` reported Vercel failure:
+  `Deployment rate limited - retry in 24 hours.` The live tenant route still
+  served `tenants/%5BtenantId%5D/page-c3cbf5c04af2bf51.js`, which contains the
+  old `min-h-8` correspondence handoff class; no live proof should be claimed
+  until Vercel capacity resets and the production chunk changes.
 
 Guardrails:
 - The smoke measures the rendered correspondence handoffs without opening them.
