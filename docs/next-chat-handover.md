@@ -28,6 +28,11 @@ Verification:
 - `npm --prefix apps/web run lint -- src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live Billing Readiness route chunk
+  changed from `page-544ace25f141ece0.js` to
+  `page-06de520cb989f659.js` on the third poll, contained the new 44px
+  reviewed-draft source-link class, and no longer contained the old raw
+  `inline-flex items-center gap-1 ...` link class.
 
 Guardrails:
 - The source link remains navigation-only to the existing Smart Intake review.
