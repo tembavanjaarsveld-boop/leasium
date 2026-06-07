@@ -164,6 +164,11 @@ test("operator shell muted text and urgent badges keep readable contrast", async
 
   await page.goto("/settings?tab=security");
   await expectContrast(page.getByRole("button", { name: "Deactivate" }).first());
+  await page.goto("/settings?tab=organisation");
+  await expectContrast(page.getByRole("tab", { name: "Security" }));
+  await expectContrast(page.getByRole("tab", { name: "Organisation" }));
+  await page.goto("/settings?tab=xero");
+  await expectContrast(page.getByRole("tab", { name: "Connect" }));
 
   await page.goto("/people");
   await expectContrast(
