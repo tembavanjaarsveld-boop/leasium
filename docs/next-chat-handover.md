@@ -2,6 +2,80 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Production UX sweep touch targets + People fallback - latest)
+
+Follow-up from the autonomous Chrome + Computer Use production UX sweep on
+`https://leasium.ai`: 66 production routes/detail pages were reviewed at
+top/middle/bottom scroll positions for touch targets, console noise, mode-gated
+copy, and obvious visual regressions. The remaining actionable issues from that
+sweep were compact account/settings targets and one self-managed People URL
+legibility bug.
+
+Files changed across the shipped UX sweep:
+- `apps/web/src/lib/clerk-appearance.ts`,
+  `apps/web/src/components/app-shell.tsx`,
+  `apps/web/src/app/account/[[...account]]/account-page-client.tsx`, and
+  `apps/web/src/app/tenant-portal/tenant-portal-content.tsx`: share the 44px
+  Clerk account-menu trigger appearance across operator/account/tenant portal
+  surfaces.
+- `apps/web/src/app/settings/page.tsx`: raises Organisation `Open tagged
+  properties`, DocuSign setup packet actions, and ownership-tag property links
+  to the 44px target baseline.
+- `apps/web/src/app/people/page.tsx`: rewrites stale or hand-typed
+  `/people?tab=owners` to `/people?tab=tenants` for self-managed accounts once
+  operating mode resolves, keeping the URL aligned with the visible tab and
+  preserving the owner-client hub gate.
+- `apps/web/tests/smoke/app-flows.spec.ts`,
+  `apps/web/tests/smoke/helper-consolidation.spec.ts`, and
+  `apps/web/tests/smoke/people-hub.spec.ts`: lock the target-size and People
+  fallback regressions.
+- `docs/product-roadmap.md` and `docs/design-governance.md`: record the
+  Remba-pending visible UX follow-ups.
+
+Commits and deployment status:
+- `c447bea` `Fix account menu touch targets` pushed to `main`; production
+  deployment `dpl_79mfEKziwgBBd47Dap1Me9LPoE5R` reached `READY` and was aliased
+  to `leasium.ai`. Earlier obsolete deployment `a9a200b` was blocked because the
+  author email was `temba@skjcapital.com`; local git author was corrected to
+  `Temba van Jaarsveld <tembavanjaarsveld@gmail.com>`, the commit was amended,
+  and the corrected SHA was force-with-lease pushed.
+- `f2e9182` `Harden Settings support targets` pushed to `main`; production
+  deployment `dpl_3hoa9u8papuZexUhUzkbrA9qcfiv` reached `READY` and was aliased
+  to `leasium.ai`.
+- `b0f47c1` `Canonicalize People owner fallback` pushed to `main`; production
+  deployment `dpl_8zhhGqn58xH7t5pgBwifzgTUgUR2` reached `READY` and was aliased
+  to `leasium.ai`, `www.leasium.ai`, and `leasium.vercel.app`.
+
+Verification:
+- Account/settings slice:
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings"`,
+  `npx playwright test tests/smoke/helper-consolidation.spec.ts -g "Clerk user menu|tenant portal account reads"`,
+  `npm run lint`, `./node_modules/.bin/tsc --noEmit`, `git diff --check`,
+  and `npm run build` all passed.
+- Settings support-target slice:
+  `npx playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings"`,
+  `npm run lint`, `./node_modules/.bin/tsc --noEmit`, `git diff --check`,
+  and `npm run build` all passed.
+- People fallback slice:
+  `npx playwright test tests/smoke/people-hub.spec.ts -g "self-managed people hub hides owner-client tab"`,
+  `npx playwright test tests/smoke/people-hub.spec.ts`, `npm run lint`,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  all passed.
+- Live Chrome proof on `leasium.ai` after `b0f47c1`: `/people?tab=owners`
+  rewrote to `/people?tab=tenants`, Tenants was selected, Owners was hidden,
+  no owner-client copy rendered, all visible controls were at least 44px, and
+  Chrome console logs were empty. A compact post-deploy sweep of
+  `/people?tab=owners`, `/settings?tab=organisation`, and
+  `/tenant-portal/account` at top/middle/bottom scroll positions found no
+  visible sub-44px controls and no Chrome logs.
+- Vercel production runtime logs for `dpl_8zhhGqn58xH7t5pgBwifzgTUgUR2` had no
+  error/warning/fatal entries in the last 30 minutes, and Vercel toolbar
+  feedback on `main` had no unresolved threads.
+
+Active local state after this handover update should be clean once committed.
+No provider mutation, Xero write, SendGrid email, Twilio SMS, tenant email, or
+payment reconciliation was run; all production browser work was read-only.
+
 ## Codex continuation - 2026-06-07 (Tenant detail lease activity timezone fix - latest)
 
 Follow-up from the live Chrome + Computer Use tenant-detail check after the
