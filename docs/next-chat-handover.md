@@ -2,6 +2,32 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Tenants register touch targets - latest)
+
+Follow-up from the live Chrome + Computer Use secondary-route UX sweep:
+`/tenants` still had compact desktop onboarding filters, tenant drawer-open
+buttons, and inline contact edit controls measuring below the 44px target
+baseline. They now use the 44px baseline while preserving the same filters,
+drawer behavior, contact editing, and provider guardrails.
+
+Files changed:
+- `apps/web/src/app/tenants/page.tsx` raises the desktop filter chips, tenant
+  row drawer-open button, and contact inline editors to the 44px baseline.
+- `apps/web/tests/smoke/tenants-ux.spec.ts` adds focused desktop touch-target
+  coverage for the register controls.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Tenants follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npx playwright test tests/smoke/tenants-ux.spec.ts -g "desktop tenant register filters")`
+  first failed with the `All` filter width `41.109375`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the Tenants target-size change.
+- `(cd apps/web && npx playwright test tests/smoke/tenants-ux.spec.ts)` - 4 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (Work recent activity touch target - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: the

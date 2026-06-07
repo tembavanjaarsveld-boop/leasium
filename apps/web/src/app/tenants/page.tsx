@@ -815,7 +815,7 @@ function TenantWorkspace() {
                   type="button"
                   onClick={() => setFilter(item.key)}
                   className={cn(
-                    "h-9 rounded-md px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground",
+                    "min-h-11 min-w-11 rounded-md px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground",
                     filter === item.key && "bg-primary/10 text-primary",
                   )}
                 >
@@ -864,7 +864,7 @@ function TenantWorkspace() {
                     <td className="px-3 py-3">
                       <button
                         type="button"
-                        className="text-left font-medium text-primary hover:underline"
+                        className="inline-flex min-h-11 max-w-xs items-center rounded-md px-2 py-2 text-left font-medium text-primary transition hover:bg-primary/5 hover:underline"
                         onClick={(event) => {
                           event.stopPropagation();
                           setDrawerTenantId(tenant.id);
@@ -919,6 +919,7 @@ function TenantWorkspace() {
                           value={tenant.contact_name}
                           ariaLabel={`Contact name for ${tenantName(tenant)}`}
                           placeholder="Add contact name"
+                          touchSafe
                           onSave={(next) =>
                             saveTenantField(tenant.id, "contact_name", next)
                           }
@@ -929,6 +930,7 @@ function TenantWorkspace() {
                           placeholder="Add email"
                           type="email"
                           className="text-muted-foreground"
+                          touchSafe
                           onSave={(next) =>
                             saveTenantField(tenant.id, "contact_email", next)
                           }
@@ -939,6 +941,7 @@ function TenantWorkspace() {
                           placeholder="Add phone"
                           type="tel"
                           className="text-muted-foreground"
+                          touchSafe
                           onSave={(next) =>
                             saveTenantField(tenant.id, "contact_phone", next)
                           }

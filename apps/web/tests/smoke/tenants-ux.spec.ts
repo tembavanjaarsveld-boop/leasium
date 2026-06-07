@@ -27,6 +27,64 @@ function expectTenantCorrespondenceCsv(correspondenceCsv: string) {
   expect(correspondenceCsv).toContain("fetch document bytes.");
 }
 
+test("desktop tenant register filters and inline actions are touch-safe", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/tenants");
+
+  await expect(
+    page.getByRole("heading", { name: "Tenant workspace" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  for (const label of [
+    "All",
+    "Needs onboarding",
+    "Sent",
+    "Submitted",
+    "Overdue",
+    "Cancelled",
+  ]) {
+    await expectTouchTarget(
+      await page.getByRole("button", { name: label, exact: true }).boundingBox(),
+    );
+  }
+
+  const tenantRow = page
+    .locator("tbody tr")
+    .filter({
+      has: page.getByRole("button", {
+        name: "Bright Cafe (Bright Cafe Pty Ltd)",
+        exact: true,
+      }),
+    })
+    .first();
+  await expect(tenantRow).toBeVisible();
+
+  await expectTouchTarget(
+    await tenantRow
+      .getByRole("button", {
+        name: "Bright Cafe (Bright Cafe Pty Ltd)",
+        exact: true,
+      })
+      .boundingBox(),
+  );
+
+  for (const label of [
+    "Edit Contact name for Bright Cafe (Bright Cafe Pty Ltd)",
+    "Edit Contact email for Bright Cafe (Bright Cafe Pty Ltd)",
+    "Edit Contact phone for Bright Cafe (Bright Cafe Pty Ltd)",
+  ]) {
+    await expectTouchTarget(
+      await tenantRow
+        .getByRole("button", { name: label, exact: true })
+        .boundingBox(),
+    );
+  }
+});
+
 test("mobile tenant rows expose invite actions without raw loading placeholders", async ({
   page,
 }) => {

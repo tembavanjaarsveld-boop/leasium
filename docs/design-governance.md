@@ -80,6 +80,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the People hub Tenants tab "Add tenant" action now uses the 44px minimum target baseline
   while keeping the same tenant-invite destination and People IA. Remba should review the
   tab action density with the wider People hub pass.
+- **Tenants register touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the desktop Tenant workspace onboarding filters, row drawer-open tenant buttons, and inline
+  contact edit cells now use the 44px minimum target baseline while preserving the same
+  onboarding filters, drawer behavior, contact editing, and provider guardrails. Remba should
+  review the taller table-row rhythm with the wider Tenant workspace density pass.
 - **Work queue assignment touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Operations queue collapsed "Assign owner" action and its immediate expanded assignee
   controls now use the 44px minimum target baseline while preserving the same assignment
