@@ -1832,7 +1832,7 @@ function CandidateCard({
           {handoffLink ? (
             <Link
               href={handoffLink.href}
-              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary-soft px-2.5 py-1 font-medium text-primary-hover transition hover:border-primary/50 hover:bg-primary/10"
+              className="inline-flex min-h-11 items-center justify-center gap-1 rounded-full border border-primary/30 bg-primary-soft px-3 font-medium text-primary-hover transition hover:border-primary/50 hover:bg-primary/10"
             >
               {handoffLink.label}
               <ExternalLink size={12} />

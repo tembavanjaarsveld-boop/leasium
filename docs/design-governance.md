@@ -169,6 +169,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the Comms outbound-log filter tabs and stored receipt "Open work queue" links now use the
   44px minimum target baseline while preserving read-only receipt filtering, links, and local
   CSV export guardrails. Remba should review the receipt-log density with the wider Comms pass.
+- **Comms candidate handoff targets (2026-06-08, prototype mode, no Remba gate):**
+  the Comms queue draft-card source handoff links now use the 44px minimum target baseline,
+  including maintenance `Open work order` candidates. These remain navigation-only handoffs;
+  no approve/send, dismiss, evidence upload, provider refresh, provider-history write, queue
+  mutation, or maintenance mutation behaviour changed. Remba should review the taller card
+  metadata rhythm with the wider Comms density pass.
 - **Notifications message-preview touch targets (2026-06-07, prototype mode, no Remba gate):**
   the notification-center message preview summary and its "Open assigned work" action links now
   use the 44px minimum target baseline while preserving read-only notification review and explicit

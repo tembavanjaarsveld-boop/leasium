@@ -945,6 +945,9 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     contractorForwardCard.getByRole("link", { name: "Open work order" }),
   ).toHaveAttribute("href", "/operations/maintenance/work-order-1");
+  await expectTouchTarget(
+    contractorForwardCard.getByRole("link", { name: "Open work order" }),
+  );
   await expect(
     contractorForwardCard.getByRole("button", { name: "Approve & send" }),
   ).toBeEnabled();

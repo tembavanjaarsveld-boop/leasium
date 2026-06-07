@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Comms candidate handoff target - latest)
+
+Continuation after the Billing invoice preview action target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Comms queue
+draft-card `Open work order` handoff rendering as a 26px-tall target on the
+mocked contractor-forward candidate.
+
+Files changed:
+- `apps/web/src/app/comms/page.tsx`: Comms draft-card source handoff links now
+  use the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked Comms queue
+  flow now measures the contractor-forward `Open work order` handoff before the
+  mocked approve/send path.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the Comms
+  density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Comms queue smoke failed with received height `26` for the
+  contractor-forward `Open work order` handoff.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "comms queue approves inbound SMS with a phone recipient"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/comms/page.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data, measures the handoff before the mocked
+  approval path, and does not click the handoff. No live SendGrid/Twilio,
+  provider refresh, provider-history, Xero, Basiq, payment reconciliation,
+  document, or maintenance mutation path is touched.
+
 ## Codex continuation - 2026-06-08 (Billing invoice preview action target - latest)
 
 Continuation after the Portfolio QA recovery handoff target pass. Because
