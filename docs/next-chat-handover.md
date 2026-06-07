@@ -61,6 +61,40 @@ behind Upgrade-to-Pro.
   OAuth login, so approved Xero writes were untestable this session. The
   simplified Connect panel (a015180) renders correctly in production.
 
+### Third pass, same session ("everything but Xero, go nuts")
+- **Twilio console (operator-approved):** purchased trial number
+  **+1 478 339 5818** ($1.15/mo from trial credit; AU numbers need
+  regulatory bundles so a US number is the pragmatic test sender), enabled
+  Australia (+61) in SMS geo permissions, set the number's inbound webhook to
+  `/api/v1/comms/webhooks/twilio-inbound?entity_id=019e3d7b-...d08`, and
+  confirmed +61431144423 is a verified trial recipient. Account SID
+  `AC585793d87db1781a97dacd2cd84981eb`. **Temba's remaining 2-minute step:**
+  on the Render API service set `TWILIO_ACCOUNT_SID` (above),
+  `TWILIO_AUTH_TOKEN` (reveal in Twilio console → Account Info; secrets are
+  deliberately not handled by the agent), and `TWILIO_FROM_PHONE=+14783395818`,
+  then redeploy and retry the staged Work SMS from /notifications. Note the
+  trial account only delivers to verified numbers.
+- **Comms queue reviewed as operator delegate:** sent 3 insurance
+  compliance reminders (Covey Associates — urgent, due 10 Jun; Best Wilson
+  Buckley; Footprints Community), all SendGrid success receipts in the
+  outbound log. Held: 13 rent reviews + 2 lease renewals (commercially
+  sensitive; 3 lack recipients) and 3 near-identical Auto & General
+  reminders to the same AP inbox (needs a consolidation/dedup pass —
+  product follow-up). Dismissed: the stale "DocuSign setup needed" tenant
+  lifecycle draft for the test tenant — **bug:** the drafter staged a
+  signing-recovery email even though that lease was signed on 3 June; the
+  candidate should settle when lease_agreement.status=signed.
+- **Insurance checklist mismatch fixed** (`3a9643c`): new additive
+  `confirmed_no_document` compliance status; portal shows calm
+  "Confirmed - certificate not on file" instead of red "missing" when the
+  tenant confirmed cover without a stored certificate.
+- **Vercel durable deploy path:** created Deploy Hook `main-deploy` for
+  branch main (Settings → Git); the full hook URL is stored locally only at
+  `~/.leasium-vercel-deploy-hook` (not in git — anyone with the URL can
+  trigger deploys). `curl -s -X POST "$(cat ~/.leasium-vercel-deploy-hook)"`
+  triggers a production deploy of main regardless of commit author, tested
+  working. Gmail-author pushes remain the default; the hook is the fallback.
+
 ### AI surfaces live-tested (second pass, same session)
 - Portfolio QA reviewed enrichment (eca3f7b) works in production:
   Suggest fixes on BD153 returned cited public-safe suggestions (postcode
