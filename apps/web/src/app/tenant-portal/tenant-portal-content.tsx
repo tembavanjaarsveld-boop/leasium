@@ -86,6 +86,7 @@ import {
   uploadTenantPortalAccountDocument,
   uploadTenantPortalDocument,
 } from "@/lib/api";
+import { clerkUserButtonTouchTargetAppearance } from "@/lib/clerk-appearance";
 
 export function TenantPortalPage({
   token = null,
@@ -2597,7 +2598,9 @@ function TenantAccountPanel({
       <Panel
         title="Account Access"
         icon={<UserRound size={18} />}
-        actions={<UserButton />}
+        actions={
+          <UserButton appearance={clerkUserButtonTouchTargetAppearance} />
+        }
       >
         <div className="grid gap-2 p-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">
@@ -2629,7 +2632,9 @@ function TenantAccountPanel({
       <Panel
         title="Account Access"
         icon={<UserRound size={18} />}
-        actions={<UserButton />}
+        actions={
+          <UserButton appearance={clerkUserButtonTouchTargetAppearance} />
+        }
       >
         <div className="grid gap-2 p-4 text-sm">
           <StatusBadge tone="warning">Different tenant</StatusBadge>
@@ -2654,7 +2659,9 @@ function TenantAccountPanel({
       <Panel
         title="Your account"
         icon={<UserRound size={18} />}
-        actions={<UserButton />}
+        actions={
+          <UserButton appearance={clerkUserButtonTouchTargetAppearance} />
+        }
       >
         <div className="grid gap-3 p-4 text-sm">
           {signedInEmailAddress ? (
@@ -2688,7 +2695,9 @@ function TenantAccountPanel({
       <Panel
         title="Account Access"
         icon={<UserRound size={18} />}
-        actions={<UserButton />}
+        actions={
+          <UserButton appearance={clerkUserButtonTouchTargetAppearance} />
+        }
       >
         <div className="grid gap-2 p-4 text-sm">
           <StatusBadge tone="warning">No portal account</StatusBadge>
@@ -2713,7 +2722,7 @@ function TenantAccountPanel({
     <Panel
       title="Account Access"
       icon={<UserRound size={18} />}
-      actions={<UserButton />}
+      actions={<UserButton appearance={clerkUserButtonTouchTargetAppearance} />}
     >
       <div className="grid gap-3 p-4 text-sm">
         <p className="text-muted-foreground">

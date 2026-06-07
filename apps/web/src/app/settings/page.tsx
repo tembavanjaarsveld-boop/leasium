@@ -5117,7 +5117,7 @@ function SettingsWorkspace() {
                           </StatusBadge>
                           <Link
                             href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover md:mt-2"
+                            className="inline-flex min-h-11 items-center gap-1 rounded-md py-1 text-xs font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 md:mt-2"
                           >
                             <ExternalLink size={13} />
                             Open tagged properties

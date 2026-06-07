@@ -202,6 +202,24 @@ test("tenant portal account reads are user-scoped and fail closed on refresh", a
   expect(clearBeforePublish).toBeLessThan(publishAccountPortal);
 });
 
+test("Clerk user menu triggers use the shared touch-target appearance", async () => {
+  const appearance = await source("src/lib/clerk-appearance.ts");
+  expect(appearance).toContain("clerkUserButtonTouchTargetAppearance");
+  expect(appearance).toContain("userButtonTrigger");
+  expect(appearance).toContain("min-h-11 min-w-11");
+
+  const files = [
+    "src/components/app-shell.tsx",
+    "src/app/account/[[...account]]/account-page-client.tsx",
+    "src/app/tenant-portal/tenant-portal-content.tsx",
+  ];
+  for (const file of files) {
+    const text = await source(file);
+    expect(text).toContain("clerkUserButtonTouchTargetAppearance");
+    expect(text).not.toContain("<UserButton />");
+  }
+});
+
 test("tenant portal contact changes stay review-first for account users", async () => {
   const text = await source("src/app/tenant-portal/tenant-portal-content.tsx");
 

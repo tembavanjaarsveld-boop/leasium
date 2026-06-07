@@ -24,6 +24,7 @@ import {
 } from "@/components/auth-config-notice";
 import { LeasiumMark } from "@/components/brand";
 import { getCurrentOperator, getTenantPortalAccountSession } from "@/lib/api";
+import { clerkUserButtonTouchTargetAppearance } from "@/lib/clerk-appearance";
 
 type RouteState = "idle" | "checking" | "operator" | "tenant" | "unlinked" | "error";
 
@@ -252,7 +253,7 @@ function AccountRouter() {
               This login is not attached to a Leasium workspace.
             </h1>
           </div>
-          <UserButton />
+          <UserButton appearance={clerkUserButtonTouchTargetAppearance} />
         </div>
         <p className="text-sm leading-relaxed text-muted-foreground">
           {routeState === "error"

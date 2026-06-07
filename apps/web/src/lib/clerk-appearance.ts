@@ -34,3 +34,11 @@ export const clerkEmailOnlyAppearance = {
     dividerText: "hidden",
   },
 };
+
+export const clerkUserButtonTouchTargetAppearance = {
+  elements: {
+    userButtonAvatarBox: "h-8 w-8",
+    userButtonTrigger:
+      "min-h-11 min-w-11 rounded-lg transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
+  },
+};

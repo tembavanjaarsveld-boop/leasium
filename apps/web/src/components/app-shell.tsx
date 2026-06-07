@@ -41,6 +41,7 @@ import {
   type ResolvedAppearance,
 } from "@/lib/appearance";
 import { getCommsQueueCounts } from "@/lib/api";
+import { clerkUserButtonTouchTargetAppearance } from "@/lib/clerk-appearance";
 import { useOperatingMode } from "@/lib/use-operating-mode";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
@@ -338,17 +339,7 @@ function OperatorUserControl() {
   const { isLoaded, isSignedIn } = useUser();
 
   if (isLoaded && isSignedIn) {
-    return (
-      <UserButton
-        appearance={{
-          elements: {
-            userButtonAvatarBox: "h-8 w-8",
-            userButtonTrigger:
-              "min-h-11 min-w-11 rounded-lg transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
-          },
-        }}
-      />
-    );
+    return <UserButton appearance={clerkUserButtonTouchTargetAppearance} />;
   }
 
   return (

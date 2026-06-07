@@ -5048,6 +5048,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Open tagged properties" }).first(),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open tagged properties" }).first(),
+  );
   await expect(
     page.getByRole("link", { name: /Queen Street Retail Centre/ }),
   ).toBeVisible();
