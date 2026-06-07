@@ -277,6 +277,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   fetch document bytes, write Xero data, dispatch providers, refresh providers,
   or mutate provider history. Remba should review the event-row density with
   the wider People record correspondence pass.
+- **Welcome header link targets (2026-06-08, prototype mode, no Remba gate):**
+  the public `/welcome` brand, `Sign in`, and `Tenant invite` header links now
+  use the 44px minimum target baseline. Destinations, auth handoff copy, Clerk
+  sign-in behaviour, and tenant invite entry remain unchanged. This is a small
+  external-facing polish pass under the internal-first rule; Remba should review
+  it with the broader public sign-in/tenant-entry first-impression pass.
 - **Smart Intake inspection outcome handoff target (2026-06-08, prototype mode, no Remba gate):**
   the post-apply inspection outcome `Open Operations` handoff now uses the
   44px minimum target baseline after creating reviewed work-order drafts from

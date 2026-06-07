@@ -82,7 +82,7 @@ export default function WelcomePage() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <Link
           href="/welcome"
-          className="inline-flex items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
+          className="inline-flex min-h-11 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
         >
           <LeasiumMark className="h-9 w-9" />
           <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
@@ -92,13 +92,13 @@ export default function WelcomePage() {
         <nav className="flex items-center gap-2 text-sm">
           <Link
             href={accountSignInHref}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl px-3 font-semibold text-leasium-slate-600 transition duration-200 ease-leasium hover:text-leasium-navy-800"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 font-semibold text-leasium-slate-600 transition duration-200 ease-leasium hover:text-leasium-navy-800"
           >
             Sign in
           </Link>
           <Link
             href="/tenant-portal"
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border-strong bg-white px-3 font-semibold text-leasium-slate-600 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-3 font-semibold text-leasium-slate-600 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50"
           >
             Tenant invite
           </Link>

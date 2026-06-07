@@ -2,6 +2,39 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Welcome header targets - latest)
+
+Continuation after the Dashboard AI guardrails target pass. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the public Welcome header
+brand link rendering as a 36px-tall target and the `Sign in` header action
+rendering as a 40px-tall target.
+
+Files changed:
+- `apps/web/src/app/welcome/page.tsx`: the public Welcome header brand,
+  `Sign in`, and `Tenant invite` links now use the 44px minimum target
+  baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: adds a mocked `/welcome` smoke
+  that measures the header links against the 44px target baseline.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  external-facing sign-in polish as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Welcome smoke failed first with received height `36` for
+  the brand link, then with received height `40` for the `Sign in` header link
+  after the test was broadened to the header link group.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "welcome header links keep 44px touch targets"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/welcome/page.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke renders the public Welcome route and only measures link geometry.
+  It does not click sign-in, claim tenant invites, call Clerk account actions,
+  upload/download documents, send email/SMS, or touch Xero/Basiq/payment/provider
+  paths.
+
 ## Codex continuation - 2026-06-08 (Dashboard AI guardrails target - latest)
 
 Continuation after the Dashboard review queue action target pass. Because

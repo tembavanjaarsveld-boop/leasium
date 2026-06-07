@@ -76,6 +76,21 @@ test("setup explains Clerk configuration before first workspace setup", async ({
   ).toBeVisible();
 });
 
+test("welcome header links keep 44px touch targets", async ({ page }) => {
+  await page.goto("/welcome");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Sign in to your Leasium account.",
+    }),
+  ).toBeVisible();
+  const header = page.locator("header");
+
+  await expectTouchTarget(header.getByRole("link", { name: "Sign in" }));
+  await expectTouchTarget(header.getByRole("link", { name: "Tenant invite" }));
+  await expectTouchTarget(header.getByRole("link", { name: "Leasium" }));
+});
+
 test("workspace guard asks signed-out operators to sign in when Clerk is configured", async ({
   page,
 }) => {
