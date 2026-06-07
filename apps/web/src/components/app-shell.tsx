@@ -680,7 +680,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   className={cn(
                     "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none md:absolute md:right-0.5 md:top-1 md:h-4 md:min-w-4 md:px-1 md:text-[9px] lg:static lg:h-5 lg:min-w-5 lg:px-1.5 lg:text-leasium-micro",
                     commsBadge!.urgent > 0
-                      ? "bg-danger text-white"
+                      ? "bg-danger-strong text-white"
                       : "bg-white/15 text-white",
                   )}
                 >
@@ -693,7 +693,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           );
         })}
       </nav>
-      <div className="border-t border-white/5 px-3 py-3 text-xs text-leasium-slate-400">
+      <div className="border-t border-white/5 px-3 py-3 text-xs text-leasium-slate-300">
         <button
           type="button"
           onClick={() => {

@@ -229,7 +229,7 @@ Border:              #E4E7EC
 Strong Border:       #D0D5DD
 Text Primary:        #101828
 Text Secondary:      #475467
-Text Muted:          #667085
+Text Muted:          #475467
 Text Inverse:        #FFFFFF
 Focus Ring:          #245BFF
 ```
@@ -491,7 +491,7 @@ Drop this into the global CSS file.
 
   --leasium-text-primary: #101828;
   --leasium-text-secondary: #475467;
-  --leasium-text-muted: #667085;
+  --leasium-text-muted: #475467;
   --leasium-text-inverse: #FFFFFF;
 
   --leasium-font-sans: Geist, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

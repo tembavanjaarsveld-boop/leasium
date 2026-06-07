@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -148,6 +148,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   baseline. No provider behaviour changed: applying mappings, payment previews, Xero
   draft creation, provider dispatch, and reconciliation remain explicit reviewed actions.
   Remba/accounting support should review the taller table action rhythm.
+- **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
+  the light-mode `text-muted-foreground` alias now uses the existing slate-500
+  shade so dense page descriptions remain readable on the grey workspace
+  canvas. The sidebar keyboard-shortcut footer uses slate-300 on navy, and the
+  urgent Work comms badge uses the existing `danger-strong` background for
+  small white numerals. Layout, navigation, queue counts, command shortcuts,
+  and provider guardrails are unchanged. Remba should review the slightly
+  firmer muted-text tone with the wider AppHeader/sidebar density pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
   self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
   metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty

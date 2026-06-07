@@ -103,7 +103,7 @@ const config: Config = {
         background: "#F6F8FB",
         foreground: "#101828",
         muted: "#F2F4F7",
-        "muted-foreground": "#667085",
+        "muted-foreground": "#475467",
         primary: "#245BFF",
         "primary-foreground": "#FFFFFF",
         // Root-level short aliases for the brand-blue state variants.

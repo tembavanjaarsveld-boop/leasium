@@ -11,6 +11,76 @@ async function expectTouchTarget(control: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+async function expectContrast(control: Locator, minRatio = 4.5) {
+  await control.scrollIntoViewIfNeeded();
+  const ratio = await control.evaluate((element) => {
+    function parseColor(value: string) {
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) return null;
+      const [r, g, b, alpha] = match[1]
+        .split(",")
+        .map((part) => Number(part.trim()));
+      return { r, g, b, alpha: Number.isFinite(alpha) ? alpha : 1 };
+    }
+
+    function blend(
+      foreground: { r: number; g: number; b: number; alpha: number },
+      background: { r: number; g: number; b: number; alpha: number },
+    ) {
+      const alpha = foreground.alpha;
+      return {
+        r: foreground.r * alpha + background.r * (1 - alpha),
+        g: foreground.g * alpha + background.g * (1 - alpha),
+        b: foreground.b * alpha + background.b * (1 - alpha),
+        alpha: 1,
+      };
+    }
+
+    function effectiveBackground(start: Element) {
+      let background = { r: 255, g: 255, b: 255, alpha: 1 };
+      const chain: Element[] = [];
+      for (let node: Element | null = start; node; node = node.parentElement) {
+        chain.unshift(node);
+      }
+      for (const node of chain) {
+        const color = parseColor(getComputedStyle(node).backgroundColor);
+        if (color && color.alpha > 0) {
+          background =
+            color.alpha < 1 ? blend(color, background) : { ...color, alpha: 1 };
+        }
+      }
+      return background;
+    }
+
+    function luminance(color: { r: number; g: number; b: number }) {
+      const channel = (value: number) => {
+        const normalised = value / 255;
+        return normalised <= 0.03928
+          ? normalised / 12.92
+          : Math.pow((normalised + 0.055) / 1.055, 2.4);
+      };
+      return (
+        0.2126 * channel(color.r) +
+        0.7152 * channel(color.g) +
+        0.0722 * channel(color.b)
+      );
+    }
+
+    const foreground = parseColor(getComputedStyle(element).color);
+    if (!foreground) return 0;
+    const background = effectiveBackground(element);
+    const blendedForeground =
+      foreground.alpha < 1 ? blend(foreground, background) : foreground;
+    const foregroundLuminance = luminance(blendedForeground);
+    const backgroundLuminance = luminance(background);
+    const light = Math.max(foregroundLuminance, backgroundLuminance);
+    const dark = Math.min(foregroundLuminance, backgroundLuminance);
+    return (light + 0.05) / (dark + 0.05);
+  });
+
+  expect(ratio).toBeGreaterThanOrEqual(minRatio);
+}
+
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
@@ -62,6 +132,29 @@ test("desktop sidebar keyboard shortcut control stays touch-safe", async ({
 
   await expectTouchTarget(
     page.getByRole("button", { name: "Keyboard shortcuts ?" }),
+  );
+});
+
+test("operator shell muted text and urgent badges keep readable contrast", async ({
+  page,
+}) => {
+  await page.goto("/comms");
+
+  const primaryNav = page.getByRole("navigation", { name: "Primary" });
+  await expectContrast(
+    page.getByRole("button", { name: "Keyboard shortcuts ?" }),
+  );
+
+  const workLink = primaryNav.getByRole("link", {
+    name: "Work, 9 drafts in the comms queue, 3 urgent",
+  });
+  await expectContrast(workLink.locator("span").filter({ hasText: /^3$/ }));
+
+  await page.goto("/people");
+  await expectContrast(
+    page.getByText(
+      /Every relationship in one place — tenants, owners, vendors/,
+    ),
   );
 });
 
