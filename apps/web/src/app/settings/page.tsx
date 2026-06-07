@@ -5980,14 +5980,14 @@ function SettingsWorkspace() {
                             entityId: selectedEntityId,
                             invoiceDraftId: null,
                           })}
-                          className="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition hover:bg-muted"
+                          className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition hover:bg-muted"
                         >
                           {accountingStep.actionLabel}
                         </Link>
                       ) : accountingStep.action === "payments" ? (
                         <SecondaryButton
                           type="button"
-                          className="mt-3 min-h-10 px-3"
+                          className="mt-3 min-h-11 px-3"
                           disabled={
                             !selectedEntityId ||
                             !xeroCanPreviewPayments ||
@@ -6010,7 +6010,7 @@ function SettingsWorkspace() {
                       ) : accountingStep.action === "exceptions" ? (
                         <SecondaryButton
                           type="button"
-                          className="mt-3 min-h-10 px-3"
+                          className="mt-3 min-h-11 px-3"
                           onClick={() =>
                             scrollToPanel(xeroExceptionQueuePanelRef)
                           }
@@ -8510,7 +8510,7 @@ function SettingsWorkspace() {
                               {issue.property_id ? (
                                 <Link
                                   href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                  className="mt-1 inline-flex font-medium text-primary hover:text-primary-hover"
+                                  className="mt-2 inline-flex min-h-11 items-center rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                                 >
                                   Open property
                                 </Link>
@@ -8531,7 +8531,7 @@ function SettingsWorkspace() {
                             <td className="px-3 py-3">
                               <SecondaryButton
                                 type="button"
-                                className="min-h-9 rounded-lg px-3"
+                                className="min-h-11 rounded-lg px-3"
                                 disabled={!issue.charge_rule_id || isApplying}
                                 onClick={() => mappingMutation.mutate(issue)}
                               >

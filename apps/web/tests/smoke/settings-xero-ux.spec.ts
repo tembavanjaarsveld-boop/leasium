@@ -253,3 +253,44 @@ test("desktop settings Xero exception actions stay touch-safe", async ({
     taxExceptionRow.getByRole("link", { name: "Open property" }),
   );
 });
+
+test("desktop settings Xero readiness handoffs stay touch-safe", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1432, height: 900 });
+  await mockLeasiumApi(page);
+  await mockXeroExceptionQueue(page);
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Connect" }).click();
+
+  const accountingFreshnessPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Accounting freshness snapshot" }),
+    })
+    .first();
+  await expect(accountingFreshnessPanel).toBeVisible();
+  await expectTouchTarget(
+    accountingFreshnessPanel.getByRole("button", {
+      name: "Review exception queue",
+    }),
+  );
+
+  const chartTaxPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Chart and tax mapping" }),
+    })
+    .first();
+  await expect(chartTaxPanel).toBeVisible();
+  const mappingRow = chartTaxPanel
+    .locator("tbody tr")
+    .filter({ hasText: "Base Rent tax type missing" })
+    .first();
+  await expect(mappingRow).toBeVisible();
+  await expectTouchTarget(
+    mappingRow.getByRole("link", { name: "Open property" }),
+  );
+  await expectTouchTarget(mappingRow.getByRole("button", { name: "Apply" }));
+});

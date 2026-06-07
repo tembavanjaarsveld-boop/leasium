@@ -140,12 +140,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   behaviour, review-only exports, and provider guardrails are unchanged. Remba should
   review the slightly larger account/action rhythm with the wider account/settings
   density pass.
-- **Settings Xero exception queue touch targets (2026-06-08, prototype mode, no Remba gate):**
+- **Settings Xero accounting-support touch targets (2026-06-08, prototype mode, no Remba gate):**
   the Settings → Xero exception queue now uses the 44px minimum target baseline for
   exception packet copy/download actions, desktop `Apply suggestion` row actions, and
-  `Open property` handoff links. No provider behaviour changed: applying mappings, payment
-  previews, Xero draft creation, provider dispatch, and reconciliation remain explicit
-  reviewed actions. Remba/accounting support should review the taller table action rhythm.
+  `Open property` handoff links. The accounting freshness next-step handoffs and
+  chart/tax mapping table `Open property` / local `Apply` controls now use the same
+  baseline. No provider behaviour changed: applying mappings, payment previews, Xero
+  draft creation, provider dispatch, and reconciliation remain explicit reviewed actions.
+  Remba/accounting support should review the taller table action rhythm.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
   self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
   metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty
