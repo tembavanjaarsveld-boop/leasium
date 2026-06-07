@@ -1945,17 +1945,18 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   notes live in
   [`docs/mvp-ux-performance-review-2026-05-30.md`](mvp-ux-performance-review-2026-05-30.md).
 
-- Mobile nav drawer (`app-shell.tsx:497`) slides in from the LEFT;
-  needs a separate `drawerSlideInLeft` keyframe or a CSS variable
-  flip. Deferred per CLAUDE.md §2.3 (mobile is below the
-  internal-first laptop priority).
-- Three property-workspace modals (`property-workspace.tsx:5385/5680/5775`)
-  still pop in instantly. Deferred until the planned page-file split
-  for `property-workspace.tsx` (6,120 lines) lands.
-- Exit / close animations not yet implemented. Drawers and modals
-  unmount on close in a single render cycle. Hallmark recommends
-  ~75% of enter duration for exits; Codex SoT §5 now documents the
-  exit easing token but no surface uses it yet.
+- Mobile nav drawer motion is no longer deferred: the shell now uses
+  `animate-leasium-drawer-in-left` / `animate-leasium-drawer-out-left`,
+  delayed unmounting, and the 2026-06-08 Escape-close path. Keep the
+  remaining review focused on real-phone feel rather than missing keyframes.
+- Property workspace lease/property/unit editors are no longer instant-pop
+  exceptions: they now use the shared drawer/modal enter and exit keyframes
+  with `useUnmountDelay`. A future page-file split is still desirable for
+  maintainability, not for basic modal motion.
+- Exit / close animations are now implemented for the shared shell modals,
+  mobile nav, DetailDrawer, EvidenceDrawer, and property workspace editors.
+  Remaining Remba review should judge timing, direction, and density on
+  representative workflows rather than tracking the old implementation gap.
 
 ### Deferred from the token consistency pass — pending decision
 

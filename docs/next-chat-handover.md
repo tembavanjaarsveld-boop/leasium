@@ -20,6 +20,8 @@ escape path.
 Files changed:
 - `apps/web/src/components/app-shell.tsx`: the existing global Escape handler
   now also closes the mobile navigation drawer.
+- `apps/web/src/app/globals.css` and `docs/design-governance.md`: refresh stale
+  motion notes that still described left-drawer and exit animations as missing.
 - `apps/web/tests/smoke/app-flows.spec.ts`: adds a mobile smoke that opens the
   drawer, presses Escape, and expects the drawer close control to disappear.
 - `docs/design-governance.md` and `docs/product-roadmap.md`: record the

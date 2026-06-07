@@ -432,15 +432,13 @@ body.app-shell-active {
   }
 }
 
-/* Enter animations for right-side drawers, centred modals, and their
-   backdrops. Codex SoT §5 calls for drawer/modal opening to be visibly
-   animated; previously these surfaces popped in instantly. Animations
-   touch only `transform` and `opacity` (GPU-composited, no layout
-   trigger) and are mount-driven — they fire when React mounts the
-   element on `open === true`. Exits are not animated here yet; close
-   is a single render cycle. Respect `prefers-reduced-motion` via the
-   global escape hatch above. Pending Remba review (2026-05-23 motion
-   polish v2 slice). */
+/* Drawer, modal, and backdrop motion primitives. Codex SoT §5 calls
+   for visible but quiet enter/exit motion; these keyframes only touch
+   `transform` and `opacity` (GPU-composited, no layout trigger) and
+   pair with useUnmountDelay() so close animations finish before
+   unmount. Respect `prefers-reduced-motion` via the global escape
+   hatch above. Pending Remba review (2026-05-23 motion polish v2
+   slice, refreshed 2026-06-08). */
 @keyframes leasiumDrawerSlideInRight {
   from {
     transform: translate3d(100%, 0, 0);
