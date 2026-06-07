@@ -25,6 +25,11 @@ Verification:
 - `npm --prefix apps/web run lint -- 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live maintenance detail route chunk
+  changed from `page-ca5f4f1690381b05.js` to
+  `page-9b279472a4896d0d.js` on the fourth poll, contained the new 44px
+  correspondence handoff class, and no longer contained the old `min-h-9`
+  correspondence handoff class.
 
 Guardrails:
 - The links remain navigation-only review handoffs. The smoke does not send
