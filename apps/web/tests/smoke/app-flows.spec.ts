@@ -486,6 +486,39 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   await expectTouchTarget(staleDispatchCard.getByRole("link", { name: "PDF" }));
 });
 
+test("billing readiness invoice preview action keeps a 44px touch target", async ({
+  page,
+}) => {
+  await page.goto("/billing-readiness");
+
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  const invoicePrep = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Invoice preparation" }),
+    })
+    .first();
+  const invoicePrepRow = invoicePrep
+    .locator("table")
+    .getByRole("row")
+    .filter({ hasText: "INV-1001" })
+    .first();
+  await invoicePrepRow
+    .locator("summary")
+    .filter({ hasText: "Message preview" })
+    .first()
+    .click();
+  await expect(
+    invoicePrepRow.getByText("Please find your invoice attached.").first(),
+  ).toBeVisible();
+  await expectTouchTarget(
+    invoicePrepRow.getByRole("link", { name: "View invoice preview" }),
+  );
+});
+
 test("settings mobile tabs keep 44px touch targets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");

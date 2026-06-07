@@ -210,6 +210,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   draft, Xero, tenant email, provider dispatch, or payment-reconciliation behaviour
   changed. Remba should review the source/provenance row rhythm with the wider Billing
   Readiness density pass.
+- **Billing Readiness invoice-preview action target (2026-06-08, prototype mode, no Remba gate):**
+  the invoice preparation email preview `View invoice preview` action now uses the 44px
+  minimum target baseline while staying inside the existing read-only message preview
+  panel. The link destination is unchanged and no invoice approval, PDF storage, tenant
+  email, Xero, provider dispatch, or payment-reconciliation behaviour changed. Remba
+  should review the preview-panel action rhythm with the wider Billing Readiness density
+  pass.
 - **Maintenance closeout evidence link targets (2026-06-08, prototype mode, no Remba gate):**
   the maintenance work-order closeout photo and closeout-history source-evidence
   document links now use the 44px minimum target baseline. The links still open

@@ -2,6 +2,40 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Billing invoice preview action target - latest)
+
+Continuation after the Portfolio QA recovery handoff target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Billing Readiness
+invoice preparation email preview `View invoice preview` action rendering as a
+16px-tall target after the `Message preview` disclosure is opened.
+
+Files changed:
+- `apps/web/src/app/billing-readiness/page.tsx`: the email preview action now
+  uses the 44px minimum target baseline while staying inside the existing
+  read-only preview panel.
+- `apps/web/tests/smoke/app-flows.spec.ts`: adds direct mocked Billing
+  Readiness smoke coverage that opens the invoice message preview and measures
+  the `View invoice preview` action without opening it.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Billing Readiness density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Billing Readiness invoice-preview smoke failed with
+  received height `16` for `View invoice preview`.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "billing readiness invoice preview action keeps a 44px touch target"` from `apps/web` - passed.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "billing readiness mobile actions keep 44px touch targets|billing readiness invoice preview action keeps a 44px touch target"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data, measures the invoice preview action without
+  opening it, and does not click invoice approval, PDF storage/download, tenant
+  email, Xero, provider dispatch, Basiq, payment reconciliation, or provider
+  history paths.
+
 ## Codex continuation - 2026-06-08 (Portfolio QA recovery handoff target - latest)
 
 Continuation after the tenant portal preview document target pass. Because

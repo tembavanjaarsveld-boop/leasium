@@ -3264,7 +3264,7 @@ function BillingReadinessWorkspace() {
                                     emailPreview.actionUrl ? (
                                       <a
                                         href={emailPreview.actionUrl}
-                                        className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-primary-hover"
+                                        className="mt-2 inline-flex min-h-11 items-center rounded-md px-3 text-xs font-semibold text-primary hover:bg-muted hover:text-primary-hover"
                                       >
                                         {emailPreview.actionLabel}
                                       </a>
