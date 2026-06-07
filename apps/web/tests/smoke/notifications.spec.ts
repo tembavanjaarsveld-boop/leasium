@@ -31,6 +31,20 @@ test("notifications message preview action links stay touch-safe", async ({
   );
 });
 
+test("notifications provider and receipt disclosures stay touch-safe", async ({
+  page,
+}) => {
+  await page.goto("/notifications");
+
+  await expect(page.getByText("Work notice center")).toBeVisible();
+  await expectTouchTarget(
+    page.locator("summary").filter({ hasText: "Provider setup checks" }),
+  );
+  await expectTouchTarget(
+    page.locator("summary").filter({ hasText: "Receipt evidence" }).first(),
+  );
+});
+
 test("notifications exports provider readiness review CSV", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {

@@ -2,6 +2,27 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Notifications disclosure touch targets - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: `/notifications`
+provider setup summaries measured 40px high and receipt evidence summaries
+measured 32px high. Both disclosure summaries now use the 44px target baseline
+while preserving read-only readiness/evidence details and explicit send/retry
+guardrails.
+
+Files changed:
+- `apps/web/src/app/notifications/page.tsx` raises provider setup and receipt
+  evidence summary targets to the 44px baseline.
+- `apps/web/tests/smoke/notifications.spec.ts` adds focused touch-target
+  coverage for both notification disclosure summaries.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Notifications follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- notifications.spec.ts -g "notifications provider and receipt disclosures stay touch-safe")`
+  first failed with height `40`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the disclosure target-size change.
+
 ## Codex continuation - 2026-06-07 (Properties inline editor touch targets - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: desktop

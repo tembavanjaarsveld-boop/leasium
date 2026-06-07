@@ -678,7 +678,7 @@ function ProviderSetupChecks({
   const issueCount = checks.filter((check) => check.status !== "ready").length;
   return (
     <details className="rounded-lg border border-border bg-muted/20 text-xs md:col-span-3">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-semibold text-foreground">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-semibold text-foreground">
         <span>Provider setup checks</span>
         <StatusBadge tone={issueCount ? "warning" : "success"}>
           {issueCount ? `${issueCount} to review` : "Ready"}
@@ -1042,7 +1042,7 @@ function ReceiptEvidenceDisclosure({
   const rows = receiptRows(receipt);
   return (
     <details className="mt-2 rounded-lg border border-border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
+      <summary className="min-h-11 cursor-pointer px-3 py-3 text-xs font-semibold text-primary hover:text-primary-hover">
         Receipt evidence
       </summary>
       <div className="border-t border-border px-3 py-2">
