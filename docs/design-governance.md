@@ -283,6 +283,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   sign-in behaviour, and tenant invite entry remain unchanged. This is a small
   external-facing polish pass under the internal-first rule; Remba should review
   it with the broader public sign-in/tenant-entry first-impression pass.
+- **Contractor directory category-chip targets (2026-06-08, prototype mode, no Remba gate):**
+  the `/contractors` Add contractor form category chips now use the 44px
+  minimum target baseline. Category labels, create/edit behaviour, local
+  readiness CSV export, and contractor/provider guardrails are unchanged.
+  Remba should review the taller chip rhythm with the wider People/Vendors and
+  Work contractor-assignment pass.
 - **Smart Intake inspection outcome handoff target (2026-06-08, prototype mode, no Remba gate):**
   the post-apply inspection outcome `Open Operations` handoff now uses the
   44px minimum target baseline after creating reviewed work-order drafts from

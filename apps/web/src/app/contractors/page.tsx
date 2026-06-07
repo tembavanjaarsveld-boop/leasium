@@ -423,8 +423,8 @@ function AddContractorForm({
                     onClick={() => toggleCategory(category)}
                     className={
                       isOn
-                        ? "inline-flex min-h-10 items-center gap-1 rounded-full border border-primary/30 bg-primary-soft px-3 text-xs font-semibold text-primary-hover transition"
-                        : "inline-flex min-h-10 items-center gap-1 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        ? "inline-flex min-h-11 items-center gap-1 rounded-full border border-primary/30 bg-primary-soft px-3 text-xs font-semibold text-primary-hover transition"
+                        : "inline-flex min-h-11 items-center gap-1 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
                     }
                   >
                     {category}

@@ -2,6 +2,40 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Contractor category chip targets - latest)
+
+Continuation after the Welcome header target pass. Because Vercel production
+deployments are currently rate-limited, this slice is local/repo-verified only.
+A current-state scan found the `/contractors` Add contractor form category chips
+rendering as 40px-tall targets.
+
+Files changed:
+- `apps/web/src/app/contractors/page.tsx`: Add contractor category chips now
+  use the 44px minimum target baseline.
+- `apps/web/tests/smoke/contractors.spec.ts`: the existing guarded contractor
+  directory smoke now opens the Add contractor form and measures representative
+  category chips, while preserving the existing copy/download CSV parity and
+  no-provider/no-mutation traps.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  visible contractor-directory density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused contractor directory smoke first hit an ambiguous category
+  selector, then failed correctly with received height `40` for the exact
+  `hvac` category chip.
+- `./node_modules/.bin/playwright test tests/smoke/contractors.spec.ts -g "contractor directory copies and downloads the same guarded readiness CSV"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/contractors/page.tsx tests/smoke/contractors.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked contractor data, opens the local Add contractor form,
+  measures category chips, and exercises only local copy/download CSV paths.
+  It does not submit the form, create/update/delete contractors, send contractor
+  email/SMS, run maintenance AI classification, assign contractors, write
+  provider history, dispatch providers, call Xero/Basiq, or reconcile payments.
+
 ## Codex continuation - 2026-06-08 (Welcome header targets - latest)
 
 Continuation after the Dashboard AI guardrails target pass. Because Vercel

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -6,6 +6,13 @@ import { mockLeasiumApi } from "./api-mocks";
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
+
+async function expectTouchTarget(control: Locator) {
+  const box = await control.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+}
 
 test("contractor directory copies and downloads the same guarded readiness CSV", async ({
   page,
@@ -140,10 +147,16 @@ test("contractor directory copies and downloads the same guarded readiness CSV",
   await expect(copyButton).toBeVisible();
   await expect(downloadButton).toBeVisible();
   for (const control of [copyButton, downloadButton]) {
-    const box = await control.boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(44);
-    expect(box?.height).toBeGreaterThanOrEqual(44);
+    await expectTouchTarget(control);
   }
+
+  await page.getByRole("button", { name: "Add contractor" }).click();
+  await expectTouchTarget(
+    page.getByRole("button", { exact: true, name: "hvac" }),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { exact: true, name: "plumbing" }),
+  );
 
   await copyButton.click();
   await expect(
