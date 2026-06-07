@@ -224,6 +224,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   invoice update, Xero, tenant email, provider dispatch, provider history, Basiq,
   or payment-reconciliation behaviour changed. Remba should review the Billing ↔
   Work recovery rhythm with the wider Billing Readiness density pass.
+- **Maintenance correspondence handoff link targets (2026-06-08, prototype mode, no Remba gate):**
+  maintenance work-order correspondence `Open Comms queue` and `Open tenant`
+  handoffs now use the 44px minimum target baseline. They remain navigation-only
+  review links; no correspondence export, SendGrid/Twilio send, dismiss, upload,
+  provider-history write, queue mutation, or maintenance mutation behaviour
+  changed. Remba should review the correspondence handoff density with the wider
+  Work detail page pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

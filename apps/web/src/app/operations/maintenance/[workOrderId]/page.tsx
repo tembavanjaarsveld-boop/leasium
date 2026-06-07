@@ -6278,7 +6278,7 @@ function WorkOrderCorrespondencePanel({
         <div className="flex flex-wrap gap-2">
           <Link
             href="/comms"
-            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
           >
             <ArrowUpRight size={13} />
             Open Comms queue
@@ -6286,7 +6286,7 @@ function WorkOrderCorrespondencePanel({
           {tenantId ? (
             <Link
               href={`/tenants/${encodeURIComponent(tenantId)}`}
-              className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
             >
               <ArrowUpRight size={13} />
               Open tenant

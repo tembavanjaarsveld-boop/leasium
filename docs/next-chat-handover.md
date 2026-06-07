@@ -2,6 +2,36 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Maintenance correspondence handoff targets - latest)
+
+Continuation after the Billing handoff/command navigation pass. A conservative
+post-commit scan found two remaining 36px maintenance detail correspondence
+handoffs: `Open Comms queue` and `Open tenant`. The existing mocked maintenance
+detail smoke already renders both links in the correspondence panel.
+
+Files changed:
+- `apps/web/src/app/operations/maintenance/[workOrderId]/page.tsx`:
+  correspondence `Open Comms queue` and `Open tenant` handoff links now use the
+  44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked maintenance
+  detail smoke now verifies both correspondence handoffs are 44px targets.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  maintenance correspondence density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused maintenance detail smoke failed with received height `36`
+  for the `Open Comms queue` correspondence handoff target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "maintenance detail route shows quote evidence"` - passed after the fix.
+- `npm --prefix apps/web run lint -- 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The links remain navigation-only review handoffs. The smoke does not send
+  email/SMS, dismiss candidates, upload evidence, write provider history,
+  settle candidates, mutate queues, refresh providers, click document downloads,
+  or mutate maintenance records.
+
 ## Codex continuation - 2026-06-08 (Command result navigation - latest)
 
 During Billing maintenance-handoff validation, the adjacent Dashboard smoke

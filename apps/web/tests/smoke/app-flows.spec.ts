@@ -2406,9 +2406,17 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       name: "Open Comms queue",
     }),
   ).toHaveAttribute("href", "/comms");
+  await expectTouchTarget(
+    workOrderCorrespondencePanel.getByRole("link", {
+      name: "Open Comms queue",
+    }),
+  );
   await expect(
     workOrderCorrespondencePanel.getByRole("link", { name: "Open tenant" }),
   ).toHaveAttribute("href", "/tenants/tenant-1");
+  await expectTouchTarget(
+    workOrderCorrespondencePanel.getByRole("link", { name: "Open tenant" }),
+  );
   await expect(
     workOrderCorrespondencePanel.getByText(
       "Opening this panel does not send email",
