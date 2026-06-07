@@ -226,6 +226,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   feed fetch, bank write, payment reconciliation apply, provider dispatch, or provider
   history mutation behaviour changed. Remba/accounting support should review the consent
   card rhythm with the wider Settings finance-provider pass.
+- **Settings Xero/Basiq row-action targets (2026-06-08, prototype mode, no Remba gate):**
+  Settings → Xero `Create Xero drafts` and Bank feed (Basiq) imported-transaction
+  `Remove` actions now use the 44px minimum target baseline. Xero draft creation,
+  Basiq transaction removal, bank-feed preview/apply, payment reconciliation, provider
+  dispatch, and provider-history behaviours are unchanged; smoke coverage measures or
+  source-locks the controls without clicking provider mutation actions. Remba/accounting
+  support should review the compact finance-provider action rhythm.
 - **Billing Readiness source-link target (2026-06-08, prototype mode, no Remba gate):**
   the Billing Readiness reviewed-draft `Intake …` source links now use the 44px minimum
   target baseline in both the mobile card and desktop table layouts. The links still

@@ -7246,7 +7246,7 @@ function SettingsWorkspace() {
                       </StatusBadge>
                       <SecondaryButton
                         type="button"
-                        className="min-h-9 rounded-lg px-3"
+                        className="min-h-11 rounded-lg px-3"
                         disabled={
                           readyXeroInvoiceDraftIds.length === 0 ||
                           !xeroCanCreateDrafts ||
@@ -8191,7 +8191,7 @@ function SettingsWorkspace() {
                           </span>
                           <SecondaryButton
                             type="button"
-                            className="min-h-9 px-3 text-danger"
+                            className="min-h-11 px-3 text-danger"
                             onClick={() =>
                               removeBasiqTransaction(transaction.transaction_id)
                             }

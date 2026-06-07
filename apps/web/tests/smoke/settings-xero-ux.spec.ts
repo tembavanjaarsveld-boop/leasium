@@ -1,4 +1,5 @@
 import { expect, type Locator, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -293,4 +294,15 @@ test("desktop settings Xero readiness handoffs stay touch-safe", async ({
     mappingRow.getByRole("link", { name: "Open property" }),
   );
   await expectTouchTarget(mappingRow.getByRole("button", { name: "Apply" }));
+});
+
+test("settings Xero draft creation action keeps the touch-safe class without creating drafts", async () => {
+  const source = await readFile("src/app/settings/page.tsx", "utf8");
+
+  expect(source).not.toMatch(
+    /min-h-9 rounded-lg px-3[\s\S]{0,500}xeroDraftCreateMutation[\s\S]{0,500}Create Xero drafts/,
+  );
+  expect(source).toMatch(
+    /min-h-11 rounded-lg px-3[\s\S]{0,500}xeroDraftCreateMutation[\s\S]{0,500}Create Xero drafts/,
+  );
 });

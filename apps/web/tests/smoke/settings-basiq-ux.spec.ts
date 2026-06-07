@@ -138,6 +138,34 @@ test("Basiq connection block is inert and Connect is gated when unconfigured", a
   await expect(applyButton).toBeEnabled();
 });
 
+test("Basiq imported transaction remove action stays touch-safe without applying", async ({
+  page,
+}) => {
+  const applyRequests = watchBasiqApplyRequests(page);
+  await mockLeasiumApi(page);
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Connect" }).click();
+
+  const basiqPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Bank feed (Basiq)" }),
+    })
+    .first();
+  await expect(basiqPanel).toBeVisible();
+
+  await basiqPanel.getByLabel("Amount (AUD)").fill("8800.00");
+  await basiqPanel.getByLabel("Posted date").fill("2026-05-19");
+  await basiqPanel.getByLabel("Reference").fill("INV-1001");
+  await basiqPanel.getByRole("button", { name: "Add transaction" }).click();
+
+  await expectTouchTarget(
+    basiqPanel.getByRole("button", { name: "Remove" }),
+  );
+  expect(applyRequests).toEqual([]);
+});
+
 test("Basiq consent handoff stays touch-safe without opening provider", async ({
   page,
 }) => {

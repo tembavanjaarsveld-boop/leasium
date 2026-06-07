@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Settings finance row-action targets - latest)
+
+Continuation after the maintenance detail row-action pass. A live Chrome review
+of `https://leasium.ai/settings` opened the SKJ Settings workspace and selected
+the visible Connect tab. The live Xero/Basiq finance-provider controls rendered
+with provider actions disabled until explicit setup/approval, matching the
+review-first guardrail stance.
+
+Files changed:
+- `apps/web/src/app/settings/page.tsx`: Settings → Xero `Create Xero drafts`
+  and Bank feed (Basiq) imported-transaction `Remove` actions now use
+  `min-h-11` while keeping their compact row padding.
+- `apps/web/tests/smoke/settings-xero-ux.spec.ts`: adds source smoke coverage
+  for the gated Xero draft-creation action so no draft-create request is fired.
+- `apps/web/tests/smoke/settings-basiq-ux.spec.ts`: adds a Basiq smoke that
+  measures the imported-transaction `Remove` action without applying
+  reconciliation.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Settings finance-provider density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red tests: focused Settings smoke failed on the old Basiq 36px target and the
+  old Xero `min-h-9` source class.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/settings-xero-ux.spec.ts tests/smoke/settings-basiq-ux.spec.ts -g "draft creation action|imported transaction remove"` - passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/settings-xero-ux.spec.ts tests/smoke/settings-basiq-ux.spec.ts` - passed, 9 tests.
+- `npm --prefix apps/web run lint -- src/app/settings/page.tsx tests/smoke/settings-xero-ux.spec.ts tests/smoke/settings-basiq-ux.spec.ts` - passed after clearing generated Playwright report artifacts.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- This is CSS class and smoke/source coverage only. It does not create Xero
+  drafts, remove Basiq transactions in production, fetch bank feeds, preview or
+  apply payment reconciliation, send tenant/owner/provider email or SMS, call
+  Xero/Basiq/SendGrid/Twilio, dispatch providers, refresh providers, or mutate
+  provider history.
+
 ## Codex continuation - 2026-06-08 (Maintenance detail row-action targets - latest)
 
 Continuation after the Billing Readiness row-action pass. A live Chrome review
