@@ -2,7 +2,65 @@
 
 Last updated: 2026-06-08
 
-## Codex continuation - 2026-06-08 (Operator shell contrast sweep - latest)
+## Codex continuation - 2026-06-08 (Fresh production UX follow-up sweep - latest)
+
+Follow-up from the clean pushed state after the operator-shell contrast pass:
+Chrome + Computer Use re-reviewed `https://leasium.ai` in the live Chrome
+profile, using the existing Leasium tab. The pass was visual/read-only and
+covered 25 routes at the first viewport and after scrolling each page down
+(50 measurements total) at a 1512 x 713 Chrome viewport.
+
+Routes covered:
+- `/`
+- `/intake`
+- `/properties`
+- `/people`
+- `/people?tab=tenants`
+- `/people?tab=owners`
+- `/people?tab=vendors`
+- `/operations`
+- `/operations?tab=compliance`
+- `/operations?tab=work-orders`
+- `/billing-readiness`
+- `/billing-readiness?tab=delivery`
+- `/money`
+- `/statements`
+- `/portfolio-qa`
+- `/insights`
+- `/comms`
+- `/notifications`
+- `/settings`
+- `/settings?tab=security`
+- `/settings?tab=organisation`
+- `/settings?tab=xero`
+- `/owner-portal`
+- `/tenant-portal/account`
+- `/vendor-portal`
+
+Verification:
+- 25 production routes, 50 top/scrolled measurements.
+- No unresolved auth-check screens after allowing account/session checks to
+  settle. `/tenant-portal/account` resolved to the intended `No portal account`
+  recovery state after a longer account check, with the visible user-menu
+  control still at 44px.
+- No visible sub-44px controls.
+- No horizontal overflow.
+- No measured contrast failures.
+- No Chrome warning/error logs from the fresh sweep.
+
+No product-code defect was confirmed in this follow-up pass, so no code or
+Remba-pending product change was shipped. The only update in this slice is this
+handover evidence so the next session does not repeat the same timing false
+positive around transient `Checking ...` copy.
+
+No provider mutation, Xero write, SendGrid email, Twilio SMS, tenant email,
+payment reconciliation, provider refresh, approval, upload, download, invite
+claim, sign-in action, or external dispatch was run; production browser work was
+visual/read-only.
+
+Active local state after this handover update should be clean once committed.
+
+## Codex continuation - 2026-06-08 (Operator shell contrast sweep)
 
 Follow-up from the autonomous Chrome + Computer Use production UX sweep on
 `https://leasium.ai`: after the Xero touch-target pass deployed cleanly, a fresh
