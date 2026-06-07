@@ -2,6 +2,33 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Smart Intake tenant quick-add handoff - latest)
+
+Continuation after the live audit harness refresh. Chrome + Computer Use re-anchored
+the signed-in production app at `https://leasium.ai`, then a focused dense-route
+read-only sweep checked Settings, Operations, Compliance, Comms, Billing Readiness,
+Money, People, and Insights for visible overflow, sub-44px controls, and stale
+loading states. The scan ruled out a persistent Insights loading defect and
+confirmed a smaller workflow mismatch on `/intake`: the Smart Intake setup
+recovery "Add tenant" link was touch-safe but pointed to `/tenants`, while the
+same operator intent from the People hub opens the tenant invite workflow.
+
+Files changed:
+- `apps/web/src/components/dashboard.tsx`: Smart Intake "Add tenant" now links to
+  `/tenants?action=invite`, landing the operator in the existing Send invite drawer.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the Smart Intake quick-add smoke now
+  keeps the 44px target assertion and locks the tenant quick-add href.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  navigation/workflow change as prototype-mode/Remba-pending.
+
+Guardrails:
+- The link change is navigation-only. It does not send an invite, call SendGrid or
+  Twilio, mutate tenant records, refresh providers, write Xero/Basiq data, or
+  reconcile payments. Tenant invite delivery still requires the explicit reviewed
+  "Send invite" submit inside the tenant workflow.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Live audit harness refresh - latest)
 
 Continuation after the fresh production UX follow-up sweep. The next roadmap

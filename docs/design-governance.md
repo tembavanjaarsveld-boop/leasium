@@ -50,6 +50,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   now use the 44px minimum target baseline. Copy, destinations, upload/review behavior, and
   provider guardrails are unchanged. Remba should review the drop-zone/action density with
   the existing Smart Intake spreadsheet and review-queue pass.
+- **Smart Intake tenant quick-add invite handoff (2026-06-08, prototype mode, no Remba gate):**
+  the Smart Intake "Add tenant" setup recovery link now opens the existing tenant invite
+  drawer via `/tenants?action=invite` instead of landing on the tenant register root. The
+  link itself remains navigation-only; the SendGrid-backed tenant invite still fires only
+  from the reviewed "Send invite" submit action. Remba should review whether Smart Intake
+  should keep this manual quick-add shortcut beside the document-first upload path.
 - **Smart Intake review filter touch target (2026-06-07, prototype mode, no Remba gate):**
   the shared Dashboard/Smart Intake review-queue filter select now uses the 44px minimum
   target baseline while keeping the same filter options, queue behavior, and CSV/export

@@ -3933,7 +3933,7 @@ export function Dashboard({
                     Add property
                   </Link>
                   <Link
-                    href="/tenants"
+                    href="/tenants?action=invite"
                     className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                   >
                     <UserRound size={16} />
