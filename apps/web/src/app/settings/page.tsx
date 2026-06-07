@@ -6042,7 +6042,7 @@ function SettingsWorkspace() {
                   <div className="flex flex-wrap items-center gap-2">
                     <SecondaryButton
                       type="button"
-                      className="min-h-9 rounded-lg px-3 text-xs"
+                      className="min-h-11 rounded-lg px-3 text-xs"
                       disabled={!exceptionQueue}
                       onClick={copyXeroExceptionPacket}
                     >
@@ -6051,7 +6051,7 @@ function SettingsWorkspace() {
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="min-h-9 rounded-lg px-3 text-xs"
+                      className="min-h-11 rounded-lg px-3 text-xs"
                       disabled={!exceptionQueue}
                       onClick={downloadXeroExceptionCsv}
                     >
@@ -6242,7 +6242,7 @@ function SettingsWorkspace() {
                                   {issue.property_id ? (
                                     <Link
                                       href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                      className="font-medium text-primary hover:text-primary-hover"
+                                      className="inline-flex min-h-11 items-center justify-self-start rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                                     >
                                       Open property
                                     </Link>
@@ -6302,7 +6302,7 @@ function SettingsWorkspace() {
                                   {actionLabel ? (
                                     <SecondaryButton
                                       type="button"
-                                      className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
+                                      className="min-h-11 justify-self-start rounded-lg px-3 text-xs"
                                       disabled={exceptionActionDisabled(issue)}
                                       onClick={() =>
                                         handleExceptionAction(issue)
@@ -6382,7 +6382,7 @@ function SettingsWorkspace() {
                                   {issue.property_id ? (
                                     <Link
                                       href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                      className="font-medium text-primary hover:text-primary-hover"
+                                      className="inline-flex min-h-11 items-center justify-self-start rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                                     >
                                       Open property
                                     </Link>
