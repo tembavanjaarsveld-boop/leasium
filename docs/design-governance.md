@@ -239,6 +239,16 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   open SMS, send provider comms, retry dispatch, upload evidence, download
   documents, or mutate maintenance records. Remba should review the action-dock
   density with the wider Work detail page pass.
+- **Billing/Maintenance disclosure touch targets (2026-06-08, prototype mode, no Remba gate):**
+  the Billing Readiness invoice `Message preview` disclosure plus maintenance
+  work-order `Channel evidence` and nested contractor `Message preview`
+  disclosures now use the 44px minimum target baseline. Disclosure content,
+  message copy, invoice/work-order data, and provider guardrails are unchanged;
+  smoke coverage only opens mocked read-only previews and does not dispatch
+  email/SMS, retry providers, mutate billing, write Xero/Basiq/payment state,
+  upload/download documents, or mutate maintenance records. Remba should review
+  the taller disclosure rows with the wider Billing Readiness and Work detail
+  density pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

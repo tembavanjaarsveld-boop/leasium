@@ -2,6 +2,40 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Billing and maintenance disclosure targets - latest)
+
+Continuation after the maintenance live action dock pass. A conservative
+current-state scan found disclosure summaries still below the 44px target
+baseline in Billing invoice prep and maintenance contractor evidence: Billing
+`Message preview`, maintenance `Channel evidence`, and the nested contractor
+`Message preview`.
+
+Files changed:
+- `apps/web/src/app/billing-readiness/page.tsx`: invoice-prep message-preview
+  summaries now use the 44px minimum target baseline.
+- `apps/web/src/app/operations/maintenance/[workOrderId]/page.tsx`: contractor
+  channel-evidence and nested message-preview summaries now use the 44px
+  minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: existing mocked Billing and
+  maintenance detail flows now measure those disclosure controls before opening
+  them.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  disclosure-density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Billing/Maintenance smoke run failed with received height
+  `32` for the Billing `Message preview` summary and `32` for the maintenance
+  `Channel evidence` summary.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "(dashboard shows the mocked portfolio and opens billing readiness|maintenance detail route shows quote evidence)"` - passed.
+- `npm --prefix apps/web run lint -- src/app/billing-readiness/page.tsx 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The smoke opens mocked read-only disclosure content only. It does not dispatch
+  email/SMS, retry provider notices, mutate billing, write Xero/Basiq/payment
+  state, upload or download documents, or mutate maintenance records.
+
 ## Codex continuation - 2026-06-08 (Maintenance live action dock targets - latest)
 
 Continuation after the maintenance correspondence handoff target pass. A

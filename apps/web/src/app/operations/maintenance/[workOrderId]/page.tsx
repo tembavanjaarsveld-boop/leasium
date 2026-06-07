@@ -6315,7 +6315,7 @@ function ContractorChannelEvidence({
   }
   return (
     <details className="mt-1 rounded-md border border-border bg-white">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
+      <summary className="flex min-h-11 cursor-pointer items-center px-3 py-2 text-xs font-semibold text-primary hover:text-primary-hover">
         Channel evidence
       </summary>
       <div className="grid gap-2 border-t border-border px-3 py-3">
@@ -6362,7 +6362,7 @@ function ContractorChannelEvidence({
             </div>
             {receipt.rendered_message_preview?.body_text ? (
               <details className="mt-1">
-                <summary className="cursor-pointer text-primary hover:text-primary-hover">
+                <summary className="flex min-h-11 cursor-pointer items-center rounded-md px-2 text-xs font-semibold text-primary hover:text-primary-hover">
                   Message preview
                 </summary>
                 <div className="mt-1 whitespace-pre-line rounded-md border border-border bg-white p-2 text-foreground">

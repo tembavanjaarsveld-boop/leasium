@@ -238,7 +238,12 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     invoicePrepRow.getByText("invoice_delivery v1").first(),
   ).toBeVisible();
-  await invoicePrepRow.getByText("Message preview").first().click();
+  const invoiceMessagePreview = invoicePrepRow
+    .locator("summary")
+    .filter({ hasText: "Message preview" })
+    .first();
+  await expectTouchTarget(invoiceMessagePreview);
+  await invoiceMessagePreview.click();
   await expect(
     invoicePrepRow.getByText("Please find your invoice attached.").first(),
   ).toBeVisible();
@@ -2348,13 +2353,27 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(page.getByText("Internal audit").first()).toBeVisible();
   // Channel evidence disclosure renders the normalized contractor channel
   // receipt (this work order's mock email_delivery is in a failed state).
-  await page.getByText("Channel evidence").click();
+  const channelEvidenceDisclosure = page
+    .locator("summary")
+    .filter({ hasText: "Channel evidence" })
+    .first();
+  await expectTouchTarget(channelEvidenceDisclosure);
+  await channelEvidenceDisclosure.click();
   await expect(page.getByText("Contractor email").first()).toBeVisible();
   await expect(
     page.getByText("To service@coolair.example").first(),
   ).toBeVisible();
   await expect(
     page.getByText("Template maintenance_contractor_update v1").first(),
+  ).toBeVisible();
+  const contractorMessagePreview = page
+    .locator("summary")
+    .filter({ hasText: "Message preview" })
+    .first();
+  await expectTouchTarget(contractorMessagePreview);
+  await contractorMessagePreview.click();
+  await expect(
+    page.getByText("Please confirm your first available attendance window."),
   ).toBeVisible();
   const reviewPacket = page
     .locator("section")
