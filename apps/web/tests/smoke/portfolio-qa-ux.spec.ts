@@ -140,3 +140,123 @@ test("portfolio QA enrichment queue actions meet mobile touch targets and stay l
   );
   expect(mutationCalls).toEqual([]);
 });
+
+test("portfolio QA enrichment candidate previews sourced suggestions and applies only after explicit review", async ({
+  page,
+}) => {
+  const applyCalls: Array<Record<string, unknown>> = [];
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/public-enrichment/apply", async (route) => {
+    if (route.request().method() === "POST") {
+      applyCalls.push(
+        route.request().postDataJSON() as Record<string, unknown>,
+      );
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/portfolio-qa");
+
+  const card = page.getByTestId(
+    "enrichment-candidate-property-enrichment-property-3",
+  );
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Eagle Street Office");
+
+  // Preview is explicit: nothing fires before the click.
+  await card.getByRole("button", { name: "Suggest fixes" }).click();
+
+  // Sourced suggestion detail: value, confidence %, citation, source link.
+  await expect(card.getByText("12 345 678 901")).toBeVisible();
+  await expect(card.getByText("92% confidence")).toBeVisible();
+  await expect(
+    card.getByText("Eagle Street Property Trust active ABN record."),
+  ).toBeVisible();
+  await expect(
+    card.getByRole("link", { name: "ABN Lookup" }).first(),
+  ).toHaveAttribute("href", "https://abr.business.gov.au/");
+  await expect(
+    card.getByText("No confident public source found for Owner Legal Name."),
+  ).toBeVisible();
+  expect(applyCalls).toEqual([]);
+
+  // Edit/ignore affordance: removing a suggestion shrinks the reviewed set.
+  await card
+    .getByRole("button", { name: "Remove Trust Name suggestion" })
+    .click();
+  await expect(
+    card.getByRole("button", { name: "Apply 2 reviewed suggestions" }),
+  ).toBeVisible();
+  expect(applyCalls).toEqual([]);
+
+  // Dismiss clears the preview without mutating anything.
+  await card.getByRole("button", { name: "Dismiss" }).click();
+  await expect(
+    card.getByRole("button", { name: "Suggest fixes" }),
+  ).toBeVisible();
+  expect(applyCalls).toEqual([]);
+
+  // Fresh preview, then the explicit apply fires exactly one call.
+  await card.getByRole("button", { name: "Suggest fixes" }).click();
+  await card
+    .getByRole("button", { name: "Apply 3 reviewed suggestions" })
+    .click();
+
+  await expect(
+    page.getByText("Applied 3 of 3 reviewed suggestions to Eagle Street Office."),
+  ).toBeVisible();
+  expect(applyCalls).toHaveLength(1);
+  expect(applyCalls[0].target_type).toBe("property");
+  expect(applyCalls[0].target_id).toBe("property-3");
+  const sentSuggestions = applyCalls[0].suggestions as Array<
+    Record<string, unknown>
+  >;
+  expect(sentSuggestions.map((suggestion) => suggestion.field)).toEqual([
+    "owner_abn",
+    "trust_name",
+    "invoice_issuer_name",
+  ]);
+  expect(sentSuggestions[0].value).toBe("12 345 678 901");
+
+  // The applied record drops out of the queue after refetch.
+  await expect(card).toHaveCount(0);
+});
+
+test("portfolio QA enrichment preview surfaces a 503 inline without firing apply", async ({
+  page,
+}) => {
+  const applyCalls: string[] = [];
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/public-enrichment/apply", async (route) => {
+    if (route.request().method() === "POST") {
+      applyCalls.push(new URL(route.request().url()).pathname);
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/v1/public-enrichment/preview", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ detail: "OpenAI API key is not configured." }),
+    });
+  });
+
+  await page.goto("/portfolio-qa");
+
+  const card = page.getByTestId(
+    "enrichment-candidate-property-enrichment-property-3",
+  );
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Suggest fixes" }).click();
+
+  await expect(
+    card.getByText("OpenAI API key is not configured."),
+  ).toBeVisible();
+  await expect(card.getByRole("button", { name: /Apply/ })).toHaveCount(0);
+  expect(applyCalls).toEqual([]);
+});

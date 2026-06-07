@@ -68,7 +68,7 @@ const entities = [
   },
 ];
 
-const properties = [
+const initialProperties = [
   {
     id: propertyId,
     entity_id: entityId,
@@ -242,6 +242,8 @@ const properties = [
     metadata: {},
   },
 ];
+
+let properties = jsonClone(initialProperties);
 
 const initialTenants = [
   {
@@ -2393,6 +2395,7 @@ export async function mockLeasiumApi(
   page: Page,
   options: MockLeasiumApiOptions = {},
 ) {
+  properties = jsonClone(initialProperties);
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
   let complianceChecks = jsonClone(initialComplianceChecks);
@@ -5621,6 +5624,131 @@ export async function mockLeasiumApi(
         contentType: "image/png",
         headers: corsHeaders,
         status: 200,
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/public-enrichment/preview") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const targetId =
+        typeof payload.target_id === "string" ? payload.target_id : "";
+      const property = properties.find((item) => item.id === targetId);
+      if (!property) {
+        await fulfillJson(route, { detail: "Target not found." }, 404);
+        return;
+      }
+      const requestedFields = jsonStringArray(payload.requested_fields);
+      const cannedSuggestions = [
+        {
+          field: "owner_abn",
+          label: "Owner ABN",
+          value: "12 345 678 901",
+          source: {
+            source_hint: "ABN Lookup",
+            citation: "Eagle Street Property Trust active ABN record.",
+            confidence: 0.92,
+            url: "https://abr.business.gov.au/",
+          },
+          confidence: 0.92,
+          notes: "Official register match.",
+        },
+        {
+          field: "trust_name",
+          label: "Trust Name",
+          value: "Eagle Street Property Trust",
+          source: {
+            source_hint: "ABN Lookup",
+            citation: "Registered trust name for the owner ABN.",
+            confidence: 0.81,
+            url: "https://abr.business.gov.au/",
+          },
+          confidence: 0.81,
+          notes: null,
+        },
+        {
+          field: "invoice_issuer_name",
+          label: "Invoice Issuer Name",
+          value: "Eagle Street Trustee Pty Ltd",
+          source: {
+            source_hint: "ASIC register",
+            citation: "Trustee company registered name.",
+            confidence: 0.78,
+            url: "https://connectonline.asic.gov.au/",
+          },
+          confidence: 0.78,
+          notes: "Trustee usually issues owner invoices.",
+        },
+      ];
+      const suggestions = cannedSuggestions.filter(
+        (suggestion) =>
+          !requestedFields.length || requestedFields.includes(suggestion.field),
+      );
+      await fulfillJson(route, {
+        target: {
+          target_type: "property",
+          target_id: property.id,
+          entity_id: property.entity_id,
+          display_name: property.name,
+          missing_fields: requestedFields,
+        },
+        suggestions,
+        warnings: ["No confident public source found for Owner Legal Name."],
+        openai_response_id: "resp_public_enrichment_1",
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/public-enrichment/apply") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const targetId =
+        typeof payload.target_id === "string" ? payload.target_id : "";
+      const property = properties.find((item) => item.id === targetId);
+      if (!property) {
+        await fulfillJson(route, { detail: "Target not found." }, 404);
+        return;
+      }
+      const propertyFields = property as unknown as Record<string, JsonBody>;
+      const suggestions = Array.isArray(payload.suggestions)
+        ? payload.suggestions
+        : [];
+      const applied: JsonBody[] = [];
+      const skipped: JsonBody[] = [];
+      for (const raw of suggestions) {
+        const suggestion = jsonRecord(raw);
+        const field =
+          typeof suggestion.field === "string" ? suggestion.field : "";
+        const value =
+          typeof suggestion.value === "string" ? suggestion.value : null;
+        if (!field || value === null) {
+          skipped.push({ field, value, reason: "Suggested value is blank." });
+          continue;
+        }
+        const before = propertyFields[field] ?? null;
+        if (before) {
+          skipped.push({ field, value, reason: "Field already has a value." });
+          continue;
+        }
+        propertyFields[field] = value;
+        applied.push({
+          field,
+          label:
+            typeof suggestion.label === "string" ? suggestion.label : field,
+          before,
+          after: value,
+          source: suggestion.source ?? null,
+          storage: "record_field",
+        });
+      }
+      await fulfillJson(route, {
+        target: {
+          target_type: "property",
+          target_id: property.id,
+          entity_id: property.entity_id,
+          display_name: property.name,
+          missing_fields: [],
+        },
+        applied,
+        skipped,
       });
       return;
     }

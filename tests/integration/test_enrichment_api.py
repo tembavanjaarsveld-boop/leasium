@@ -122,6 +122,53 @@ def test_public_enrichment_preview_then_apply_property_fact(
     assert audit.tool_input == {"fields": ["owner_abn"]}
 
 
+def test_public_enrichment_preview_returns_503_when_openai_key_missing(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Preview surfaces a 503 with a clear message and no record mutation."""
+
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Unkeyed Plaza",
+            "street_address": "44 Public Street",
+            "suburb": "",
+            "state": "",
+            "postcode": "",
+            "property_type": "commercial_office",
+            "ownership_structure": "property_owner",
+            "owner_legal_name": "Public Owner Pty Ltd",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    # Force settings to behave as if OPENAI_API_KEY were unset so the real
+    # helper raises PublicEnrichmentError before any provider call.
+    original_get_settings = enrichment_router.get_settings
+    monkeypatch.setattr(
+        enrichment_router,
+        "get_settings",
+        lambda: original_get_settings().model_copy(update={"openai_api_key": ""}),
+    )
+
+    preview_response = client.post(
+        "/api/v1/public-enrichment/preview",
+        json={"target_type": "property", "target_id": property_id},
+    )
+    assert preview_response.status_code == 503
+    assert preview_response.json()["detail"] == "OpenAI API key is not configured."
+    prop = session.get(Property, UUID(property_id))
+    assert prop is not None
+    assert prop.owner_abn is None
+    assert prop.suburb == ""
+    assert "public_enrichment" not in (prop.property_metadata or {})
+
+
 def test_property_image_preview_then_apply_metadata(
     client: TestClient,
     session: Session,

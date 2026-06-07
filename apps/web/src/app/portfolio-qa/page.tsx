@@ -46,6 +46,7 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  applyPublicEnrichment,
   createBillingDraftsFromChargeRules,
   createTenantOnboarding,
   listBillingDrafts,
@@ -56,6 +57,7 @@ import {
   listRentRoll,
   listTenantOnboardings,
   listTenants,
+  previewPublicEnrichment,
   TenantPayload,
   TenantRecord,
   updateProperty,
@@ -63,6 +65,8 @@ import {
   type BillingDraftBatchRecord,
   type BillingDraftRecord,
   type DocumentIntakeRecord,
+  type EnrichmentSuggestion,
+  type EnrichmentTargetType,
   type ObligationRecord,
   type PropertyRecord,
   type RentRollRow,
@@ -98,14 +102,27 @@ type QaCompletionItem = {
 type EnrichmentCandidate = {
   id: string;
   kind: "Property" | "Tenant";
+  targetType: EnrichmentTargetType;
+  targetId: string;
   title: string;
   detail: string;
   href: string;
   fields: string[];
+  rawFields: string[];
   priority: "high" | "medium";
   reason: string;
   impact: string;
   actionLabel: string;
+};
+
+type EnrichmentReviewState = {
+  status: "loading" | "ready" | "applying" | "applied" | "error";
+  title: string;
+  suggestions: EnrichmentSuggestion[];
+  warnings: string[];
+  error: string | null;
+  summary: string | null;
+  skippedReasons: string[];
 };
 
 type BlockedFollowup = {
@@ -1187,11 +1204,14 @@ function buildEnrichmentCandidates({
       candidates.push({
         id: `property-enrichment-${property.id}`,
         kind: "Property",
+        targetType: "property",
+        targetId: property.id,
         title: property.name,
         detail:
           "Property public enrichment can propose address and ownership fields.",
         href: `/properties?entity_id=${property.entity_id}&property_id=${property.id}`,
         fields: fields.map(fieldLabel),
+        rawFields: [...fields],
         priority: ownerFields.length ? "high" : "medium",
         reason: ownerFields.length
           ? "May unblock owner billing identity and statement readiness."
@@ -1225,11 +1245,14 @@ function buildEnrichmentCandidates({
       candidates.push({
         id: `tenant-enrichment-${tenant.id}`,
         kind: "Tenant",
+        targetType: "tenant",
+        targetId: tenant.id,
         title: tenantName(tenant),
         detail:
           "Tenant public enrichment can propose ABN, trading name, and registered address.",
         href: `/tenants/${tenant.id}`,
         fields: fields.map(fieldLabel),
+        rawFields: [...fields],
         priority: identityFields.length ? "high" : "medium",
         reason: identityFields.length
           ? "May improve tenant identity, invoice setup, and onboarding review."
@@ -2797,6 +2820,186 @@ function BlockerTriagePanel({
   );
 }
 
+function EnrichmentCandidateCard({
+  candidate,
+  review,
+  onPreview,
+  onApply,
+  onRemoveSuggestion,
+  onDismiss,
+}: {
+  candidate: EnrichmentCandidate;
+  review: EnrichmentReviewState | undefined;
+  onPreview: (candidate: EnrichmentCandidate) => void;
+  onApply: (
+    candidate: EnrichmentCandidate,
+    suggestions: EnrichmentSuggestion[],
+  ) => void;
+  onRemoveSuggestion: (candidateId: string, field: string) => void;
+  onDismiss: (candidateId: string) => void;
+}) {
+  const suggestions = review?.suggestions ?? [];
+  const reviewOpen =
+    review?.status === "ready" || review?.status === "applying";
+  return (
+    <div
+      data-testid={`enrichment-candidate-${candidate.id}`}
+      className="grid gap-2 py-3"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">{candidate.title}</span>
+        <StatusBadge tone="neutral">{candidate.kind}</StatusBadge>
+        <StatusBadge tone="neutral">{candidate.fields.length} fields</StatusBadge>
+        <StatusBadge
+          tone={candidate.priority === "high" ? "warning" : "primary"}
+        >
+          {candidate.priority === "high" ? "High-impact" : "Helpful"}
+        </StatusBadge>
+      </div>
+      <p className="text-sm text-muted-foreground">{candidate.detail}</p>
+      <p className="text-xs font-semibold text-foreground">{candidate.impact}</p>
+      <p className="text-xs font-medium text-muted-foreground">
+        {candidate.reason}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {candidate.fields.slice(0, 4).join(", ")}
+        {candidate.fields.length > 4 ? "..." : ""}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        {!reviewOpen && review?.status !== "loading" ? (
+          <SecondaryButton
+            type="button"
+            className="min-h-11 rounded-lg px-3"
+            onClick={() => onPreview(candidate)}
+          >
+            <Sparkles size={14} />
+            Suggest fixes
+          </SecondaryButton>
+        ) : null}
+        <Link
+          href={candidate.href}
+          className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-primary transition hover:underline"
+        >
+          Open record
+          <ArrowRight size={14} />
+        </Link>
+      </div>
+      {review?.status === "loading" ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 size={15} className="animate-spin" />
+          Searching public sources — this can take up to 90 seconds.
+        </div>
+      ) : null}
+      {review?.status === "error" && review.error ? (
+        <p className="text-sm text-danger">{review.error}</p>
+      ) : null}
+      {reviewOpen && review ? (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">
+            Sourced suggestions cover safe public identity and address fields
+            only — never private contacts or banking details. Remove anything
+            you don&apos;t trust before applying.
+          </p>
+          {suggestions.map((suggestion) => (
+            <div
+              key={suggestion.field}
+              className="rounded-md border border-border bg-white p-3"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    {suggestion.label}
+                  </div>
+                  <div className="font-medium">{suggestion.value}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge tone="primary">
+                    {Math.round(suggestion.confidence * 100)}% confidence
+                  </StatusBadge>
+                  <SecondaryButton
+                    type="button"
+                    className="min-h-11 rounded-lg px-3"
+                    aria-label={`Remove ${suggestion.label} suggestion`}
+                    onClick={() =>
+                      onRemoveSuggestion(candidate.id, suggestion.field)
+                    }
+                    disabled={review.status === "applying"}
+                  >
+                    Remove
+                  </SecondaryButton>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                {suggestion.source.url ? (
+                  <a
+                    href={suggestion.source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {suggestion.source.source_hint}
+                  </a>
+                ) : (
+                  <span className="font-semibold">
+                    {suggestion.source.source_hint}
+                  </span>
+                )}{" "}
+                - {suggestion.source.citation}
+              </div>
+              {suggestion.notes ? (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {suggestion.notes}
+                </div>
+              ) : null}
+            </div>
+          ))}
+          {!suggestions.length ? (
+            <p className="text-sm text-muted-foreground">
+              No suggestions left to apply. Dismiss to start over.
+            </p>
+          ) : null}
+          {review.warnings.length ? (
+            <ul className="grid gap-1 text-xs text-muted-foreground">
+              {review.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {suggestions.length ? (
+              <Button
+                type="button"
+                className="min-h-11"
+                onClick={() => onApply(candidate, suggestions)}
+                disabled={review.status === "applying"}
+              >
+                {review.status === "applying" ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                Apply {suggestions.length} reviewed suggestion
+                {suggestions.length === 1 ? "" : "s"}
+              </Button>
+            ) : null}
+            <SecondaryButton
+              type="button"
+              className="min-h-11 rounded-lg px-3"
+              onClick={() => onDismiss(candidate.id)}
+              disabled={review.status === "applying"}
+            >
+              Dismiss
+            </SecondaryButton>
+          </div>
+          {review.error ? (
+            <p className="text-sm text-danger">{review.error}</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PortfolioCompletionPanel({
   items,
   enrichmentCandidates,
@@ -2810,9 +3013,144 @@ function PortfolioCompletionPanel({
   bulkReviewGroups: BulkReviewGroup[];
   onOpenTab: (tab: QaTab) => void;
 }) {
+  const queryClient = useQueryClient();
   const [reportReceipt, setReportReceipt] = useState<string | null>(null);
   const [enrichmentReceipt, setEnrichmentReceipt] = useState<string | null>(
     null,
+  );
+  const [enrichmentReviews, setEnrichmentReviews] = useState<
+    Record<string, EnrichmentReviewState>
+  >({});
+
+  const emptyEnrichmentReview = (title: string): EnrichmentReviewState => ({
+    status: "loading",
+    title,
+    suggestions: [],
+    warnings: [],
+    error: null,
+    summary: null,
+    skippedReasons: [],
+  });
+
+  const previewEnrichmentMutation = useMutation({
+    mutationFn: (candidate: EnrichmentCandidate) =>
+      previewPublicEnrichment({
+        target_type: candidate.targetType,
+        target_id: candidate.targetId,
+        requested_fields: candidate.rawFields,
+      }),
+    onMutate: (candidate) => {
+      setEnrichmentReviews((prev) => ({
+        ...prev,
+        [candidate.id]: emptyEnrichmentReview(candidate.title),
+      }));
+    },
+    onSuccess: (result, candidate) => {
+      setEnrichmentReviews((prev) => ({
+        ...prev,
+        [candidate.id]: {
+          ...(prev[candidate.id] ?? emptyEnrichmentReview(candidate.title)),
+          status: "ready",
+          suggestions: result.suggestions,
+          warnings: result.warnings,
+          error: null,
+        },
+      }));
+    },
+    onError: (error, candidate) => {
+      setEnrichmentReviews((prev) => ({
+        ...prev,
+        [candidate.id]: {
+          ...(prev[candidate.id] ?? emptyEnrichmentReview(candidate.title)),
+          status: "error",
+          error: friendlyError(error),
+        },
+      }));
+    },
+  });
+
+  const applyEnrichmentMutation = useMutation({
+    mutationFn: ({
+      candidate,
+      suggestions,
+    }: {
+      candidate: EnrichmentCandidate;
+      suggestions: EnrichmentSuggestion[];
+    }) =>
+      applyPublicEnrichment({
+        target_type: candidate.targetType,
+        target_id: candidate.targetId,
+        suggestions,
+      }),
+    onMutate: ({ candidate }) => {
+      setEnrichmentReviews((prev) => ({
+        ...prev,
+        [candidate.id]: {
+          ...(prev[candidate.id] ?? emptyEnrichmentReview(candidate.title)),
+          status: "applying",
+          error: null,
+        },
+      }));
+    },
+    onSuccess: (result, { candidate }) => {
+      const total = result.applied.length + result.skipped.length;
+      setEnrichmentReviews((prev) => ({
+        ...prev,
+        [candidate.id]: {
+          ...(prev[candidate.id] ?? emptyEnrichmentReview(candidate.title)),
+          status: "applied",
+          suggestions: [],
+          summary: `Applied ${result.applied.length} of ${total} reviewed suggestion${total === 1 ? "" : "s"} to ${candidate.title}.`,
+          skippedReasons: result.skipped.map(
+            (item) => `${fieldLabel(item.field)}: ${item.reason}`,
+          ),
+          error: null,
+        },
+      }));
+      queryClient.invalidateQueries({ queryKey: ["properties"] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
+    },
+    onError: (error, { candidate }) => {
+      setEnrichmentReviews((prev) => ({
+        ...prev,
+        [candidate.id]: {
+          ...(prev[candidate.id] ?? emptyEnrichmentReview(candidate.title)),
+          status: "ready",
+          error: friendlyError(error),
+        },
+      }));
+    },
+  });
+
+  const removeEnrichmentSuggestion = (candidateId: string, field: string) => {
+    setEnrichmentReviews((prev) => {
+      const review = prev[candidateId];
+      if (!review) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [candidateId]: {
+          ...review,
+          suggestions: review.suggestions.filter(
+            (suggestion) => suggestion.field !== field,
+          ),
+        },
+      };
+    });
+  };
+
+  const dismissEnrichmentReview = (candidateId: string) => {
+    setEnrichmentReviews((prev) => {
+      const next = { ...prev };
+      delete next[candidateId];
+      return next;
+    });
+  };
+
+  const appliedEnrichmentSummaries = Object.entries(enrichmentReviews).filter(
+    (entry): entry is [string, EnrichmentReviewState] =>
+      entry[1].status === "applied" && Boolean(entry[1].summary),
   );
   const total = items.reduce((sum, item) => sum + item.total, 0);
   const ready = items.reduce(
@@ -3322,6 +3660,25 @@ function PortfolioCompletionPanel({
                 {enrichmentReceipt}
               </p>
             ) : null}
+            {appliedEnrichmentSummaries.length ? (
+              <div className="mt-3 grid gap-2">
+                {appliedEnrichmentSummaries.map(([id, review]) => (
+                  <div key={id} className="grid gap-1">
+                    <p className="text-sm font-medium text-success">
+                      {review.summary}
+                    </p>
+                    {review.skippedReasons.map((reason) => (
+                      <p
+                        key={reason}
+                        className="text-xs text-muted-foreground"
+                      >
+                        Skipped — {reason}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {enrichmentCandidates.length ? (
               <div className="mt-3 grid gap-2 rounded-lg border border-border bg-white p-3 text-sm">
                 <div className="flex flex-wrap gap-2">
@@ -3357,44 +3714,20 @@ function PortfolioCompletionPanel({
             <div className="mt-3 divide-y divide-border">
               {enrichmentCandidates.length ? (
                 enrichmentCandidates.map((candidate) => (
-                  <Link
+                  <EnrichmentCandidateCard
                     key={candidate.id}
-                    href={candidate.href}
-                    className="grid gap-2 py-3 transition hover:text-primary"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{candidate.title}</span>
-                      <StatusBadge tone="neutral">{candidate.kind}</StatusBadge>
-                      <StatusBadge tone="neutral">
-                        {candidate.fields.length} fields
-                      </StatusBadge>
-                      <StatusBadge
-                        tone={
-                          candidate.priority === "high" ? "warning" : "primary"
-                        }
-                      >
-                        {candidate.priority === "high"
-                          ? "High-impact"
-                          : "Helpful"}
-                      </StatusBadge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {candidate.detail}
-                    </p>
-                    <p className="text-xs font-semibold text-foreground">
-                      {candidate.impact}
-                    </p>
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {candidate.reason}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {candidate.fields.slice(0, 4).join(", ")}
-                      {candidate.fields.length > 4 ? "..." : ""}
-                    </p>
-                    <span className="text-xs font-semibold text-primary">
-                      {candidate.actionLabel}
-                    </span>
-                  </Link>
+                    candidate={candidate}
+                    review={enrichmentReviews[candidate.id]}
+                    onPreview={(item) => previewEnrichmentMutation.mutate(item)}
+                    onApply={(item, suggestions) =>
+                      applyEnrichmentMutation.mutate({
+                        candidate: item,
+                        suggestions,
+                      })
+                    }
+                    onRemoveSuggestion={removeEnrichmentSuggestion}
+                    onDismiss={dismissEnrichmentReview}
+                  />
                 ))
               ) : (
                 <div className="py-4 text-sm text-muted-foreground">
