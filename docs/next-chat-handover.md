@@ -2,6 +2,44 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Tenant document action targets - latest)
+
+Continuation after the tenant reminder approval gate. After commit `a01066f`
+was pushed, the next-work scan ruled out a suspected Operations queue toolbar
+target issue: the local `h-10` classes still render 44px high because the shared
+button primitive enforces `min-h-11`. The next confirmed UX defect was on tenant
+record document actions: raw `Open review` / document download links in
+`/tenants/[tenantId]` used 32px targets, including the insurance source summary,
+tenant document list, lease document row, signed-lease download, and onboarding
+uploaded-document rows.
+
+Files changed:
+- `apps/web/src/app/tenants/[tenantId]/page.tsx`: raw tenant document
+  review/download links now use the 44px minimum target baseline.
+- `apps/web/tests/smoke/tenants-ux.spec.ts`: adds a no-action smoke that first
+  failed with a 32px received height, then verifies tenant-detail `Open review`
+  and document download links meet the 44px target baseline without clicking
+  downloads or review links.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  document-action density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused tenant detail document-action smoke failed with received
+  height `32` for a review/download link target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts -g "tenant detail document review links stay touch-safe without document actions"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts` - 7 passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "tenant detail labels tenant-uploaded lease activation review"` - passed.
+- `npm --prefix apps/web run lint -- 'src/app/tenants/[tenantId]/page.tsx' tests/smoke/tenants-ux.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- No document download, delete, upload, Smart Intake apply, tenant portal invite,
+  SendGrid email, Twilio SMS, Xero/Basiq write, payment reconciliation, provider
+  refresh, provider dispatch, or tenant-record mutation was run.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Tenant reminder approval gate - latest)
 
 Continuation after the property quick-add drawer route. Chrome + Computer Use

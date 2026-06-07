@@ -402,6 +402,39 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("tenant detail document review links stay touch-safe without document actions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/tenants/tenant-1");
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
+
+  const openReviewLinks = page.getByRole("link", {
+    exact: true,
+    name: "Open review",
+  });
+  await expect(openReviewLinks.first()).toBeVisible();
+  const openReviewCount = await openReviewLinks.count();
+  expect(openReviewCount).toBeGreaterThan(0);
+  for (let index = 0; index < openReviewCount; index += 1) {
+    await expectTouchTarget(await openReviewLinks.nth(index).boundingBox());
+  }
+
+  const documentDownloadLinks = page.locator('a[aria-label^="Download "]');
+  await expect(documentDownloadLinks.first()).toBeVisible();
+  const downloadCount = await documentDownloadLinks.count();
+  expect(downloadCount).toBeGreaterThan(0);
+  for (let index = 0; index < downloadCount; index += 1) {
+    await expectTouchTarget(
+      await documentDownloadLinks.nth(index).boundingBox(),
+    );
+  }
+});
+
 test("mobile tenant portal recovery actions stay touch-safe", async ({
   page,
 }) => {

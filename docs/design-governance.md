@@ -139,6 +139,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   and true primary tenant failures still use the record-level unavailable/not-found states.
   Remba should review the compact partial-failure summary with the wider People record
   error-state pass.
+- **Tenant detail document action touch targets (2026-06-08, prototype mode, no Remba gate):**
+  the tenant record's document review/download links now use the 44px minimum target baseline
+  across the insurance source summary, tenant document list, lease document row, signed-lease
+  download, and onboarding uploaded-document rows. No document download, deletion, upload,
+  Smart Intake apply, portal invite, provider send, or tenant-record mutation behaviour changed.
+  Remba should review the taller document action rhythm with the wider People record pass.
 - **Work queue assignment touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Operations queue collapsed "Assign owner" action and its immediate expanded assignee
   controls now use the 44px minimum target baseline while preserving the same assignment

@@ -2647,14 +2647,14 @@ function TenantDetail() {
                               tenant?.entity_id,
                               insuranceSummary.intake.id,
                             )}
-                            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                           >
                             <Sparkles size={15} />
                             Open Smart Intake review
                           </Link>
                         ) : null}
                         <a
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
                           href={documentDownloadUrl(insuranceSummary.document.id)}
                           aria-label={`Download ${insuranceSummary.document.filename}`}
                         >
@@ -3177,7 +3177,7 @@ function TenantDetail() {
                                 tenant?.entity_id,
                                 reviewId,
                               )}
-                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                             >
                               <Sparkles size={15} />
                               Open review
@@ -3197,7 +3197,7 @@ function TenantDetail() {
                           )}
                           <a
                             className={cn(
-                              "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted",
+                              "inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted",
                             )}
                             href={documentDownloadUrl(document.id)}
                             aria-label={`Download ${document.filename}`}
@@ -3814,7 +3814,7 @@ function TenantDetail() {
                                 href={documentDownloadUrl(
                                   latestLeaseDocument.id,
                                 )}
-                                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                               >
                                 <Download size={15} />
                                 Download
@@ -4003,7 +4003,7 @@ function TenantDetail() {
                                 href={documentDownloadUrl(
                                   signingStatus.signedDocumentId,
                                 )}
-                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-semibold transition hover:bg-muted"
                               >
                                 <Download size={15} />
                                 Download signed lease
@@ -4154,7 +4154,7 @@ function TenantDetail() {
                                           tenant?.entity_id,
                                           reviewId,
                                         )}
-                                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                                       >
                                         <Sparkles size={14} />
                                         Open review
@@ -4178,7 +4178,7 @@ function TenantDetail() {
                                     )}
                                     <a
                                       href={documentDownloadUrl(document.id)}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
+                                      className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
                                       aria-label={`Download ${document.filename}`}
                                     >
                                       <Download size={14} />
