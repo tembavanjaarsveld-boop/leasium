@@ -60,10 +60,13 @@ import {
   createArrearsCase,
   createMaintenanceWorkOrder,
   type DocumentIntakeRecord,
+  type DocumentRecord,
   type InvoiceDraftRecord,
+  linkComplianceCheckEvidence,
   listArrearsCases,
   listComplianceChecks,
   listDocumentIntakes,
+  listDocuments,
   listEntities,
   listInvoiceDrafts,
   listMaintenanceWorkOrders,
@@ -2373,6 +2376,14 @@ function OperationsWorkspace() {
     id: string;
     message: string;
   } | null>(null);
+  // Review-first evidence linking for Needs-evidence compliance checks.
+  // The form only links an already-stored document; it never completes
+  // the check and never calls a provider.
+  const [evidenceLinkForm, setEvidenceLinkForm] = useState<{
+    checkId: string;
+    documentId: string;
+    certificateExpiresOn: string;
+  } | null>(null);
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -2473,6 +2484,13 @@ function OperationsWorkspace() {
     enabled: Boolean(selectedEntityId),
   });
 
+  // Stored documents are only fetched while an evidence-link form is open.
+  const evidenceDocumentsQuery = useQuery({
+    queryKey: ["operations-evidence-documents", selectedEntityId],
+    queryFn: () => listDocuments({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId) && evidenceLinkForm !== null,
+  });
+
   const maintenanceQuery = useQuery({
     queryKey: ["operations-maintenance", selectedEntityId],
     queryFn: () => listMaintenanceWorkOrders({ entity_id: selectedEntityId }),
@@ -2563,6 +2581,34 @@ function OperationsWorkspace() {
       setComplianceCompletionConfirmation({
         id: `${check.id}-${Date.now()}`,
         message: `Completed “${check.title}” with linked evidence.`,
+      });
+    },
+  });
+
+  const linkComplianceEvidenceMutation = useMutation({
+    mutationFn: (input: {
+      check: ComplianceCheckRecord;
+      documentId: string;
+      certificateExpiresOn: string;
+    }) =>
+      linkComplianceCheckEvidence(input.check.id, {
+        source_document_id: input.documentId,
+        certificate_expires_on: input.certificateExpiresOn || null,
+        notes: "Linked from the Work compliance tab.",
+      }),
+    onSuccess: (linkedCheck, input) => {
+      queryClient.setQueryData<ComplianceCheckRecord[]>(
+        ["operations-compliance-checks", selectedEntityId],
+        (current) =>
+          current?.map((row) =>
+            row.id === linkedCheck.id ? linkedCheck : row,
+          ),
+      );
+      invalidateOperations();
+      setEvidenceLinkForm(null);
+      setComplianceCompletionConfirmation({
+        id: `${input.check.id}-evidence-${Date.now()}`,
+        message: `Linked evidence to “${input.check.title}”. Review before completing.`,
       });
     },
   });
@@ -4301,6 +4347,27 @@ function OperationsWorkspace() {
                                   )}
                                   {complianceCompletionActionLabel(check)}
                                 </SecondaryButton>
+                                {check.status === "active" &&
+                                !check.source_document_id ? (
+                                  <SecondaryButton
+                                    type="button"
+                                    className="min-h-11 w-full px-3 sm:w-auto"
+                                    onClick={() =>
+                                      setEvidenceLinkForm((current) =>
+                                        current?.checkId === check.id
+                                          ? null
+                                          : {
+                                              checkId: check.id,
+                                              documentId: "",
+                                              certificateExpiresOn: "",
+                                            },
+                                      )
+                                    }
+                                  >
+                                    <Link2 size={15} className="text-primary" />
+                                    Add evidence
+                                  </SecondaryButton>
+                                ) : null}
                                 {completeComplianceCheckMutation.isError &&
                                 completeComplianceCheckMutation.variables?.id ===
                                   check.id ? (
@@ -4314,6 +4381,113 @@ function OperationsWorkspace() {
                                   </span>
                                 ) : null}
                               </div>
+                              {evidenceLinkForm?.checkId === check.id ? (
+                                <div className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3">
+                                  <p className="text-xs text-muted-foreground">
+                                    Link an already-stored document as reviewed
+                                    evidence. This does not complete the check
+                                    and makes no provider call.
+                                  </p>
+                                  <Field label="Evidence document">
+                                    <Select
+                                      value={evidenceLinkForm.documentId}
+                                      onChange={(event) =>
+                                        setEvidenceLinkForm((current) =>
+                                          current
+                                            ? {
+                                                ...current,
+                                                documentId: event.target.value,
+                                              }
+                                            : current,
+                                        )
+                                      }
+                                    >
+                                      <option value="">
+                                        Choose a stored document
+                                      </option>
+                                      {(
+                                        evidenceDocumentsQuery.data ??
+                                        ([] as DocumentRecord[])
+                                      ).map((document) => (
+                                        <option
+                                          key={document.id}
+                                          value={document.id}
+                                        >
+                                          {document.filename} (
+                                          {sentenceLabel(document.category)})
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </Field>
+                                  <Field label="Certificate expiry (optional)">
+                                    <Input
+                                      type="date"
+                                      value={
+                                        evidenceLinkForm.certificateExpiresOn
+                                      }
+                                      onChange={(event) =>
+                                        setEvidenceLinkForm((current) =>
+                                          current
+                                            ? {
+                                                ...current,
+                                                certificateExpiresOn:
+                                                  event.target.value,
+                                              }
+                                            : current,
+                                        )
+                                      }
+                                    />
+                                  </Field>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Button
+                                      type="button"
+                                      className="min-h-11 w-full px-3 sm:w-auto"
+                                      disabled={
+                                        !evidenceLinkForm.documentId ||
+                                        linkComplianceEvidenceMutation.isPending
+                                      }
+                                      onClick={() =>
+                                        linkComplianceEvidenceMutation.mutate({
+                                          check,
+                                          documentId:
+                                            evidenceLinkForm.documentId,
+                                          certificateExpiresOn:
+                                            evidenceLinkForm.certificateExpiresOn,
+                                        })
+                                      }
+                                    >
+                                      {linkComplianceEvidenceMutation.isPending ? (
+                                        <RefreshCw
+                                          size={15}
+                                          className="animate-spin"
+                                        />
+                                      ) : (
+                                        <Link2 size={15} />
+                                      )}
+                                      Link evidence
+                                    </Button>
+                                    <SecondaryButton
+                                      type="button"
+                                      className="min-h-11 w-full px-3 sm:w-auto"
+                                      onClick={() => setEvidenceLinkForm(null)}
+                                    >
+                                      Cancel
+                                    </SecondaryButton>
+                                    {linkComplianceEvidenceMutation.isError &&
+                                    linkComplianceEvidenceMutation.variables
+                                      ?.check.id === check.id ? (
+                                      <span
+                                        role="alert"
+                                        className="text-xs font-medium text-danger"
+                                      >
+                                        {friendlyError(
+                                          linkComplianceEvidenceMutation.error,
+                                        )}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : null}
                               {hasEvidencePacket ? (
                                 <div className="grid gap-2 border-l-2 border-primary/30 bg-muted/30 py-2 pl-3 pr-2">
                                   <div className="flex flex-wrap items-center justify-between gap-2">

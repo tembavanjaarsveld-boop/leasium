@@ -243,6 +243,104 @@ test("operations compliance tab completes a recurring check with linked evidence
   expect(forbiddenMutationCalls).toEqual([]);
 });
 
+test("operations compliance tab links reviewed evidence to a needs-evidence check", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page, { operationsComplianceDemo: true });
+
+  const evidenceLinkPayloads: unknown[] = [];
+  const forbiddenMutationCalls: string[] = [];
+  const forbiddenPathPatterns = [
+    "/providers",
+    "/provider-dispatch",
+    "/provider-history",
+    "/comms",
+    "/document-intakes",
+    "/maintenance/work-orders",
+    "/obligations",
+    "/billing",
+    "/invoice",
+    "/xero",
+    "/basiq",
+    "/payment",
+    "/reconciliation",
+  ];
+  const forbiddenSendPathPattern = /email|sms|sendgrid|twilio/i;
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const apiPath = path.replace("/api/v1", "");
+    if (
+      request.method() === "POST" &&
+      apiPath === "/compliance/checks/compliance-check-bank-1/evidence"
+    ) {
+      evidenceLinkPayloads.push(request.postDataJSON());
+    } else if (
+      request.method() === "POST" &&
+      apiPath.startsWith("/compliance/checks/") &&
+      apiPath.endsWith("/complete")
+    ) {
+      forbiddenMutationCalls.push(`${request.method()} ${apiPath}`);
+    } else if (
+      request.method() !== "GET" &&
+      (forbiddenPathPatterns.some((pattern) => apiPath.startsWith(pattern)) ||
+        forbiddenSendPathPattern.test(apiPath))
+    ) {
+      forbiddenMutationCalls.push(`${request.method()} ${apiPath}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations?tab=compliance");
+
+  const checkRow = page.getByTestId(
+    "compliance-check-compliance-check-bank-1",
+  );
+  await expect(checkRow).toContainText("Bank guarantee expiry");
+  await expect(checkRow).toContainText("Needs evidence");
+  await expect(
+    checkRow.getByRole("button", { name: "Needs evidence" }),
+  ).toBeDisabled();
+
+  const addEvidenceButton = checkRow.getByRole("button", {
+    name: "Add evidence",
+  });
+  await expectTouchTarget(addEvidenceButton);
+  await addEvidenceButton.click();
+
+  const documentSelect = checkRow.getByLabel("Evidence document");
+  await expect(documentSelect).toBeVisible();
+  await expect(
+    documentSelect.locator("option", { hasText: "bright-cafe-insurance.pdf" }),
+  ).toHaveCount(1);
+  await documentSelect.selectOption("portal-document-1");
+  await checkRow
+    .getByLabel("Certificate expiry (optional)")
+    .fill("2026-12-01");
+
+  const linkButton = checkRow.getByRole("button", { name: "Link evidence" });
+  await expectTouchTarget(linkButton);
+  await linkButton.click();
+
+  await expect(
+    page.getByText(
+      "Linked evidence to “Bank guarantee expiry”. Review before completing.",
+    ),
+  ).toBeVisible();
+  await expect(
+    checkRow.getByRole("button", { name: "Complete with linked evidence" }),
+  ).toBeEnabled();
+
+  expect(evidenceLinkPayloads).toHaveLength(1);
+  expect(evidenceLinkPayloads[0]).toMatchObject({
+    source_document_id: "portal-document-1",
+    certificate_expires_on: "2026-12-01",
+  });
+  expect(forbiddenMutationCalls).toEqual([]);
+});
+
 test("operations compliance tab exports a per-check evidence packet without mutations", async ({
   page,
 }) => {

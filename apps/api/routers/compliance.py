@@ -30,6 +30,7 @@ from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.compliance import (
     ComplianceCheckComplete,
     ComplianceCheckCreate,
+    ComplianceCheckEvidenceLink,
     ComplianceCheckRead,
     ComplianceCheckUpdate,
 )
@@ -455,6 +456,58 @@ def update_compliance_check(
         target_table="compliance_check",
         target_id=check.id,
         tool_output_summary=f"Updated compliance check {check.title}.",
+    )
+    session.commit()
+    session.refresh(check)
+    return check
+
+
+@router.post("/{check_id}/evidence", response_model=ComplianceCheckRead)
+def link_compliance_check_evidence(
+    check_id: UUID,
+    payload: ComplianceCheckEvidenceLink,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ComplianceCheck:
+    """Link reviewed evidence to a check without completing or rolling it forward."""
+    check = _check_for_user(check_id, user, session, WRITE_ROLES)
+    _validate_document(payload.source_document_id, entity_id=check.entity_id, session=session)
+    already_linked = (
+        check.source_document_id == payload.source_document_id
+        and (
+            payload.certificate_expires_on is None
+            or check.certificate_expires_on == payload.certificate_expires_on
+        )
+    )
+    if already_linked:
+        return check
+    check.source_document_id = payload.source_document_id
+    if payload.certificate_expires_on is not None:
+        check.certificate_expires_on = payload.certificate_expires_on
+    metadata = dict(check.check_metadata or {})
+    history = _list(metadata.get("evidence_link_history"))
+    entry: dict[str, Any] = {
+        "document_id": str(payload.source_document_id),
+        "linked_at": utcnow().isoformat(),
+        "actor": user.actor,
+        "source": "compliance_evidence_link",
+    }
+    if payload.certificate_expires_on is not None:
+        entry["certificate_expires_on"] = payload.certificate_expires_on.isoformat()
+    if payload.notes:
+        entry["notes"] = payload.notes
+    history.append(entry)
+    metadata["evidence_link_history"] = history
+    check.check_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=check.entity_id,
+        action="link_evidence",
+        target_table="compliance_check",
+        target_id=check.id,
+        tool_output_summary=f"Linked evidence to compliance check {check.title}.",
     )
     session.commit()
     session.refresh(check)

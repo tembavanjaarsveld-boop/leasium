@@ -71,6 +71,12 @@ class ComplianceCheckComplete(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ComplianceCheckEvidenceLink(BaseModel):
+    source_document_id: UUID
+    certificate_expires_on: date | None = None
+    notes: str | None = None
+
+
 class ComplianceCheckRead(ApiModel):
     id: UUID
     entity_id: UUID

@@ -6695,6 +6695,51 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const complianceCheckEvidenceLink = path.match(
+      /^\/compliance\/checks\/([^/]+)\/evidence$/,
+    );
+    if (method === "POST" && complianceCheckEvidenceLink) {
+      const check = complianceChecks.find(
+        (item) => item.id === complianceCheckEvidenceLink[1],
+      );
+      if (!check) {
+        await fulfillJson(route, { detail: "Compliance check not found." }, 404);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const currentMetadata = jsonRecord(check.metadata);
+      const evidenceLinkHistory = Array.isArray(
+        currentMetadata.evidence_link_history,
+      )
+        ? currentMetadata.evidence_link_history
+        : [];
+      const sourceDocumentId =
+        typeof payload.source_document_id === "string"
+          ? payload.source_document_id
+          : null;
+      Object.assign(check, {
+        source_document_id: sourceDocumentId,
+        certificate_expires_on:
+          typeof payload.certificate_expires_on === "string"
+            ? payload.certificate_expires_on
+            : check.certificate_expires_on,
+        metadata: {
+          ...currentMetadata,
+          evidence_link_history: [
+            ...evidenceLinkHistory,
+            {
+              document_id: sourceDocumentId,
+              linked_at: "2026-06-07T00:00:00.000Z",
+              actor: "user:temba@skjcapital.com",
+              source: "compliance_evidence_link",
+            },
+          ],
+        },
+      });
+      await fulfillJson(route, check);
+      return;
+    }
+
     const complianceCheckCompletion = path.match(
       /^\/compliance\/checks\/([^/]+)\/complete$/,
     );

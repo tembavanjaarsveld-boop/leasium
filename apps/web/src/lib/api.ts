@@ -4062,6 +4062,23 @@ export function completeComplianceCheck(
   );
 }
 
+export function linkComplianceCheckEvidence(
+  checkId: string,
+  payload: {
+    source_document_id: string;
+    certificate_expires_on?: string | null;
+    notes?: string | null;
+  },
+) {
+  return request<ComplianceCheckRecord>(
+    `/compliance/checks/${checkId}/evidence`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function createObligation(payload: ObligationPayload) {
   return request<ObligationRecord>("/obligations", {
     method: "POST",

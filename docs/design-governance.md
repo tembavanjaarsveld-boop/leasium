@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-02
+Last updated: 2026-06-07
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -40,6 +40,23 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   per-invoice payment reference; display-only (no in-portal "pay now", no rails). Operator
   config is a Settings form (next slice). Plan:
   [`superpowers/plans/2026-06-02-tenant-payment-instructions.md`](superpowers/plans/2026-06-02-tenant-payment-instructions.md).
+- **Settings Xero connection simplification (2026-06-07, prototype mode, no Remba gate):**
+  the Settings → Xero tab now leads with a plain-language "Connect Xero" panel (per-trust
+  "Connect this trust" action, organisation-matching guidance, friendlier connected copy),
+  collapses diagnostics / manual tenant ID / setup packet behind an "Advanced support
+  details" disclosure, gates the sync exception queue behind a "Review N follow-ups"
+  disclosure, renames "Template defaults" to "Templates", and compacts Work notification
+  chips to counted badges. No provider behaviour change — OAuth, previews, drafts, and
+  reconciliation remain explicit reviewed actions. Verified by eslint + tsc + focused
+  Settings/Xero smokes + production build.
+- **Compliance evidence linking form (2026-06-07, prototype mode, no Remba gate):**
+  `Needs evidence` recurring checks on `/operations?tab=compliance` gain an "Add evidence"
+  button that expands to an inline review form: a stored-document picker (fetched only while
+  open), optional certificate expiry, Link evidence / Cancel. Linking calls only the new
+  `POST /compliance/checks/{id}/evidence` route — it never completes the check and makes no
+  provider call; completion stays the separate reviewed action. Verified by eslint + tsc +
+  compliance smokes (4/4) + operations smokes (11/11) + production build. Follow-up: direct
+  file upload from the form.
 - **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
   `/insights` keeps the five-card KPI band always visible and replaces the former single
   long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing

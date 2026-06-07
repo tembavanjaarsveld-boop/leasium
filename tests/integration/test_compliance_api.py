@@ -344,6 +344,124 @@ def test_complete_compliance_check_rejects_cross_entity_evidence_without_mutatio
     assert "completion_history" not in refreshed["metadata"]
 
 
+def test_link_compliance_check_evidence_without_completing(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+    create_response = client.post(
+        "/api/v1/compliance/checks",
+        json={
+            "entity_id": entity_id,
+            "property_id": scope["property_id"],
+            "title": "Annual fire safety statement",
+            "kind": "fire_safety",
+            "recurrence_interval": 1,
+            "recurrence_unit": "years",
+            "next_due_date": "2026-07-01",
+            "owner_role": "ops",
+        },
+    )
+    assert create_response.status_code == 201
+    check = create_response.json()
+    assert check["source_document_id"] is None
+    current_obligation_id = check["current_obligation_id"]
+    evidence = StoredDocument(
+        entity_id=UUID(entity_id),
+        property_id=UUID(scope["property_id"]),
+        filename="fire-safety-certificate.pdf",
+        content_type="application/pdf",
+        byte_size=24,
+        file_data=b"certificate",
+        category=DocumentCategory.other,
+    )
+    session.add(evidence)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/compliance/checks/{check['id']}/evidence",
+        json={
+            "source_document_id": str(evidence.id),
+            "certificate_expires_on": "2027-07-01",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_document_id"] == str(evidence.id)
+    assert body["certificate_expires_on"] == "2027-07-01"
+    # Linking evidence is review-only: nothing completes or rolls forward.
+    assert body["current_obligation_id"] == current_obligation_id
+    assert body["next_due_date"] == "2026-07-01"
+    assert body["last_checked_at"] is None
+    assert "completion_history" not in body["metadata"]
+    history = body["metadata"]["evidence_link_history"]
+    assert history[-1]["document_id"] == str(evidence.id)
+    assert history[-1]["actor"] == f"user:{get_settings().dev_user_email}"
+    obligation = session.get(Obligation, UUID(current_obligation_id))
+    assert obligation is not None
+    assert obligation.status != "completed"
+
+    # Re-linking the same document is idempotent: no duplicate history entry.
+    retry_response = client.post(
+        f"/api/v1/compliance/checks/{check['id']}/evidence",
+        json={
+            "source_document_id": str(evidence.id),
+            "certificate_expires_on": "2027-07-01",
+        },
+    )
+    assert retry_response.status_code == 200
+    retry_history = retry_response.json()["metadata"]["evidence_link_history"]
+    assert len(retry_history) == len(history)
+
+
+def test_link_compliance_check_evidence_rejects_cross_entity_document(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    scope = _create_leased_shop(client, str(entity.id))
+    create_response = client.post(
+        "/api/v1/compliance/checks",
+        json={
+            "entity_id": str(entity.id),
+            "property_id": scope["property_id"],
+            "title": "Fire safety statement",
+            "kind": "fire_safety",
+            "recurrence_interval": 1,
+            "recurrence_unit": "years",
+            "next_due_date": "2026-07-01",
+            "owner_role": "ops",
+        },
+    )
+    assert create_response.status_code == 201
+    check = create_response.json()
+    other_entity = Entity(organisation_id=entity.organisation_id, name="Other Entity")
+    session.add(other_entity)
+    session.flush()
+    other_document = StoredDocument(
+        entity_id=other_entity.id,
+        filename="other.pdf",
+        content_type="application/pdf",
+        byte_size=12,
+        file_data=b"other",
+        category=DocumentCategory.other,
+    )
+    session.add(other_document)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/compliance/checks/{check['id']}/evidence",
+        json={"source_document_id": str(other_document.id)},
+    )
+
+    assert response.status_code == 422
+    refreshed = client.get(f"/api/v1/compliance/checks/{check['id']}").json()
+    assert refreshed["source_document_id"] is None
+    assert "evidence_link_history" not in refreshed["metadata"]
+
+
 def test_compliance_check_requires_entity_access(
     client: TestClient,
     session: Session,
