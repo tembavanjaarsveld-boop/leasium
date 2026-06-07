@@ -141,6 +141,53 @@ test("portfolio QA enrichment queue actions meet mobile touch targets and stay l
   expect(mutationCalls).toEqual([]);
 });
 
+test("portfolio QA source and onboarding row actions stay touch-safe without firing actions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const mutationCalls: string[] = [];
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/portfolio-qa");
+
+  await page
+    .getByRole("button", { name: /Source history/ })
+    .click();
+  const trailAction = page.getByRole("button", { name: "Trail" }).first();
+  await expect(trailAction).toBeVisible();
+  const trailBox = await trailAction.boundingBox();
+  expect(trailBox).not.toBeNull();
+  expect(trailBox!.width).toBeGreaterThanOrEqual(44);
+  expect(trailBox!.height).toBeGreaterThanOrEqual(44);
+
+  await page
+    .getByRole("button", { name: /Onboarding prep/ })
+    .click();
+  const createInviteAction = page
+    .getByRole("button", { name: "Create invite" })
+    .first();
+  await expect(createInviteAction).toBeVisible();
+  const createInviteBox = await createInviteAction.boundingBox();
+  expect(createInviteBox).not.toBeNull();
+  expect(createInviteBox!.width).toBeGreaterThanOrEqual(44);
+  expect(createInviteBox!.height).toBeGreaterThanOrEqual(44);
+
+  const source = await readFile("src/app/portfolio-qa/page.tsx", "utf8");
+  expect(source).not.toMatch(/openTenantContactFix[\s\S]{0,300}min-h-9/);
+  expect(source).toMatch(/openTenantContactFix[\s\S]{0,300}min-h-11/);
+
+  expect(mutationCalls).toEqual([]);
+});
+
 test("portfolio QA enrichment candidate previews sourced suggestions and applies only after explicit review", async ({
   page,
 }) => {

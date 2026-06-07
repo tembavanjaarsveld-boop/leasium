@@ -341,6 +341,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   coverage measures the mocked handoff before running the existing local
   invite flow. Remba should review the onboarding-prep row density with the
   wider Portfolio QA cleanup pass.
+- **Portfolio QA source/onboarding row-action targets (2026-06-08, prototype mode, no Remba gate):**
+  Source history `Trail` controls and Onboarding prep `Create invite` / `Fix contact`
+  row actions now use the 44px minimum target baseline. Source-trail selection,
+  tenant-contact drawer handoff, explicit invite creation, billing draft, and provider
+  guardrails are unchanged; smoke coverage measures the mocked controls without
+  clicking those actions. Remba should review the row density with the wider Portfolio
+  QA cleanup pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

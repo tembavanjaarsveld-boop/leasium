@@ -4910,7 +4910,7 @@ function PortfolioQaWorkspace() {
                           <SecondaryButton
                             type="button"
                             onClick={() => setSelectedSourceId(source.id)}
-                            className="min-h-9 px-3"
+                            className="min-h-11 px-3"
                           >
                             <History size={15} />
                             Trail
@@ -5057,7 +5057,7 @@ function PortfolioQaWorkspace() {
                           }
                         }}
                         disabled={batchOnboardingMutation.isPending}
-                        className="min-h-9 px-3"
+                        className="min-h-11 px-3"
                       >
                         {batchOnboardingMutation.isPending ? (
                           <Loader2 size={15} className="animate-spin" />
@@ -5075,7 +5075,7 @@ function PortfolioQaWorkspace() {
                         onClick={() =>
                           openTenantContactFix(row.tenantId as string)
                         }
-                        className="min-h-9 px-3"
+                        className="min-h-11 px-3"
                       >
                         <UserRound size={15} />
                         Fix contact

@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Portfolio QA row-action targets - latest)
+
+Continuation after the tenant portal target passes. A source scan plus live
+Chrome/Computer Use check on `https://leasium.ai/portfolio-qa` found Portfolio
+QA loading with real entity data and confirmed the page shape as an internal
+tabbed cleanup workspace. Source inspection then found remaining 36px overrides
+on Source history and Onboarding prep row actions.
+
+Files changed:
+- `apps/web/src/app/portfolio-qa/page.tsx`: Source history `Trail` controls and
+  Onboarding prep `Create invite` / `Fix contact` row actions now use
+  `min-h-11` while keeping the tighter `px-3` row density.
+- `apps/web/tests/smoke/portfolio-qa-ux.spec.ts`: adds a mobile smoke that
+  measures the mocked row actions across Source history and Onboarding prep and
+  asserts no non-GET API calls occur because it never clicks those actions.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Portfolio QA density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Portfolio QA smoke failed with a 36px measured row action.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/portfolio-qa-ux.spec.ts -g "source and onboarding row actions"` - passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/portfolio-qa-ux.spec.ts` - passed, 6 tests.
+- `npm --prefix apps/web run lint -- src/app/portfolio-qa/page.tsx tests/smoke/portfolio-qa-ux.spec.ts` - passed after clearing generated Playwright report artifacts.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- This is CSS class and smoke coverage only. It does not select source trails in
+  production, open tenant contact drawers, create onboarding invites, send
+  tenant email/SMS, generate billing drafts, call Xero/Basiq/SendGrid/Twilio,
+  refresh providers, reconcile payments, or mutate provider history.
+
 ## Codex continuation - 2026-06-08 (Tenant portal upload jump target - latest)
 
 Continuation after the tenant portal invoice PDF target pass. The post-push
