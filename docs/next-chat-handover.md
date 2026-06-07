@@ -35,6 +35,11 @@ Verification:
 - `npm --prefix apps/web run lint -- src/app/settings/page.tsx tests/smoke/app-flows.spec.ts tests/smoke/settings-basiq-ux.spec.ts tests/smoke/api-mocks.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live Settings route chunk changed to
+  `page-f0ce313999c952ce.js` on the third poll, contained the new 44px
+  reconciliation/Basiq handoff classes, and no longer contained the old raw
+  handoff class. No live provider preview, Basiq consent link, or handoff link
+  was opened.
 
 Guardrails:
 - The failing/proving surfaces use mocked Xero/Basiq endpoints only. No live
