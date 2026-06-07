@@ -2,6 +2,41 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Maintenance detail row-action targets - latest)
+
+Continuation after the Billing Readiness row-action pass. A live Chrome review
+of `https://leasium.ai/operations` loaded the SKJ entity-backed Operations
+queue; the current production queue is mostly critical-date work rather than a
+visible linked-invoice maintenance detail, so the populated work-order detail
+state was verified through the existing mocked smoke fixture.
+
+Files changed:
+- `apps/web/src/app/operations/maintenance/[workOrderId]/page.tsx`: linked
+  invoice `Prepare` / `Approve invoice`, closeout `Start job`, and completion
+  communication copy actions now use `min-h-11` while keeping compact
+  `rounded-lg px-3` row styling.
+- `apps/web/tests/smoke/operations-ux.spec.ts`: adds a desktop maintenance
+  detail smoke that links a mocked invoice draft, seeds closeout copy, measures
+  the invoice/closeout/completion controls, and asserts the watched mutation
+  paths stay untouched because it never clicks those actions.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Work detail density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Operations smoke failed with a 36px measured maintenance detail action.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/operations-ux.spec.ts -g "maintenance detail invoice and closeout actions"` - passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/operations-ux.spec.ts` - passed, 14 tests.
+- `npm --prefix apps/web run lint -- src/app/operations/maintenance/[workOrderId]/page.tsx tests/smoke/operations-ux.spec.ts` - passed after clearing generated Playwright report artifacts.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- This is CSS class and smoke coverage only. It does not prepare or approve
+  invoice drafts, start/complete closeout, copy completion communications,
+  send tenant/owner/contractor email or SMS, dispatch providers, call
+  Xero/Basiq/SendGrid/Twilio, update payment status, reconcile payments,
+  refresh providers, or mutate maintenance/provider history.
+
 ## Codex continuation - 2026-06-08 (Billing Readiness row-action targets - latest)
 
 Continuation after the Portfolio QA row-action pass. A live Chrome review of

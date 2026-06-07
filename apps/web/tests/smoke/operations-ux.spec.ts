@@ -527,6 +527,135 @@ test("maintenance detail loading states use structured skeleton rows", async ({
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("maintenance detail invoice and closeout actions stay touch-safe without firing actions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/invoice-drafts**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "invoice-draft-1",
+          entity_id: "entity-1",
+          billing_draft_id: "billing-draft-1",
+          property_id: "property-1",
+          tenancy_unit_id: "unit-1",
+          tenant_id: "tenant-1",
+          lease_id: "lease-1",
+          document_id: "document-1",
+          document_intake_id: "intake-1",
+          status: "ready_for_approval",
+          invoice_number: "INV-1001",
+          title: "May rent and outgoings",
+          currency: "AUD",
+          issue_date: "2026-05-01",
+          due_date: "2026-05-15",
+          subtotal_cents: 800000,
+          gst_cents: 80000,
+          total_cents: 880000,
+          issuer_name: "Queen Street Trustee Pty Ltd",
+          issuer_abn: "22123456789",
+          recipient_name: "Bright Cafe Pty Ltd",
+          recipient_email: "accounts@bright.example",
+          notes: "Ready internal invoice draft.",
+          metadata: {
+            readiness_blockers: [],
+            delivery_state: {
+              pdf_preview_generated: true,
+              pdf_artifact_stored: true,
+              tenant_email_prepared: true,
+              delivery_ready: true,
+              tenant_email_sent: false,
+            },
+            pdf_artifact: { document_id: "document-1" },
+          },
+          lines: [],
+          created_at: "2026-05-01T00:00:00.000Z",
+          updated_at: "2026-05-01T00:00:00.000Z",
+          deleted_at: null,
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/operations/maintenance/work-order-1");
+  await page.evaluate(async () => {
+    await fetch("/api/v1/maintenance/work-orders/work-order-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        status: "completed",
+        completed_at: "2026-05-21T01:30:00.000Z",
+        invoice_draft_id: "invoice-draft-1",
+        invoice_reference: "INV-1001",
+        invoice_amount_cents: 880000,
+        metadata: {
+          closeout: {
+            completed_at: "2026-05-21T01:30:00.000Z",
+            note: "Closeout confirmed after contractor attendance.",
+            communication: {
+              owner_update:
+                "The air conditioning repair has been completed and evidence is on file.",
+              tenant_update:
+                "The air conditioning repair has been completed. Please reply if the fault returns.",
+              contractor_follow_up:
+                "Thanks for completing the air conditioning repair. Evidence has been recorded.",
+            },
+          },
+        },
+      }),
+    });
+  });
+
+  const forbiddenMutationPaths: string[] = [];
+  const forbiddenPathPatterns = [
+    "/maintenance/work-orders/work-order-1",
+    "/invoice-drafts",
+    "/comms",
+    "/xero",
+    "/basiq",
+    "/providers",
+    "/dispatch",
+    "/payment",
+    "/reconciliation",
+  ];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      forbiddenPathPatterns.some((pattern) => path.startsWith(pattern))
+    ) {
+      forbiddenMutationPaths.push(`${request.method()} ${path}`);
+    }
+    await route.fallback();
+  });
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await expectTouchTarget(page.getByRole("button", { name: "Prepare" }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Approve invoice" }),
+  );
+  await expectTouchTarget(page.getByRole("button", { name: "Start job" }));
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Copy owner update" }),
+  );
+
+  expect(forbiddenMutationPaths).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("maintenance detail shows a record-level not-found state", async ({
   page,
 }) => {

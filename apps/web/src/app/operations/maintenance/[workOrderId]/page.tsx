@@ -5265,7 +5265,7 @@ function MaintenanceDetailRoute() {
                         linkedInvoiceDraft.status !== "void" ? (
                           <SecondaryButton
                             type="button"
-                            className="min-h-9 rounded-lg px-3"
+                            className="min-h-11 rounded-lg px-3"
                             onClick={() =>
                               prepareInvoiceMutation.mutate(
                                 linkedInvoiceDraft.id,
@@ -5306,7 +5306,7 @@ function MaintenanceDetailRoute() {
                         linkedInvoiceDeliveryReady ? (
                           <SecondaryButton
                             type="button"
-                            className="min-h-9 rounded-lg px-3"
+                            className="min-h-11 rounded-lg px-3"
                             onClick={() =>
                               approveInvoiceMutation.mutate(
                                 linkedInvoiceDraft.id,
@@ -5525,7 +5525,7 @@ function MaintenanceDetailRoute() {
                     <div className="flex flex-wrap gap-2">
                       <SecondaryButton
                         type="button"
-                        className="min-h-9 rounded-lg px-3"
+                        className="min-h-11 rounded-lg px-3"
                         disabled={
                           !completionReadiness.canStart ||
                           updateMutation.isPending ||
@@ -5790,7 +5790,7 @@ function MaintenanceDetailRoute() {
                             <div className="flex flex-wrap items-center gap-2">
                               <SecondaryButton
                                 type="button"
-                                className="min-h-9 rounded-lg px-3 text-xs"
+                                className="min-h-11 rounded-lg px-3 text-xs"
                                 onClick={() => copyCompletionCommunication(row)}
                               >
                                 <ClipboardCheck size={14} />

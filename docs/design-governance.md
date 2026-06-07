@@ -276,6 +276,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   open SMS, send provider comms, retry dispatch, upload evidence, download
   documents, or mutate maintenance records. Remba should review the action-dock
   density with the wider Work detail page pass.
+- **Maintenance invoice/closeout row-action targets (2026-06-08, prototype mode, no Remba gate):**
+  maintenance work-order linked-invoice `Prepare` / `Approve invoice`, closeout
+  `Start job`, and completion communication copy actions now use the 44px
+  minimum target baseline. Invoice preparation, invoice approval, closeout,
+  local copy, provider dispatch, tenant/owner/contractor messaging, Xero/Basiq,
+  payment, and maintenance mutation behaviours are unchanged; smoke coverage
+  measures the mocked controls without clicking them. Remba should review the
+  row-action density with the wider Work detail page pass.
 - **Billing/Maintenance disclosure touch targets (2026-06-08, prototype mode, no Remba gate):**
   the Billing Readiness invoice `Message preview` disclosure plus maintenance
   work-order `Channel evidence` and nested contractor `Message preview`
