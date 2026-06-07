@@ -1841,13 +1841,21 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   ).toBeVisible();
   await expect(arrearsPacket.getByText("Balance age")).toBeVisible();
   await expect(arrearsPacket.getByText("1-30 $8,800")).toBeVisible();
-  await expect(arrearsPacket.getByText("Reminder", { exact: true })).toBeVisible();
-  await expect(arrearsPacket.getByText("Dispute", { exact: true })).toBeVisible();
-  await expect(arrearsPacket.getByText("raised", { exact: true })).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("Reminder", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("Dispute", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("raised", { exact: true }),
+  ).toBeVisible();
   await expect(
     arrearsPacket.getByText("Escalation", { exact: true }),
   ).toBeVisible();
-  await expect(arrearsPacket.getByText("Promise", { exact: true })).toBeVisible();
+  await expect(
+    arrearsPacket.getByText("Promise", { exact: true }),
+  ).toBeVisible();
   await expect(
     arrearsPacket.getByText("Assignment", { exact: true }),
   ).toBeVisible();
@@ -2201,7 +2209,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   ).toBeVisible();
 
   const reviewPacketDownloadPromise = page.waitForEvent("download");
-  await reviewPacket.getByRole("button", { name: "Download packet CSV" }).click();
+  await reviewPacket
+    .getByRole("button", { name: "Download packet CSV" })
+    .click();
   const reviewPacketDownload = await reviewPacketDownloadPromise;
   expect(reviewPacketDownload.suggestedFilename()).toBe(
     "maintenance-review-packet-work-order-1.csv",
@@ -4730,8 +4740,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("Operator access")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
   await expect(page.getByText("Work notifications")).toBeVisible();
-  await expect(page.getByText("Work email on").first()).toBeVisible();
-  await expect(page.getByText("SMS ready").first()).toBeVisible();
+  await expect(page.getByText("2 email on").first()).toBeVisible();
+  await expect(page.getByText("1 SMS ready").first()).toBeVisible();
   await expect(
     page.getByLabel("Owner Operator assignment email notifications").first(),
   ).toBeVisible();
@@ -4743,7 +4753,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toHaveValue("+61400111222");
   const ownerTemplateDefaults = page
     .locator("details")
-    .filter({ hasText: "Template defaults" })
+    .filter({ hasText: "Templates" })
     .first();
   await expect(ownerTemplateDefaults).toBeVisible();
   await expect(
@@ -4773,9 +4783,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
             '[aria-label="Owner Operator assignment SMS phone"]',
           ),
         );
-        const hasTemplateDefaults =
-          current.textContent?.includes("Template defaults");
-        if (hasOwner && hasSmsPhone && hasTemplateDefaults) {
+        const hasTemplates = current.textContent?.includes("Templates");
+        if (hasOwner && hasSmsPhone && hasTemplates) {
           const box = current.getBoundingClientRect();
           return {
             height: box.height,
@@ -4808,12 +4817,13 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       .getByText("New Leasium work assigned to Owner Operator")
       .first(),
   ).toBeVisible();
-  await expect(page.getByText("Daily digest").first()).toBeVisible();
+  const ownerDigestCadence = page
+    .getByLabel("Owner Operator work digest")
+    .first();
+  await expect(ownerDigestCadence).toBeVisible();
+  await expect(ownerDigestCadence).toHaveValue("daily");
   await expect(page.getByText("Last digest").first()).toBeVisible();
   await expect(page.getByText("No messages sent").first()).toBeVisible();
-  await expect(
-    page.getByLabel("Owner Operator work digest").first(),
-  ).toBeVisible();
 
   await page.getByRole("tab", { name: "Organisation" }).click();
   await expect(page.getByText("Setup needed").first()).toBeVisible();
@@ -4904,10 +4914,25 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Connect" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Connect Xero" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Each trust gets its own connection, so repeat this once per trust.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Connect this trust" }),
+  ).toBeVisible();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();
   const exceptionQueuePanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Xero sync exception queue" }),
   });
+  await expect(
+    exceptionQueuePanel.getByText("Review 3 follow-ups"),
+  ).toBeVisible();
+  await exceptionQueuePanel.getByText("Review 3 follow-ups").click();
   await expect(
     exceptionQueuePanel
       .getByTestId("xero-exception-desktop-row")
@@ -4940,6 +4965,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     "No Xero API refresh, invoice posting, tenant email, provider dispatch, or payment reconciliation is run by this export.",
   );
   expect(forbiddenExceptionExportRequests).toEqual([]);
+  const advancedSupportDetails = page
+    .locator("details")
+    .filter({ hasText: "Advanced support details" })
+    .first();
+  await advancedSupportDetails.getByText("Advanced support details").click();
   const providerSetupPreflightPanel = page.getByRole("region", {
     name: "Provider setup preflight",
   });
@@ -5014,7 +5044,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     "No Xero write occurs until an explicit reviewed action is run.",
   );
   expect(forbiddenSetupPacketRequests).toEqual([]);
-  await expect(page.getByText("Connection diagnostics")).toBeVisible();
+  await expect(
+    advancedSupportDetails.getByText(
+      "Local setup and permission checks for support.",
+    ),
+  ).toBeVisible();
   const forbiddenUnconnectedDiagnosticsRequests =
     watchForbiddenXeroProviderRequests(page);
   const diagnosticsDownloadPromise = page.waitForEvent("download");
@@ -5044,7 +5078,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   );
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy diagnostics packet" }).click();
-  await expect(page.getByText("Xero diagnostics packet copied.")).toBeVisible();
+  await expect(
+    advancedSupportDetails.getByText("Xero diagnostics packet copied."),
+  ).toBeVisible();
   const diagnosticsPacket = await page.evaluate(() =>
     navigator.clipboard.readText(),
   );
@@ -5093,13 +5129,13 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     "Review-only export: downloading this file does not start OAuth, call or refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices or providers, send email or SMS, refresh providers, or mutate provider history.",
   );
   await expect(
-    page.getByText(
+    advancedSupportDetails.getByText(
       "Connect Xero before provider previews and draft creation are available.",
     ),
   ).toBeVisible();
   expect(forbiddenUnconnectedDiagnosticsRequests).toEqual([]);
   const xeroConnectionPanel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Xero connection" }),
+    has: page.getByRole("heading", { name: "Connect Xero" }),
   });
   await expect(
     xeroConnectionPanel.getByText("Connection source"),
@@ -5108,22 +5144,26 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     xeroConnectionPanel.getByText("Not connected").first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect Xero" }),
+    page.getByRole("button", { name: "Connect this trust" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Apply suggestion" }),
   ).toBeVisible();
 
-  await page.getByLabel("Xero tenant ID").fill("tenant-smoke");
-  await page.getByRole("button", { name: "Save status" }).click();
+  await advancedSupportDetails
+    .getByLabel("Xero tenant ID")
+    .fill("tenant-smoke");
+  await advancedSupportDetails
+    .getByRole("button", { name: "Save status" })
+    .click();
   await expect(
     page.getByText("Connected", { exact: true }).first(),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Connect with Xero" }).click();
+  await page.getByRole("button", { name: "Reconnect Xero" }).click();
   await expect(page.getByText("Provider connected").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Preview contacts" }).click();
+  await page.getByRole("button", { name: "Review contacts" }).click();
   const xeroContactPreviewPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Xero contact preview" }),
   });
@@ -5149,7 +5189,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     ),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Preview chart/tax" }).click();
+  await page.getByRole("button", { name: "Check accounts and tax" }).click();
   await expect(page.getByText("Xero chart/tax preview")).toBeVisible();
   await expect(page.getByText("0/1 ready").first()).toBeVisible();
   await expect(
@@ -5173,7 +5213,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
       .filter({ hasText: "Needs Xero approval" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Preview chart/tax" }).click();
+  await page.getByRole("button", { name: "Check accounts and tax" }).click();
   await expect(page.getByText("1/1 ready").first()).toBeVisible();
   await expect(page.getByText("Rental Income")).toBeVisible();
   await expect(page.getByText("GST on Income")).toBeVisible();
@@ -5344,7 +5384,13 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Open reconciliation handoff" }),
   ).toBeVisible();
-  await expect(page.getByText("No Xero sync exceptions")).toBeVisible();
+  await expect(
+    exceptionQueuePanel.getByText("Review 0 follow-ups"),
+  ).toBeVisible();
+  await exceptionQueuePanel.getByText("Review 0 follow-ups").click();
+  await expect(
+    exceptionQueuePanel.getByText("No Xero sync exceptions"),
+  ).toBeVisible();
   await expect(
     freshnessPanel.getByText("Reconciliation current"),
   ).toBeVisible();
@@ -5444,7 +5490,7 @@ test("settings shows Xero OAuth callback success feedback", async ({
   );
 
   await expect(page.getByText("Xero connected")).toBeVisible();
-  await expect(page.getByText(/Run contact preview next/)).toBeVisible();
+  await expect(page.getByText(/Next, review suggested contacts/)).toBeVisible();
   await expect(page.getByRole("tab", { name: "Connect" })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -5472,9 +5518,19 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
 
   await page.goto("/settings?tab=xero");
 
-  await expect(page.getByText("Connection diagnostics")).toBeVisible();
   await expect(
-    page.getByText(
+    page.getByRole("heading", { name: "Connect Xero" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Connect this trust" }),
+  ).toBeVisible();
+  const advancedSupportDetails = page
+    .locator("details")
+    .filter({ hasText: "Advanced support details" })
+    .first();
+  await advancedSupportDetails.getByText("Advanced support details").click();
+  await expect(
+    advancedSupportDetails.getByText(
       "Your role or authorised scopes do not allow provider actions.",
     ),
   ).toBeVisible();
@@ -5482,10 +5538,10 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
     0,
   );
   await expect(
-    page.getByRole("button", { name: "Connect with Xero" }),
+    page.getByRole("button", { name: "Connect this trust" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Preview contacts" }),
+    page.getByRole("button", { name: "Review contacts" }),
   ).toBeDisabled();
 });
 
@@ -5495,9 +5551,7 @@ async function assertXeroDiagnosticsFailClosed(
 ) {
   await expect(page.getByText(expectedDetail)).toBeVisible();
   await expect(
-    page.getByText(
-      "Provider actions stay disabled until Xero diagnostics reload.",
-    ),
+    page.getByText("Xero actions stay disabled until the setup check reloads."),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Download diagnostics CSV" }),
@@ -5509,19 +5563,19 @@ async function assertXeroDiagnosticsFailClosed(
     page.getByRole("button", { name: "Download setup packet" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Connect with Xero" }),
+    page.getByRole("button", { name: "Connect this trust" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Preview contacts" }),
+    page.getByRole("button", { name: "Review contacts" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Preview chart/tax" }),
+    page.getByRole("button", { name: "Check accounts and tax" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Preview invoice posting" }),
+    page.getByRole("button", { name: "Preview invoices" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Preview payments" }),
+    page.getByRole("button", { name: "Review payments" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Create Xero drafts" }),
@@ -5584,8 +5638,14 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
 
   await page.goto("/settings?tab=xero");
 
-  await expect(page.getByText("Connection diagnostics")).toBeVisible();
-  const draftCreationCard = page.getByLabel("Draft creation readiness");
+  const advancedSupportDetails = page
+    .locator("details")
+    .filter({ hasText: "Advanced support details" })
+    .first();
+  await advancedSupportDetails.getByText("Advanced support details").click();
+  const draftCreationCard = advancedSupportDetails.getByLabel(
+    "Draft creation readiness",
+  );
   await expect(draftCreationCard).toContainText("Draft creation");
   await expect(draftCreationCard).toContainText("Ready");
   await expect(draftCreationCard).toContainText(
@@ -5633,7 +5693,9 @@ test("settings shows Xero draft creation ready only from diagnostics", async ({
   expect(diagnosticsPacket).toContain("Guardrails:");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy diagnostics packet" }).click();
-  await expect(page.getByText("Xero diagnostics packet copied.")).toBeVisible();
+  await expect(
+    advancedSupportDetails.getByText("Xero diagnostics packet copied."),
+  ).toBeVisible();
   const copiedDiagnosticsPacket = await page.evaluate(() =>
     navigator.clipboard.readText(),
   );

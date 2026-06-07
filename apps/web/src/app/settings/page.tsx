@@ -241,7 +241,7 @@ function SettingsAppearancePanel() {
   useEffect(() => {
     function syncPreference(event?: Event) {
       const nextMode = event
-        ? appearanceModeFromEvent(event) ?? readAppearancePreference()
+        ? (appearanceModeFromEvent(event) ?? readAppearancePreference())
         : readAppearancePreference();
       applyAppearancePreference(nextMode);
       modeRef.current = nextMode;
@@ -2170,7 +2170,9 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
       actions={
         data ? (
           <StatusBadge tone={data.configured ? "success" : "neutral"}>
-            {data.configured ? data.methods.join(" · ").toUpperCase() : "Not set"}
+            {data.configured
+              ? data.methods.join(" · ").toUpperCase()
+              : "Not set"}
           </StatusBadge>
         ) : null
       }
@@ -2215,7 +2217,9 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
           <Field label="BPAY biller code (optional)">
             <Input
               value={form.bpay_biller_code}
-              onChange={(event) => update("bpay_biller_code", event.target.value)}
+              onChange={(event) =>
+                update("bpay_biller_code", event.target.value)
+              }
               placeholder="123456"
             />
           </Field>
@@ -2237,7 +2241,9 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
           >
             {saveMutation.isPending ? "Saving..." : "Save payment instructions"}
           </Button>
-          {notice ? <span className="text-sm text-success">{notice}</span> : null}
+          {notice ? (
+            <span className="text-sm text-success">{notice}</span>
+          ) : null}
           {saveMutation.error ? (
             <span className="text-sm text-danger">
               Could not save. Check the fields and try again.
@@ -2362,9 +2368,9 @@ function SettingsWorkspace() {
       setXeroCallbackFeedback({
         tone: "success",
         title: "Xero connected",
-        detail: `Run contact preview next${
-          tenantId ? ` for tenant ${tenantId}` : ""
-        }. No Xero writes, invoice posting, emails, or payment reconciliation occurred from this callback.`,
+        detail: `This trust is connected${
+          tenantId ? ` to Xero organisation ${tenantId}` : ""
+        }. Next, review suggested contacts before preparing invoices.`,
       });
     } else if (params.has("xero_error")) {
       setXeroCallbackFeedback({
@@ -2372,7 +2378,7 @@ function SettingsWorkspace() {
         title: "Xero connection needs attention",
         detail: `${cleanXeroCallbackError(
           params.get("xero_error"),
-        )}. No Xero writes, invoice posting, emails, or payment reconciliation occurred.`,
+        )}. Try connecting again, or open Advanced support details if this keeps happening.`,
       });
     }
   }, []);
@@ -3015,7 +3021,10 @@ function SettingsWorkspace() {
     // BasiqImportedTransaction has no invoice_number field; the optional
     // invoice number is carried in `reference` (the field the backend
     // reads when matching) so nothing the operator types is dropped.
-    const reference = [basiqDraftReference.trim(), basiqDraftInvoiceNumber.trim()]
+    const reference = [
+      basiqDraftReference.trim(),
+      basiqDraftInvoiceNumber.trim(),
+    ]
       .filter(Boolean)
       .join(" ");
     if (reference) {
@@ -3127,6 +3136,18 @@ function SettingsWorkspace() {
   const xeroCanPreviewPayments =
     xeroDiagnostics?.can_preview_payment_reconciliation ?? false;
   const xeroCanCreateDrafts = xeroDiagnostics?.can_create_xero_drafts ?? false;
+  const xeroConnectedOrgName =
+    status?.connection.tenant_name ?? status?.connection.xero_tenant_id ?? null;
+  const xeroHasProviderConnection =
+    status?.connection.connection_source === "provider";
+  const xeroPrimaryConnectLabel = status?.connection.connected
+    ? "Reconnect Xero"
+    : "Connect this trust";
+  const xeroConnectionSummary = xeroHasProviderConnection
+    ? `Connected to ${xeroConnectedOrgName ?? "Xero"}`
+    : status?.connection.connection_source === "manual"
+      ? "Manual connection recorded"
+      : "Not connected yet";
   const accountingStep = status
     ? accountingNextStep({
         freshness: status.accounting_freshness,
@@ -3405,7 +3426,7 @@ function SettingsWorkspace() {
                 : "Could not load Xero connection diagnostics."}
             </div>
             <div className="mt-1">
-              Provider actions stay disabled until Xero diagnostics reload.
+              Xero actions stay disabled until the setup check reloads.
             </div>
           </div>
         ) : null}
@@ -4300,7 +4321,10 @@ function SettingsWorkspace() {
                             {workEmailEnabled ? (
                               <Bell size={13} className="text-primary" />
                             ) : (
-                              <BellOff size={13} className="text-muted-foreground" />
+                              <BellOff
+                                size={13}
+                                className="text-muted-foreground"
+                              />
                             )}
                             Assignment email
                           </span>
@@ -4327,7 +4351,14 @@ function SettingsWorkspace() {
                               type="checkbox"
                             />
                             <span className="flex items-center gap-1.5 font-medium">
-                              <Smartphone size={13} className={workSmsEnabled ? "text-primary" : "text-muted-foreground"} />
+                              <Smartphone
+                                size={13}
+                                className={
+                                  workSmsEnabled
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
+                                }
+                              />
                               SMS
                             </span>
                           </label>
@@ -4349,7 +4380,9 @@ function SettingsWorkspace() {
                               <SecondaryButton
                                 type="button"
                                 className="h-8 min-h-0 rounded-lg px-2 text-xs"
-                                disabled={!canManageSecurity || !smsPhoneChanged}
+                                disabled={
+                                  !canManageSecurity || !smsPhoneChanged
+                                }
                                 onClick={() =>
                                   memberMutation.mutate({
                                     memberId: member.id,
@@ -4390,8 +4423,7 @@ function SettingsWorkspace() {
                               payload: {
                                 notification_preferences:
                                   nextNotificationPreferences(member, {
-                                    work_assignment_digest_cadence: event
-                                      .target
+                                    work_assignment_digest_cadence: event.target
                                       .value as SecurityWorkAssignmentDigestCadence,
                                   }),
                               },
@@ -4409,7 +4441,9 @@ function SettingsWorkspace() {
                         <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
                           <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                             <Tags size={13} />
-                            <span className="font-medium text-foreground">Templates</span>
+                            <span className="font-medium text-foreground">
+                              Templates
+                            </span>
                           </span>
                           <StatusBadge
                             tone={templatesChanged ? "warning" : "neutral"}
@@ -4734,7 +4768,10 @@ function SettingsWorkspace() {
 
             {(securityQuery.data?.organisation.operating_mode ??
               "self_managed_owner") === "self_managed_owner" ? (
-              <section className="grid gap-3" aria-labelledby="entity-owners-title">
+              <section
+                className="grid gap-3"
+                aria-labelledby="entity-owners-title"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2
@@ -5199,8 +5236,7 @@ function SettingsWorkspace() {
         status &&
         !xeroDiagnosticsReady ? (
           <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
-            Xero provider actions stay disabled until local connection
-            diagnostics finish loading.
+            Xero actions stay disabled until the setup check finishes loading.
           </div>
         ) : null}
 
@@ -5280,6 +5316,547 @@ function SettingsWorkspace() {
                 )}
               />
             </section>
+
+            <div ref={xeroConnectionPanelRef}>
+              <SectionPanel
+                title="Connect Xero"
+                description={`Connect ${selectedEntityName} to its matching Xero organisation. Nothing is posted during connection.`}
+                icon={<PlugZap size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge
+                    tone={status.connection.connected ? "success" : "warning"}
+                  >
+                    {xeroConnectionSummary}
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                  <div className="grid gap-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold uppercase text-muted-foreground">
+                            Selected trust
+                          </div>
+                          <div className="mt-1 text-lg font-semibold text-foreground">
+                            {selectedEntityName}
+                          </div>
+                          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                            {xeroHasProviderConnection
+                              ? `Leasium is connected to ${xeroConnectedOrgName ?? "Xero"} for this trust. Next, review contacts and accounting mappings before any invoice draft is created.`
+                              : "Start by choosing the matching organisation in Xero. Each trust gets its own connection, so repeat this once per trust."}
+                          </p>
+                        </div>
+                        <StatusBadge
+                          tone={
+                            xeroHasProviderConnection ? "success" : "neutral"
+                          }
+                        >
+                          {xeroHasProviderConnection ? "Connected" : "Setup"}
+                        </StatusBadge>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          disabled={
+                            xeroOAuthMutation.isPending ||
+                            !xeroCanStartOauth ||
+                            !selectedEntityId
+                          }
+                          onClick={() => xeroOAuthMutation.mutate()}
+                        >
+                          {xeroOAuthMutation.isPending ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <ExternalLink size={15} />
+                          )}
+                          {xeroPrimaryConnectLabel}
+                        </Button>
+                        <SecondaryButton
+                          type="button"
+                          disabled={
+                            xeroContactSyncMutation.isPending ||
+                            !xeroCanPreviewContacts
+                          }
+                          onClick={() => xeroContactSyncMutation.mutate()}
+                        >
+                          {xeroContactSyncMutation.isPending ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <SearchCheck size={15} />
+                          )}
+                          Review contacts
+                        </SecondaryButton>
+                      </div>
+                      {!xeroCanStartOauth && !xeroHasProviderConnection ? (
+                        <p className="mt-3 text-sm text-warning">
+                          Xero setup needs a support check before this trust can
+                          connect.
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {[
+                        {
+                          label: "1. Connect",
+                          detail: xeroHasProviderConnection
+                            ? (xeroConnectedOrgName ?? "Xero connected")
+                            : "Choose the matching Xero organisation.",
+                          done: xeroHasProviderConnection,
+                        },
+                        {
+                          label: "2. Review",
+                          detail: xeroCanPreviewContacts
+                            ? "Match Xero contacts to tenants and owners."
+                            : "Available after connection.",
+                          done:
+                            status.contact_mapping.total > 0 &&
+                            status.contact_mapping.missing === 0,
+                        },
+                        {
+                          label: "3. Prepare",
+                          detail: xeroCanPreviewInvoicePosting
+                            ? "Preview draft invoices before approval."
+                            : "No invoices are created here.",
+                          done: status.invoice_sync.synced > 0,
+                        },
+                      ].map((step) => (
+                        <div
+                          key={step.label}
+                          className="rounded-lg border border-border bg-white p-3 text-sm"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold">{step.label}</span>
+                            <StatusBadge
+                              tone={step.done ? "success" : "neutral"}
+                            >
+                              {step.done ? "Done" : "Next"}
+                            </StatusBadge>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                            {step.detail}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <details className="rounded-xl border border-border bg-white">
+                      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-foreground">
+                        Advanced support details
+                      </summary>
+                      <div className="grid gap-4 border-t border-border p-4">
+                        {xeroDiagnostics ? (
+                          <>
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">
+                                Connection diagnostics
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Local setup and permission checks for support.
+                              </p>
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="rounded-md border border-border bg-muted/25 p-3">
+                                <div className="text-xs uppercase text-muted-foreground">
+                                  Provider setup
+                                </div>
+                                <div className="mt-1 font-medium">
+                                  {xeroDiagnostics.provider_configured
+                                    ? "Configured"
+                                    : "Needs support"}
+                                </div>
+                                {xeroDiagnostics.missing_config.length ? (
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    Missing{" "}
+                                    {xeroDiagnostics.missing_config.join(", ")}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="rounded-md border border-border bg-muted/25 p-3">
+                                <div className="text-xs uppercase text-muted-foreground">
+                                  Connection source
+                                </div>
+                                <div className="mt-1 font-medium">
+                                  {status.connection.connection_source ===
+                                  "provider"
+                                    ? "Xero OAuth"
+                                    : status.connection.connection_source ===
+                                        "manual"
+                                      ? "Manual tenant ID"
+                                      : "Not connected"}
+                                </div>
+                                {status.connection.tenant_name ? (
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {status.connection.tenant_name}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <SecondaryButton
+                                type="button"
+                                onClick={downloadXeroDiagnosticsCsv}
+                              >
+                                <Download size={14} />
+                                Download diagnostics CSV
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                onClick={copyXeroDiagnosticsPacket}
+                              >
+                                <Copy size={14} />
+                                Copy diagnostics packet
+                              </SecondaryButton>
+                              <SecondaryButton
+                                type="button"
+                                onClick={downloadXeroDiagnosticsPacket}
+                              >
+                                <Download size={14} />
+                                Download diagnostics packet
+                              </SecondaryButton>
+                            </div>
+                            {xeroDiagnosticsCopyReceipt ? (
+                              <p className="text-xs font-medium text-success">
+                                {xeroDiagnosticsCopyReceipt}
+                              </p>
+                            ) : null}
+
+                            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                              {diagnosticsReadinessDetailRows(
+                                xeroDiagnostics,
+                              ).map(({ label, ready, detail }) => (
+                                <div
+                                  key={label}
+                                  aria-label={`${label} readiness`}
+                                  className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">{label}</span>
+                                    <StatusBadge
+                                      tone={ready ? "success" : "warning"}
+                                    >
+                                      {ready ? "Ready" : "Blocked"}
+                                    </StatusBadge>
+                                  </div>
+                                  <p className="mt-2 leading-relaxed text-muted">
+                                    {detail}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+
+                            {xeroDiagnostics.next_steps.length ||
+                            xeroDiagnostics.guardrails.length ? (
+                              <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                                {xeroDiagnostics.next_steps.length ? (
+                                  <div>
+                                    <div className="font-semibold uppercase text-foreground">
+                                      Support notes
+                                    </div>
+                                    <ul className="mt-1 grid gap-1">
+                                      {xeroDiagnostics.next_steps.map(
+                                        (step) => (
+                                          <li key={step}>{step}</li>
+                                        ),
+                                      )}
+                                    </ul>
+                                  </div>
+                                ) : null}
+                                {xeroDiagnostics.guardrails.length ? (
+                                  <p>{xeroDiagnostics.guardrails.join(" ")}</p>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            <div
+                              aria-label="Provider setup preflight"
+                              className="grid gap-3 rounded-md border border-border bg-muted/20 p-3"
+                              role="region"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <div className="text-xs uppercase text-muted-foreground">
+                                    Provider setup preflight
+                                  </div>
+                                  <div className="mt-1 font-medium">
+                                    Xero app configuration
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <StatusBadge
+                                    tone={
+                                      xeroDiagnostics.provider_setup_preflight
+                                        .missing_env_vars.length
+                                        ? "warning"
+                                        : "success"
+                                    }
+                                  >
+                                    {xeroDiagnostics.provider_setup_preflight
+                                      .missing_env_vars.length
+                                      ? "Needs support"
+                                      : "Ready"}
+                                  </StatusBadge>
+                                  <SecondaryButton
+                                    type="button"
+                                    onClick={copyXeroSetupPacket}
+                                  >
+                                    <Copy size={14} />
+                                    Copy setup packet
+                                  </SecondaryButton>
+                                  <SecondaryButton
+                                    type="button"
+                                    onClick={downloadXeroSetupPacket}
+                                  >
+                                    <Download size={14} />
+                                    Download setup packet
+                                  </SecondaryButton>
+                                </div>
+                              </div>
+                              {xeroSetupCopyReceipt ? (
+                                <p className="text-xs font-medium text-success">
+                                  {xeroSetupCopyReceipt}
+                                </p>
+                              ) : null}
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-muted-foreground">
+                                    Required setup
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    {xeroDiagnostics.provider_setup_preflight.required_env_vars.map(
+                                      (envVar) => (
+                                        <StatusBadge
+                                          key={envVar}
+                                          tone="neutral"
+                                        >
+                                          {envVar}
+                                        </StatusBadge>
+                                      ),
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-muted-foreground">
+                                    Missing setup
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    {xeroDiagnostics.provider_setup_preflight
+                                      .missing_env_vars.length ? (
+                                      xeroDiagnostics.provider_setup_preflight.missing_env_vars.map(
+                                        (envVar) => (
+                                          <StatusBadge
+                                            key={envVar}
+                                            tone="warning"
+                                          >
+                                            {envVar}
+                                          </StatusBadge>
+                                        ),
+                                      )
+                                    ) : (
+                                      <StatusBadge tone="success">
+                                        None
+                                      </StatusBadge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="grid gap-1">
+                                <div className="text-xs font-medium uppercase text-muted-foreground">
+                                  Expected redirect URI
+                                </div>
+                                <div className="break-all rounded-md border border-border bg-white px-3 py-2 text-xs">
+                                  {
+                                    xeroDiagnostics.provider_setup_preflight
+                                      .expected_redirect_uri
+                                  }
+                                </div>
+                              </div>
+                              <div className="grid gap-1">
+                                <div className="text-xs font-medium uppercase text-muted-foreground">
+                                  Required scopes
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {xeroDiagnostics.provider_setup_preflight.required_scopes.map(
+                                    (scope) => (
+                                      <StatusBadge key={scope} tone="neutral">
+                                        {scope}
+                                      </StatusBadge>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                              <ul className="grid gap-1 text-xs text-muted-foreground">
+                                {xeroDiagnostics.provider_setup_preflight.setup_checklist.map(
+                                  (step) => (
+                                    <li key={step} className="flex gap-2">
+                                      <CheckCircle2
+                                        size={14}
+                                        className="mt-0.5 shrink-0 text-primary"
+                                      />
+                                      <span>{step}</span>
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Support diagnostics are still loading or
+                            unavailable.
+                          </p>
+                        )}
+
+                        <form
+                          className="grid gap-3 rounded-md border border-border bg-muted/20 p-3"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            connectionMutation.mutate({
+                              connected: true,
+                              xero_tenant_id: xeroTenantId.trim(),
+                            });
+                          }}
+                        >
+                          <div>
+                            <div className="text-sm font-semibold">
+                              Manual tenant ID override
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Use only when support asks for it. OAuth is the
+                              normal connection path.
+                            </p>
+                          </div>
+                          <Field label="Xero tenant ID">
+                            <Input
+                              value={xeroTenantId}
+                              onChange={(event) =>
+                                setXeroTenantId(event.target.value)
+                              }
+                              placeholder="Tenant or organisation ID"
+                            />
+                          </Field>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="submit"
+                              disabled={
+                                connectionMutation.isPending ||
+                                !xeroTenantId.trim()
+                              }
+                            >
+                              {connectionMutation.isPending &&
+                              connectionMutation.variables?.connected ? (
+                                <Loader2 size={15} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={15} />
+                              )}
+                              Save status
+                            </Button>
+                            <SecondaryButton
+                              type="button"
+                              className="text-danger"
+                              disabled={
+                                connectionMutation.isPending ||
+                                !status.connection.connected
+                              }
+                              onClick={() =>
+                                connectionMutation.mutate({ connected: false })
+                              }
+                            >
+                              {connectionMutation.isPending &&
+                              connectionMutation.variables?.connected ===
+                                false ? (
+                                <Loader2 size={15} className="animate-spin" />
+                              ) : (
+                                <Ban size={15} />
+                              )}
+                              Clear
+                            </SecondaryButton>
+                          </div>
+                        </form>
+                      </div>
+                    </details>
+                  </div>
+
+                  <div className="grid content-start gap-3 rounded-xl border border-border bg-white p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">
+                        What happens next
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                        These checks read from Xero and prepare local review
+                        screens. Invoice drafts still need explicit approval.
+                      </p>
+                    </div>
+                    <SecondaryButton
+                      type="button"
+                      className="justify-start"
+                      disabled={
+                        xeroContactSyncMutation.isPending ||
+                        !xeroCanPreviewContacts
+                      }
+                      onClick={() => xeroContactSyncMutation.mutate()}
+                    >
+                      {xeroContactSyncMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <UsersRound size={15} />
+                      )}
+                      Review contact matches
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="justify-start"
+                      disabled={
+                        xeroChartTaxMutation.isPending ||
+                        !xeroCanValidateChartTax
+                      }
+                      onClick={() => xeroChartTaxMutation.mutate()}
+                    >
+                      {xeroChartTaxMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <CircleDollarSign size={15} />
+                      )}
+                      Check accounts and tax
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="justify-start"
+                      disabled={
+                        xeroInvoicePostingMutation.isPending ||
+                        !xeroCanPreviewInvoicePosting
+                      }
+                      onClick={() => xeroInvoicePostingMutation.mutate()}
+                    >
+                      {xeroInvoicePostingMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <FileText size={15} />
+                      )}
+                      Preview invoices
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="justify-start"
+                      disabled={
+                        xeroPaymentPreviewMutation.isPending ||
+                        !xeroCanPreviewPayments
+                      }
+                      onClick={() => xeroPaymentPreviewMutation.mutate()}
+                    >
+                      {xeroPaymentPreviewMutation.isPending ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <SearchCheck size={15} />
+                      )}
+                      Review payments
+                    </SecondaryButton>
+                  </div>
+                </div>
+              </SectionPanel>
+            </div>
 
             <SectionPanel
               title="Accounting freshness snapshot"
@@ -5535,185 +6112,149 @@ function SettingsWorkspace() {
                         </div>
                       </div>
                     </div>
-                    {exceptionQueue?.guardrails.length ? (
-                      <ul className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-                        {exceptionQueue.guardrails.map((guardrail) => (
-                          <li key={guardrail} className="flex gap-2">
-                            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
-                            <span>{guardrail}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <div className="divide-y divide-border border-t border-border">
-                      {exceptionItems.map((issue) => {
-                        const actionLabel = exceptionActionLabel(issue);
-                        const actionPending = exceptionActionPending(issue);
-                        const currentMappingLabel = `Account ${
-                          issue.current_account_code ?? "Not set"
-                        } / tax ${issue.current_tax_type ?? "Not set"}`;
-                        const suggestedMappingLabel = `Account ${
-                          issue.suggested_account_code ?? "Not set"
-                        } / tax ${issue.suggested_tax_type ?? "Not set"}`;
-                        const providerContextLabel =
-                          issue.provider || issue.provider_status
-                            ? `${providerLabel(issue.provider) ?? "Provider"}${
-                                issue.provider_status
-                                  ? ` / ${statusLabel(issue.provider_status)}`
-                                  : ""
-                              }`
-                            : null;
-                        return (
-                          <div key={issue.id} className="px-4 py-3 text-sm">
-                            <div
-                              data-testid="xero-exception-mobile-card"
-                              className="grid gap-3 rounded-lg border border-border bg-surface p-3 lg:hidden"
-                            >
-                              <div className="flex flex-wrap items-start gap-2">
-                                <StatusBadge tone={exceptionTone(issue)}>
-                                  {exceptionKindLabel(issue.kind)}
-                                </StatusBadge>
-                                {issue.next_action ? (
-                                  <StatusBadge tone="neutral">
-                                    {issue.next_action.replaceAll("_", " ")}
+                    <details className="border-t border-border">
+                      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-foreground">
+                        Review {exceptionItems.length} follow-up
+                        {exceptionItems.length === 1 ? "" : "s"}
+                      </summary>
+                      {exceptionQueue?.guardrails.length ? (
+                        <ul className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                          {exceptionQueue.guardrails.map((guardrail) => (
+                            <li key={guardrail} className="flex gap-2">
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+                              <span>{guardrail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="divide-y divide-border border-t border-border">
+                        {exceptionItems.map((issue) => {
+                          const actionLabel = exceptionActionLabel(issue);
+                          const actionPending = exceptionActionPending(issue);
+                          const currentMappingLabel = `Account ${
+                            issue.current_account_code ?? "Not set"
+                          } / tax ${issue.current_tax_type ?? "Not set"}`;
+                          const suggestedMappingLabel = `Account ${
+                            issue.suggested_account_code ?? "Not set"
+                          } / tax ${issue.suggested_tax_type ?? "Not set"}`;
+                          const providerContextLabel =
+                            issue.provider || issue.provider_status
+                              ? `${providerLabel(issue.provider) ?? "Provider"}${
+                                  issue.provider_status
+                                    ? ` / ${statusLabel(issue.provider_status)}`
+                                    : ""
+                                }`
+                              : null;
+                          return (
+                            <div key={issue.id} className="px-4 py-3 text-sm">
+                              <div
+                                data-testid="xero-exception-mobile-card"
+                                className="grid gap-3 rounded-lg border border-border bg-surface p-3 lg:hidden"
+                              >
+                                <div className="flex flex-wrap items-start gap-2">
+                                  <StatusBadge tone={exceptionTone(issue)}>
+                                    {exceptionKindLabel(issue.kind)}
                                   </StatusBadge>
-                                ) : null}
-                              </div>
-                              <div>
-                                <div className="font-medium">{issue.label}</div>
-                                <p className="mt-1 text-muted-foreground">
-                                  {issue.detail}
-                                </p>
-                              </div>
-                              {issue.charge_rule_id ? (
-                                <dl className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
-                                  <div>
-                                    <dt className="font-medium text-foreground">
-                                      Current mapping
-                                    </dt>
-                                    <dd className="mt-1 text-muted-foreground">
-                                      {currentMappingLabel}
-                                    </dd>
+                                  {issue.next_action ? (
+                                    <StatusBadge tone="neutral">
+                                      {issue.next_action.replaceAll("_", " ")}
+                                    </StatusBadge>
+                                  ) : null}
+                                </div>
+                                <div>
+                                  <div className="font-medium">
+                                    {issue.label}
                                   </div>
-                                  <div>
-                                    <dt className="font-medium text-foreground">
-                                      Suggested mapping
-                                    </dt>
-                                    <dd className="mt-1 text-muted-foreground">
-                                      {suggestedMappingLabel}
-                                    </dd>
-                                  </div>
-                                </dl>
-                              ) : null}
-                              <div className="grid gap-1 text-xs text-muted-foreground">
-                                {issue.invoice_number || issue.invoice_title ? (
-                                  <div>
-                                    Invoice:{" "}
-                                    {issue.invoice_number ??
-                                      issue.invoice_title}
-                                  </div>
+                                  <p className="mt-1 text-muted-foreground">
+                                    {issue.detail}
+                                  </p>
+                                </div>
+                                {issue.charge_rule_id ? (
+                                  <dl className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 text-xs">
+                                    <div>
+                                      <dt className="font-medium text-foreground">
+                                        Current mapping
+                                      </dt>
+                                      <dd className="mt-1 text-muted-foreground">
+                                        {currentMappingLabel}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-medium text-foreground">
+                                        Suggested mapping
+                                      </dt>
+                                      <dd className="mt-1 text-muted-foreground">
+                                        {suggestedMappingLabel}
+                                      </dd>
+                                    </div>
+                                  </dl>
                                 ) : null}
-                                {issue.tenant_name || issue.property_name ? (
-                                  <div>
-                                    Record: {issue.property_name ?? "Property"}
-                                    {issue.unit_label
-                                      ? ` / ${issue.unit_label}`
-                                      : ""}
-                                    {issue.tenant_name
-                                      ? ` / ${issue.tenant_name}`
-                                      : ""}
-                                  </div>
-                                ) : null}
-                                {issue.total_cents !== null ? (
-                                  <div>
-                                    Amount:{" "}
-                                    {formatCurrencyCents(
-                                      issue.total_cents,
-                                      issue.currency ?? "AUD",
-                                    )}
-                                  </div>
-                                ) : null}
-                                {issue.xero_invoice_id ? (
-                                  <div>Xero ID: {issue.xero_invoice_id}</div>
-                                ) : null}
-                                {providerContextLabel ? (
-                                  <div>Provider: {providerContextLabel}</div>
-                                ) : null}
-                                {issue.external_posting_status ? (
-                                  <div>
-                                    Posting: {issue.external_posting_status}
-                                  </div>
-                                ) : null}
-                                {issue.received_at ? (
-                                  <div>
-                                    Receipt: {formatDateTime(issue.received_at)}
-                                  </div>
-                                ) : null}
-                                {issue.retry_count ? (
-                                  <div>Attempt #{issue.retry_count}</div>
-                                ) : null}
-                                {issue.property_id ? (
-                                  <Link
-                                    href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                    className="font-medium text-primary hover:text-primary-hover"
-                                  >
-                                    Open property
-                                  </Link>
-                                ) : null}
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                {issue.action}
-                              </p>
-                              {actionLabel ? (
-                                <SecondaryButton
-                                  type="button"
-                                  className="min-h-11 w-full justify-center rounded-lg px-3 text-xs"
-                                  disabled={exceptionActionDisabled(issue)}
-                                  onClick={() => handleExceptionAction(issue)}
-                                >
-                                  {actionPending ? (
-                                    <Loader2
-                                      size={13}
-                                      className="animate-spin"
-                                    />
-                                  ) : issue.next_action ===
-                                    "review_chart_tax_mapping" ? (
-                                    <CheckCircle2 size={13} />
-                                  ) : (
-                                    <SearchCheck size={13} />
-                                  )}
-                                  {actionLabel}
-                                </SecondaryButton>
-                              ) : null}
-                            </div>
-                            <div
-                              data-testid="xero-exception-desktop-row"
-                              className="hidden gap-3 lg:grid lg:grid-cols-[170px_1fr_300px]"
-                            >
-                              <div className="flex flex-wrap items-start gap-2">
-                                <StatusBadge tone={exceptionTone(issue)}>
-                                  {exceptionKindLabel(issue.kind)}
-                                </StatusBadge>
-                                {issue.next_action ? (
-                                  <StatusBadge tone="neutral">
-                                    {issue.next_action.replaceAll("_", " ")}
-                                  </StatusBadge>
-                                ) : null}
-                              </div>
-                              <div>
-                                <div className="font-medium">{issue.label}</div>
-                                <p className="mt-1 text-muted-foreground">
-                                  {issue.detail}
-                                </p>
-                                <p className="mt-2 text-xs text-muted-foreground">
+                                <div className="grid gap-1 text-xs text-muted-foreground">
+                                  {issue.invoice_number ||
+                                  issue.invoice_title ? (
+                                    <div>
+                                      Invoice:{" "}
+                                      {issue.invoice_number ??
+                                        issue.invoice_title}
+                                    </div>
+                                  ) : null}
+                                  {issue.tenant_name || issue.property_name ? (
+                                    <div>
+                                      Record:{" "}
+                                      {issue.property_name ?? "Property"}
+                                      {issue.unit_label
+                                        ? ` / ${issue.unit_label}`
+                                        : ""}
+                                      {issue.tenant_name
+                                        ? ` / ${issue.tenant_name}`
+                                        : ""}
+                                    </div>
+                                  ) : null}
+                                  {issue.total_cents !== null ? (
+                                    <div>
+                                      Amount:{" "}
+                                      {formatCurrencyCents(
+                                        issue.total_cents,
+                                        issue.currency ?? "AUD",
+                                      )}
+                                    </div>
+                                  ) : null}
+                                  {issue.xero_invoice_id ? (
+                                    <div>Xero ID: {issue.xero_invoice_id}</div>
+                                  ) : null}
+                                  {providerContextLabel ? (
+                                    <div>Provider: {providerContextLabel}</div>
+                                  ) : null}
+                                  {issue.external_posting_status ? (
+                                    <div>
+                                      Posting: {issue.external_posting_status}
+                                    </div>
+                                  ) : null}
+                                  {issue.received_at ? (
+                                    <div>
+                                      Receipt:{" "}
+                                      {formatDateTime(issue.received_at)}
+                                    </div>
+                                  ) : null}
+                                  {issue.retry_count ? (
+                                    <div>Attempt #{issue.retry_count}</div>
+                                  ) : null}
+                                  {issue.property_id ? (
+                                    <Link
+                                      href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
+                                      className="font-medium text-primary hover:text-primary-hover"
+                                    >
+                                      Open property
+                                    </Link>
+                                  ) : null}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
                                   {issue.action}
                                 </p>
-                              </div>
-                              <div className="grid gap-2 text-xs text-muted-foreground">
                                 {actionLabel ? (
                                   <SecondaryButton
                                     type="button"
-                                    className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
+                                    className="min-h-11 w-full justify-center rounded-lg px-3 text-xs"
                                     disabled={exceptionActionDisabled(issue)}
                                     onClick={() => handleExceptionAction(issue)}
                                   >
@@ -5731,87 +6272,141 @@ function SettingsWorkspace() {
                                     {actionLabel}
                                   </SecondaryButton>
                                 ) : null}
-                                {issue.charge_rule_id ? (
-                                  <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
-                                    <div>Current: {currentMappingLabel}</div>
-                                    <div>
-                                      Suggested: {suggestedMappingLabel}
+                              </div>
+                              <div
+                                data-testid="xero-exception-desktop-row"
+                                className="hidden gap-3 lg:grid lg:grid-cols-[170px_1fr_300px]"
+                              >
+                                <div className="flex flex-wrap items-start gap-2">
+                                  <StatusBadge tone={exceptionTone(issue)}>
+                                    {exceptionKindLabel(issue.kind)}
+                                  </StatusBadge>
+                                  {issue.next_action ? (
+                                    <StatusBadge tone="neutral">
+                                      {issue.next_action.replaceAll("_", " ")}
+                                    </StatusBadge>
+                                  ) : null}
+                                </div>
+                                <div>
+                                  <div className="font-medium">
+                                    {issue.label}
+                                  </div>
+                                  <p className="mt-1 text-muted-foreground">
+                                    {issue.detail}
+                                  </p>
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    {issue.action}
+                                  </p>
+                                </div>
+                                <div className="grid gap-2 text-xs text-muted-foreground">
+                                  {actionLabel ? (
+                                    <SecondaryButton
+                                      type="button"
+                                      className="min-h-8 justify-self-start rounded-lg px-3 text-xs"
+                                      disabled={exceptionActionDisabled(issue)}
+                                      onClick={() =>
+                                        handleExceptionAction(issue)
+                                      }
+                                    >
+                                      {actionPending ? (
+                                        <Loader2
+                                          size={13}
+                                          className="animate-spin"
+                                        />
+                                      ) : issue.next_action ===
+                                        "review_chart_tax_mapping" ? (
+                                        <CheckCircle2 size={13} />
+                                      ) : (
+                                        <SearchCheck size={13} />
+                                      )}
+                                      {actionLabel}
+                                    </SecondaryButton>
+                                  ) : null}
+                                  {issue.charge_rule_id ? (
+                                    <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2">
+                                      <div>Current: {currentMappingLabel}</div>
+                                      <div>
+                                        Suggested: {suggestedMappingLabel}
+                                      </div>
                                     </div>
-                                  </div>
-                                ) : null}
-                                {issue.invoice_number || issue.invoice_title ? (
-                                  <div>
-                                    Invoice:{" "}
-                                    {issue.invoice_number ??
-                                      issue.invoice_title}
-                                  </div>
-                                ) : null}
-                                {issue.tenant_name || issue.property_name ? (
-                                  <div>
-                                    Record: {issue.property_name ?? "Property"}
-                                    {issue.unit_label
-                                      ? ` / ${issue.unit_label}`
-                                      : ""}
-                                    {issue.tenant_name
-                                      ? ` / ${issue.tenant_name}`
-                                      : ""}
-                                  </div>
-                                ) : null}
-                                {issue.total_cents !== null ? (
-                                  <div>
-                                    Amount:{" "}
-                                    {formatCurrencyCents(
-                                      issue.total_cents,
-                                      issue.currency ?? "AUD",
-                                    )}
-                                  </div>
-                                ) : null}
-                                {issue.external_posting_status ? (
-                                  <div>
-                                    Posting: {issue.external_posting_status}
-                                  </div>
-                                ) : null}
-                                {issue.xero_invoice_id ? (
-                                  <div>Xero ID: {issue.xero_invoice_id}</div>
-                                ) : null}
-                                {providerContextLabel ? (
-                                  <div>Provider: {providerContextLabel}</div>
-                                ) : null}
-                                {issue.received_at ? (
-                                  <div>
-                                    Receipt: {formatDateTime(issue.received_at)}
-                                  </div>
-                                ) : null}
-                                {issue.retry_count ? (
-                                  <div>Attempt #{issue.retry_count}</div>
-                                ) : null}
-                                {issue.property_id ? (
-                                  <Link
-                                    href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
-                                    className="font-medium text-primary hover:text-primary-hover"
-                                  >
-                                    Open property
-                                  </Link>
-                                ) : null}
+                                  ) : null}
+                                  {issue.invoice_number ||
+                                  issue.invoice_title ? (
+                                    <div>
+                                      Invoice:{" "}
+                                      {issue.invoice_number ??
+                                        issue.invoice_title}
+                                    </div>
+                                  ) : null}
+                                  {issue.tenant_name || issue.property_name ? (
+                                    <div>
+                                      Record:{" "}
+                                      {issue.property_name ?? "Property"}
+                                      {issue.unit_label
+                                        ? ` / ${issue.unit_label}`
+                                        : ""}
+                                      {issue.tenant_name
+                                        ? ` / ${issue.tenant_name}`
+                                        : ""}
+                                    </div>
+                                  ) : null}
+                                  {issue.total_cents !== null ? (
+                                    <div>
+                                      Amount:{" "}
+                                      {formatCurrencyCents(
+                                        issue.total_cents,
+                                        issue.currency ?? "AUD",
+                                      )}
+                                    </div>
+                                  ) : null}
+                                  {issue.external_posting_status ? (
+                                    <div>
+                                      Posting: {issue.external_posting_status}
+                                    </div>
+                                  ) : null}
+                                  {issue.xero_invoice_id ? (
+                                    <div>Xero ID: {issue.xero_invoice_id}</div>
+                                  ) : null}
+                                  {providerContextLabel ? (
+                                    <div>Provider: {providerContextLabel}</div>
+                                  ) : null}
+                                  {issue.received_at ? (
+                                    <div>
+                                      Receipt:{" "}
+                                      {formatDateTime(issue.received_at)}
+                                    </div>
+                                  ) : null}
+                                  {issue.retry_count ? (
+                                    <div>Attempt #{issue.retry_count}</div>
+                                  ) : null}
+                                  {issue.property_id ? (
+                                    <Link
+                                      href={`/properties?entity_id=${selectedEntityId}&property_id=${issue.property_id}`}
+                                      className="font-medium text-primary hover:text-primary-hover"
+                                    >
+                                      Open property
+                                    </Link>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                      {!exceptionItems.length ? (
-                        <EmptyState
-                          icon={<CheckCircle2 size={18} />}
-                          title="No Xero sync exceptions"
-                          description="Approved drafts, provider receipts, and reconciliation state are clear for this entity."
-                        />
-                      ) : null}
-                    </div>
+                          );
+                        })}
+                        {!exceptionItems.length ? (
+                          <EmptyState
+                            icon={<CheckCircle2 size={18} />}
+                            title="No Xero sync exceptions"
+                            description="Approved drafts, provider receipts, and reconciliation state are clear for this entity."
+                          />
+                        ) : null}
+                      </div>
+                    </details>
                   </>
                 )}
               </SectionPanel>
             </div>
 
-            <div ref={xeroConnectionPanelRef}>
+            <div aria-hidden="true" className="hidden">
               <SectionPanel
                 title="Xero connection"
                 description="Connect the provider, preview contacts, and keep invoice posting behind explicit future approvals."
@@ -7369,9 +7964,7 @@ function SettingsWorkspace() {
                       </div>
                       <div className="mt-1 font-medium">
                         {basiqConnection?.auth_link_expires_at
-                          ? formatDateTime(
-                              basiqConnection.auth_link_expires_at,
-                            )
+                          ? formatDateTime(basiqConnection.auth_link_expires_at)
                           : "-"}
                       </div>
                     </div>
@@ -7417,9 +8010,7 @@ function SettingsWorkspace() {
                             !basiqConnection.can_fetch ||
                             basiqProviderPreviewMutation.isPending
                           }
-                          onClick={() =>
-                            basiqProviderPreviewMutation.mutate()
-                          }
+                          onClick={() => basiqProviderPreviewMutation.mutate()}
                         >
                           {basiqProviderPreviewMutation.isPending ? (
                             <Loader2 size={15} className="animate-spin" />

@@ -160,6 +160,7 @@ test("mobile settings Xero exceptions use readable review cards", async ({
     })
     .first();
   await expect(exceptionPanel).toBeVisible();
+  await exceptionPanel.getByText("Review 2 follow-ups").click();
   await expect(exceptionPanel.getByText("...", { exact: true })).toHaveCount(0);
 
   const taxExceptionCard = page
