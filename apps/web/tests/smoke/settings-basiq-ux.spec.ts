@@ -90,7 +90,9 @@ test("Basiq connection block is inert and Connect is gated when unconfigured", a
 
   // The connection block renders with the not-configured state.
   await expect(basiqPanel.getByText("Bank feed connection")).toBeVisible();
-  await expect(basiqPanel.getByText("Not configured")).toBeVisible();
+  await expect(
+    basiqPanel.getByText("Not configured", { exact: true }),
+  ).toBeVisible();
 
   // Connect is present but disabled, with the missing-config hint.
   const connectButton = basiqPanel.getByRole("button", {

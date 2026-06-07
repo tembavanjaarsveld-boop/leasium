@@ -64,29 +64,12 @@ test("insights exports review packet CSV from loaded overview data", async ({
     page.getByRole("heading", { name: "Live Exceptions" }),
   ).toBeVisible();
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
+
+  // Money tab: finance snapshot, arrears, invoice status.
+  await page.getByRole("tab", { name: /Money/ }).click();
   await expect(
     page.getByRole("heading", { name: "Finance Snapshot" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Compliance & Inspections" }),
-  ).toBeVisible();
-  const fireSafetyRow = page.getByRole("link", {
-    name: /Fire safety certificate renewal/,
-  });
-  await expect(fireSafetyRow).toBeVisible();
-  await expect(fireSafetyRow.getByText("Bright Cafe Pty Ltd")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Maintenance Aging" }),
-  ).toBeVisible();
-  const maintenanceRow = page.getByRole("link", {
-    name: /Front counter leak/,
-  });
-  await expect(maintenanceRow).toBeVisible();
-  await expect(maintenanceRow.getByText("21 days open")).toBeVisible();
-  await expect(maintenanceRow.getByText("Cool Air Services")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Arrears Snapshot" }),
   ).toBeVisible();
@@ -105,6 +88,32 @@ test("insights exports review packet CSV from loaded overview data", async ({
   await expect(invoiceRow).toBeVisible();
   await expect(invoiceRow.getByText("Provider failed")).toBeVisible();
   await expect(invoiceRow.getByText("$8,800")).toBeVisible();
+
+  // Operations tab: compliance, maintenance aging.
+  await page.getByRole("tab", { name: /Operations/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Compliance & Inspections" }),
+  ).toBeVisible();
+  const fireSafetyRow = page.getByRole("link", {
+    name: /Fire safety certificate renewal/,
+  });
+  await expect(fireSafetyRow).toBeVisible();
+  await expect(fireSafetyRow.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Maintenance Aging" }),
+  ).toBeVisible();
+  const maintenanceRow = page.getByRole("link", {
+    name: /Front counter leak/,
+  });
+  await expect(maintenanceRow).toBeVisible();
+  await expect(maintenanceRow.getByText("21 days open")).toBeVisible();
+  await expect(maintenanceRow.getByText("Cool Air Services")).toBeVisible();
+
+  // Portfolio tab: owner/entity snapshot.
+  await page.getByRole("tab", { name: /Portfolio/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Copy review packet" }).click();
   await expect(page.getByText("Insights review packet copied.")).toBeVisible();
@@ -188,6 +197,9 @@ test("insights splits the Xero-status guardrail into label and caption", async (
   page,
 }) => {
   await page.goto("/insights");
+
+  // Finance Snapshot lives in the Money tab of the tabbed Insights layout.
+  await page.getByRole("tab", { name: /Money/ }).click();
 
   const financeSnapshot = page
     .locator("section")

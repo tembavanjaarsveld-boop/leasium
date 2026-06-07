@@ -1982,7 +1982,9 @@ test("maintenance detail mobile billing actions keep 44px touch targets", async 
   await expectTouchTarget(
     page.getByRole("link", { name: "Recover in Billing" }),
   );
-  await expectTouchTarget(page.getByRole("link", { name: "Preview" }));
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Preview", exact: true }),
+  );
   await expectTouchTarget(page.getByRole("link", { name: "PDF" }));
 });
 
