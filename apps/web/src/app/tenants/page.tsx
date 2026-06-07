@@ -196,6 +196,7 @@ function TenantWorkspace() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [showReminderApproval, setShowReminderApproval] = useState(false);
   const [form, setForm] = useState<InviteForm>(emptyForm);
   const [reminderRunSummary, setReminderRunSummary] = useState("");
   const [drawerTenantId, setDrawerTenantId] = useState<string | null>(null);
@@ -479,6 +480,7 @@ function TenantWorkspace() {
           ? `${result.sent} reminder${result.sent === 1 ? "" : "s"} sent.`
           : "No reminders due right now.",
       );
+      setShowReminderApproval(false);
     },
   });
 
@@ -586,11 +588,11 @@ function TenantWorkspace() {
             </SecondaryButton>
             <SecondaryButton
               type="button"
-              onClick={() => runRemindersMutation.mutate()}
+              onClick={() => setShowReminderApproval(true)}
               disabled={!selectedEntityId || runRemindersMutation.isPending}
             >
               <Clock3 size={15} />
-              Run reminders
+              Review reminders
             </SecondaryButton>
             <Button type="button" onClick={() => setShowCreate(true)}>
               <Send size={16} />
@@ -598,6 +600,53 @@ function TenantWorkspace() {
             </Button>
           </div>
         </section>
+
+        {showReminderApproval ? (
+          <SectionPanel
+            title="Send due reminders?"
+            description="Review due tenant onboarding follow-ups before anything is sent through the configured email or SMS channels."
+            icon={<Clock3 size={17} />}
+            actions={
+              <SecondaryButton
+                type="button"
+                onClick={() => setShowReminderApproval(false)}
+                disabled={runRemindersMutation.isPending}
+              >
+                Cancel
+              </SecondaryButton>
+            }
+          >
+            <div className="grid gap-3 p-4 text-sm leading-6 text-muted-foreground">
+              <p>
+                This checks sent onboarding rows and sends due reminder messages
+                to tenants through SendGrid or Twilio when those channels are
+                configured.
+              </p>
+              <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-warning-foreground">
+                Continue only after reviewing that due reminders should go now.
+              </p>
+              {runRemindersMutation.error ? (
+                <p className="text-danger">
+                  {friendlyError(runRemindersMutation.error)}
+                </p>
+              ) : null}
+              <div>
+                <Button
+                  type="button"
+                  onClick={() => runRemindersMutation.mutate()}
+                  disabled={
+                    !selectedEntityId || runRemindersMutation.isPending
+                  }
+                >
+                  <Clock3 size={15} />
+                  {runRemindersMutation.isPending
+                    ? "Sending reminders..."
+                    : "Send due reminders"}
+                </Button>
+              </div>
+            </div>
+          </SectionPanel>
+        ) : null}
 
         <section className="grid gap-3 md:grid-cols-4">
           <div className="rounded-md border border-border bg-white p-4">

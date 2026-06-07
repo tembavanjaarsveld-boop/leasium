@@ -100,6 +100,62 @@ test("tenant invite drawer close action stays touch-safe", async ({ page }) => {
   );
 });
 
+test("tenant reminder sends require explicit approval", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  let reminderRuns = 0;
+  await page.route(
+    /\/api\/v1\/tenant-onboarding\/reminders\/run(?:\?.*)?$/,
+    async (route) => {
+      reminderRuns += 1;
+      await route.fulfill({
+        contentType: "application/json",
+        status: 200,
+        body: JSON.stringify({
+          checked: 3,
+          sent: 2,
+          skipped: 1,
+          onboarding_ids: ["onboarding-1", "onboarding-2"],
+        }),
+      });
+    },
+  );
+
+  await page.goto("/tenants");
+
+  await expect(
+    page.getByRole("heading", { name: "Tenant workspace" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: "Review reminders" }).click();
+  const reminderApproval = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Send due reminders?" }),
+    })
+    .first();
+  await expect(
+    reminderApproval.getByRole("heading", { name: "Send due reminders?" }),
+  ).toBeVisible();
+  await expect.poll(() => reminderRuns).toBe(0);
+
+  await reminderApproval.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Send due reminders?" }),
+  ).toHaveCount(0);
+  await expect.poll(() => reminderRuns).toBe(0);
+
+  await page.getByRole("button", { name: "Review reminders" }).click();
+  await reminderApproval
+    .getByRole("button", { name: "Send due reminders" })
+    .click();
+  await expect.poll(() => reminderRuns).toBe(1);
+  await expect(page.getByText("2 reminders sent.")).toBeVisible();
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("mobile tenant rows expose invite actions without raw loading placeholders", async ({
   page,
 }) => {

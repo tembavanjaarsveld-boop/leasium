@@ -74,6 +74,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   query after opening so operators can reuse the shortcut on the same page. Remba should
   review whether "Add property" should be renamed "New property" everywhere or whether
   the mixed action language is acceptable during prototype mode.
+- **Tenant reminder send approval gate (2026-06-08, prototype mode, no Remba gate):**
+  the Tenants workspace toolbar now uses "Review reminders" and opens a review panel
+  before the SendGrid/Twilio-backed due-reminder runner can be called. The endpoint is
+  still available from the explicit "Send due reminders" approval action only; opening
+  or cancelling the panel does not call the provider-adjacent path. Remba should review
+  the panel copy and whether reminder counts should be previewed before approval.
 - **Smart Intake review filter touch target (2026-06-07, prototype mode, no Remba gate):**
   the shared Dashboard/Smart Intake review-queue filter select now uses the 44px minimum
   target baseline while keeping the same filter options, queue behavior, and CSV/export

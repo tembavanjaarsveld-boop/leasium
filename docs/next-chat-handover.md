@@ -2,6 +2,47 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Tenant reminder approval gate - latest)
+
+Continuation after the property quick-add drawer route. Chrome + Computer Use
+re-anchored the signed-in production app at `https://leasium.ai` and a
+read-only route sweep checked Dashboard, Smart Intake, Properties, People,
+Work, Billing Readiness, Money, Insights, Settings, and Notifications across
+initial and scrolled positions. No persistent overflow, loading, or touch-target
+defect was confirmed. The next confirmed UX/guardrail issue was the Tenants
+toolbar "Run reminders" action: it called
+`POST /tenant-onboarding/reminders/run` directly, and that backend runner can
+send tenant onboarding follow-ups through configured SendGrid/Twilio channels.
+
+Files changed:
+- `apps/web/src/app/tenants/page.tsx`: the toolbar action is now "Review
+  reminders" and opens a review panel. The provider-adjacent runner is called
+  only from the explicit "Send due reminders" approval button; cancel/opening
+  the panel is local UI only.
+- `apps/web/tests/smoke/tenants-ux.spec.ts`: adds a regression smoke that first
+  failed against the missing review step, then verifies opening/cancelling the
+  panel does not call the reminder endpoint and the mocked endpoint is called
+  only after explicit approval.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  workflow change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused tenant reminder smoke failed on missing "Review reminders".
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts -g "tenant reminder sends require explicit approval"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts` - 6 passed.
+- `npm --prefix apps/web run lint -- src/app/tenants/page.tsx tests/smoke/tenants-ux.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- No Xero/Basiq write, SendGrid email, Twilio SMS, tenant email, payment
+  reconciliation, provider refresh, provider dispatch, upload/download, invite
+  claim, or external mutation was run. The smoke endpoint was mocked; live
+  verification must stop at opening the approval panel and must not click
+  "Send due reminders".
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Property quick-add drawer route - latest)
 
 Continuation after the command palette tenant invite handoff. After commit
