@@ -3134,7 +3134,7 @@ function BillingReadinessWorkspace() {
                               {linkedWorkOrder ? (
                                 <Link
                                   href={`/operations/maintenance/${linkedWorkOrder.id}`}
-                                  className="mt-2 inline-flex min-h-8 items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                  className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
                                 >
                                   <ArrowUpRight size={13} />
                                   Maintenance: {linkedWorkOrder.title}
@@ -3945,7 +3945,7 @@ function BillingReadinessWorkspace() {
                               {linkedWorkOrder ? (
                                 <Link
                                   href={`/operations/maintenance/${linkedWorkOrder.id}`}
-                                  className="mt-2 inline-flex min-h-8 items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                  className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
                                 >
                                   <ArrowUpRight size={13} />
                                   Maintenance: {linkedWorkOrder.title}
@@ -4082,7 +4082,7 @@ function BillingReadinessWorkspace() {
                                   {linkedWorkOrder ? (
                                     <Link
                                       href={`/operations/maintenance/${linkedWorkOrder.id}`}
-                                      className="inline-flex min-h-8 w-fit items-center gap-2 rounded-lg border border-border bg-white px-2.5 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
+                                      className="inline-flex min-h-11 w-fit items-center gap-2 rounded-lg border border-border bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs hover:bg-muted"
                                     >
                                       <ArrowUpRight size={13} />
                                       Return to work order

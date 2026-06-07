@@ -2822,6 +2822,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
   await expect(
     page.getByText("Maintenance: Air conditioning fault"),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: /Maintenance: Air conditioning fault/ }),
+  );
   await expect(
     page.getByRole("table").getByText("Maintenance-linked invoice"),
   ).toBeVisible();
@@ -2831,6 +2834,9 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       "Retry dispatch here, then return to the work order once the provider receipt clears.",
     ),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Return to work order" }),
+  );
   await expect(
     page.getByRole("button", { name: "Retry dispatch" }),
   ).toBeVisible();

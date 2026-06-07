@@ -55,6 +55,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   adjacent close control and mobile shell controls. Search, command routing, shortcut behavior,
   palette content, and navigation destinations are unchanged. Remba should review this with the
   wider AppHeader/command palette density pass.
+- **Command search result navigation (2026-06-08, prototype mode, no Remba gate):**
+  command palette result rows now push the selected route before closing the palette, avoiding
+  the previous close-before-route race. Labels, destinations, search filtering, and keyboard
+  shortcut behaviour are unchanged. Remba should review the close-and-navigate feel with the
+  wider AppHeader/command palette pass.
 - **Smart Intake quick-add touch targets (2026-06-07, prototype mode, no Remba gate):**
   the setup recovery links under the Smart Intake drop zone ("Add property" and "Add tenant")
   now use the 44px minimum target baseline. Copy, destinations, upload/review behavior, and
@@ -212,6 +217,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   status, upload, provider dispatch, tenant/contractor/owner message, Xero, Basiq,
   or payment-reconciliation behaviour changed. Remba should review the closeout
   evidence density with the wider Work detail page pass.
+- **Billing maintenance handoff link targets (2026-06-08, prototype mode, no Remba gate):**
+  Billing Readiness maintenance-linked invoice handoffs now use the 44px minimum
+  target baseline for the invoice table links and the recovery-panel `Return to
+  work order` link. These remain navigation-only handoffs; no retry dispatch,
+  invoice update, Xero, tenant email, provider dispatch, provider history, Basiq,
+  or payment-reconciliation behaviour changed. Remba should review the Billing ↔
+  Work recovery rhythm with the wider Billing Readiness density pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

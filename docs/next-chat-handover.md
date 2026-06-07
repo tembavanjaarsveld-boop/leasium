@@ -2,6 +2,65 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Command result navigation - latest)
+
+During Billing maintenance-handoff validation, the adjacent Dashboard smoke
+reproduced a command palette bug: clicking the `Review billing blockers` result
+closed the palette but left the operator on `/`. The result was a real link, but
+the custom click handler prevented default navigation and then attempted a
+manual router push during palette close.
+
+Files changed:
+- `apps/web/src/components/app-shell.tsx`: command result rows now push the
+  selected route before closing the palette, avoiding the close-before-route
+  race.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the command
+  palette navigation fix as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Dashboard smoke failed twice at `toHaveURL(/\/billing-readiness$/)`;
+  after clicking `Review billing blockers`, the page remained on `/`.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness"` - passed after the route-first fix.
+- `npm --prefix apps/web run lint -- src/components/app-shell.tsx src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- This is navigation-only shell behaviour. No provider, upload, download,
+  invoice, comms, payment, or external mutation path changed or ran.
+
+## Codex continuation - 2026-06-08 (Billing maintenance handoff targets - latest)
+
+Continuation after the maintenance closeout evidence target pass. The stricter
+source scan found Billing Readiness maintenance-linked invoice handoffs still
+using `min-h-8`: the invoice table `Maintenance: …` links and the recovery
+panel `Return to work order` link. The existing mocked maintenance detail
+recovery flow reaches this Billing state without live provider actions.
+
+Files changed:
+- `apps/web/src/app/billing-readiness/page.tsx`: maintenance-linked invoice
+  table handoffs and the recovery-panel `Return to work order` link now use
+  the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked maintenance
+  recovery smoke now verifies the Billing handoff links are 44px targets.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Billing maintenance-handoff density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused maintenance detail recovery smoke failed with received
+  height `32` for the `Maintenance: Air conditioning fault` Billing handoff.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "maintenance detail route shows quote evidence"` - passed after the fix; a follow-up isolated rerun also passed after one transient click miss on the pre-existing `Recover in Billing` navigation step.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness"` - passed after the command navigation fix.
+- `npm --prefix apps/web run lint -- src/components/app-shell.tsx src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The smoke uses mocked maintenance/Billing state and does not click retry
+  dispatch. No invoice update, Xero/Basiq provider call, tenant email, provider
+  dispatch, provider history mutation, payment reconciliation, provider refresh,
+  upload, download, invite claim, or external mutation was run.
+
 ## Codex continuation - 2026-06-08 (Maintenance closeout evidence targets - latest)
 
 Continuation after the Billing Readiness source-link target pass. A source scan

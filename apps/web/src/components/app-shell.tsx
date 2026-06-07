@@ -1010,8 +1010,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                           href={action.href}
                           onClick={(event) => {
                             event.preventDefault();
-                            setCommandOpen(false);
                             router.push(action.href);
+                            setCommandOpen(false);
                           }}
                           className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"
                         >
