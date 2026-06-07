@@ -4624,7 +4624,11 @@ function OperationsWorkspace() {
                       </div>
                       <div className="divide-y divide-border">
                         {complianceObligations.map((obligation) => (
-                          <div key={obligation.id} className="grid gap-2 p-3">
+                          <div
+                            key={obligation.id}
+                            id={`compliance-obligation-${encodeURIComponent(obligation.id)}`}
+                            className="grid gap-2 scroll-mt-24 p-3"
+                          >
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-foreground">
                                 {obligation.title}

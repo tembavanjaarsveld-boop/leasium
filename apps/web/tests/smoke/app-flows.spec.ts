@@ -1330,6 +1330,18 @@ test("grouped compliance comms drafts avoid single-obligation evidence upload", 
     complianceCard.getByRole("link", { name: "Open compliance work" }),
   ).toHaveAttribute("href", "/operations?tab=compliance");
   await expect(
+    complianceCard.getByRole("link", { name: "Open source item 1" }),
+  ).toHaveAttribute(
+    "href",
+    "/operations?tab=compliance#compliance-obligation-obligation-compliance-1",
+  );
+  await expect(
+    complianceCard.getByRole("link", { name: "Open source item 2" }),
+  ).toHaveAttribute(
+    "href",
+    "/operations?tab=compliance#compliance-obligation-obligation-compliance-2",
+  );
+  await expect(
     complianceCard.getByRole("link", { name: "Upload via Smart Intake" }),
   ).toHaveAttribute("href", "/intake");
   await expect(

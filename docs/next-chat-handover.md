@@ -2,6 +2,43 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Grouped compliance source handoffs - latest)
+
+Continuation after the Comms template sample preview pass. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. The Comms compliance reminder consolidation roadmap
+still had an open UX question about exposing all included source obligations
+from a grouped draft.
+
+Files changed:
+- `apps/web/src/app/comms/page.tsx`: grouped compliance reminder cards now
+  render one local source-item handoff per included obligation, deduping the
+  primary target and `related_target_ids` before linking to Operations.
+- `apps/web/src/app/operations/page.tsx`: Compliance linked-obligation rows now
+  expose stable fragment anchors so Comms source handoffs can land on the
+  right row without a new API or mutation path.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing grouped-compliance
+  smoke now asserts the per-source handoff hrefs while preserving the manual
+  evidence-upload guard.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Comms grouped-reminder navigation change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused grouped-compliance smoke failed with the expected missing
+  `Open source item 1` link.
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3107 ./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "grouped compliance comms drafts avoid single-obligation evidence upload"` from `apps/web` - passed.
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3107 ./node_modules/.bin/playwright test tests/smoke/operations-compliance.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/comms/page.tsx src/app/operations/page.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The source handoffs are local links only. This slice does not send SendGrid
+  email, send Twilio SMS, approve/dismiss/dispatch Comms drafts, upload/link
+  evidence, complete compliance checks, mutate obligations, call Xero/Basiq,
+  reconcile payments, or write provider history.
+
 ## Codex continuation - 2026-06-08 (Comms template sample preview - latest)
 
 Continuation after the contractor category chip target pass. Because Vercel

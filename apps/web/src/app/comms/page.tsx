@@ -544,6 +544,30 @@ function commsCandidateTargetLink(candidate: CommsCandidateRecord) {
   return null;
 }
 
+function complianceObligationAnchorId(obligationId: string) {
+  return `compliance-obligation-${encodeURIComponent(obligationId)}`;
+}
+
+function complianceObligationHref(obligationId: string) {
+  return `/operations?tab=compliance#${complianceObligationAnchorId(obligationId)}`;
+}
+
+function complianceCandidateSourceIds(candidate: CommsCandidateRecord) {
+  if (
+    candidate.kind !== "compliance_obligation" ||
+    candidate.target_kind !== "obligation"
+  ) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      [candidate.target_id, ...(candidate.related_target_ids ?? [])].filter(
+        Boolean,
+      ),
+    ),
+  );
+}
+
 function commsEventStatusTone(
   status: string | null | undefined,
 ): StatusTone {
@@ -1762,9 +1786,10 @@ function CandidateCard({
   // the manual file picker is a last-resort fallback so operators don't
   // need to navigate elsewhere mid-flow.
   const showEvidencePanel = candidate.kind === "compliance_obligation";
-  const relatedTargetCount = candidate.related_target_ids?.length ?? 0;
+  const complianceSourceIds = complianceCandidateSourceIds(candidate);
+  const relatedTargetCount = complianceSourceIds.length;
   const groupedComplianceEvidence =
-    candidate.kind === "compliance_obligation" && relatedTargetCount > 1;
+    candidate.kind === "compliance_obligation" && complianceSourceIds.length > 1;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [evidenceFilename, setEvidenceFilename] = useState<string | null>(null);
   const evidenceMutation = useMutation({
@@ -1945,6 +1970,23 @@ function CandidateCard({
                 right source item; one-off manual attach is hidden for grouped
                 drafts.
               </p>
+            ) : null}
+            {groupedComplianceEvidence ? (
+              <div
+                aria-label="Grouped compliance source items"
+                className="flex flex-wrap gap-2"
+              >
+                {complianceSourceIds.map((obligationId, index) => (
+                  <Link
+                    key={obligationId}
+                    href={complianceObligationHref(obligationId)}
+                    className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-foreground transition hover:border-primary/50 hover:bg-primary-soft"
+                  >
+                    Open source item {index + 1}
+                    <ExternalLink size={12} />
+                  </Link>
+                ))}
+              </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Link
