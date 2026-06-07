@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -13,6 +13,14 @@ function watchBasiqApplyRequests(page: Page) {
     }
   });
   return requests;
+}
+
+async function expectTouchTarget(locator: Locator, minSize = 44) {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.width).toBeGreaterThanOrEqual(minSize);
+  expect(box!.height).toBeGreaterThanOrEqual(minSize);
 }
 
 test("Basiq apply only fires for approved transactions and is gated", async ({
@@ -128,4 +136,34 @@ test("Basiq connection block is inert and Connect is gated when unconfigured", a
   await expect(applyButton).toBeDisabled();
   await basiqPanel.getByRole("checkbox").check();
   await expect(applyButton).toBeEnabled();
+});
+
+test("Basiq consent handoff stays touch-safe without opening provider", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { basiqConsentReady: true });
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Connect" }).click();
+
+  const basiqPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Bank feed (Basiq)" }),
+    })
+    .first();
+  await expect(basiqPanel).toBeVisible();
+
+  await basiqPanel
+    .getByRole("button", { name: "Connect bank feed (Basiq)" })
+    .click();
+  const consentLink = basiqPanel.getByRole("link", {
+    name: "Open Basiq consent",
+  });
+  await expect(consentLink).toBeVisible();
+  await expect(consentLink).toHaveAttribute(
+    "href",
+    "https://consent.basiq.test/authorize",
+  );
+  await expectTouchTarget(consentLink);
 });

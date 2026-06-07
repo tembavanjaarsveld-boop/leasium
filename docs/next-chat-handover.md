@@ -2,6 +2,49 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Settings accounting handoff link targets - latest)
+
+Continuation after the Settings Xero invoice handoff link target pass. The
+post-deploy asset check found the new invoice handoff classes in production and
+also exposed two remaining raw Settings finance-provider handoff links:
+`Open reconciliation handoff` and `Open Basiq consent`. Mocked smokes confirmed
+they rendered as sub-44px targets.
+
+Files changed:
+- `apps/web/src/app/settings/page.tsx`: the Xero payment-reconciliation
+  `Open reconciliation handoff` link and Basiq connect-start `Open Basiq
+  consent` link now use the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the mocked Settings/Xero readiness
+  smoke now locks the reconciliation handoff link to the 44px target baseline.
+- `apps/web/tests/smoke/settings-basiq-ux.spec.ts` and
+  `apps/web/tests/smoke/api-mocks.ts`: add a provider-inert consent-ready Basiq
+  mock and verify the consent handoff target without opening the external link.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: extend the
+  Settings accounting-provider target-size notes as prototype-mode/Remba-
+  pending.
+
+Verification:
+- Red test: focused Settings/Xero smoke failed with received height `16` for
+  the `Open reconciliation handoff` link target.
+- Red test: focused Basiq consent smoke failed with received height `20` for
+  the `Open Basiq consent` link target.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/settings-basiq-ux.spec.ts -g "Basiq consent handoff stays touch-safe without opening provider"` - passed after the fix.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/settings-basiq-ux.spec.ts` - 3 passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/settings.spec.ts` - 7 passed.
+- `npm --prefix apps/web run lint -- src/app/settings/page.tsx tests/smoke/app-flows.spec.ts tests/smoke/settings-basiq-ux.spec.ts tests/smoke/api-mocks.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- The failing/proving surfaces use mocked Xero/Basiq endpoints only. No live
+  Xero/Basiq provider read/write, Basiq consent open, bank-feed fetch, Xero draft
+  creation, provider dispatch, SendGrid email, Twilio SMS, tenant email, payment
+  reconciliation, provider refresh, upload, download, invite claim, or external
+  mutation was run.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Settings Xero handoff link targets - latest)
 
 Continuation after the command search input target pass. The next deep-scroll

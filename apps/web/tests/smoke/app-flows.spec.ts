@@ -5571,6 +5571,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Open reconciliation handoff" }),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Open reconciliation handoff" }),
+  );
   await expect(
     exceptionQueuePanel.getByText("Review 0 follow-ups"),
   ).toBeVisible();

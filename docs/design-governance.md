@@ -191,6 +191,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   No provider behaviour changed: applying mappings, payment previews, Xero draft creation,
   provider dispatch, and reconciliation remain explicit reviewed actions. Remba/accounting
   support should review the taller table action rhythm.
+- **Settings Basiq bank-feed consent target (2026-06-08, prototype mode, no Remba gate):**
+  the Settings → Bank feed (Basiq) `Open Basiq consent` handoff now uses the 44px
+  minimum target baseline when a reviewed connect-start response returns a consent link.
+  The link still opens externally only when an operator explicitly chooses it; no bank
+  feed fetch, bank write, payment reconciliation apply, provider dispatch, or provider
+  history mutation behaviour changed. Remba/accounting support should review the consent
+  card rhythm with the wider Settings finance-provider pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

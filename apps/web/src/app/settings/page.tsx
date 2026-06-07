@@ -7833,7 +7833,7 @@ function SettingsWorkspace() {
                                       ? "complete"
                                       : "unpaid",
                                 })}
-                                className="mt-1 inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                                className="mt-1 inline-flex min-h-11 w-fit items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                               >
                                 <ExternalLink size={13} />
                                 Open reconciliation handoff
@@ -8044,7 +8044,7 @@ function SettingsWorkspace() {
                           feed. Leasium does not redirect automatically.
                         </p>
                         <a
-                          className="inline-flex w-fit items-center gap-1 font-medium text-primary hover:text-primary-hover"
+                          className="inline-flex min-h-11 w-fit items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                           href={basiqConnectStart.consent_link}
                           rel="noreferrer"
                           target="_blank"

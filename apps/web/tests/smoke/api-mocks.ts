@@ -2388,6 +2388,7 @@ type MockLeasiumApiOptions = {
   xeroDiagnosticsUnauthorizedStatus?: 401 | 403;
   xeroDiagnosticsUnavailable?: boolean;
   xeroDiagnosticsDraftReady?: boolean;
+  basiqConsentReady?: boolean;
   vendorPortalPriorExposure?: boolean;
   operationsComplianceDemo?: boolean;
 };
@@ -3461,12 +3462,12 @@ export async function mockLeasiumApi(
   };
 
   const basiqConnectionStatus = () => ({
-    configured: false,
+    configured: Boolean(options.basiqConsentReady),
     connected: false,
     consent_status: null,
     auth_link_expires_at: null,
     last_fetch_at: null,
-    can_start_connect: false,
+    can_start_connect: Boolean(options.basiqConsentReady),
     can_fetch: false,
     guardrails: [
       "Connecting a Basiq feed never moves money or writes to the bank.",
@@ -3475,11 +3476,17 @@ export async function mockLeasiumApi(
   });
 
   const basiqConnectStart = () => ({
-    configured: false,
-    consent_link: null,
-    expires_at: null,
-    missing_config: ["BASIQ_ENABLED", "BASIQ_API_KEY"],
-    consent_status: null,
+    configured: Boolean(options.basiqConsentReady),
+    consent_link: options.basiqConsentReady
+      ? "https://consent.basiq.test/authorize"
+      : null,
+    expires_at: options.basiqConsentReady
+      ? "2026-06-09T00:00:00.000Z"
+      : null,
+    missing_config: options.basiqConsentReady
+      ? []
+      : ["BASIQ_ENABLED", "BASIQ_API_KEY"],
+    consent_status: options.basiqConsentReady ? "created" : null,
   });
 
   const xeroChartTaxValidationPreview = () => {
