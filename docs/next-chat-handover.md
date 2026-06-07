@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Properties image-panel toggle touch target - latest)
+
+Follow-up from the live Chrome + Computer Use UX review: after the density and
+row-edit fixes, a live control scan found the selected-property image panel
+toggle ("Property images" / reviewed-image status) was 40px high. The toggle
+now keeps the same thumbnail, reviewed-image status copy, and expand/collapse
+behavior but uses a 44px minimum hit target.
+
+Files changed:
+- `apps/web/src/components/property-workspace.tsx` adds the 44px minimum
+  target to the selected-property image panel toggle.
+- `apps/web/tests/smoke/properties-ux.spec.ts` adds a focused touch-target
+  smoke for the image panel toggle.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Properties follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- properties-ux.spec.ts -g "properties image panel toggle stays touch safe")` first failed with height `40`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the image-panel toggle change.
+- `(cd apps/web && npm run test:smoke -- properties-ux.spec.ts)` - 15 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (Properties row edit touch targets - latest)
 
 Follow-up from the live Chrome + Computer Use UX review: after the density

@@ -5191,7 +5191,7 @@ function Workspace({
                       type="button"
                       onClick={() => setImagesPanelOpen((open) => !open)}
                       aria-expanded={imagesPanelOpen}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left"
                     >
                       <div className="grid h-10 w-14 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-muted/40">
                         <StoredPropertyImage

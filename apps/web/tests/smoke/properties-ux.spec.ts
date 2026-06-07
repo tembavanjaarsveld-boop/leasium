@@ -259,6 +259,18 @@ test("properties table row edit actions stay touch safe", async ({ page }) => {
   );
 });
 
+test("properties image panel toggle stays touch safe", async ({ page }) => {
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+
+  await expectTouchTarget(
+    page.getByRole("button", { name: /Property images/ }).first(),
+  );
+});
+
 test("properties table density toggle trims row padding in compact mode", async ({
   page,
 }) => {
