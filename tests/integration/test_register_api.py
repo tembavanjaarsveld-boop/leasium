@@ -228,6 +228,71 @@ def test_tenant_detail_ignores_invalid_legacy_review_source_id(
     assert reviewed_change["changes"][0]["after"] == "new@example.test"
 
 
+def test_tenant_detail_handles_lease_activity_with_aware_timestamps(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Tenant Context Centre",
+            "street_address": "90 Adelaide Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_office",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Level 1"},
+    )
+    assert unit_response.status_code == 201
+    unit_id = unit_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={
+            "entity_id": entity_id,
+            "legal_name": "Aware Timestamp Tenant Pty Ltd",
+        },
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "annual_rent_cents": 7956700,
+            "rent_frequency": "annual",
+        },
+    )
+    assert lease_response.status_code == 201
+
+    tenant = session.get(Tenant, UUID(tenant_id))
+    assert tenant is not None
+    tenant.created_at = datetime(2026, 1, 2, 8, 0, tzinfo=UTC)
+    tenant.updated_at = tenant.created_at
+    session.flush()
+
+    detail_response = client.get(f"/api/v1/tenants/{tenant_id}/detail")
+
+    assert detail_response.status_code == 200
+    body = detail_response.json()
+    assert body["leases"][0]["property_name"] == "Tenant Context Centre"
+    assert "Lease active" in [item["label"] for item in body["activity"]]
+
+
 def test_lease_crud_inherits_unit_property_and_tenant_scope(
     client: TestClient,
     session: Session,

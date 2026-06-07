@@ -1,6 +1,6 @@
 """Tenant CRUD routes with entity-scoped access checks."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -229,6 +229,17 @@ def _activity(
         related_id=related_id,
         tone=tone,
     )
+
+
+def _start_of_day_utc(value: date) -> datetime:
+    return datetime.combine(value, time.min, tzinfo=UTC)
+
+
+def _activity_sort_key(item: TenantActivityItemRead) -> datetime:
+    occurred_at = item.occurred_at
+    if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
+        return occurred_at.replace(tzinfo=UTC)
+    return occurred_at.astimezone(UTC)
 
 
 @router.get("", response_model=list[TenantRead])
@@ -631,7 +642,7 @@ def _tenant_activity(
 
     for lease in leases:
         lease_item = _activity(
-            _parse_datetime(lease.commencement_date.isoformat())
+            _start_of_day_utc(lease.commencement_date)
             if lease.commencement_date
             else tenant.created_at,
             kind="lease",
@@ -770,7 +781,7 @@ def _tenant_activity(
             if attention is not None:
                 items.append(attention)
 
-    return sorted(items, key=lambda item: item.occurred_at, reverse=True)[:24]
+    return sorted(items, key=_activity_sort_key, reverse=True)[:24]
 
 
 def _reviewed_change_history(

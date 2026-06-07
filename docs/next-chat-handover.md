@@ -2,6 +2,35 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Tenant detail lease activity timezone fix - latest)
+
+Follow-up from the live Chrome + Computer Use tenant-detail check after the
+secondary-error labels deployed: the remaining live partial failure was now
+clearly labeled `Tenant context: Failed to fetch`. A focused backend regression
+reproduced the production-shaped failure: tenant detail activity mixed
+timezone-aware tenant timestamps with a timezone-naive `datetime` derived from
+lease `commencement_date`, causing Python to raise `TypeError: can't compare
+offset-naive and offset-aware datetimes` while sorting activity.
+
+Files changed:
+- `apps/api/routers/tenants.py` now converts date-only lease activity events to
+  UTC start-of-day timestamps and sorts tenant activity through a UTC-normalized
+  key, keeping older naive rows comparable without changing stored data.
+- `tests/integration/test_register_api.py` adds a tenant-detail regression with
+  an aware tenant timestamp and active lease context.
+- `docs/product-roadmap.md` records the backend stability fix.
+
+Verification so far:
+- RED: `.venv/bin/python -m pytest tests/integration/test_register_api.py -k "tenant_detail_handles_lease_activity_with_aware_timestamps"`
+  first failed with `TypeError: can't compare offset-naive and offset-aware datetimes`.
+- GREEN: the same focused test passed after normalizing lease activity
+  timestamps and sort keys.
+- `.venv/bin/python -m pytest tests/integration/test_register_api.py` - 13 passed.
+- `.venv/bin/ruff check apps/api/routers/tenants.py tests/integration/test_register_api.py` - passed.
+- `git diff --check` - passed.
+- Commit/push, Render deploy, and live Chrome re-check still need to run for
+  this latest backend slice.
+
 ## Codex continuation - 2026-06-07 (Tenant detail secondary-error labels - latest)
 
 Follow-up from the live Chrome + Computer Use deep-record UX sweep: after
@@ -30,8 +59,11 @@ Verification so far:
 - `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
 - `(cd apps/web && npm run build)` - passed.
 - `git diff --check` - passed.
-- Production deploy and live Chrome re-check still need to run for this latest
-  slice.
+- Vercel deploy hook job `5DOEbk6ljwToEK0AJy2c` deployed commit `922543d`.
+- Live Chrome re-check passed after deploy: the affected imported tenant
+  rendered `AAM Corporate (AAM Corporate Pty Ltd)`, no `Tenant unavailable`,
+  no small visible controls, no console errors, and the remaining secondary
+  failure was labeled `Tenant context: Failed to fetch`.
 
 ## Codex continuation - 2026-06-07 (Tenant detail secondary-error resilience - latest)
 
