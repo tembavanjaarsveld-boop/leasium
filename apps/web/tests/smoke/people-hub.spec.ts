@@ -116,6 +116,7 @@ test("self-managed people hub hides owner-client tab and falls back from owner U
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Owners" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Tenants" })).toBeVisible();
+  await expect(page).toHaveURL(/\/people\?tab=tenants$/);
   await expect(page.getByText("Bright Cafe Pty Ltd")).toBeVisible();
   await expect(page.getByText("SKJ Holdings Pty Ltd")).toHaveCount(0);
   expect(ownerRequests).toBe(0);

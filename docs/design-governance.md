@@ -80,6 +80,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the People hub Tenants tab "Add tenant" action now uses the 44px minimum target baseline
   while keeping the same tenant-invite destination and People IA. Remba should review the
   tab action density with the wider People hub pass.
+- **People self-managed owner-tab URL fallback (2026-06-07, prototype mode, no Remba gate):**
+  stale or hand-typed `/people?tab=owners` URLs now rewrite to `/people?tab=tenants` for
+  self-managed accounts once operating mode resolves, keeping the visible tab and address bar
+  aligned while preserving the owner-client hub gate. Remba should review this with the wider
+  People IA/account-mode pass.
 - **Tenants register touch targets (2026-06-07, prototype mode, no Remba gate):**
   the desktop Tenant workspace onboarding filters, row drawer-open tenant buttons, and inline
   contact edit cells now use the 44px minimum target baseline while preserving the same

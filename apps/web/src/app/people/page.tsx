@@ -109,14 +109,20 @@ function PeopleContent() {
     if (typeof window === "undefined") return;
     const tab = new URL(window.location.href).searchParams.get("tab");
     // Honour an explicit ?tab only if it resolves to a tab this mode exposes;
-    // a hand-typed ?tab=owners under self_managed_owner falls back to tenants.
+    // a hand-typed ?tab=owners under self_managed_owner falls back to tenants
+    // once the operating mode is known.
     if (isTabKey(tab) && (tab !== "owners" || showOwners)) {
       setActiveTab(tab);
     } else if (!tab && showOwners) {
       setActiveTab("owners");
+    } else if (isResolved && tab) {
+      setActiveTab("tenants");
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "tenants");
+      window.history.replaceState(null, "", url.toString());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOwners]);
+  }, [isResolved, showOwners]);
 
   function selectTab(tab: TabKey) {
     setActiveTab(tab);
