@@ -61,6 +61,22 @@ behind Upgrade-to-Pro.
   OAuth login, so approved Xero writes were untestable this session. The
   simplified Connect panel (a015180) renders correctly in production.
 
+### AI surfaces live-tested (second pass, same session)
+- Portfolio QA reviewed enrichment (eca3f7b) works in production:
+  Suggest fixes on BD153 returned cited public-safe suggestions (postcode
+  4035 via Australia Post 99%, owner ABN 64 264 366 843 via ABR 97%);
+  applied the 2 reviewed suggestions; /public-enrichment/preview and /apply
+  both 200; postcode verified on the live record afterwards. OPENAI_API_KEY
+  is configured on the hosted API.
+- Smart Intake document pipeline works in production: a clearly-labelled
+  synthetic test invoice PDF was uploaded, classified "invoice admin" with
+  the issuer + ABN extracted at high confidence, and the warnings panel
+  itself flagged "Document is explicitly marked as a synthetic test
+  document and states it must not be applied." Nothing applied; the intake
+  row was cleared from the review inbox afterwards. Note the review panel
+  shows a "Reading" state for ~2 minutes while server-side extraction runs —
+  slow but honest; no error.
+
 ### Open fix list (not yet built)
 1. ~~Lease-pack delivery gap~~ RESOLVED in `5e342b3`: this was not a missing
    send affordance — resend is deliberately gated to failed/declined DocuSign
