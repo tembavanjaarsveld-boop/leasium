@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Comms template sample preview - latest)
+
+Continuation after the contractor category chip target pass. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. The roadmap listed Comms template preview/variable
+substitution as the next safe Communication hub follow-up, excluding send-time
+consumption.
+
+Files changed:
+- `apps/web/src/components/comms-template-editor-drawer.tsx`: the template
+  editor drawer now renders a review-only sample preview for subject/body/action
+  URL fields using local demo substitutions for known `{{token}}` placeholders,
+  while leaving unknown placeholders visible.
+- `apps/web/tests/smoke/comms-template-editor.spec.ts`: adds a focused mocked
+  smoke that opens the SKJ invoice template, checks subject/body/action preview
+  substitution, verifies unknown placeholders remain visible, and reuses the
+  existing no-send/no-dispatch trap.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Comms template-editor change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Comms template editor smoke failed with the expected missing
+  sample-preview content after the drawer opened.
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3107 ./node_modules/.bin/playwright test tests/smoke/comms-template-editor.spec.ts -g "renders a review-only sample preview with template variables"` from `apps/web` - passed.
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3107 ./node_modules/.bin/playwright test tests/smoke/comms-template-editor.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/components/comms-template-editor-drawer.tsx tests/smoke/comms-template-editor.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The preview uses static local sample values only. It does not save templates,
+  send SendGrid email, send Twilio SMS, approve/dismiss/dispatch Comms drafts,
+  refresh providers, create invoices, call Xero/Basiq, reconcile payments, or
+  write provider history. Send-time template consumption remains future work.
+
 ## Codex continuation - 2026-06-08 (Contractor category chip targets - latest)
 
 Continuation after the Welcome header target pass. Because Vercel production

@@ -372,9 +372,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   delete guard copy, and deactivate/reactivate actions. The drawer edits only branded-template
   records and carries the no-send footer note; smoke coverage traps provider/send/dispatch,
   notification-center, dismiss, invoice, and non-template mutation paths. Active template
-  counts and CSV exports remain active-only. Remba should review drawer density, inactive
-  reactivation discoverability, and whether rendered template preview/variable substitution
-  belongs in this surface before send-time consumption is wired.
+  counts and CSV exports remain active-only. 2026-06-08 follow-up: the drawer now renders a
+  review-only sample preview for subject/body/action URL fields, using local demo values for
+  known `{{token}}` placeholders while leaving unknown placeholders visible. No send-time
+  consumption, provider call, dispatch, or template mutation behaviour changed. Remba should
+  review drawer density, inactive reactivation discoverability, and whether the sample values
+  are the right operator-facing preview before send-time consumption is wired.
 - **Comms tenant lifecycle signed-agreement settle (2026-06-07, prototype mode, no Remba gate):**
   `/comms` no longer surfaces a stale "DocuSign setup needed" tenant lifecycle draft when
   the lease agreement already has a recorded signed timestamp, even if older provider metadata

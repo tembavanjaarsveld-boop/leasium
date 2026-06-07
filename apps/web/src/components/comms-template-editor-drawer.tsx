@@ -34,6 +34,20 @@ const FOOTER_NOTE =
 
 type TemplateChannel = BrandedCommunicationTemplateRecord["channel"];
 
+const SAMPLE_TEMPLATE_VALUES: Record<string, string> = {
+  action_url: "https://leasium.ai/work/maintenance/work-order-1",
+  assignee_email: "ops@skjcapital.example",
+  assignee_name: "Jordan Miles",
+  contractor_name: "Harbour Lane Electrical",
+  entity_name: "SKJ Capital",
+  invoice_number: "INV-1042",
+  invoice_url: "https://leasium.ai/tenants/tenant-1/invoices/invoice-1042",
+  owner_name: "SKJ Property Pty Ltd",
+  property_name: "Harbour Lane",
+  tenant_name: "Rivergum Bakery",
+  work_title: "Loading dock light repair",
+};
+
 export type CommsTemplateEditorAction =
   | {
       type: "create";
@@ -123,6 +137,12 @@ export function CommsTemplateEditorDrawer({
     !provider.trim() ||
     !name.trim() ||
     !bodyTemplate.trim();
+  const samplePreview = {
+    subject: renderTemplateSample(subjectTemplate),
+    body: renderTemplateSample(bodyTemplate),
+    actionLabel: renderTemplateSample(actionLabel),
+    actionUrl: renderTemplateSample(actionUrlTemplate),
+  };
 
   async function runAction(action: CommsTemplateEditorAction) {
     setIsSubmitting(true);
@@ -312,6 +332,45 @@ export function CommsTemplateEditorDrawer({
             />
           </Field>
         </div>
+        <section
+          aria-label="Sample preview"
+          className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3"
+          role="region"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
+              Sample preview
+            </p>
+            <StatusBadge tone="neutral">Review only</StatusBadge>
+          </div>
+          {samplePreview.subject ? (
+            <div className="grid gap-1">
+              <p className="text-xs font-medium text-muted-foreground">Subject</p>
+              <p className="text-sm font-medium text-foreground">
+                {samplePreview.subject}
+              </p>
+            </div>
+          ) : null}
+          <div className="grid gap-1">
+            <p className="text-xs font-medium text-muted-foreground">Body</p>
+            <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+              {samplePreview.body || "Body preview appears here."}
+            </p>
+          </div>
+          {samplePreview.actionLabel || samplePreview.actionUrl ? (
+            <div className="grid gap-1">
+              <p className="text-xs font-medium text-muted-foreground">Action</p>
+              <p className="text-sm font-medium text-foreground">
+                {samplePreview.actionLabel || "Open link"}
+              </p>
+              {samplePreview.actionUrl ? (
+                <p className="break-all text-xs text-muted-foreground">
+                  {samplePreview.actionUrl}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
         <Field label="Notes">
           <textarea
             value={notes}
@@ -394,4 +453,12 @@ function defaultProviderForChannel(channel: TemplateChannel) {
   if (channel === "sms") return "twilio";
   if (channel === "in_app") return "in_app";
   return "sendgrid";
+}
+
+function renderTemplateSample(value: string) {
+  if (!value.trim()) return "";
+  return value.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (match, token) => {
+    const sample = SAMPLE_TEMPLATE_VALUES[token];
+    return sample ?? match;
+  });
 }

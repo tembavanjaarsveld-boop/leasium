@@ -142,6 +142,47 @@ test("edits an operator template subject and body", async ({ page }) => {
   expect(forbiddenApiCalls).toEqual([]);
 });
 
+test("renders a review-only sample preview with template variables", async ({
+  page,
+}) => {
+  const forbiddenApiCalls = await watchForbiddenTemplateEditorCalls(page);
+
+  await page.goto("/comms");
+
+  const catalog = templateCatalog(page);
+  await catalog
+    .getByRole("button", { name: "Edit SKJ invoice delivery" })
+    .click();
+
+  const drawer = page.getByRole("dialog", {
+    name: "Edit SKJ invoice delivery",
+  });
+  const preview = drawer.getByRole("region", { name: "Sample preview" });
+
+  await expect(
+    preview.getByText("Invoice INV-1042 from SKJ Capital"),
+  ).toBeVisible();
+  await expect(
+    preview.getByText(
+      "Hi Rivergum Bakery, your reviewed invoice is attached. Please contact SKJ Capital if any detail needs attention.",
+    ),
+  ).toBeVisible();
+  await expect(preview.getByText("View invoice")).toBeVisible();
+  await expect(
+    preview.getByText(
+      "https://leasium.ai/tenants/tenant-1/invoices/invoice-1042",
+    ),
+  ).toBeVisible();
+
+  await drawer
+    .getByLabel("Subject")
+    .fill("Hello {{tenant_name}} about {{unknown_token}}");
+  await expect(
+    preview.getByText("Hello Rivergum Bakery about {{unknown_token}}"),
+  ).toBeVisible();
+  expect(forbiddenApiCalls).toEqual([]);
+});
+
 test("system templates can be deactivated but not deleted", async ({ page }) => {
   const forbiddenApiCalls = await watchForbiddenTemplateEditorCalls(page);
 
