@@ -24,6 +24,15 @@ Verification:
 - `npm --prefix apps/web run lint -- src/components/app-shell.tsx src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live root chunk
+  `chunks/3103-cf9c5b28bdd0d4a8.js` contains the command result handler in
+  route-first order (`preventDefault`, `router.push`, then palette close) and
+  still contains the `Review billing blockers` action/href.
+- Chrome live interaction check was not completed: the Codex Chrome Extension
+  connection timed out twice. Read-only checks showed Chrome running, the
+  extension installed/enabled, and the native host manifest correct; per plugin
+  troubleshooting rules, opening a fresh Chrome window for repair needs user
+  permission.
 
 Guardrails:
 - This is navigation-only shell behaviour. No provider, upload, download,
@@ -54,6 +63,11 @@ Verification:
 - `npm --prefix apps/web run lint -- src/components/app-shell.tsx src/app/billing-readiness/page.tsx tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live Billing Readiness route chunk
+  changed from `page-06de520cb989f659.js` to
+  `page-59057a17eb8dba58.js` on the third poll, contained the new 44px
+  maintenance handoff classes, and no longer contained the old `min-h-8`
+  maintenance handoff classes.
 
 Guardrails:
 - The smoke uses mocked maintenance/Billing state and does not click retry
