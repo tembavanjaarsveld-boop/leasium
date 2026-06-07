@@ -1,6 +1,65 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
+
+## Codex continuation - 2026-06-08 (Settings Xero accounting touch targets - latest)
+
+Follow-up from the autonomous Chrome + Computer Use production UX sweep on
+`https://leasium.ai`: the fresh route-by-route pass found one true remaining
+target-size issue in Settings -> Xero. The exception queue and older chart/tax
+mapping controls mixed 16px text links, 32-40px action buttons, and dense finance
+handoffs inside an otherwise review-first accounting surface.
+
+Files changed across the shipped Settings/Xero touch-target pass:
+- `apps/web/src/app/settings/page.tsx`: raises Settings -> Xero exception packet
+  copy/download actions, exception row `Apply suggestion` buttons, exception
+  `Open property` handoffs, accounting freshness next-step handoffs, and chart/tax
+  table `Open property` / local `Apply` controls to the 44px target baseline.
+- `apps/web/tests/smoke/settings-xero-ux.spec.ts`: adds focused desktop/mobile
+  bounding-box coverage for the Xero exception queue and the accounting/chart-tax
+  readiness handoffs without clicking provider mutations.
+- `docs/product-roadmap.md` and `docs/design-governance.md`: record the visible
+  Settings/Xero accounting-support follow-up as Remba-pending/prototype review.
+
+Commits and deployment status:
+- `f87891b` `Harden Xero exception targets` pushed to `main`; production
+  deployment `dpl_6wnGJriMJZnzYXsTavCZPEguZ3V2` reached `READY` and was aliased
+  to `leasium.ai`.
+- `31b0755` `Harden Xero readiness targets` pushed to `main`; production
+  deployment `dpl_DF7LpRtXXMvcwBtAGv2ZAhs2BVx7` reached `READY` and was aliased
+  to `leasium.ai`, `www.leasium.ai`, and `leasium.vercel.app`.
+
+Verification:
+- Red/green proof: the new
+  `desktop settings Xero readiness handoffs stay touch-safe` smoke first failed
+  on the accounting next-step button at 40px, then passed after the class changes.
+- `npx playwright test tests/smoke/settings-xero-ux.spec.ts`
+- `npx playwright test tests/smoke/app-flows.spec.ts -g "settings shows Xero readiness and records mappings"`
+- `npm run lint`
+- `./node_modules/.bin/tsc --noEmit`
+- `git diff --check`
+- `npm run build`
+- Live Chrome proof on `leasium.ai/settings?tab=xero` after `31b0755`: the
+  accounting handoff, exception packet actions, exception row actions, chart/tax
+  `Open property`, and chart/tax local `Apply` controls all rendered at 44px or
+  taller; no rendered old-pattern 16px `Open property` links remained, and Chrome
+  console logs were empty.
+- Vercel production runtime logs for `dpl_DF7LpRtXXMvcwBtAGv2ZAhs2BVx7` had no
+  error/warning/fatal entries in the last 30 minutes, and Vercel toolbar feedback
+  on `main` had no unresolved threads.
+
+Fresh sweep notes:
+- The wider production audit covered Dashboard, Smart Intake, Properties, People,
+  Operations, Compliance, Billing Readiness, Comms, Notifications, Money,
+  Statements, Portfolio QA, Insights, Settings, Owner portal, Tenant portal, and
+  Vendor portal at top/middle/bottom scroll positions. The remaining Security
+  checkbox and Portfolio QA link hits were false positives from wrapped 44px
+  labels/edge clipping; the actionable Settings/Xero issues above are now fixed.
+- No provider mutation, Xero write, SendGrid email, Twilio SMS, tenant email,
+  payment reconciliation, or provider refresh was run; production browser work was
+  read-only except for opening local disclosures/links for measurement.
+
+Active local state after this handover update should be clean once committed.
 
 ## Codex continuation - 2026-06-07 (Production UX sweep touch targets + People fallback - latest)
 
