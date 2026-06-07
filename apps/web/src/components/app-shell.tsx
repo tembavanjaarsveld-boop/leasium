@@ -710,7 +710,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             setMobileNavOpen(false);
           }}
           title="Keyboard shortcuts"
-          className="flex w-full items-center justify-between rounded-md px-2 py-1.5 transition hover:bg-white/5 hover:text-white md:justify-center"
+          className="flex min-h-[44px] w-full items-center justify-between rounded-md px-2 transition hover:bg-white/5 hover:text-white md:justify-center"
         >
           <span className="md:hidden lg:inline">Keyboard shortcuts</span>
           <kbd className="rounded border border-white/10 px-1 py-0.5 text-leasium-micro font-medium">

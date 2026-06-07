@@ -2,6 +2,25 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation — 2026-06-07 (Sidebar shortcut touch target — latest)
+
+Follow-up from the live Chrome + Computer Use UX review: the persistent desktop
+sidebar footer "Keyboard shortcuts ?" control measured 32px high while primary
+nav rows and AppHeader utility buttons use the 44px target baseline. The shared
+AppHeader sidebar footer now keeps the same copy/modal behavior but uses a
+44px minimum hit target across expanded and collapsed desktop sidebar states.
+
+Files changed:
+- `apps/web/src/components/app-shell.tsx` adds the 44px minimum target to the
+  sidebar footer shortcut button.
+- `apps/web/tests/smoke/nav-consolidation.spec.ts` adds the desktop regression.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  AppHeader/sidebar follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- nav-consolidation.spec.ts -g "desktop sidebar keyboard shortcut control stays touch-safe")` first failed with height `32`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the component change.
+
 ## Codex continuation — 2026-06-07 (Comms compliance reminder consolidation — latest)
 
 Follow-up from the live Comms queue review: near-duplicate compliance reminders

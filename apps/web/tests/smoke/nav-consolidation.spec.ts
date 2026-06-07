@@ -55,6 +55,16 @@ test("sidebar consolidates to seven hubs plus Settings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
 });
 
+test("desktop sidebar keyboard shortcut control stays touch-safe", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Keyboard shortcuts ?" }),
+  );
+});
+
 test("people hub keeps tenants and vendors inline", async ({ page }) => {
   await page.goto("/people?tab=tenants");
 

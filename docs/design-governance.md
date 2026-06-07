@@ -40,6 +40,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   per-invoice payment reference; display-only (no in-portal "pay now", no rails). Operator
   config is a Settings form (next slice). Plan:
   [`superpowers/plans/2026-06-02-tenant-payment-instructions.md`](superpowers/plans/2026-06-02-tenant-payment-instructions.md).
+- **Sidebar keyboard shortcut touch target (2026-06-07, prototype mode, no Remba gate):**
+  the desktop sidebar footer "Keyboard shortcuts ?" control now uses the same 44px minimum
+  hit target baseline as the primary navigation rows and top utility buttons. Copy, shortcut
+  behavior, modal behavior, and the 7-item sidebar IA are unchanged. Remba should review this
+  with the wider AppHeader/sidebar density pass, especially at the collapsed `md` breakpoint.
 - **Settings Xero connection simplification (2026-06-07, prototype mode, no Remba gate):**
   the Settings → Xero tab now leads with a plain-language "Connect Xero" panel (per-trust
   "Connect this trust" action, organisation-matching guidance, friendlier connected copy),
