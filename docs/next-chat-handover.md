@@ -181,10 +181,10 @@ behind Upgrade-to-Pro.
    "Delivery: Not sent / Delivery has not been attempted yet". delivery.ts
    now reports "Signed via DocuSign" (success tone) with an explanatory
    detail; verified live on the test tenant after deploy.
-2. Tenant checklist vs profile mismatch: portal checklist shows
-   "Insurance missing / 0 documents" while the profile shows Insurance
-   Confirmed (onboarding answered Yes without a document). Known
-   category/count mapping product call.
+2. ~~Tenant checklist vs profile mismatch~~ RESOLVED in `3a9643c`: portal
+   now shows the calm `Confirmed - certificate not on file` status when the
+   tenant confirmed cover but did not upload a certificate, instead of red
+   "Insurance missing / 0 documents".
 3. Twilio + SendGrid webhook console setup remain outstanding (Provider setup
    checks show 3-4 to review); Xero OAuth connection needed before the Monday
    rehearsal.
