@@ -997,7 +997,12 @@ export type TenantPortalDocumentRecord = {
 export type TenantPortalComplianceItemRecord = {
   key: string;
   label: string;
-  status: "missing" | "received" | "expired" | "not_on_file";
+  status:
+    | "missing"
+    | "received"
+    | "expired"
+    | "not_on_file"
+    | "confirmed_no_document";
   document_count: number;
   latest_document: TenantPortalDocumentRecord | null;
   due_date: string | null;

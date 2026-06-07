@@ -1333,9 +1333,21 @@ def _compliance(scope: PortalScope, documents: list[StoredDocument]) -> TenantPo
     insurance_expiry = _parse_iso_date(metadata.get("insurance_expiry_date"))
     today = utcnow().date()
     insurance_document = _latest_document(documents, DocumentCategory.insurance)
-    insurance_status: Literal["missing", "received", "expired", "not_on_file"] = (
-        "received" if insurance_document is not None else "missing"
-    )
+    insurance_status: Literal[
+        "missing",
+        "received",
+        "expired",
+        "not_on_file",
+        "confirmed_no_document",
+    ]
+    if insurance_document is not None:
+        insurance_status = "received"
+    elif metadata.get("insurance_confirmed"):
+        # The tenant confirmed cover during onboarding but no certificate is
+        # stored yet; read calmly instead of flagging the item as missing.
+        insurance_status = "confirmed_no_document"
+    else:
+        insurance_status = "missing"
     if insurance_expiry is not None and insurance_expiry < today:
         insurance_status = "expired"
 

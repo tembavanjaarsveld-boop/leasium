@@ -206,6 +206,9 @@ function tenantDocStatusLabel(status: string) {
   if (status === "not_on_file") {
     return "Not required";
   }
+  if (status === "confirmed_no_document") {
+    return "Confirmed - certificate not on file";
+  }
   if (status === "received") {
     return "Received";
   }

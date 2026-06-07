@@ -175,7 +175,13 @@ class TenantPortalDocumentRead(BaseModel):
 class TenantPortalComplianceItemRead(BaseModel):
     key: str
     label: str
-    status: Literal["missing", "received", "expired", "not_on_file"]
+    status: Literal[
+        "missing",
+        "received",
+        "expired",
+        "not_on_file",
+        "confirmed_no_document",
+    ]
     document_count: int
     latest_document: TenantPortalDocumentRead | None = None
     due_date: date | None = None

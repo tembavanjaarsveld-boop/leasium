@@ -2690,6 +2690,43 @@ def test_tenant_portal_allows_empty_compliance_checklist(
     assert preview_response.json()["compliance"]["items"] == []
 
 
+def test_tenant_portal_confirmed_insurance_without_document_is_not_missing(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    tenant = session.get(Tenant, UUID(scope["tenant_id"]))
+    assert tenant is not None
+    tenant.tenant_metadata = {
+        **(tenant.tenant_metadata or {}),
+        "insurance_confirmed": True,
+    }
+    for document in list(
+        session.scalars(
+            select(StoredDocument).where(
+                StoredDocument.tenant_id == tenant.id,
+                StoredDocument.category == DocumentCategory.insurance,
+            )
+        )
+    ):
+        document.deleted_at = datetime.now(UTC)
+    session.commit()
+
+    portal_response = client.get(
+        "/api/v1/tenant-portal/session",
+        headers={"x-tenant-portal-token": scope["token"]},
+    )
+
+    assert portal_response.status_code == 200
+    insurance_item = next(
+        item
+        for item in portal_response.json()["compliance"]["items"]
+        if item["key"] == "insurance"
+    )
+    assert insurance_item["status"] == "confirmed_no_document"
+    assert insurance_item["document_count"] == 0
+
+
 def test_tenant_portal_upload_extraction_keeps_tenant_selected_category_until_review(
     client: TestClient,
     session: Session,
