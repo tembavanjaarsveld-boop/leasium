@@ -182,7 +182,7 @@ const frequentActions: CommandAction[] = [
     meta: "Smart Intake",
   },
   {
-    href: "/properties",
+    href: "/properties?action=new",
     label: "Add property",
     meta: "Portfolio",
   },

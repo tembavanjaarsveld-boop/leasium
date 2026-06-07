@@ -20,6 +20,18 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("properties action=new opens the new-property drawer", async ({ page }) => {
+  await page.goto("/properties?action=new");
+
+  await expect(
+    page.getByRole("heading", { name: "New property", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Close property editor" }).last(),
+  ).toBeVisible();
+  await expect(page).not.toHaveURL(/action=new/);
+});
+
 test("mobile properties loading copy stays contextual", async ({ page }) => {
   await page.route("**/api/v1/premises/by-entity/entity-1**", async () => {
     await new Promise(() => {});

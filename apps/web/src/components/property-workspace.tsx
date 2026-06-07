@@ -204,6 +204,7 @@ type PropertyWorkspaceTab =
   | "billing"
   | "documents";
 type PropertyPortfolioView = "table" | "board" | "map" | "calendar";
+type PropertyWorkspaceInitialAction = "new";
 
 const propertyWorkspaceTabs: Array<{
   id: PropertyWorkspaceTab;
@@ -1897,13 +1898,16 @@ function propertyPortfolioViewFromSearch(): PropertyPortfolioView {
 }
 
 function Workspace({
+  initialAction,
   initialView = "table",
 }: {
+  initialAction?: PropertyWorkspaceInitialAction;
   initialView?: PropertyPortfolioView;
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const propertyDocumentInputRef = useRef<HTMLInputElement>(null);
+  const propertyCreateActionHandledRef = useRef(false);
   const [selectedEntityId, setSelectedEntityId] = useState<string>("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [requestedPropertyId, setRequestedPropertyId] = useState<string>("");
@@ -2549,6 +2553,25 @@ function Workspace({
   });
   const ownershipStructure = form.watch("ownership_structure");
   const showOwnershipFields = ownershipStructure !== "current_entity";
+
+  useEffect(() => {
+    if (initialAction !== "new") {
+      propertyCreateActionHandledRef.current = false;
+      return;
+    }
+    if (propertyCreateActionHandledRef.current) return;
+    propertyCreateActionHandledRef.current = true;
+    setEditing(null);
+    setBillingProfileOpen(false);
+    form.reset(defaultPropertyFormValues);
+    setPropertyEditorOpen(true);
+
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("action")) {
+      url.searchParams.delete("action");
+      window.history.replaceState(null, "", url);
+    }
+  }, [form, initialAction]);
 
   const unitForm = useForm<UnitFormValues>({
     resolver: zodResolver(unitSchema),
@@ -6994,13 +7017,15 @@ function Workspace({
 }
 
 export function PropertyWorkspace({
+  initialAction,
   initialView = "table",
 }: {
+  initialAction?: PropertyWorkspaceInitialAction;
   initialView?: PropertyPortfolioView;
 }) {
   return (
     <QueryProvider>
-      <Workspace initialView={initialView} />
+      <Workspace initialAction={initialAction} initialView={initialView} />
     </QueryProvider>
   );
 }

@@ -1,6 +1,7 @@
 import { PropertyWorkspace } from "@/components/property-workspace";
 
 type PropertiesPageSearchParams = Promise<{
+  action?: string | string[];
   view?: string | string[];
 }>;
 
@@ -17,11 +18,21 @@ function initialPropertyView(value: string | string[] | undefined) {
   return "table";
 }
 
+function initialPropertyAction(value: string | string[] | undefined) {
+  const action = Array.isArray(value) ? value[0] : value;
+  return action === "new" ? "new" : undefined;
+}
+
 export default async function PropertiesPage({
   searchParams,
 }: {
   searchParams?: PropertiesPageSearchParams;
 }) {
   const params = searchParams ? await searchParams : {};
-  return <PropertyWorkspace initialView={initialPropertyView(params.view)} />;
+  return (
+    <PropertyWorkspace
+      initialAction={initialPropertyAction(params.action)}
+      initialView={initialPropertyView(params.view)}
+    />
+  );
 }

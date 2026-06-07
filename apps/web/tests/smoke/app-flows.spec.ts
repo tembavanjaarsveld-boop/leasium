@@ -143,6 +143,12 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("link", { name: /Data cleanup \/ Portfolio QA/ }),
   ).toBeVisible();
+  await commandSearch.fill("add property");
+  await expect(
+    page
+      .getByRole("list", { name: "Command actions" })
+      .getByRole("link", { name: /Add property/ }),
+  ).toHaveAttribute("href", "/properties?action=new");
   await commandSearch.fill("add tenant");
   await expect(
     page
@@ -387,7 +393,9 @@ test("smart intake quick-add links keep 44px touch targets", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "Smart Intake" }),
   ).toBeVisible();
-  await expectTouchTarget(page.getByRole("link", { name: "Add property" }));
+  const addProperty = page.getByRole("link", { name: "Add property" });
+  await expectTouchTarget(addProperty);
+  await expect(addProperty).toHaveAttribute("href", "/properties?action=new");
   const addTenant = page.getByRole("link", { name: "Add tenant" });
   await expectTouchTarget(addTenant);
   await expect(addTenant).toHaveAttribute("href", "/tenants?action=invite");

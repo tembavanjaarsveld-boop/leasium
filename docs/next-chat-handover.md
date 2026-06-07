@@ -2,6 +2,44 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Property quick-add drawer route - latest)
+
+Continuation after the command palette tenant invite handoff. After commit
+`3b50b73` was pushed and the deploy hook ran, Chrome and Computer Use verified
+production `https://leasium.ai`: command search for "add tenant" now exposes
+`/tenants?action=invite`. The next shortcut-consistency sweep found the same
+class of UX mismatch for properties: live command search "add property" still
+pointed at `/properties`, while the Properties page already has a New property
+drawer behind the visible button.
+
+The confirmed UX defect was an avoidable two-step handoff: "Add property" from
+command search or Smart Intake landed on the Properties table root instead of
+opening the existing property creation drawer.
+
+Files changed:
+- `apps/web/src/components/app-shell.tsx`: command palette "Add property" now
+  points to `/properties?action=new`.
+- `apps/web/src/components/dashboard.tsx`: Smart Intake "Add property" setup
+  recovery link now points to `/properties?action=new`.
+- `apps/web/src/app/properties/page.tsx` and
+  `apps/web/src/components/property-workspace.tsx`: the Properties route accepts
+  `action=new`, opens the existing New property drawer, and clears the transient
+  `action` query after opening so the shortcut can be reused on the same page.
+- `apps/web/tests/smoke/app-flows.spec.ts` and
+  `apps/web/tests/smoke/properties-ux.spec.ts`: lock the command/Smart Intake
+  hrefs and the direct drawer route. The new tests first failed against
+  `/properties` and the missing drawer route.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  workflow change as prototype-mode/Remba-pending.
+
+Guardrails:
+- The route change is navigation/UI only until an operator explicitly submits
+  the internal New property form. It does not call providers, write Xero/Basiq
+  data, send SendGrid/Twilio messages, email tenants, reconcile payments,
+  upload/download files, or dispatch external communications.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Command palette tenant invite handoff - latest)
 
 Continuation after the mobile navigation Escape-close slice. Chrome +

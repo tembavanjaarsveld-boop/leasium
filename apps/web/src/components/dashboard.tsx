@@ -3926,7 +3926,7 @@ export function Dashboard({
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Link
-                    href="/properties"
+                    href="/properties?action=new"
                     className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                   >
                     <Layers3 size={16} />
