@@ -26,6 +26,10 @@ Verification:
 - `npm --prefix apps/web run lint -- 'src/app/operations/maintenance/[workOrderId]/page.tsx' tests/smoke/app-flows.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy production asset check: the live maintenance detail route chunk
+  changed to `page-f3556d94c284ef12.js` on the first resumed poll, contained
+  the new 44px live-action-dock primary and secondary classes, and no longer
+  contained the old `min-h-9` live-action-dock classes.
 
 Guardrails:
 - The smoke measures rendered links only. It does not click call/SMS links,
