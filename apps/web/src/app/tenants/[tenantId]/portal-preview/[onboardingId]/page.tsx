@@ -527,7 +527,7 @@ function DocumentRow({ document }: { document: TenantPortalDocumentRecord }) {
         </div>
       </div>
       <a
-        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-white transition hover:bg-muted"
+        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-white transition hover:bg-muted"
         href={documentDownloadUrl(document.id)}
         aria-label={`Download ${document.filename}`}
       >

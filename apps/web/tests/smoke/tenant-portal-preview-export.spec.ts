@@ -234,6 +234,14 @@ test("tenant portal preview CSV copy and download stay local, touch-safe, and CS
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
+  const documentDownload = page.getByRole("link", {
+    name: "Download +tenant-visible-insurance.pdf",
+  });
+  await expect(documentDownload).toBeVisible();
+  const documentDownloadBox = await documentDownload.boundingBox();
+  expect(documentDownloadBox).not.toBeNull();
+  expect(documentDownloadBox!.width).toBeGreaterThanOrEqual(44);
+  expect(documentDownloadBox!.height).toBeGreaterThanOrEqual(44);
 
   forbiddenMutationCalls.length = 0;
   await copyActivitySummary.click();

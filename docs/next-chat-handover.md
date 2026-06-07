@@ -2,6 +2,39 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Tenant portal preview document target - latest)
+
+Continuation after the AI Inbox guardrails target pass. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the operator tenant portal
+preview document download icon rendering as a 36px square target. The existing
+tenant portal preview export smoke already renders the mocked document row and
+guards local-only preview exports.
+
+Files changed:
+- `apps/web/src/app/tenants/[tenantId]/portal-preview/[onboardingId]/page.tsx`:
+  preview document download links now use the 44px square target baseline.
+- `apps/web/tests/smoke/tenant-portal-preview-export.spec.ts`: the existing
+  mocked mobile preview/export flow now measures the document download link
+  without clicking it.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  tenant portal preview density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused tenant portal preview smoke failed with received width
+  `36` for `Download +tenant-visible-insurance.pdf`.
+- `./node_modules/.bin/playwright test tests/smoke/tenant-portal-preview-export.spec.ts -g "tenant portal preview CSV copy and download stay local"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint 'src/app/tenants/[tenantId]/portal-preview/[onboardingId]/page.tsx' tests/smoke/tenant-portal-preview-export.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data, measures the document link without opening
+  it, and keeps existing traps for tenant portal account creation, invite/send
+  paths, document-byte fetches, provider paths, Xero/Basiq, payment, and
+  provider-history mutations.
+
 ## Codex continuation - 2026-06-08 (AI Inbox guardrails target - latest)
 
 Continuation after the Operations digest preview target pass. Because Vercel

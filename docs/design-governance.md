@@ -285,6 +285,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   maintenance handoff, promotion flow, and Comms provider guardrails are
   unchanged. Remba should review the disclosure density with the wider
   Smart Intake / AI Inbox pass.
+- **Tenant portal preview document-download target (2026-06-08, prototype mode, no Remba gate):**
+  the operator tenant portal preview document download icon now uses a stable
+  44px square target. The document destination and preview/export behaviour are
+  unchanged; smoke coverage measures the mocked link without clicking it and
+  keeps the no tenant-account creation, no invite/send, no document-byte fetch,
+  no provider, no Xero/Basiq, and no provider-history guardrails. Remba should
+  review the Documents row density with the wider tenant portal preview pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
