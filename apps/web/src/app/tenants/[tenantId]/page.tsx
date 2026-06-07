@@ -2460,7 +2460,7 @@ function TenantDetail() {
               <SecondaryButton
                 type="button"
                 onClick={() => setEditing(false)}
-                className="h-8 w-8 px-0"
+                className="h-11 w-11 px-0"
                 aria-label="Close edit"
               >
                 <X size={15} />

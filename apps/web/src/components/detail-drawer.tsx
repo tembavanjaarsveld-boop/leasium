@@ -109,7 +109,7 @@ export function DetailDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border-strong bg-white text-muted-foreground shadow-leasiumXs transition hover:bg-muted hover:text-foreground"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border-strong bg-white text-muted-foreground shadow-leasiumXs transition hover:bg-muted hover:text-foreground"
           >
             <X size={15} />
           </button>

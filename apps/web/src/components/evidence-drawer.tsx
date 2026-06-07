@@ -563,7 +563,7 @@ export function EvidenceDrawer({
           <button
             type="button"
             aria-label={closeLabel}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-white text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-border bg-white text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
             onClick={() => onOpenChange(false)}
           >
             <X size={16} />

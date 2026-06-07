@@ -85,6 +85,21 @@ test("desktop tenant register filters and inline actions are touch-safe", async 
   }
 });
 
+test("tenant invite drawer close action stays touch-safe", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/tenants?action=invite");
+
+  await expect(
+    page.getByRole("heading", { name: "Send invite" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await expectTouchTarget(
+    await page.getByRole("button", { name: "Close send invite" }).boundingBox(),
+  );
+});
+
 test("mobile tenant rows expose invite actions without raw loading placeholders", async ({
   page,
 }) => {

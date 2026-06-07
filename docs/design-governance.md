@@ -85,6 +85,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   contact edit cells now use the 44px minimum target baseline while preserving the same
   onboarding filters, drawer behavior, contact editing, and provider guardrails. Remba should
   review the taller table-row rhythm with the wider Tenant workspace density pass.
+- **People record and drawer close touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the shared Tenant/Owner/Vendor record back link, tenant invite/profile close controls, and
+  shared detail/evidence drawer close buttons now use the 44px minimum target baseline while
+  preserving record navigation, drawer behavior, evidence review, and provider guardrails.
+  Remba should review the slightly larger breadcrumb/close rhythm with the wider People record
+  page pass.
 - **Work queue assignment touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Operations queue collapsed "Assign owner" action and its immediate expanded assignee
   controls now use the 44px minimum target baseline while preserving the same assignment

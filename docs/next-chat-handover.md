@@ -2,6 +2,46 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (People record/drawer close targets - latest)
+
+Follow-up from the live Chrome + Computer Use deep-record UX sweep: tenant
+detail pages still had a compact shared `Tenants` back link measuring 32px
+high, and `/tenants?action=invite` had a close action measuring 32px wide.
+The shared Tenant/Owner/Vendor record back link, tenant invite/profile close
+controls, and shared detail/evidence drawer close buttons now use the 44px
+target baseline while preserving record navigation, drawer behavior, evidence
+review, and provider guardrails.
+
+Files changed:
+- `apps/web/src/components/people-record-layout.tsx` raises the shared record
+  back link to the 44px baseline.
+- `apps/web/src/app/tenants/page.tsx` and
+  `apps/web/src/app/tenants/[tenantId]/page.tsx` raise tenant invite/profile
+  close controls to 44x44.
+- `apps/web/src/components/detail-drawer.tsx` and
+  `apps/web/src/components/evidence-drawer.tsx` raise shared drawer close
+  buttons to 44x44.
+- `apps/web/tests/smoke/tenants-ux.spec.ts` and
+  `apps/web/tests/smoke/people-record-layout.spec.ts` add focused target-size
+  coverage.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  People record/drawer follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npx playwright test tests/smoke/tenants-ux.spec.ts -g "tenant invite drawer close")`
+  first failed with width `32`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the close-target change.
+- GREEN: `(cd apps/web && npx playwright test tests/smoke/people-record-layout.spec.ts -g "shared record back link")`
+  passed after the shared record back-link target-size change. The pre-fix red
+  was captured live at 32px high during the Chrome sweep; the first local run
+  was blocked by an already-running smoke server on port 3000.
+- `(cd apps/web && npx playwright test tests/smoke/tenants-ux.spec.ts)` - 5 passed.
+- `(cd apps/web && npx playwright test tests/smoke/people-record-layout.spec.ts)` - 12 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (Tenants register touch targets - latest)
 
 Follow-up from the live Chrome + Computer Use secondary-route UX sweep:

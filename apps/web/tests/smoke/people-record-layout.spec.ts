@@ -56,6 +56,12 @@ const recordTabs = [
   { id: "activity", label: "Activity" },
 ];
 
+function expectTouchTarget(box: { width: number; height: number } | null) {
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+}
+
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
@@ -168,6 +174,20 @@ test.describe("people record layout", () => {
     await expect(
       page.getByRole("link", { name: "Open portal preview" }),
     ).toHaveAttribute("href", "/vendor-portal/contractor-1");
+  });
+
+  test("shared record back link stays touch-safe", async ({ page }) => {
+    await page.goto("/tenants/tenant-1");
+
+    await expect(
+      page.getByRole("heading", { name: "Bright Cafe Pty Ltd" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await expectTouchTarget(
+      await page
+        .getByRole("link", { name: "Tenants", exact: true })
+        .boundingBox(),
+    );
   });
 
   test("vendor detail shows correspondence receipts without provider mutations", async ({

@@ -40,7 +40,7 @@ export function PeopleRecordLayout({
           <div className="min-w-0">
             <Link
               href={backHref}
-              className="mb-2 inline-flex min-h-8 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
+              className="mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
             >
               <ArrowLeft size={14} />
               {backLabel}
