@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Dashboard review queue action target - latest)
+
+Continuation after the Comms candidate handoff target pass. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Dashboard Smart Intake
+review queue `Review` action rendering as a 32px-tall target on the mocked
+first review row; the sibling `Clear` action used the same compact row style.
+
+Files changed:
+- `apps/web/src/components/dashboard.tsx`: Dashboard review-queue `Review` and
+  `Clear` row actions now use the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing dashboard flow now
+  measures the mocked first review-row actions before opening command search or
+  navigating to Billing Readiness.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Dashboard density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused dashboard smoke failed with received height `32` for the
+  first review-row `Review` handoff.
+- `./node_modules/.bin/playwright test tests/smoke/app-flows.spec.ts -g "dashboard shows the mocked portfolio and opens billing readiness"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/components/dashboard.tsx tests/smoke/app-flows.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data, measures the row actions before any command
+  search or handoff navigation, and does not click `Review` or `Clear`. No
+  Smart Intake apply, document download, provider, email, Xero, Basiq, payment,
+  or provider-history path is touched.
+
 ## Codex continuation - 2026-06-08 (Comms candidate handoff target - latest)
 
 Continuation after the Billing invoice preview action target pass. Because

@@ -98,6 +98,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the Dashboard Onboarding panel "Manage links" action now uses the 44px minimum target
   baseline while preserving the same Properties handoff and onboarding summary copy. Remba
   should review the lower-dashboard action density with the wider command-center pass.
+- **Dashboard review-queue action touch targets (2026-06-08, prototype mode, no Remba gate):**
+  the Dashboard Smart Intake review queue `Review` and `Clear` row actions now use the 44px
+  minimum target baseline while preserving the same Smart Intake handoff and local clear
+  behaviour. No document apply, provider, email, Xero, payment, or intake mutation path
+  changed. Remba should review the slightly taller review-row rhythm with the wider Dashboard
+  command-center density pass.
 - **Properties density toggle touch targets (2026-06-07, prototype mode, no Remba gate):**
   the desktop Properties table row-density controls ("Comfortable" and "Compact") now use
   the 44px minimum target baseline while keeping the same table-density behavior, labels,

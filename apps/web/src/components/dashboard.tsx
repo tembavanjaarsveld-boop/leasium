@@ -4080,7 +4080,7 @@ export function Dashboard({
                             {isIntakeWorkspace ? (
                               <SecondaryButton
                                 type="button"
-                                className="h-8"
+                                className="min-h-11"
                                 onClick={() => setReviewIntakeId(item.id)}
                               >
                                 Review
@@ -4088,14 +4088,14 @@ export function Dashboard({
                             ) : (
                               <Link
                                 href={intakeReviewHref(item.entity_id, item.id)}
-                                className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                               >
                                 Review
                               </Link>
                             )}
                             <SecondaryButton
                               type="button"
-                              className="h-8"
+                              className="min-h-11"
                               title={
                                 intakeIsActive(item)
                                   ? "Stop reviewing and clear"

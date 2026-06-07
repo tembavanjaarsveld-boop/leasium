@@ -114,6 +114,16 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
+  await expectTouchTarget(
+    page
+      .getByTestId("review-intake-intake-1")
+      .getByRole("link", { name: "Review" }),
+  );
+  await expectTouchTarget(
+    page
+      .getByTestId("review-intake-intake-1")
+      .getByRole("button", { name: "Clear" }),
+  );
   const workspaceToolbar = page.getByRole("toolbar", {
     name: "Workspace utilities",
   });
