@@ -647,7 +647,7 @@ const XERO_EXCEPTION_EXPORT_GUARDRAIL =
 const XERO_FRESHNESS_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not refresh Xero, preview or apply payment reconciliation, create Xero drafts, dispatch invoices, send email or SMS, refresh providers, or mutate provider history.";
 const TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL =
-  "Review-only export: downloading this file does not wire stored templates into send paths, add edit controls, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.";
+  "Review-only export: downloading this file does not wire stored templates into send paths, edit templates, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.";
 
 function xeroExceptionRecordLine(issue: XeroExceptionQueueItemRecord) {
   return [
@@ -4900,8 +4900,8 @@ function SettingsWorkspace() {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       Database-backed branded templates are visible here for
-                      review. Editing and send-time wiring remain paused for
-                      internal-first use.
+                      audit. Edit templates from the Comms hub; send-time
+                      wiring remains paused for internal-first use.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">

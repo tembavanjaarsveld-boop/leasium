@@ -441,6 +441,11 @@ test("settings exports communication template override review CSV", async ({
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
   await expect(
+    page.getByText(
+      "Database-backed branded templates are visible here for audit. Edit templates from the Comms hub; send-time wiring remains paused for internal-first use.",
+    ),
+  ).toBeVisible();
+  await expect(
     page.getByText("2/2 active overrides match runtime keys."),
   ).toBeVisible();
 
@@ -517,7 +522,7 @@ test("settings exports communication template override review CSV", async ({
   );
   expect(csv).toContain('"\'+Contractor formula-safe body"');
   expect(csv).toContain(
-    "Review-only export: downloading this file does not wire stored templates into send paths, add edit controls, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.",
+    "Review-only export: downloading this file does not wire stored templates into send paths, edit templates, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.",
   );
   expect(forbiddenExportCalls).toEqual([]);
 });

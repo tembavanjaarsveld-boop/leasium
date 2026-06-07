@@ -2,6 +2,40 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Settings template copy alignment - latest)
+
+Continuation after the grouped compliance source handoffs. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. A source scan found stale Settings Organisation copy
+from before the Comms template editor shipped: it still said editing was paused
+and the export guardrail said exports did not "add edit controls."
+
+Files changed:
+- `apps/web/src/app/settings/page.tsx`: Communication template override copy now
+  frames Settings as the audit/export surface, points editing to the Comms hub,
+  and updates the CSV guardrail to say the export does not edit templates or
+  wire send paths.
+- `apps/web/tests/smoke/settings.spec.ts`: the existing template override export
+  smoke now locks the updated visible copy and CSV guardrail.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Settings copy correction as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Settings template override smoke failed with the expected
+  missing updated visible copy.
+- `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3107 ./node_modules/.bin/playwright test tests/smoke/settings.spec.ts -g "settings exports communication template override review CSV"` from `apps/web` - passed.
+- `./node_modules/.bin/eslint src/app/settings/page.tsx tests/smoke/settings.spec.ts` from `apps/web` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- This is copy and local CSV guardrail text only. It does not edit templates,
+  create/update/delete template records, wire send-time consumption, send
+  SendGrid email, send Twilio SMS, run digests, send invoices, send tenant
+  onboarding or contractor messages, mutate preferences, or write provider
+  history.
+
 ## Codex continuation - 2026-06-08 (Grouped compliance source handoffs - latest)
 
 Continuation after the Comms template sample preview pass. Because Vercel
