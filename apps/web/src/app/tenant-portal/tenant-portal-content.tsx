@@ -4806,7 +4806,7 @@ function TenantPortalContent({
               {!documentsComplete ? (
                 <a
                   href="#tenant-documents"
-                  className="ml-7 inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-warning/40 bg-white px-3 text-sm font-medium text-warning transition hover:bg-warning/5"
+                  className="ml-7 inline-flex min-h-11 w-fit items-center gap-2 rounded-md border border-warning/40 bg-white px-3 text-sm font-medium text-warning transition duration-200 ease-leasium hover:bg-warning/5"
                 >
                   <UploadCloud size={15} />
                   Upload documents

@@ -77,6 +77,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   bytes, uploads, and provider behavior are unchanged. Remba should review this with the
   wider tenant portal density pass because local unauthenticated smoke intentionally stops
   at the account setup gate before the invoice list.
+- **Tenant portal upload-documents jump target (2026-06-08, prototype mode, no Remba gate):**
+  the attention header's `Upload documents` jump link now uses the 44px minimum target
+  baseline. It remains a local `#tenant-documents` handoff only; upload, document download,
+  payment, and provider behavior are unchanged. Remba should review the extra height with
+  the wider tenant portal status-header density pass.
 - **Command palette tenant invite handoff (2026-06-08, prototype mode, no Remba gate):**
   the Cmd-K "Add tenant" frequent action now opens `/tenants?action=invite`, matching
   the People hub and Smart Intake quick-add entrypoints instead of landing on the tenant

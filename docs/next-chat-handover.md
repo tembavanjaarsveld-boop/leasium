@@ -2,6 +2,41 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Tenant portal upload jump target - latest)
+
+Continuation after the tenant portal invoice PDF target pass. The post-push
+touch-target scan found one more gated tenant portal density issue: the status
+header `Upload documents` in-page jump link still used the old 36px target.
+
+Files changed:
+- `apps/web/src/app/tenant-portal/tenant-portal-content.tsx`: the attention
+  header `Upload documents` link now uses `min-h-11` with shared motion timing.
+  It remains a local `#tenant-documents` anchor.
+- `apps/web/tests/smoke/tenants-ux.spec.ts`: adds source smoke coverage for the
+  gated account-path anchor because local unauthenticated smoke intentionally
+  stops at the account setup gate.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  tenant portal status-header density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused tenant UX smoke failed on the old `min-h-9` upload-documents
+  anchor class.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts -g "tenant portal upload documents jump"` - passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/tenants-ux.spec.ts` -
+  passed, 9 tests.
+- `npm --prefix apps/web run lint -- src/app/tenant-portal/tenant-portal-content.tsx tests/smoke/tenants-ux.spec.ts` - passed after clearing generated Playwright report artifacts from the prior test run.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed when run by itself. A concurrent
+  smoke/build attempt collided on `.next` and produced page-module `ENOENT`
+  errors, so generated Next/Playwright output was cleared and validation was
+  rerun sequentially.
+
+Guardrails:
+- This is CSS class and source-smoke coverage only. The link remains local
+  navigation and does not upload tenant documents, fetch document bytes, change
+  invoice/payment behavior, send email/SMS, call Xero/Basiq/SendGrid/Twilio,
+  refresh providers, reconcile payments, or mutate provider history.
+
 ## Codex continuation - 2026-06-08 (Tenant portal invoice PDF target - latest)
 
 Continuation after the Settings template copy alignment. A source/UX scan found

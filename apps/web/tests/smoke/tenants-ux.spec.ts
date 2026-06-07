@@ -445,6 +445,16 @@ test("tenant portal invoice PDF controls stay on the touch-target baseline", asy
   expect(source).toMatch(/invoice\.pdf_document_id[\s\S]{0,700}min-h-11/);
 });
 
+test("tenant portal upload documents jump stays on the touch-target baseline", async () => {
+  const source = await readFile(
+    "src/app/tenant-portal/tenant-portal-content.tsx",
+    "utf8",
+  );
+
+  expect(source).not.toMatch(/href="#tenant-documents"[\s\S]{0,220}min-h-9/);
+  expect(source).toMatch(/href="#tenant-documents"[\s\S]{0,220}min-h-11/);
+});
+
 test("mobile tenant portal recovery actions stay touch-safe", async ({
   page,
 }) => {
