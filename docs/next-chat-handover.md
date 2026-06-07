@@ -32,6 +32,12 @@ Verification:
 - `npm --prefix apps/web run lint -- 'src/app/tenants/[tenantId]/page.tsx' tests/smoke/tenants-ux.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy check: Chrome/production read-only navigation checked the first
+  18 live tenant records and found no currently visible tenant document
+  review/download rows to measure without creating, uploading, or downloading
+  data. A production bundle check for `/tenants/[tenantId]` confirmed the live
+  route chunk contains the new `min-h-11` review-link class and no longer
+  contains the old `h-8` review-link class.
 
 Guardrails:
 - No document download, delete, upload, Smart Intake apply, tenant portal invite,
