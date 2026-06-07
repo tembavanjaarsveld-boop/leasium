@@ -28,8 +28,12 @@ Verification so far:
 - `.venv/bin/python -m pytest tests/integration/test_register_api.py` - 13 passed.
 - `.venv/bin/ruff check apps/api/routers/tenants.py tests/integration/test_register_api.py` - passed.
 - `git diff --check` - passed.
-- Commit/push, Render deploy, and live Chrome re-check still need to run for
-  this latest backend slice.
+- Commit `7763228` pushed to `main`; Render health reports
+  `776322867d60841a61793d42edc9fd8750b701cd`.
+- Live Chrome re-check passed after Render deploy: the affected imported tenant
+  rendered `AAM Corporate (AAM Corporate Pty Ltd)`, linked lease context,
+  `Lease active` activity, no `Tenant unavailable`, no `Failed to fetch`, no
+  secondary error summary, no visible sub-44px controls, and no console errors.
 
 ## Codex continuation - 2026-06-07 (Tenant detail secondary-error labels - latest)
 
