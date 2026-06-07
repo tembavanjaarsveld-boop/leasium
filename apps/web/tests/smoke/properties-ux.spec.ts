@@ -229,6 +229,24 @@ test("mobile properties map view keeps focus controls touch safe", async ({
   );
 });
 
+test("properties table density controls stay touch safe", async ({ page }) => {
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+
+  const densityGroup = page.getByRole("group", { name: "Table row density" });
+  await expect(densityGroup).toBeVisible();
+
+  await expectTouchTarget(
+    densityGroup.getByRole("button", { name: "Comfortable" }),
+  );
+  await expectTouchTarget(
+    densityGroup.getByRole("button", { name: "Compact" }),
+  );
+});
+
 test("properties table density toggle trims row padding in compact mode", async ({
   page,
 }) => {

@@ -5525,7 +5525,7 @@ function Workspace({
                             aria-pressed={isActive}
                             onClick={() => setPropertyDensity(option.id)}
                             className={cn(
-                              "inline-flex min-h-[36px] items-center rounded-full px-3 py-1 transition",
+                              "inline-flex min-h-[44px] items-center rounded-full px-3 py-1 transition",
                               isActive
                                 ? "bg-primary text-primary-foreground"
                                 : "text-muted-foreground hover:bg-muted",

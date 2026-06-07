@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Properties density toggle touch targets - latest)
+
+Follow-up from the live Chrome + Computer Use UX review: the desktop
+Properties table row-density controls "Comfortable" and "Compact" measured
+36px high, below the 44px target baseline used by the operator shell. The
+controls now keep the same labels, table-density behavior, and local
+preference persistence but use a 44px minimum hit target.
+
+Files changed:
+- `apps/web/src/components/property-workspace.tsx` changes the density toggle
+  buttons from a 36px minimum height to the 44px minimum target baseline.
+- `apps/web/tests/smoke/properties-ux.spec.ts` adds a focused touch-target
+  smoke for both density buttons.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Properties follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- properties-ux.spec.ts -g "properties table density controls stay touch safe")` first failed with height `36`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the density button change.
+- `(cd apps/web && npm run test:smoke -- properties-ux.spec.ts)` - 13 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation — 2026-06-07 (Smart Intake quick-add touch targets — latest)
 
 Follow-up from the live Chrome + Computer Use UX review: the Smart Intake
