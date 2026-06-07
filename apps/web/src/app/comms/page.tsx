@@ -1762,6 +1762,9 @@ function CandidateCard({
   // the manual file picker is a last-resort fallback so operators don't
   // need to navigate elsewhere mid-flow.
   const showEvidencePanel = candidate.kind === "compliance_obligation";
+  const relatedTargetCount = candidate.related_target_ids?.length ?? 0;
+  const groupedComplianceEvidence =
+    candidate.kind === "compliance_obligation" && relatedTargetCount > 1;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [evidenceFilename, setEvidenceFilename] = useState<string | null>(null);
   const evidenceMutation = useMutation({
@@ -1771,7 +1774,8 @@ function CandidateCard({
         tenantId: candidate.tenant_id ?? undefined,
         obligationId:
           candidate.kind === "compliance_obligation" &&
-          candidate.target_kind === "obligation"
+          candidate.target_kind === "obligation" &&
+          !groupedComplianceEvidence
             ? candidate.target_id
             : undefined,
         category: "other",
@@ -1934,6 +1938,14 @@ function CandidateCard({
               attributed automatically. The manual fallback below is for one-off
               attachments only.
             </p>
+            {groupedComplianceEvidence ? (
+              <p className="rounded-md border border-warning-strong/30 bg-warning-soft px-3 py-2 text-xs text-warning-strong">
+                This draft covers {relatedTargetCount} compliance items. Use
+                Smart Intake or open Compliance Work to link evidence to the
+                right source item; one-off manual attach is hidden for grouped
+                drafts.
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href="/intake"
@@ -1943,34 +1955,38 @@ function CandidateCard({
                 Upload via Smart Intake
                 <ExternalLink size={13} />
               </Link>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf,image/png,image/jpeg"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    evidenceMutation.mutate(file);
-                  }
-                  // Reset so the same filename can be re-picked.
-                  event.target.value = "";
-                }}
-              />
-              <SecondaryButton
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={evidenceMutation.isPending}
-              >
-                {evidenceMutation.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Paperclip size={15} />
-                )}
-                {evidenceMutation.isPending
-                  ? "Uploading…"
-                  : "Or attach a file manually"}
-              </SecondaryButton>
+              {!groupedComplianceEvidence ? (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        evidenceMutation.mutate(file);
+                      }
+                      // Reset so the same filename can be re-picked.
+                      event.target.value = "";
+                    }}
+                  />
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={evidenceMutation.isPending}
+                  >
+                    {evidenceMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Paperclip size={15} />
+                    )}
+                    {evidenceMutation.isPending
+                      ? "Uploading…"
+                      : "Or attach a file manually"}
+                  </SecondaryButton>
+                </>
+              ) : null}
             </div>
             {evidenceFilename ? (
               <p className="text-xs text-success-strong">

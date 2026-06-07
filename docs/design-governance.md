@@ -78,9 +78,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   `/comms` now collapses same-recipient compliance obligation reminders into one review draft,
   carrying all included obligation IDs through dispatch/dismiss so one approved email or deferral
   settles every source row. The body lists each property/unit/item; the card still opens the
-  Compliance Work tab and remains review-first. No automatic SendGrid/Twilio/provider action
-  runs. Remba should review whether the grouped copy is clear enough for AP inbox recipients
-  and whether the source handoff needs an expanded "N included items" drilldown.
+  Compliance Work tab and remains review-first. Grouped cards hide one-off manual evidence
+  upload while keeping Smart Intake available, so evidence is not linked only to the primary
+  obligation by mistake. No automatic SendGrid/Twilio/provider action runs. Remba should review
+  whether the grouped copy is clear enough for AP inbox recipients and whether the source handoff
+  needs an expanded "N included items" drilldown.
 - **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
   `/insights` keeps the five-card KPI band always visible and replaces the former single
   long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing

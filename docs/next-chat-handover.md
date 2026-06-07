@@ -13,6 +13,11 @@ one approved email or one deferral stamps every grouped source row. No automatic
 email/SMS/provider action runs; dispatch remains the explicit operator-approved
 SendGrid path.
 
+Follow-up guard: grouped compliance cards now keep the Smart Intake and
+Compliance Work handoffs but hide the one-off manual evidence upload button.
+That avoids attaching evidence to only the primary obligation when the draft
+represents multiple source obligations.
+
 Files changed:
 - `apps/api/schemas/comms.py` adds optional `related_target_ids` to candidates
   and dispatch/dismiss payloads.
@@ -20,7 +25,11 @@ Files changed:
   and validates grouped related obligations share the same entity, compliance
   category, and recipient before stamping dispatch/dismiss metadata.
 - `apps/web/src/lib/api.ts` and `apps/web/src/app/comms/page.tsx` pass grouped
-  related IDs from the card actions.
+  related IDs from the card actions; `/comms` also hides the manual one-off
+  evidence picker for grouped compliance cards.
+- `apps/web/tests/smoke/app-flows.spec.ts` covers the grouped evidence guard,
+  asserting the Smart Intake / Compliance Work links stay available and the
+  manual attach button is absent.
 - `tests/integration/test_comms_api.py` covers grouped queue rendering, grouped
   dispatch stamping every source obligation, and grouped dismiss stamping every
   source obligation.
@@ -36,6 +45,9 @@ Verification so far:
 - `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -k "compliance_obligation" -q` — 6 passed.
 - `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_counts_match_full_queue_grouping -q` — passed.
 - `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -q` — 54 passed.
+- RED: grouped compliance evidence smoke first failed because grouped cards
+  still exposed the single-obligation manual attach path.
+- `(cd apps/web && npm run test:smoke -- app-flows.spec.ts -g "grouped compliance comms drafts avoid single-obligation evidence upload")` — 1 passed.
 - `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` — passed.
 - `(cd apps/web && npm run lint -- --max-warnings=0 src/app/comms/page.tsx src/lib/api.ts)` — passed.
 - `(cd apps/web && npm run lint)` — passed.

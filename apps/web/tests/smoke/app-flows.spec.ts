@@ -1112,6 +1112,100 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   ).toBeVisible();
 });
 
+test("grouped compliance comms drafts avoid single-obligation evidence upload", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/comms/queue?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        entity_id: "entity-1",
+        generated_at: "2026-05-27T02:00:00.000Z",
+        candidates: [
+          {
+            id: "comms-compliance-obligation-grouped",
+            kind: "compliance_obligation",
+            target_kind: "obligation",
+            target_id: "obligation-compliance-1",
+            related_target_ids: [
+              "obligation-compliance-1",
+              "obligation-compliance-2",
+            ],
+            tenant_id: "tenant-1",
+            tenant_name: "Auto General Services Pty Ltd",
+            property_name: "2 compliance items",
+            unit_label: null,
+            recipient_email: "ap@autogeneral.example",
+            recipient_phone: null,
+            subject: "2 compliance items due",
+            body: [
+              "Hi Accounts Payable,",
+              "",
+              "We have multiple compliance items for your tenancies:",
+              "- Auto General Site 1 Suite 1: Annual fire safety certificate due 18 Jun 2026.",
+              "- Auto General Site 2 Suite 2: Public liability insurance due 19 Jun 2026.",
+              "",
+              "Please send through any documentation that demonstrates these are in place.",
+            ].join("\n"),
+            severity: "warning",
+            due_at: "2026-06-18T00:00:00.000Z",
+            detail: "2 items, earliest due 18 Jun 2026",
+            generated_at: "2026-05-27T02:00:00.000Z",
+          },
+        ],
+      }),
+    });
+  });
+  await page.route("**/api/v1/comms/queue/counts?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        entity_id: "entity-1",
+        total: 1,
+        urgent: 0,
+        by_kind: {
+          arrears_reminder: 0,
+          insurance_expiry: 0,
+          lease_renewal: 0,
+          inbound_email: 0,
+          inbound_sms: 0,
+          compliance_obligation: 1,
+          rent_review: 0,
+          tenant_lifecycle_stall: 0,
+          maintenance_contractor_forward: 0,
+          maintenance_tenant_forward: 0,
+        },
+        generated_at: "2026-05-27T02:00:00.000Z",
+      }),
+    });
+  });
+
+  await page.goto("/comms");
+
+  const complianceCard = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Compliance reminder" }) })
+    .first();
+  await expect(complianceCard).toBeVisible();
+  await expect(complianceCard.getByLabel("Subject")).toHaveValue(
+    "2 compliance items due",
+  );
+  await expect(
+    complianceCard.getByText("This draft covers 2 compliance items."),
+  ).toBeVisible();
+  await expect(
+    complianceCard.getByRole("link", { name: "Open compliance work" }),
+  ).toHaveAttribute("href", "/operations?tab=compliance");
+  await expect(
+    complianceCard.getByRole("link", { name: "Upload via Smart Intake" }),
+  ).toHaveAttribute("href", "/intake");
+  await expect(
+    complianceCard.getByRole("button", { name: "Or attach a file manually" }),
+  ).toHaveCount(0);
+});
+
 test("AI inbox vendor classification offers a contractor picker", async ({
   page,
 }) => {
