@@ -2026,7 +2026,7 @@ function IntegrationsHealthCard({
                   <div className="flex flex-wrap items-center gap-2">
                     <SecondaryButton
                       type="button"
-                      className="min-h-8 rounded-md px-2.5 text-xs"
+                      className="min-h-11 rounded-md px-2.5 text-xs"
                       onClick={() => void copyDocusignSetupPacket(data)}
                     >
                       <Copy size={14} />
@@ -2034,7 +2034,7 @@ function IntegrationsHealthCard({
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="min-h-8 rounded-md px-2.5 text-xs"
+                      className="min-h-11 rounded-md px-2.5 text-xs"
                       onClick={() => downloadDocusignSetupPacket(data)}
                     >
                       <Download size={14} />
@@ -5128,7 +5128,7 @@ function SettingsWorkspace() {
                             <Link
                               key={property.id}
                               href={`/properties?entity_id=${selectedEntityId}&property_id=${property.id}`}
-                              className="min-w-0 text-sm font-medium text-primary hover:text-primary-hover"
+                              className="flex min-h-11 min-w-0 flex-col justify-center rounded-md py-1 text-sm font-medium text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                             >
                               <span className="block truncate">
                                 {property.name}

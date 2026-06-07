@@ -127,12 +127,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the 44px minimum target baseline while preserving read-only readiness/evidence details and
   explicit send/retry guardrails. Remba should review the disclosure density with the wider
   Work notice pass.
-- **Account menu and Settings ownership-tag touch targets (2026-06-07, prototype mode, no Remba gate):**
+- **Account menu and Settings touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Clerk account menu trigger now uses the shared 44px minimum target baseline in the
-  operator shell, `/account`, and tenant portal account panels, and Settings Organisation's
-  "Open tagged properties" handoff now meets the same target-size baseline. Destinations,
-  account/session behaviour, and provider guardrails are unchanged. Remba should review the
-  slightly larger account/action rhythm with the wider account/settings density pass.
+  operator shell, `/account`, and tenant portal account panels. Settings Organisation's
+  DocuSign setup packet actions, "Open tagged properties" handoffs, and ownership-tag
+  property links now meet the same target-size baseline. Destinations, account/session
+  behaviour, review-only exports, and provider guardrails are unchanged. Remba should
+  review the slightly larger account/action rhythm with the wider account/settings
+  density pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
   self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
   metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty

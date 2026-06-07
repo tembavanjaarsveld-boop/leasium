@@ -4983,6 +4983,16 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     .filter({ hasText: /^DocuSign/ })
     .filter({ hasText: "Lease signature envelopes" })
     .first();
+  await expectTouchTarget(
+    docusignCard.getByRole("button", {
+      name: "Copy DocuSign setup packet",
+    }),
+  );
+  await expectTouchTarget(
+    docusignCard.getByRole("button", {
+      name: "Download DocuSign setup packet",
+    }),
+  );
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await docusignCard
     .getByRole("button", { name: "Copy DocuSign setup packet" })
@@ -5054,6 +5064,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: /Queen Street Retail Centre/ }),
   ).toBeVisible();
+  await expectTouchTarget(
+    page.getByRole("link", { name: /Queen Street Retail Centre/ }),
+  );
 
   await page.getByRole("tab", { name: "Connect" }).click();
   await expect(
