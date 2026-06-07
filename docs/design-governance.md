@@ -55,6 +55,10 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the 44px minimum target baseline while keeping the same table-density behavior, labels,
   and local preference persistence. Remba should review the toggle placement with the wider
   Properties workspace density pass.
+- **Properties table row edit touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the desktop Properties table row-level pencil edit actions now use a full 44px square
+  target while keeping the same edit action, icon, and row-selection behavior. Remba should
+  review the action-column spacing with the wider Properties workspace density pass.
 - **Settings Xero connection simplification (2026-06-07, prototype mode, no Remba gate):**
   the Settings → Xero tab now leads with a plain-language "Connect Xero" panel (per-trust
   "Connect this trust" action, organisation-matching guidance, friendlier connected copy),

@@ -5725,7 +5725,7 @@ function Workspace({
                                     event.stopPropagation();
                                     startEdit(property);
                                   }}
-                                  className="h-8 w-8 px-0"
+                                  className="h-11 w-11 px-0"
                                 >
                                   <Pencil size={15} />
                                 </SecondaryButton>
