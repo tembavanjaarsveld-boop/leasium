@@ -45,6 +45,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   hit target baseline as the primary navigation rows and top utility buttons. Copy, shortcut
   behavior, modal behavior, and the 7-item sidebar IA are unchanged. Remba should review this
   with the wider AppHeader/sidebar density pass, especially at the collapsed `md` breakpoint.
+- **Mobile navigation Escape close (2026-06-08, prototype mode, no Remba gate):**
+  the sub-`md` sidebar drawer now closes from the existing global Escape key path, matching
+  the command search and keyboard-shortcut overlays while keeping click/backdrop close paths,
+  the left-side drawer animation, and the 7-hub IA unchanged. Remba should review this with
+  the wider AppHeader/mobile shell pass for keyboard and assistive-tech expectations.
 - **Smart Intake quick-add touch targets (2026-06-07, prototype mode, no Remba gate):**
   the setup recovery links under the Smart Intake drop zone ("Add property" and "Add tenant")
   now use the 44px minimum target baseline. Copy, destinations, upload/review behavior, and

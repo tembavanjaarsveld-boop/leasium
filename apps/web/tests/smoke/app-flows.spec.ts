@@ -357,6 +357,22 @@ test("mobile header keeps utility touch targets at least 44px", async ({
   ).toBeHidden();
 });
 
+test("mobile navigation drawer closes on Escape", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open navigation" }).click();
+
+  const closeNavigation = page.getByRole("button", {
+    name: "Close navigation",
+  });
+  await expect(closeNavigation).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(closeNavigation).toBeHidden();
+});
+
 test("smart intake quick-add links keep 44px touch targets", async ({
   page,
 }) => {

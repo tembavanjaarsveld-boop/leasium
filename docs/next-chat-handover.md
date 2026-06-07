@@ -2,6 +2,36 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Mobile nav Escape close - latest)
+
+Continuation after the Smart Intake tenant quick-add handoff. Chrome +
+Computer Use re-anchored the signed-in production app at `https://leasium.ai`
+and a read-only route sweep checked Dashboard, Smart Intake, Properties,
+People, Work, Billing Readiness, Money, Insights, Settings, and Notifications
+at the first viewport plus scrolled positions. Transient API wake-up loading
+states cleared after a longer settle window on Properties, Operations, Billing
+Readiness, and Insights, so no loading-state product defect was shipped.
+
+The confirmed UX defect was in the mobile shell: the sub-`md` sidebar drawer
+could be opened and closed by button/backdrop, but Escape only closed command
+and shortcut overlays. That left keyboard users with an inconsistent modal
+escape path.
+
+Files changed:
+- `apps/web/src/components/app-shell.tsx`: the existing global Escape handler
+  now also closes the mobile navigation drawer.
+- `apps/web/tests/smoke/app-flows.spec.ts`: adds a mobile smoke that opens the
+  drawer, presses Escape, and expects the drawer close control to disappear.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  visible shell interaction change as prototype-mode/Remba-pending.
+
+Guardrails:
+- This is shell interaction only. It does not change navigation destinations,
+  provider previews, Xero/Basiq writes, SendGrid/Twilio sends, tenant emails,
+  payment reconciliation, uploads, downloads, or external dispatch.
+
+Active local state after this handover update should be clean once committed.
+
 ## Codex continuation - 2026-06-08 (Smart Intake tenant quick-add handoff - latest)
 
 Continuation after the live audit harness refresh. Chrome + Computer Use re-anchored

@@ -527,6 +527,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         clearShortcutWindow();
         setCommandOpen(false);
         setCheatsheetOpen(false);
+        setMobileNavOpen(false);
         return;
       }
 
