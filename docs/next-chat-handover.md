@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (People Add tenant touch target - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX scan: after the
+Smart Intake review-filter fix, `/people` was the only scanned main route with
+a high-confidence sub-44px target. The Tenants tab "Add tenant" action measured
+36px high. It now keeps the same tenant-invite destination and People IA but
+uses the 44px minimum target baseline.
+
+Files changed:
+- `apps/web/src/app/people/page.tsx` changes the Tenants tab "Add tenant"
+  action from `min-h-9` to `min-h-11`.
+- `apps/web/tests/smoke/people-hub.spec.ts` adds a focused touch-target smoke
+  for the People Tenants tab action.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  People follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- people-hub.spec.ts -g "people tenants add action stays touch-safe")` first failed with height `36`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the People Add tenant action change.
+- `(cd apps/web && npm run test:smoke -- people-hub.spec.ts)` - 6 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (Smart Intake review filter touch target - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX scan: the shared

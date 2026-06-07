@@ -82,6 +82,17 @@ test("mobile people hub tabs stay touch-safe", async ({ page }) => {
   }
 });
 
+test("people tenants add action stays touch-safe", async ({ page }) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await mockOwners(page);
+
+  await page.goto("/people");
+
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await page.getByRole("tab", { name: "Tenants" }).click();
+  await expectTouchTarget(page.getByRole("link", { name: "Add tenant" }));
+});
+
 test("self-managed people hub hides owner-client tab and falls back from owner URLs", async ({
   page,
 }) => {

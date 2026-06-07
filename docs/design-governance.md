@@ -67,6 +67,10 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the selected-property image panel toggle now uses the 44px minimum target baseline while
   keeping the same thumbnail, reviewed-image status copy, and expand/collapse behavior.
   Remba should review the media strip spacing with the wider Properties workspace density pass.
+- **People tenant action touch target (2026-06-07, prototype mode, no Remba gate):**
+  the People hub Tenants tab "Add tenant" action now uses the 44px minimum target baseline
+  while keeping the same tenant-invite destination and People IA. Remba should review the
+  tab action density with the wider People hub pass.
 - **Settings Xero connection simplification (2026-06-07, prototype mode, no Remba gate):**
   the Settings → Xero tab now leads with a plain-language "Connect Xero" panel (per-trust
   "Connect this trust" action, organisation-matching guidance, friendlier connected copy),

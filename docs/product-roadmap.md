@@ -325,7 +325,10 @@ Equifax/illion; RTBA/state RTAs).
   Vendor records now share the same People record shell and section links, with new
   `/owners/[ownerId]` and `/contractors/[contractorId]` detail routes. 2026-06-02
   mobile follow-up lifted People hub tabs to the 44px tap-target baseline and added
-  a focused 390px smoke scoped to the People types tablist.
+  a focused 390px smoke scoped to the People types tablist. 2026-06-07 follow-up:
+  the Tenants tab "Add tenant" action now uses a 44px minimum target while preserving
+  the same tenant-invite destination and consolidated People IA; smoke coverage locks
+  the action to the 44px target baseline.
 - [~] **Navigation consolidation to 7 hubs.** SHIPPED pending Remba review: sidebar is now
   Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings).
   Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under

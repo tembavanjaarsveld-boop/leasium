@@ -208,7 +208,7 @@ function TenantsTab({ entityId }: { entityId: string }) {
       actions={
         <Link
           href="/tenants?action=invite"
-          className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-transparent bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
         >
           <Send size={14} />
           Add tenant
