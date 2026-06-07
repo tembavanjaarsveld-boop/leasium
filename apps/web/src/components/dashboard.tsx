@@ -4173,7 +4173,7 @@ export function Dashboard({
                   </div>
                   <Link
                     href="/properties"
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                   >
                     <Link2 size={15} />
                     Manage links

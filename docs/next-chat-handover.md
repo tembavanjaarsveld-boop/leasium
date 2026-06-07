@@ -2,6 +2,27 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Dashboard Manage links touch target - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: the
+Dashboard Onboarding panel "Manage links" action measured 36px high. It now
+uses the 44px target baseline while preserving the same Properties handoff and
+onboarding summary copy.
+
+Files changed:
+- `apps/web/src/components/dashboard.tsx` raises the Dashboard Onboarding
+  "Manage links" action to the 44px baseline.
+- `apps/web/tests/smoke/dashboard-command-center.spec.ts` adds focused
+  touch-target coverage for the Dashboard Onboarding handoff.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Dashboard follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- dashboard-command-center.spec.ts -g "dashboard onboarding manage links action stays touch-safe")`
+  first failed with height `36`, expected `>= 44`.
+- GREEN: the same focused smoke passed after the Dashboard link target-size
+  change.
+
 ## Codex continuation - 2026-06-07 (Notifications disclosure touch targets - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: `/notifications`

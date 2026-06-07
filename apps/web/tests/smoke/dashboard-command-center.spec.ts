@@ -361,6 +361,23 @@ test("dashboard recent activity disclosure keeps its control touch-friendly", as
   await expectTouchTarget(showFewer);
 });
 
+test("dashboard onboarding manage links action stays touch-safe", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "Daily command center" }),
+  ).toBeVisible();
+  await expectTouchTarget(page.getByRole("link", { name: "Manage links" }));
+});
+
 test("dashboard overview clears first-paint loading before detailed fan-out settles", async ({
   page,
 }) => {
