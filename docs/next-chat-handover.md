@@ -2,7 +2,54 @@
 
 Last updated: 2026-06-08
 
-## Codex continuation - 2026-06-08 (Fresh production UX follow-up sweep - latest)
+## Codex continuation - 2026-06-08 (Live audit harness refresh - latest)
+
+Continuation after the fresh production UX follow-up sweep. The next roadmap
+signal was the open live MVP performance audit item. Running the existing
+Playwright live audit against `https://leasium.ai` exposed a tooling issue
+rather than a product regression: the saved Playwright storage state was expired,
+the harness still used older default routes (`/tenants` instead of the current
+People hub, no Smart Intake or Money hub), and the signed-out Work page could be
+misclassified as `pass` because the login copy contains "Property team
+workspace".
+
+Files changed:
+- `apps/web/scripts/live-ux-audit.mjs`: defaults now match the current operator
+  hubs (`/`, `/intake`, `/properties`, `/people`, `/operations`,
+  `/billing-readiness`, `/money`, `/insights`, `/settings`); signed-out welcome
+  and operator-login states are detected before route-ready waits; expired audit
+  sessions are reported explicitly; budget classification no longer treats any
+  `/account` URL as inherently bad.
+- `apps/web/scripts/live-ux-audit.test.mjs`: adds focused Node tests for the
+  current default route list, signed-out state detection, the false-pass Work
+  login copy regression, and route override parsing.
+- `docs/product-roadmap.md` and `docs/mvp-ux-performance-review-2026-05-30.md`:
+  record that the harness is refreshed and that the remaining resource-timing
+  audit needs a renewed Playwright login session.
+
+Verification:
+- `node --test apps/web/scripts/live-ux-audit.test.mjs` - 4 passed.
+- `node apps/web/scripts/live-ux-audit.mjs --help` - passed.
+- `npm --prefix apps/web run lint -- scripts/live-ux-audit.mjs scripts/live-ux-audit.test.mjs` - passed.
+- `LEASIUM_AUDIT_URL=https://leasium.ai npm --prefix apps/web run audit:live`
+  reran with the expired storage state and completed quickly. All current routes
+  warned as `signed_out=true` with the explicit "refresh the saved audit session"
+  message; no stale 20s ready-pattern timeouts and no false passes remained.
+- Live Chrome proof using the actual signed-in Chrome profile covered Dashboard,
+  Smart Intake, Properties, People, Work, Billing Readiness, Money, Insights,
+  and Settings. All nine routes resolved signed-in, ready, and without horizontal
+  overflow in about 1.1-1.4s in the measured desktop tab. The Chrome read-only
+  runtime does not expose browser resource timing, so slow-request/resource
+  timings still require a refreshed Playwright storage session.
+
+No provider mutation, Xero write, SendGrid email, Twilio SMS, tenant email,
+payment reconciliation, provider refresh, approval, upload, download, invite
+claim, sign-in action, or external dispatch was run; production browser work was
+visual/read-only.
+
+Active local state after this handover update should be clean once committed.
+
+## Codex continuation - 2026-06-08 (Fresh production UX follow-up sweep)
 
 Follow-up from the clean pushed state after the operator-shell contrast pass:
 Chrome + Computer Use re-reviewed `https://leasium.ai` in the live Chrome

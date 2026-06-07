@@ -43,6 +43,30 @@ Priority next steps:
 6. Add a Render log drain or Sentry/OpenTelemetry before broad MVP traffic.
 7. Consider Redis or SQL aggregate tables for dashboard overview if real portfolio row counts grow beyond the current prototype scale.
 
+## Live Audit Continuation - 2026-06-08 (harness refresh)
+
+The first 2026-06-08 rerun against `https://leasium.ai` did not produce a
+trustworthy signed-in performance report because the saved Playwright storage
+state had expired. That exposed two harness issues:
+
+- default routes still reflected the older IA (`/tenants`) instead of the
+  current hub set (`/intake`, `/people`, `/money`, etc.);
+- signed-out operator pages could wait for stale route-ready copy or, for Work,
+  false-pass because the login page itself says "Property team workspace".
+
+The harness now uses the current hub routes and classifies signed-out/welcome
+states explicitly before route-ready waits. Rerunning with the expired storage
+state now completes quickly and marks every route as `signed_out=true` with a
+clear instruction to refresh the saved session.
+
+Live Chrome, using the actual signed-in operator profile, was also sampled for
+the current hubs. Dashboard, Smart Intake, Properties, People, Work, Billing
+Readiness, Money, Insights, and Settings all resolved signed-in, ready, and
+without horizontal overflow in about 1.1-1.4s in the measured desktop tab. The
+Chrome read-only runtime does not expose browser resource timings, so the
+slow-request/resource comparison still requires a fresh Playwright `--login`
+session before the repeatable audit can decide on backend/infra snappiness work.
+
 ## Live Audit Continuation - 2026-05-30 (signed-in)
 
 Ran the live harness against `https://leasium.ai` signed in as
