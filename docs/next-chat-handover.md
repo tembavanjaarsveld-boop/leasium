@@ -2,6 +2,37 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (AI Inbox guardrails target - latest)
+
+Continuation after the Operations digest preview target pass. Because Vercel
+production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the AI Inbox classification
+`Guardrails` disclosure still using a 16px rendered target. The existing AI
+Inbox smoke already classifies the mocked message and verifies the deep-link
+handoff.
+
+Files changed:
+- `apps/web/src/app/inbox/page.tsx`: classification `Guardrails` summary now
+  uses the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked AI Inbox
+  classification flow now measures that disclosure before checking the handoff.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the AI
+  Inbox guardrails density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused AI Inbox smoke failed with received height `16` for the
+  classification `Guardrails` summary.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "AI inbox classifies a pasted message and surfaces a deep-link"` - passed.
+- `npm --prefix apps/web run lint -- src/app/inbox/page.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted below.
+
+Guardrails:
+- The smoke uses mocked API data and does not change classification output,
+  maintenance draft promotion, Comms dispatch, SendGrid/Twilio, provider
+  refresh, or provider-history behaviour.
+
 ## Codex continuation - 2026-06-08 (Operations digest preview target - latest)
 
 Continuation after the Property source-history handoff target pass. Because

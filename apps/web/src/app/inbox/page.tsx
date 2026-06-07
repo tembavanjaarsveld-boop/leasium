@@ -804,7 +804,9 @@ function InboxWorkspace() {
 
               {result.guardrails.length ? (
                 <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer">Guardrails</summary>
+                  <summary className="min-h-11 cursor-pointer py-2">
+                    Guardrails
+                  </summary>
                   <ul className="mt-1.5 ml-4 list-disc space-y-0.5">
                     {result.guardrails.map((line, idx) => (
                       <li key={idx}>{line}</li>

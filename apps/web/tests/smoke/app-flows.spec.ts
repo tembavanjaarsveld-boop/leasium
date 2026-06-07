@@ -622,6 +622,10 @@ test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   await expect(
     page.getByText("Tenant reports a slow kitchen tap leak."),
   ).toBeVisible();
+  const inboxGuardrailsDisclosure = page
+    .locator("summary")
+    .filter({ hasText: "Guardrails" });
+  await expectTouchTarget(inboxGuardrailsDisclosure);
   const handoffLink = page.getByRole("link", { name: /Take it from here/ });
   await expect(handoffLink).toBeVisible();
   await expectTouchTarget(handoffLink);

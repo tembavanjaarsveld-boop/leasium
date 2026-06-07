@@ -279,6 +279,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   mocked SendGrid/Twilio checks and verifies no external provider state is
   touched. Remba should review the digest preview density with the wider Work
   notice center pass.
+- **AI Inbox guardrails disclosure target (2026-06-08, prototype mode, no Remba gate):**
+  the AI Inbox classification `Guardrails` disclosure now uses the 44px minimum
+  target baseline after classifying the mocked message. Classification output,
+  maintenance handoff, promotion flow, and Comms provider guardrails are
+  unchanged. Remba should review the disclosure density with the wider
+  Smart Intake / AI Inbox pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace
