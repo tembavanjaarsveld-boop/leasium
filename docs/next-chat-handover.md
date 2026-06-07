@@ -33,6 +33,11 @@ Verification:
 - `npm --prefix apps/web run lint -- src/app/tenants/page.tsx tests/smoke/tenants-ux.spec.ts` - passed.
 - `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
 - `npm --prefix apps/web run build` - passed.
+- Post-deploy Chrome check on `https://leasium.ai/tenants`: the old "Run
+  reminders" action disappeared after the deploy propagated, "Review reminders"
+  opened the approval panel, the panel showed the SendGrid/Twilio guardrail copy
+  plus one "Send due reminders" CTA, and scoped Cancel closed the panel. The
+  send CTA was not clicked.
 
 Guardrails:
 - No Xero/Basiq write, SendGrid email, Twilio SMS, tenant email, payment
