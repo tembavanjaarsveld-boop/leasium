@@ -1564,7 +1564,7 @@ function StatementsContent() {
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
-            label="Owners"
+            label={showOwnerDispatch ? "Owners" : "Entities"}
             value={String(owners.length)}
             detail={`${portfolioTotals.propertyCount} ${
               portfolioTotals.propertyCount === 1 ? "property" : "properties"
@@ -1626,7 +1626,11 @@ function StatementsContent() {
         ) : null}
 
         {owners.map((owner) => (
-          <OwnerCard key={owner.owner_identity} owner={owner} />
+          <OwnerCard
+            key={owner.owner_identity}
+            owner={owner}
+            showOwnerDispatch={showOwnerDispatch}
+          />
         ))}
       </div>
     </main>
@@ -2100,7 +2104,8 @@ function StatementPreviewPanel({
               </div>
             ) : (
               <p className="rounded-md border border-border bg-white p-3 text-xs text-muted-foreground">
-                No invoice evidence rows were returned for this owner.
+                No invoice evidence rows were returned for this{" "}
+                {showOwnerDispatch ? "owner" : "entity"}.
               </p>
             )}
           </section>
@@ -3205,12 +3210,20 @@ function DispatchReviewPanel({
   );
 }
 
-function OwnerCard({ owner }: { owner: OwnerStatementRecord }) {
-  const trusteeBadge = owner.trustee_name
-    ? `Trustee: ${owner.trustee_name}`
-    : owner.owner_legal_name
-      ? `Owner: ${owner.owner_legal_name}`
-      : "Unattributed";
+function OwnerCard({
+  owner,
+  showOwnerDispatch,
+}: {
+  owner: OwnerStatementRecord;
+  showOwnerDispatch: boolean;
+}) {
+  const trusteeBadge = showOwnerDispatch
+    ? owner.trustee_name
+      ? `Trustee: ${owner.trustee_name}`
+      : owner.owner_legal_name
+        ? `Owner: ${owner.owner_legal_name}`
+        : "Unattributed"
+    : `Entity: ${owner.owner_identity}`;
   const outstandingTone = owner.outstanding_cents > 0 ? "warning" : "success";
   return (
     <SectionPanel

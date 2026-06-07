@@ -165,6 +165,8 @@ test("self-managed statements keep reports local and hide owner dispatch", async
   await expect(
     page.getByText("Entity statement", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText(/^Owner:/)).toHaveCount(0);
+  await expect(page.getByText(/^Entity:/).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Copy summary" }).click();
   const summaryText = await page.evaluate(() => navigator.clipboard.readText());

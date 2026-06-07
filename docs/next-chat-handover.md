@@ -2,6 +2,34 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Entity statements local-reporting copy - latest)
+
+Follow-up from the live Chrome + Computer Use visual review: the self-managed
+`/statements` page correctly titled itself `Entity statements`, but lower
+local-reporting cards still used `Owner:` labels and the empty invoice-evidence
+copy said "this owner." The page now keeps visible local-reporting cards and
+empty evidence copy entity-framed while preserving managing-agent owner statement
+copy and dispatch guardrails.
+
+Files changed:
+- `apps/web/src/app/statements/page.tsx` switches the local-reporting summary
+  metric from Owners to Entities, passes operating-mode framing into statement
+  cards, labels self-managed cards as `Entity: ...`, and changes empty evidence
+  copy to "this entity."
+- `apps/web/tests/smoke/statements.spec.ts` adds the visible-copy regression to
+  the self-managed no-dispatch smoke.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Statements copy follow-up as Remba/accountant-pending prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- statements.spec.ts -g "self-managed statements keep reports local and hide owner dispatch")` first failed because no visible `Entity:` card label existed.
+- GREEN: the same focused smoke passed after the Statements copy change.
+- `(cd apps/web && npm run test:smoke -- statements.spec.ts)` - 6 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (People Add tenant touch target - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX scan: after the

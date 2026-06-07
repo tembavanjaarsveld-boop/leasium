@@ -71,6 +71,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the People hub Tenants tab "Add tenant" action now uses the 44px minimum target baseline
   while keeping the same tenant-invite destination and People IA. Remba should review the
   tab action density with the wider People hub pass.
+- **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
+  self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
+  metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty
+  invoice evidence copy refers to the selected entity. Managing-agent owner-statement copy
+  and dispatch guardrails are unchanged. Remba/accountant review should confirm the entity
+  terminology is plain enough for SKJ finance review.
 - **Settings Xero connection simplification (2026-06-07, prototype mode, no Remba gate):**
   the Settings → Xero tab now leads with a plain-language "Connect Xero" panel (per-trust
   "Connect this trust" action, organisation-matching guidance, friendlier connected copy),

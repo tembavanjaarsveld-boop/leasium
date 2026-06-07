@@ -344,7 +344,10 @@ Equifax/illion; RTBA/state RTAs).
   the People → Owners nav item + agent-only modules on `managing_agent`. Keep the Owner entity
   + entity-grouped statements for self-managed owners (their owning trusts live as **Entities**,
   not as People → Owners). Asked at onboarding for non-SKJ users; build the gate into the
-  current Owner/People work now rather than retrofitting. Decision + gated-nav sketch:
+  current Owner/People work now rather than retrofitting. 2026-06-07 follow-up:
+  self-managed `/statements` now keeps visible local-reporting cards/evidence copy
+  entity-framed (`Entity:` / selected entity) instead of leaking `Owner:` labels; managing-agent
+  owner-statement copy and dispatch guardrails are unchanged. Decision + gated-nav sketch:
   [`account-operating-mode-ia.md`](account-operating-mode-ia.md).
 
 **P1 — reaches the standard (AU-correct):**
