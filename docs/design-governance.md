@@ -258,6 +258,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   fetch document bytes, write Xero data, dispatch providers, refresh providers,
   or mutate provider history. Remba should review the event-row density with
   the wider People record correspondence pass.
+- **Smart Intake inspection outcome handoff target (2026-06-08, prototype mode, no Remba gate):**
+  the post-apply inspection outcome `Open Operations` handoff now uses the
+  44px minimum target baseline after creating reviewed work-order drafts from
+  the mocked inspection report. Destination and outcome copy are unchanged; the
+  existing smoke keeps the provider guardrail that no contractor email, SMS,
+  assignment notification, billing draft, Xero action, or provider history is
+  created. Remba should review the success-panel action rhythm with the wider
+  Smart Intake outcome pass.
 - **Operator shell contrast follow-up (2026-06-08, prototype mode, no Remba gate):**
   the light-mode `text-muted-foreground` alias now uses the existing slate-500
   shade so dense page descriptions remain readable on the grey workspace

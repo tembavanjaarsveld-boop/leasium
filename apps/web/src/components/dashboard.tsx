@@ -1760,7 +1760,7 @@ function DocumentIntakeApplyOutcomeCard({
               <div>
                 <Link
                   href="/operations?tab=maintenance"
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-success/20 bg-white px-3 text-sm font-medium text-success-strong transition hover:bg-success-soft"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-success/20 bg-white px-3 text-sm font-medium text-success-strong transition hover:bg-success-soft"
                 >
                   <ClipboardList size={15} />
                   Open Operations

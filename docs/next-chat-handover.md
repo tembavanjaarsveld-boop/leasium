@@ -2,6 +2,39 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Smart Intake inspection outcome target - latest)
+
+Continuation after the tenant correspondence handoff target pass. Because
+Vercel production deployments are currently rate-limited, this slice is
+local/repo-verified only. A current-state scan found the Smart Intake inspection
+post-apply `Open Operations` handoff still using a 36px target. The existing
+inspection-report smoke already renders and clicks this handoff under provider
+request guards.
+
+Files changed:
+- `apps/web/src/components/dashboard.tsx`: the inspection outcome `Open
+  Operations` handoff now uses the 44px minimum target baseline.
+- `apps/web/tests/smoke/app-flows.spec.ts`: the existing mocked inspection
+  report apply flow now measures that handoff before clicking through to Work.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the
+  Smart Intake outcome density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Smart Intake inspection smoke failed with received height
+  `36` for the `Open Operations` outcome handoff.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/app-flows.spec.ts -g "smart intake applies inspection findings into work orders"` - passed.
+- `npm --prefix apps/web run lint -- src/components/dashboard.tsx tests/smoke/app-flows.spec.ts` - passed.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+- Production proof pending under the Vercel build-rate limit noted in the
+  tenant correspondence section below.
+
+Guardrails:
+- The smoke uses mocked API data and preserves the existing forbidden-provider
+  request guard. It does not send contractor email/SMS, create assignment
+  notifications, create billing drafts, run Xero actions, or write provider
+  history.
+
 ## Codex continuation - 2026-06-08 (Tenant correspondence handoff targets - latest)
 
 Continuation after the Billing/Maintenance disclosure target pass. A

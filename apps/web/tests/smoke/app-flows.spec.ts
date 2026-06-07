@@ -3595,10 +3595,15 @@ test("smart intake applies inspection findings into work orders", async ({
   await expect(
     page.getByText("No contractor email, SMS, assignment notification"),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Open Operations" }),
-  ).toHaveAttribute("href", "/operations?tab=maintenance");
-  await page.getByRole("link", { name: "Open Operations" }).click();
+  const openOperationsLink = page.getByRole("link", {
+    name: "Open Operations",
+  });
+  await expect(openOperationsLink).toHaveAttribute(
+    "href",
+    "/operations?tab=maintenance",
+  );
+  await expectTouchTarget(openOperationsLink);
+  await openOperationsLink.click();
   await expect(page).toHaveURL(/\/operations\?tab=maintenance/);
   await expect(page.getByText("Repair leaking tap").first()).toBeVisible();
   expect(forbiddenProviderRequests).toEqual([]);
