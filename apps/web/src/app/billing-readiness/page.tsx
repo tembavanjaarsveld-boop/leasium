@@ -2679,7 +2679,7 @@ function BillingReadinessWorkspace() {
                               <div className="flex flex-wrap gap-2">
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     updateDraftMutation.mutate({
                                       draftId: draft.id,
@@ -2701,7 +2701,7 @@ function BillingReadinessWorkspace() {
                                 </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3 text-danger"
+                                  className="min-h-11 rounded-lg px-3 text-danger"
                                   onClick={() =>
                                     updateDraftMutation.mutate({
                                       draftId: draft.id,
@@ -2732,7 +2732,7 @@ function BillingReadinessWorkspace() {
                                 ) : draft.status === "approved" ? (
                                   <SecondaryButton
                                     type="button"
-                                    className="min-h-9 rounded-lg px-3"
+                                    className="min-h-11 rounded-lg px-3"
                                     onClick={() =>
                                       createInvoiceDraftMutation.mutate(
                                         draft.id,
@@ -3284,7 +3284,7 @@ function BillingReadinessWorkspace() {
                               <div className="flex flex-wrap gap-2">
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     prepareInvoiceDraftMutation.mutate(draft.id)
                                   }
@@ -3327,7 +3327,7 @@ function BillingReadinessWorkspace() {
                                 ) : null}
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     updateInvoiceDraftMutation.mutate({
                                       draftId: draft.id,
@@ -3349,7 +3349,7 @@ function BillingReadinessWorkspace() {
                                 </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3 text-danger"
+                                  className="min-h-11 rounded-lg px-3 text-danger"
                                   onClick={() =>
                                     updateInvoiceDraftMutation.mutate({
                                       draftId: draft.id,
@@ -4288,7 +4288,7 @@ function BillingReadinessWorkspace() {
                                 ) : null}
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     dispatchInvoiceProvidersMutation.mutate(
                                       draft.id,
@@ -4314,7 +4314,7 @@ function BillingReadinessWorkspace() {
                                 </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     sendInvoiceDeliveryEmailMutation.mutate(
                                       draft.id,
@@ -4337,7 +4337,7 @@ function BillingReadinessWorkspace() {
                                 </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     recordInvoiceDeliveryMutation.mutate(
                                       draft.id,
@@ -4360,7 +4360,7 @@ function BillingReadinessWorkspace() {
                                 </SecondaryButton>
                                 <SecondaryButton
                                   type="button"
-                                  className="min-h-9 rounded-lg px-3"
+                                  className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
                                     updatePaymentStatusMutation.mutate({
                                       draftId: draft.id,

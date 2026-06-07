@@ -1,7 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
+
+async function expectTouchSafe(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+}
 
 test("mobile billing readiness uses calm loading KPIs and review draft cards", async ({
   page,
@@ -82,6 +90,75 @@ test("mobile billing operations expose invoice and delivery cards without raw pl
   expect(retryBox?.height).toBeGreaterThanOrEqual(44);
 
   await expect(page.locator("body")).not.toContainText(/\.\.\.|Loading\.\.\./);
+});
+
+test("desktop billing readiness row actions stay touch-safe without firing provider actions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const mutationCalls: string[] = [];
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/billing-readiness");
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: /Review drafts/ }).click();
+  const draftTable = page
+    .locator("table")
+    .filter({ hasText: "May rent and outgoings" })
+    .first();
+  await expect(draftTable).toBeVisible();
+  await expectTouchSafe(
+    draftTable.getByRole("button", { name: "Approve" }).first(),
+  );
+  await expectTouchSafe(
+    draftTable.getByRole("button", { name: "Void" }).first(),
+  );
+
+  await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  const invoicePrepTable = page
+    .locator("table")
+    .filter({ hasText: "INV-1001" })
+    .first();
+  await expect(invoicePrepTable).toBeVisible();
+  await expectTouchSafe(
+    invoicePrepTable.getByRole("button", { name: "Prepare" }).first(),
+  );
+  await expectTouchSafe(
+    invoicePrepTable.getByRole("button", { name: "Approve" }).first(),
+  );
+
+  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  const deliveryTable = page
+    .locator("table")
+    .filter({ hasText: "INV-1002" })
+    .first();
+  await expect(deliveryTable).toBeVisible();
+  await expectTouchSafe(
+    deliveryTable.getByRole("button", { name: "Retry dispatch" }).first(),
+  );
+  await expectTouchSafe(
+    deliveryTable.getByRole("button", { name: "Email" }).first(),
+  );
+  await expectTouchSafe(
+    deliveryTable.getByRole("button", { name: "Sent" }).first(),
+  );
+  await expectTouchSafe(
+    deliveryTable.getByRole("button", { name: "Paid" }).first(),
+  );
+
+  expect(mutationCalls).toEqual([]);
 });
 
 test("self-managed billing readiness keeps statement handoff local", async ({

@@ -2,6 +2,43 @@
 
 Last updated: 2026-06-08
 
+## Codex continuation - 2026-06-08 (Billing Readiness row-action targets - latest)
+
+Continuation after the Portfolio QA row-action pass. A live Chrome review of
+`https://leasium.ai/billing-readiness` loaded the entity-backed Billing
+Readiness workspace and showed the current production entity has no billing
+draft rows to measure, while Computer Use showed the foreground Chrome window
+was unrelated so no desktop key/scroll input was sent there. Source inspection
+and mocked smoke fixtures then confirmed the populated Review drafts, Approve
+invoices, and Dispatch & reconcile table row actions still carried 36px
+`min-h-9` overrides.
+
+Files changed:
+- `apps/web/src/app/billing-readiness/page.tsx`: Review drafts approve/void and
+  invoice-draft actions, Approve invoices prepare/approve/void actions, and
+  Dispatch & reconcile dispatch/email/sent/paid row actions now use `min-h-11`
+  while keeping the compact `rounded-lg px-3` table rhythm.
+- `apps/web/tests/smoke/billing-readiness-ux.spec.ts`: adds desktop smoke
+  coverage that measures the mocked row actions across all three billing tabs
+  and asserts no non-GET API calls occur because it never clicks those actions.
+- `docs/design-governance.md` and `docs/product-roadmap.md`: record the visible
+  Billing Readiness density change as prototype-mode/Remba-pending.
+
+Verification:
+- Red test: focused Billing Readiness smoke failed with a 36px measured row action.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/billing-readiness-ux.spec.ts -g "desktop billing readiness row actions"` - passed.
+- `npm --prefix apps/web run test:smoke -- tests/smoke/billing-readiness-ux.spec.ts` - passed, 5 tests.
+- `npm --prefix apps/web run lint -- src/app/billing-readiness/page.tsx tests/smoke/billing-readiness-ux.spec.ts` - passed after clearing generated Playwright report artifacts.
+- `./node_modules/.bin/tsc --noEmit` from `apps/web` - passed.
+- `npm --prefix apps/web run build` - passed.
+
+Guardrails:
+- This is CSS class and smoke coverage only. It does not approve/void billing
+  drafts, create invoice drafts, prepare invoice PDFs, send tenant email, run
+  provider dispatch, call Xero/Basiq/SendGrid/Twilio, record manual delivery,
+  update payment status, reconcile payments, refresh providers, or mutate
+  provider history.
+
 ## Codex continuation - 2026-06-08 (Portfolio QA row-action targets - latest)
 
 Continuation after the tenant portal target passes. A source scan plus live
