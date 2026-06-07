@@ -2371,6 +2371,7 @@ type MockLeasiumApiOptions = {
   apiHealthUnavailable?: boolean;
   docusignDemoEndpoints?: boolean;
   docusignSkippedLeasePack?: boolean;
+  docusignSignedLeasePackNoEmail?: boolean;
   leaseMatchAcceptConflict?: boolean;
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
@@ -2487,15 +2488,21 @@ export async function mockLeasiumApi(
   let tenantOnboardings = initialTenantOnboardings.map((onboarding) => ({
     ...onboarding,
     status:
-      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+      (options.docusignSkippedLeasePack ||
+        options.docusignSignedLeasePackNoEmail) &&
+      onboarding.id === "onboarding-1"
         ? "applied"
         : onboarding.status,
     submitted_at:
-      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+      (options.docusignSkippedLeasePack ||
+        options.docusignSignedLeasePackNoEmail) &&
+      onboarding.id === "onboarding-1"
         ? "2026-05-21T01:00:00.000Z"
         : onboarding.submitted_at,
     applied_at:
-      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+      (options.docusignSkippedLeasePack ||
+        options.docusignSignedLeasePackNoEmail) &&
+      onboarding.id === "onboarding-1"
         ? "2026-05-21T01:10:00.000Z"
         : onboarding.applied_at,
     submitted_data:
@@ -2507,10 +2514,35 @@ export async function mockLeasiumApi(
             accepted: true,
           }
         : onboarding.submitted_data,
-    delivery_data: {
-      ...onboarding.delivery_data,
-      channels: { ...onboarding.delivery_data.channels },
-    },
+    delivery_data:
+      options.docusignSignedLeasePackNoEmail && onboarding.id === "onboarding-1"
+        ? {
+            last_attempted_at: null,
+            channels: {},
+            lease_agreement: {
+              status: "signed",
+              open_question_count: 0,
+              questions: [],
+              signed_at: "2026-05-21T02:01:00.000Z",
+              signed_by_actor: "tenant",
+              signing: {
+                provider: "docusign",
+                status: "completed",
+                envelope_id: "envelope-signed-1",
+                signed_at: "2026-05-21T02:01:00.000Z",
+              },
+              signing_provider: "docusign",
+              signing_status: "completed",
+              signing_envelope_id: "envelope-signed-1",
+              signing_document_id: null,
+              signing_sent_at: "2026-05-21T01:30:00.000Z",
+              signing_locked_reason: null,
+            },
+          }
+        : {
+            ...onboarding.delivery_data,
+            channels: { ...onboarding.delivery_data.channels },
+          },
   }));
   let operatorTenantPortalAccounts = initialOperatorTenantPortalAccounts.map(
     (account) => ({ ...account }),

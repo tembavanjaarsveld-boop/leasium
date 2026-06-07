@@ -4114,6 +4114,26 @@ test("tenant detail shows skipped DocuSign setup after lease pack send", async (
   await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
 });
 
+test("tenant detail reports signed DocuSign delivery instead of Not sent", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { docusignSignedLeasePackNoEmail: true });
+
+  await page.goto("/tenants/tenant-1");
+
+  await expect(page.getByText("Signed via DocuSign").first()).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        "Lease pack was completed through DocuSign; no email delivery was needed.",
+      )
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Delivery has not been attempted yet."),
+  ).toHaveCount(0);
+});
+
 test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
   await page.unroute("**/api/v1/**");
   await mockLeasiumApi(page, { tenantPortalLeaseReady: true });

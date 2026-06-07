@@ -44,10 +44,28 @@ function humanError(error: string | null | undefined, channel: string | undefine
     : "Check the email address, then retry.";
 }
 
+function signedLeaseAgreement(data: OnboardingDeliveryData | null | undefined) {
+  const agreement = data?.lease_agreement;
+  return agreement?.status === "signed" ? agreement : null;
+}
+
+function signedViaLabel(provider: string | null | undefined) {
+  if (provider === "docusign") {
+    return "Signed via DocuSign";
+  }
+  if (provider === "tenant_upload") {
+    return "Signed via tenant upload";
+  }
+  return "Signed";
+}
+
 export function onboardingDeliveryTone(
   data: OnboardingDeliveryData | null | undefined,
 ): Tone {
   const rows = channels(data);
+  if (!rows.length && signedLeaseAgreement(data)) {
+    return "success";
+  }
   if (rows.some((row) => row.status === "failed")) {
     return "danger";
   }
@@ -71,7 +89,8 @@ export function onboardingDeliveryLabel(
 ) {
   const rows = channels(data);
   if (!rows.length) {
-    return "Not sent";
+    const signed = signedLeaseAgreement(data);
+    return signed ? signedViaLabel(signed.signing_provider) : "Not sent";
   }
   const failed = rows.filter((row) => row.status === "failed");
   if (failed.length) {
@@ -134,6 +153,12 @@ export function onboardingDeliveryDetail(
   }
   if (rows.some((row) => row.status === "queued")) {
     return "Queued through Twilio. No profile details change until review.";
+  }
+  const signed = signedLeaseAgreement(data);
+  if (signed && !rows.length) {
+    return signed.signing_provider === "docusign"
+      ? "Lease pack was completed through DocuSign; no email delivery was needed."
+      : "Lease agreement is signed; no email delivery was needed.";
   }
   return "Delivery has not been attempted yet.";
 }
