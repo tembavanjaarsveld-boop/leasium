@@ -156,8 +156,8 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   small white numerals, active tab subtitles and compact count badges use
   fully opaque foregrounds, and measured warning/danger count labels use their
   `*-strong` text tokens. The Settings section tabs also use stronger
-  active/inactive label colours after the live contrast sweep. Layout,
-  navigation, queue counts, command shortcuts,
+  active/inactive label colours without colour/background tweening after the
+  live contrast sweep. Layout, navigation, queue counts, command shortcuts,
   and provider guardrails are unchanged. Remba should review the slightly
   firmer muted-text tone with the wider AppHeader/sidebar density pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
