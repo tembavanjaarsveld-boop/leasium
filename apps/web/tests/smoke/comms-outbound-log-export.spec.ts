@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -6,6 +6,15 @@ import { mockLeasiumApi } from "./api-mocks";
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
+
+async function expectTouchTarget(control: Locator, minSize = 44) {
+  await control.scrollIntoViewIfNeeded();
+  const box = await control.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  expect(box.width).toBeGreaterThanOrEqual(minSize);
+  expect(box.height).toBeGreaterThanOrEqual(minSize);
+}
 
 test("comms outbound log copies and downloads identical filtered CSV locally", async ({
   page,
@@ -111,6 +120,24 @@ test("comms outbound log copies and downloads identical filtered CSV locally", a
       ),
   );
   expect(Math.min(verticalGap, horizontalGap)).toBeLessThanOrEqual(12);
+
+  for (const tab of [
+    outboundLogPanel.getByRole("tab", { name: "All receipts 6" }),
+    outboundLogPanel.getByRole("tab", { name: "Needs attention 1" }),
+    outboundLogPanel.getByRole("tab", { name: "Email 5" }),
+    outboundLogPanel.getByRole("tab", { name: "SMS 1" }),
+  ]) {
+    await expectTouchTarget(tab);
+  }
+
+  const openWorkQueueLinks = outboundLogPanel.getByRole("link", {
+    name: "Open work queue",
+  });
+  const openWorkQueueCount = await openWorkQueueLinks.count();
+  expect(openWorkQueueCount).toBeGreaterThan(0);
+  for (let index = 0; index < openWorkQueueCount; index += 1) {
+    await expectTouchTarget(openWorkQueueLinks.nth(index));
+  }
 
   await outboundLogPanel
     .getByRole("tab", { name: "Needs attention 1" })

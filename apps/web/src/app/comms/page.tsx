@@ -1581,7 +1581,7 @@ function OutboundLogPanel({
                   <div>
                     <Link
                       href={targetLink.href}
-                      className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover"
+                      className="inline-flex min-h-11 items-center gap-1 rounded-md px-1 text-xs font-semibold text-primary hover:text-primary-hover"
                     >
                       <ExternalLink size={13} />
                       {targetLink.label}
@@ -1623,7 +1623,7 @@ function CommsFilterButton({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`inline-flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition ${
+      className={`inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium transition ${
         active
           ? "border-primary bg-primary text-primary-foreground shadow-leasiumXs"
           : "border-border bg-muted/20 text-muted-foreground hover:border-primary/40 hover:text-foreground"

@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Comms outbound log touch targets - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: `/comms`
+outbound-log filter tabs measured 40px high and stored receipt "Open work queue"
+links measured 32px high. The outbound-log tabs and stored-receipt target links
+now use the 44px target baseline while preserving read-only receipt filtering,
+links, and local CSV export guardrails.
+
+Files changed:
+- `apps/web/src/app/comms/page.tsx` raises shared Comms filter buttons and
+  outbound-log target links to the 44px target baseline.
+- `apps/web/tests/smoke/comms-outbound-log-export.spec.ts` adds focused
+  touch-target assertions for outbound receipt filters and "Open work queue"
+  links while preserving the local-only CSV export checks.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Comms follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- comms-outbound-log-export.spec.ts)` first failed with height `40`, expected `>= 44`.
+- GREEN: the same smoke passed after the Comms target-size change.
+- `(cd apps/web && npm run test:smoke -- comms-outbound-log-export.spec.ts comms-export-parity.spec.ts comms-keyboard.spec.ts comms-template-catalog.spec.ts comms-template-editor.spec.ts)` - 8 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+
 ## Codex continuation - 2026-06-07 (Work queue assignment touch target - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: `/operations`

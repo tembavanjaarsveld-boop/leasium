@@ -76,6 +76,10 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   controls now use the 44px minimum target baseline while preserving the same assignment
   workflow and review-first provider guardrails. Remba should review the queue row action
   density with the wider Work assignment pass.
+- **Comms outbound log touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the Comms outbound-log filter tabs and stored receipt "Open work queue" links now use the
+  44px minimum target baseline while preserving read-only receipt filtering, links, and local
+  CSV export guardrails. Remba should review the receipt-log density with the wider Comms pass.
 - **Entity statements local-reporting copy (2026-06-07, prototype mode, no Remba gate):**
   self-managed `/statements` keeps its entity-grouped local-reporting frame in the visible
   metric/card/evidence copy: local cards now say `Entity:` rather than `Owner:`, and empty
