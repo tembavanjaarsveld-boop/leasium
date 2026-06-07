@@ -486,6 +486,30 @@ test.describe("people record layout", () => {
     await expect(page.getByText("Tenant not found")).toHaveCount(0);
   });
 
+  test("tenant detail keeps the primary record visible when detail context fails", async ({
+    page,
+  }) => {
+    await page.route("**/api/v1/tenants/tenant-1/detail", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Tenant context unavailable." }),
+      });
+    });
+
+    await page.goto("/tenants/tenant-1");
+
+    await expect(
+      page.getByRole("heading", { name: "Bright Cafe Pty Ltd" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Tenant unavailable")).toHaveCount(0);
+    await expect(page.getByText("Tenant context unavailable.")).toBeVisible();
+  });
+
   test("tenant detail gives non-404 primary failures priority over mixed 404s", async ({
     page,
   }) => {

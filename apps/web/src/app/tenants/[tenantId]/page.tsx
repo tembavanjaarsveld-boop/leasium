@@ -1617,10 +1617,9 @@ function TenantDetail() {
   });
 
   const tenant = tenantQuery.data;
-  const primaryTenantErrors = [
-    tenantQuery.error,
-    tenantDetailQuery.error,
-  ].filter((error): error is NonNullable<typeof error> => Boolean(error));
+  const primaryTenantErrors = [tenantQuery.error].filter(
+    (error): error is NonNullable<typeof error> => Boolean(error),
+  );
   const tenantLoadError =
     primaryTenantErrors.find((error) => !isNotFoundError(error)) ?? null;
   const tenantNotFound =

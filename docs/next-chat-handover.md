@@ -2,6 +2,33 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Tenant detail secondary-error resilience - latest)
+
+Follow-up from the live Chrome + Computer Use deep-record UX sweep: a real
+People-hub tenant link could open `Tenant unavailable` / `Failed to fetch`
+because the tenant page treated the secondary `tenant-detail` context read as
+a page-level blocker. The tenant record now only uses the primary tenant read
+for full-page unavailable/not-found states; failed richer context reads render
+through the existing inline error area so the profile remains usable.
+
+Files changed:
+- `apps/web/src/app/tenants/[tenantId]/page.tsx` narrows the page-level
+  `tenantLoadError`/`tenantNotFound` gate to the primary tenant query.
+- `apps/web/tests/smoke/people-record-layout.spec.ts` adds a partial-failure
+  smoke where `/tenants/{id}` succeeds but `/tenants/{id}/detail` returns 503.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  tenant detail error-state follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npx playwright test tests/smoke/people-record-layout.spec.ts -g "primary record visible")`
+  first failed because `Bright Cafe Pty Ltd` never rendered.
+- GREEN: the same focused smoke passed after the page-level error gate change.
+- `(cd apps/web && npx playwright test tests/smoke/people-record-layout.spec.ts)` - 13 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+
 ## Codex continuation - 2026-06-07 (People record/drawer close targets - latest)
 
 Follow-up from the live Chrome + Computer Use deep-record UX sweep: tenant

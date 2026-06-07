@@ -91,6 +91,12 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   preserving record navigation, drawer behavior, evidence review, and provider guardrails.
   Remba should review the slightly larger breadcrumb/close rhythm with the wider People record
   page pass.
+- **Tenant detail secondary-error resilience (2026-06-07, prototype mode, no Remba gate):**
+  tenant record pages now keep the primary tenant profile visible when the richer tenant-detail
+  context read fails, surfacing the secondary error inline instead of replacing the whole page
+  with `Tenant unavailable`. Primary tenant 404/non-404 failures still use the record-level
+  unavailable/not-found states. Remba should review the inline error copy with the wider People
+  record error-state pass.
 - **Work queue assignment touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Operations queue collapsed "Assign owner" action and its immediate expanded assignee
   controls now use the 44px minimum target baseline while preserving the same assignment
