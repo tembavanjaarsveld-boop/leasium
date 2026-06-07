@@ -97,6 +97,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   with `Tenant unavailable`. Primary tenant 404/non-404 failures still use the record-level
   unavailable/not-found states. Remba should review the inline error copy with the wider People
   record error-state pass.
+- **Tenant detail secondary-error labels (2026-06-07, prototype mode, no Remba gate):**
+  tenant record pages now label non-blocking secondary request failures by panel, for example
+  `Tenant context`, `Documents`, `Correspondence`, or `Source history`, instead of showing an
+  unlabeled `Failed to fetch` line at the bottom of the page. The primary record stays usable
+  and true primary tenant failures still use the record-level unavailable/not-found states.
+  Remba should review the compact partial-failure summary with the wider People record
+  error-state pass.
 - **Work queue assignment touch targets (2026-06-07, prototype mode, no Remba gate):**
   the Operations queue collapsed "Assign owner" action and its immediate expanded assignee
   controls now use the 44px minimum target baseline while preserving the same assignment

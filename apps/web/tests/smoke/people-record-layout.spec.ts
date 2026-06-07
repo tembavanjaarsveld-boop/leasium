@@ -507,7 +507,9 @@ test.describe("people record layout", () => {
       page.getByRole("heading", { name: "Bright Cafe Pty Ltd" }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Tenant unavailable")).toHaveCount(0);
-    await expect(page.getByText("Tenant context unavailable.")).toBeVisible();
+    await expect(
+      page.getByText("Tenant context: Tenant context unavailable."),
+    ).toBeVisible();
   });
 
   test("tenant detail gives non-404 primary failures priority over mixed 404s", async ({

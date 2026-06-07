@@ -2,6 +2,37 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Tenant detail secondary-error labels - latest)
+
+Follow-up from the live Chrome + Computer Use deep-record UX sweep: after
+tenant pages were changed to keep the primary record visible, a real imported
+tenant still surfaced a bottom-of-page `Failed to fetch` with no panel context.
+That shared error line covered several secondary reads, so the operator could
+not tell whether the failure belonged to tenant context, documents,
+correspondence, source history, portal access, leases, or onboarding.
+
+Files changed:
+- `apps/web/src/app/tenants/[tenantId]/page.tsx` now renders a compact
+  source-labeled secondary error summary while leaving primary tenant 404 and
+  non-404 failures on the record-level unavailable/not-found paths.
+- `apps/web/tests/smoke/people-record-layout.spec.ts` tightens the partial
+  tenant-detail failure smoke to require the `Tenant context:` label.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  tenant detail error-label follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npx playwright test tests/smoke/people-record-layout.spec.ts -g "primary record visible")`
+  first failed because the partial-failure summary was unlabeled.
+- GREEN: the same focused smoke passed after the labeled secondary-error
+  summary landed.
+- `(cd apps/web && npx playwright test tests/smoke/people-record-layout.spec.ts)` - 13 passed.
+- `(cd apps/web && npm run lint)` - passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` - passed.
+- `(cd apps/web && npm run build)` - passed.
+- `git diff --check` - passed.
+- Production deploy and live Chrome re-check still need to run for this latest
+  slice.
+
 ## Codex continuation - 2026-06-07 (Tenant detail secondary-error resilience - latest)
 
 Follow-up from the live Chrome + Computer Use deep-record UX sweep: a real

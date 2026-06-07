@@ -1651,6 +1651,16 @@ function TenantDetail() {
     enabled: Boolean(tenant?.entity_id),
   });
 
+  const tenantSecondaryErrors = [
+    { label: "Tenant context", error: tenantDetailQuery.error },
+    { label: "Portal access", error: portalAccountsQuery.error },
+    { label: "Linked leases", error: leasesQuery.error },
+    { label: "Onboarding workflow", error: onboardingQuery.error },
+    { label: "Documents", error: documentsQuery.error },
+    { label: "Correspondence", error: correspondenceQuery.error },
+    { label: "Source history", error: documentIntakesQuery.error },
+  ].filter((item) => Boolean(item.error));
+
   const intakeByDocumentId = useMemo(
     () =>
       new Map(
@@ -4509,26 +4519,23 @@ function TenantDetail() {
           </div>
         </section>
 
-        {tenantQuery.error ||
-        tenantDetailQuery.error ||
-        portalAccountsQuery.error ||
-        leasesQuery.error ||
-        onboardingQuery.error ||
-        documentsQuery.error ||
-        correspondenceQuery.error ||
-        documentIntakesQuery.error ? (
-          <p className="text-sm text-danger">
-            {friendlyError(
-              tenantQuery.error ??
-                tenantDetailQuery.error ??
-                portalAccountsQuery.error ??
-                leasesQuery.error ??
-                onboardingQuery.error ??
-                documentsQuery.error ??
-                correspondenceQuery.error ??
-                documentIntakesQuery.error,
-            )}
-          </p>
+        {tenantSecondaryErrors.length ? (
+          <div
+            className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+            role="status"
+          >
+            <p className="font-semibold">
+              Some tenant detail panels could not refresh.
+            </p>
+            <ul className="mt-2 grid gap-1">
+              {tenantSecondaryErrors.map((item) => (
+                <li key={item.label}>
+                  <span className="font-medium">{item.label}:</span>{" "}
+                  {friendlyError(item.error)}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         </PeopleRecordLayout>
       </div>
