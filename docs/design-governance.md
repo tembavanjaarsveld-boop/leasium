@@ -55,8 +55,9 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   open), optional certificate expiry, Link evidence / Cancel. Linking calls only the new
   `POST /compliance/checks/{id}/evidence` route — it never completes the check and makes no
   provider call; completion stays the separate reviewed action. Verified by eslint + tsc +
-  compliance smokes (4/4) + operations smokes (11/11) + production build. Follow-up: direct
-  file upload from the form.
+  compliance smokes (4/4) + operations smokes (11/11) + production build. Same-day follow-up
+  shipped: an optional "Upload a new file" input in the same form (file takes precedence,
+  button becomes "Upload & link evidence"; local storage write only), compliance smokes 5/5.
 - **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
   `/insights` keeps the five-card KPI band always visible and replaces the former single
   long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing

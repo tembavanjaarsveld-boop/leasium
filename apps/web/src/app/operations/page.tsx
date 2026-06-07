@@ -90,6 +90,7 @@ import {
   updateArrearsCase,
   updateMaintenanceWorkOrder,
   updateObligation,
+  uploadDocument,
   type WorkAssignmentDigestCadence,
   type WorkAssignmentDigestRunRecord,
   type WorkAssignmentRenderedMessagePreviewRecord,
@@ -2383,6 +2384,7 @@ function OperationsWorkspace() {
     checkId: string;
     documentId: string;
     certificateExpiresOn: string;
+    file: File | null;
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -2586,16 +2588,38 @@ function OperationsWorkspace() {
   });
 
   const linkComplianceEvidenceMutation = useMutation({
-    mutationFn: (input: {
+    mutationFn: async (input: {
       check: ComplianceCheckRecord;
       documentId: string;
       certificateExpiresOn: string;
-    }) =>
-      linkComplianceCheckEvidence(input.check.id, {
-        source_document_id: input.documentId,
+      file: File | null;
+    }) => {
+      // A freshly chosen file takes precedence over the stored-document
+      // picker. The upload is a local storage write (no provider call)
+      // and linking never completes the check.
+      let documentId = input.documentId;
+      if (input.file) {
+        const uploaded = await uploadDocument({
+          entityId: selectedEntityId,
+          propertyId: input.check.property_id ?? undefined,
+          tenantId: input.check.tenant_id ?? undefined,
+          leaseId: input.check.lease_id ?? undefined,
+          category:
+            input.check.kind === "insurance" ||
+            input.check.kind === "bank_guarantee"
+              ? input.check.kind
+              : "other",
+          notes: "Compliance evidence upload from the Work tab.",
+          file: input.file,
+        });
+        documentId = uploaded.id;
+      }
+      return linkComplianceCheckEvidence(input.check.id, {
+        source_document_id: documentId,
         certificate_expires_on: input.certificateExpiresOn || null,
         notes: "Linked from the Work compliance tab.",
-      }),
+      });
+    },
     onSuccess: (linkedCheck, input) => {
       queryClient.setQueryData<ComplianceCheckRecord[]>(
         ["operations-compliance-checks", selectedEntityId],
@@ -4360,6 +4384,7 @@ function OperationsWorkspace() {
                                               checkId: check.id,
                                               documentId: "",
                                               certificateExpiresOn: "",
+                                              file: null,
                                             },
                                       )
                                     }
@@ -4384,9 +4409,10 @@ function OperationsWorkspace() {
                               {evidenceLinkForm?.checkId === check.id ? (
                                 <div className="grid gap-2 rounded-xl border border-border bg-muted/30 p-3">
                                   <p className="text-xs text-muted-foreground">
-                                    Link an already-stored document as reviewed
-                                    evidence. This does not complete the check
-                                    and makes no provider call.
+                                    Link an already-stored document, or upload
+                                    a new file, as reviewed evidence. This does
+                                    not complete the check and makes no
+                                    provider call.
                                   </p>
                                   <Field label="Evidence document">
                                     <Select
@@ -4419,6 +4445,23 @@ function OperationsWorkspace() {
                                       ))}
                                     </Select>
                                   </Field>
+                                  <Field label="Upload a new file (optional)">
+                                    <Input
+                                      type="file"
+                                      onChange={(event) =>
+                                        setEvidenceLinkForm((current) =>
+                                          current
+                                            ? {
+                                                ...current,
+                                                file:
+                                                  event.target.files?.[0] ??
+                                                  null,
+                                              }
+                                            : current,
+                                        )
+                                      }
+                                    />
+                                  </Field>
                                   <Field label="Certificate expiry (optional)">
                                     <Input
                                       type="date"
@@ -4443,7 +4486,8 @@ function OperationsWorkspace() {
                                       type="button"
                                       className="min-h-11 w-full px-3 sm:w-auto"
                                       disabled={
-                                        !evidenceLinkForm.documentId ||
+                                        (!evidenceLinkForm.documentId &&
+                                          !evidenceLinkForm.file) ||
                                         linkComplianceEvidenceMutation.isPending
                                       }
                                       onClick={() =>
@@ -4453,6 +4497,7 @@ function OperationsWorkspace() {
                                             evidenceLinkForm.documentId,
                                           certificateExpiresOn:
                                             evidenceLinkForm.certificateExpiresOn,
+                                          file: evidenceLinkForm.file,
                                         })
                                       }
                                     >
@@ -4464,7 +4509,9 @@ function OperationsWorkspace() {
                                       ) : (
                                         <Link2 size={15} />
                                       )}
-                                      Link evidence
+                                      {evidenceLinkForm.file
+                                        ? "Upload & link evidence"
+                                        : "Link evidence"}
                                     </Button>
                                     <SecondaryButton
                                       type="button"
