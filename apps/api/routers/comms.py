@@ -1548,22 +1548,22 @@ def _compliance_candidates(
         subject = ""
         body = ""
         detail: str | None = None
-        if not summary_only:
-            if obligation.lease_id is not None:
-                lease = session.get(Lease, obligation.lease_id)
-                if lease is not None and lease.deleted_at is None:
-                    t = session.get(Tenant, lease.tenant_id)
-                    if t is not None and t.deleted_at is None:
-                        tenant = t
-            if obligation.property_id is not None:
-                prop = session.get(Property, obligation.property_id)
-                if prop is not None and prop.deleted_at is None:
-                    property_name = prop.name
-            if obligation.tenancy_unit_id is not None:
-                unit = session.get(TenancyUnit, obligation.tenancy_unit_id)
-                if unit is not None and unit.deleted_at is None:
-                    unit_label = unit.unit_label
+        if obligation.lease_id is not None:
+            lease = session.get(Lease, obligation.lease_id)
+            if lease is not None and lease.deleted_at is None:
+                t = session.get(Tenant, lease.tenant_id)
+                if t is not None and t.deleted_at is None:
+                    tenant = t
+        if obligation.property_id is not None:
+            prop = session.get(Property, obligation.property_id)
+            if prop is not None and prop.deleted_at is None:
+                property_name = prop.name
+        if obligation.tenancy_unit_id is not None:
+            unit = session.get(TenancyUnit, obligation.tenancy_unit_id)
+            if unit is not None and unit.deleted_at is None:
+                unit_label = unit.unit_label
 
+        if not summary_only:
             location_parts = [part for part in (property_name, unit_label) if part]
             location = " ".join(location_parts) if location_parts else "your tenancy"
             tenant_name = _tenant_display_name(tenant) if tenant is not None else None
@@ -1621,7 +1621,133 @@ def _compliance_candidates(
                 generated_at=now,
             )
         )
-    return candidates
+    return _consolidate_compliance_candidates(candidates)
+
+
+def _compliance_candidate_title(candidate: CommsCandidate) -> str:
+    if ": " in candidate.subject:
+        return candidate.subject.split(": ", 1)[1]
+    return candidate.subject or "Compliance item"
+
+
+def _consolidate_compliance_candidates(
+    candidates: list[CommsCandidate],
+) -> list[CommsCandidate]:
+    grouped: dict[str, list[CommsCandidate]] = {}
+    passthrough: list[CommsCandidate] = []
+    for candidate in candidates:
+        recipient_key = _normalised_text(candidate.recipient_email)
+        if recipient_key is None:
+            passthrough.append(candidate)
+            continue
+        grouped.setdefault(recipient_key, []).append(candidate)
+
+    severity_rank = {"info": 0, "warning": 1, "danger": 2}
+    consolidated: list[CommsCandidate] = []
+    for group in grouped.values():
+        if len(group) == 1:
+            consolidated.append(group[0])
+            continue
+        primary = group[0]
+        worst = max(group, key=lambda item: severity_rank[item.severity])
+        due_dates = [item.due_at for item in group if item.due_at is not None]
+        earliest_due = min(due_dates) if due_dates else None
+        greeting = primary.body.split("\n\n", 1)[0] if primary.body else "Hello,"
+        item_lines = []
+        for item in group:
+            location = " ".join(
+                part for part in (item.property_name, item.unit_label) if part
+            )
+            location_label = location or "your tenancy"
+            due_label = item.due_at.strftime("%d %b %Y") if item.due_at else "date TBC"
+            item_lines.append(
+                f"- {location_label}: {_compliance_candidate_title(item)} "
+                f"due {due_label}."
+            )
+        detail_due = (
+            f"earliest due {earliest_due.strftime('%d %b %Y')}"
+            if earliest_due is not None
+            else "due date TBC"
+        )
+        consolidated.append(
+            primary.model_copy(
+                update={
+                    "related_target_ids": [item.target_id for item in group],
+                    "property_name": (
+                        f"{len(group)} compliance items"
+                        if primary.property_name
+                        else None
+                    ),
+                    "unit_label": None,
+                    "subject": f"{len(group)} compliance items due",
+                    "body": (
+                        f"{greeting}\n\n"
+                        "We have multiple compliance items for your tenancies:\n"
+                        f"{chr(10).join(item_lines)}\n\n"
+                        "Please send through any documentation that demonstrates "
+                        "these are in place. If anything has already been "
+                        "completed, reply with the evidence and we will close it "
+                        "out.\n\n"
+                        "Thanks,\nThe property team"
+                    ),
+                    "severity": worst.severity,
+                    "due_at": earliest_due,
+                    "detail": f"{len(group)} items, {detail_due}",
+                }
+            )
+        )
+    return passthrough + consolidated
+
+
+def _compliance_obligation_recipient_key(
+    obligation: Obligation, session: Session
+) -> str | None:
+    if obligation.lease_id is None:
+        return None
+    lease = session.get(Lease, obligation.lease_id)
+    if lease is None or lease.deleted_at is not None:
+        return None
+    tenant = session.get(Tenant, lease.tenant_id)
+    if tenant is None or tenant.deleted_at is not None:
+        return None
+    return _normalised_text(tenant.contact_email or tenant.billing_email)
+
+
+def _related_compliance_obligations(
+    primary: Obligation,
+    related_target_ids: list[UUID],
+    session: Session,
+) -> list[Obligation]:
+    if not related_target_ids:
+        return [primary]
+
+    primary_recipient = _compliance_obligation_recipient_key(primary, session)
+    obligation_ids = list(dict.fromkeys([primary.id, *related_target_ids]))
+    obligations: list[Obligation] = []
+    for obligation_id in obligation_ids:
+        obligation = session.get(Obligation, obligation_id)
+        if obligation is None or obligation.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Grouped compliance obligation not found.",
+            )
+        if obligation.entity_id != primary.entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Grouped compliance obligation is outside this entity.",
+            )
+        if obligation.category not in COMPLIANCE_CATEGORIES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Grouped compliance target is not a compliance obligation.",
+            )
+        if _compliance_obligation_recipient_key(obligation, session) != primary_recipient:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Grouped compliance obligations must share one recipient.",
+            )
+        obligations.append(obligation)
+    return obligations
 
 
 def _inbound_email_candidates(
@@ -2697,17 +2823,24 @@ def dispatch_comms_draft(
         tool_name = f"sendgrid.{email_result.provider}"
         summary = f"comms draft email {email_result.status}"
 
-    if result_status not in {"failed", "skipped"}:
-        _update_source_after_dispatch(
-            source,
-            payload.kind,
-            channel=channel,
-            status=result_status,
-            provider=result_provider,
-            recipient=result_recipient,
-            provider_message_id=result_provider_message_id,
-            error=result_error,
+    dispatch_sources = [source]
+    if isinstance(source, Obligation) and payload.kind == "compliance_obligation":
+        dispatch_sources = _related_compliance_obligations(
+            source, payload.related_target_ids, session
         )
+
+    if result_status not in {"failed", "skipped"}:
+        for dispatch_source in dispatch_sources:
+            _update_source_after_dispatch(
+                dispatch_source,
+                payload.kind,
+                channel=channel,
+                status=result_status,
+                provider=result_provider,
+                recipient=result_recipient,
+                provider_message_id=result_provider_message_id,
+                error=result_error,
+            )
 
     audit_log(
         session,
@@ -2881,60 +3014,67 @@ def dismiss_comms_candidate(
         date.today() + timedelta(days=DEFAULT_DISMISS_DAYS)
     )
     candidate_id = f"{payload.kind}:{payload.target_kind}:{payload.target_id}"
-    if isinstance(source, InboundMessage):
-        source.archived_at = utcnow()
-    elif isinstance(source, ArrearsCase):
-        source.reminder_paused_until = deferred_until
-    elif isinstance(source, Tenant):
-        metadata = dict(source.tenant_metadata or {})
-        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
-        dismiss[payload.kind] = {
-            "dismissed_at": utcnow().isoformat(),
-            "deferred_until": deferred_until.isoformat(),
-            "reason": payload.reason,
-        }
-        metadata[DISMISS_METADATA_KEY] = dismiss
-        source.tenant_metadata = metadata
-    elif isinstance(source, Lease):
-        metadata = dict(source.lease_metadata or {})
-        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
-        dismiss[payload.kind] = {
-            "dismissed_at": utcnow().isoformat(),
-            "deferred_until": deferred_until.isoformat(),
-            "reason": payload.reason,
-        }
-        metadata[DISMISS_METADATA_KEY] = dismiss
-        source.lease_metadata = metadata
-    elif isinstance(source, Obligation):
-        metadata = dict(source.obligation_metadata or {})
-        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
-        dismiss[payload.kind] = {
-            "dismissed_at": utcnow().isoformat(),
-            "deferred_until": deferred_until.isoformat(),
-            "reason": payload.reason,
-        }
-        metadata[DISMISS_METADATA_KEY] = dismiss
-        source.obligation_metadata = metadata
-    elif isinstance(source, TenantOnboarding):
-        delivery_data = dict(source.delivery_data or {})
-        dismiss = dict(delivery_data.get(DISMISS_METADATA_KEY) or {})
-        dismiss[payload.kind] = {
-            "dismissed_at": utcnow().isoformat(),
-            "deferred_until": deferred_until.isoformat(),
-            "reason": payload.reason,
-        }
-        delivery_data[DISMISS_METADATA_KEY] = dismiss
-        source.delivery_data = delivery_data
-    elif isinstance(source, MaintenanceWorkOrder):
-        metadata = dict(source.work_order_metadata or {})
-        dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
-        dismiss[payload.kind] = {
-            "dismissed_at": utcnow().isoformat(),
-            "deferred_until": deferred_until.isoformat(),
-            "reason": payload.reason,
-        }
-        metadata[DISMISS_METADATA_KEY] = dismiss
-        source.work_order_metadata = metadata
+    dismiss_sources = [source]
+    if isinstance(source, Obligation) and payload.kind == "compliance_obligation":
+        dismiss_sources = _related_compliance_obligations(
+            source, payload.related_target_ids, session
+        )
+
+    for dismiss_source in dismiss_sources:
+        if isinstance(dismiss_source, InboundMessage):
+            dismiss_source.archived_at = utcnow()
+        elif isinstance(dismiss_source, ArrearsCase):
+            dismiss_source.reminder_paused_until = deferred_until
+        elif isinstance(dismiss_source, Tenant):
+            metadata = dict(dismiss_source.tenant_metadata or {})
+            dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+            dismiss[payload.kind] = {
+                "dismissed_at": utcnow().isoformat(),
+                "deferred_until": deferred_until.isoformat(),
+                "reason": payload.reason,
+            }
+            metadata[DISMISS_METADATA_KEY] = dismiss
+            dismiss_source.tenant_metadata = metadata
+        elif isinstance(dismiss_source, Lease):
+            metadata = dict(dismiss_source.lease_metadata or {})
+            dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+            dismiss[payload.kind] = {
+                "dismissed_at": utcnow().isoformat(),
+                "deferred_until": deferred_until.isoformat(),
+                "reason": payload.reason,
+            }
+            metadata[DISMISS_METADATA_KEY] = dismiss
+            dismiss_source.lease_metadata = metadata
+        elif isinstance(dismiss_source, Obligation):
+            metadata = dict(dismiss_source.obligation_metadata or {})
+            dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+            dismiss[payload.kind] = {
+                "dismissed_at": utcnow().isoformat(),
+                "deferred_until": deferred_until.isoformat(),
+                "reason": payload.reason,
+            }
+            metadata[DISMISS_METADATA_KEY] = dismiss
+            dismiss_source.obligation_metadata = metadata
+        elif isinstance(dismiss_source, TenantOnboarding):
+            delivery_data = dict(dismiss_source.delivery_data or {})
+            dismiss = dict(delivery_data.get(DISMISS_METADATA_KEY) or {})
+            dismiss[payload.kind] = {
+                "dismissed_at": utcnow().isoformat(),
+                "deferred_until": deferred_until.isoformat(),
+                "reason": payload.reason,
+            }
+            delivery_data[DISMISS_METADATA_KEY] = dismiss
+            dismiss_source.delivery_data = delivery_data
+        elif isinstance(dismiss_source, MaintenanceWorkOrder):
+            metadata = dict(dismiss_source.work_order_metadata or {})
+            dismiss = dict(metadata.get(DISMISS_METADATA_KEY) or {})
+            dismiss[payload.kind] = {
+                "dismissed_at": utcnow().isoformat(),
+                "deferred_until": deferred_until.isoformat(),
+                "reason": payload.reason,
+            }
+            metadata[DISMISS_METADATA_KEY] = dismiss
+            dismiss_source.work_order_metadata = metadata
 
     audit_tool_input = {
         "candidate_id": candidate_id,

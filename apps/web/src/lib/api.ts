@@ -5388,6 +5388,7 @@ export type CommsCandidateRecord = {
   tenant_name: string | null;
   property_name: string | null;
   unit_label: string | null;
+  related_target_ids?: string[];
   recipient_email: string | null;
   recipient_phone: string | null;
   subject: string;
@@ -5408,6 +5409,7 @@ export type CommsDispatchPayload = {
   kind: CommsKind;
   target_kind: string;
   target_id: string;
+  related_target_ids?: string[];
   subject: string;
   body: string;
   recipient_email?: string | null;
@@ -5432,6 +5434,7 @@ export type CommsDismissPayload = {
   kind: CommsKind;
   target_kind: string;
   target_id: string;
+  related_target_ids?: string[];
   until?: string | null;
   reason?: string | null;
 };

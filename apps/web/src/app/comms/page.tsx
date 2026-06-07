@@ -1670,6 +1670,7 @@ function CandidateCard({
         kind: candidate.kind,
         target_kind: candidate.target_kind,
         target_id: candidate.target_id,
+        related_target_ids: candidate.related_target_ids ?? [],
         subject: isSms ? candidate.subject : subject,
         body,
         recipient_email: isSms ? null : recipientEmail || null,
@@ -1687,6 +1688,7 @@ function CandidateCard({
         kind: candidate.kind,
         target_kind: candidate.target_kind,
         target_id: candidate.target_id,
+        related_target_ids: candidate.related_target_ids ?? [],
       }),
     onSuccess: (result) => {
       setDismissedUntil(result.deferred_until);

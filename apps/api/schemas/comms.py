@@ -51,6 +51,7 @@ class CommsCandidate(BaseModel):
     tenant_name: str | None = None
     property_name: str | None = None
     unit_label: str | None = None
+    related_target_ids: list[UUID] = Field(default_factory=list)
     recipient_email: str | None = None
     recipient_phone: str | None = None
     subject: str
@@ -161,6 +162,7 @@ class CommsDispatchCreate(BaseModel):
     kind: CommsKind
     target_kind: str
     target_id: UUID
+    related_target_ids: list[UUID] = Field(default_factory=list, max_length=25)
     subject: str
     body: str
     recipient_email: str | None = None
@@ -195,6 +197,7 @@ class CommsDismissCreate(BaseModel):
     kind: CommsKind
     target_kind: str
     target_id: UUID
+    related_target_ids: list[UUID] = Field(default_factory=list, max_length=25)
     until: date | None = None
     reason: str | None = None
 

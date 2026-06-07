@@ -74,6 +74,13 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   activation-review candidates remain visible. No provider send or external mutation runs.
   Remba should review whether the settled/signed lifecycle state needs an explicit quiet receipt
   in the Comms queue or whether absence is the clearest operator experience.
+- **Comms compliance reminder consolidation (2026-06-07, prototype mode, no Remba gate):**
+  `/comms` now collapses same-recipient compliance obligation reminders into one review draft,
+  carrying all included obligation IDs through dispatch/dismiss so one approved email or deferral
+  settles every source row. The body lists each property/unit/item; the card still opens the
+  Compliance Work tab and remains review-first. No automatic SendGrid/Twilio/provider action
+  runs. Remba should review whether the grouped copy is clear enough for AP inbox recipients
+  and whether the source handoff needs an expanded "N included items" drilldown.
 - **Insights tabbed layout (2026-06-03, prototype mode, no Remba gate):**
   `/insights` keeps the five-card KPI band always visible and replaces the former single
   long scroll (~12 stacked panels) with four tabs: **Overview** (live exceptions + billing

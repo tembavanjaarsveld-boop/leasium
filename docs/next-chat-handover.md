@@ -2,7 +2,47 @@
 
 Last updated: 2026-06-07
 
-## Codex continuation — 2026-06-07 (Comms signed-agreement lifecycle settle — latest)
+## Codex continuation — 2026-06-07 (Comms compliance reminder consolidation — latest)
+
+Follow-up from the live Comms queue review: near-duplicate compliance reminders
+to the same AP inbox now collapse into one review draft. The grouped candidate
+keeps a primary obligation target for the existing Compliance Work handoff, adds
+`related_target_ids` for every included obligation, lists each property/unit/item
+inside the draft body, and carries the related IDs through dispatch/dismiss so
+one approved email or one deferral stamps every grouped source row. No automatic
+email/SMS/provider action runs; dispatch remains the explicit operator-approved
+SendGrid path.
+
+Files changed:
+- `apps/api/schemas/comms.py` adds optional `related_target_ids` to candidates
+  and dispatch/dismiss payloads.
+- `apps/api/routers/comms.py` consolidates same-recipient compliance candidates
+  and validates grouped related obligations share the same entity, compliance
+  category, and recipient before stamping dispatch/dismiss metadata.
+- `apps/web/src/lib/api.ts` and `apps/web/src/app/comms/page.tsx` pass grouped
+  related IDs from the card actions.
+- `tests/integration/test_comms_api.py` covers grouped queue rendering, grouped
+  dispatch stamping every source obligation, and grouped dismiss stamping every
+  source obligation.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Comms queue behavior as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: grouped queue test first failed with 2 separate compliance candidates.
+- RED: grouped dispatch test failed when only the primary obligation was stamped.
+- RED: counts parity test failed at `total 5 != 4` until summary-only compliance scans grouped by recipient too.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -k "consolidates_compliance_obligations_for_same_recipient or dispatch_grouped_compliance_obligation or dismiss_grouped_compliance_obligation" -q` — 3 passed.
+- `.venv/bin/ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py` — passed.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -k "compliance_obligation" -q` — 6 passed.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py::test_comms_queue_counts_match_full_queue_grouping -q` — passed.
+- `OPENAI_API_KEY= .venv/bin/python -m pytest tests/integration/test_comms_api.py -q` — 54 passed.
+- `(cd apps/web && ./node_modules/.bin/tsc --noEmit)` — passed.
+- `(cd apps/web && npm run lint -- --max-warnings=0 src/app/comms/page.tsx src/lib/api.ts)` — passed.
+- `(cd apps/web && npm run lint)` — passed.
+- `(cd apps/web && npm run build)` — passed.
+- `git diff --check` — passed.
+
+## Codex continuation — 2026-06-07 (Comms signed-agreement lifecycle settle)
 
 Follow-up from the live Comms review: the stale "DocuSign setup needed"
 tenant lifecycle draft for the signed test lease is now blocked at the queue

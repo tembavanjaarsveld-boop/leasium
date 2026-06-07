@@ -1929,6 +1929,13 @@ def test_comms_queue_counts_match_full_queue_grouping(
         },
         contact_email="parity-declined@example.com",
     )
+    _seed_grouped_compliance_obligations(
+        session,
+        recipient_email="parity-compliance@example.test",
+        tenant_legal_name="Parity Compliance Tenant Pty Ltd",
+        property_prefix="Parity Compliance House",
+        titles=["Parity compliance item 1", "Parity compliance item 2"],
+    )
     entity_id = arrears["entity_id"]
 
     # The counts cache is keyed per entity and the seed helpers reuse one shared
@@ -3004,6 +3011,103 @@ def test_comms_queue_returns_compliance_obligation_candidate(
     assert candidate["recipient_email"] == "jess@compliance.example"
 
 
+def _seed_grouped_compliance_obligations(
+    session: Session,
+    *,
+    recipient_email: str,
+    tenant_legal_name: str,
+    titles: list[str],
+    contact_name: str | None = None,
+    property_prefix: str = "Grouped Compliance House",
+) -> tuple[Entity, list[Obligation]]:
+    entity = _entity(session)
+    tenant = Tenant(
+        entity_id=entity.id,
+        legal_name=tenant_legal_name,
+        contact_name=contact_name,
+        contact_email=recipient_email,
+    )
+    session.add(tenant)
+    session.flush()
+    obligations: list[Obligation] = []
+    for index, title in enumerate(titles, start=1):
+        prop = Property(
+            entity_id=entity.id,
+            name=f"{property_prefix} {index}",
+            street_address=f"{index} Group Street",
+            property_type=PropertyType.commercial_retail,
+        )
+        session.add(prop)
+        session.flush()
+        unit = TenancyUnit(property_id=prop.id, unit_label=f"Suite {index}")
+        session.add(unit)
+        session.flush()
+        lease = Lease(
+            tenancy_unit_id=unit.id,
+            tenant_id=tenant.id,
+            status=LeaseStatus.active,
+        )
+        session.add(lease)
+        session.flush()
+        obligation = Obligation(
+            entity_id=entity.id,
+            property_id=prop.id,
+            tenancy_unit_id=unit.id,
+            lease_id=lease.id,
+            title=title,
+            category=ObligationCategory.compliance,
+            status=ObligationStatus.due_soon,
+            due_date=date.today() + timedelta(days=10 + index),
+        )
+        obligations.append(obligation)
+        session.add(obligation)
+    session.commit()
+    return entity, obligations
+
+
+def test_comms_queue_consolidates_compliance_obligations_for_same_recipient(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Same-recipient compliance reminders collapse into one review draft."""
+
+    entity, obligations = _seed_grouped_compliance_obligations(
+        session,
+        recipient_email="ap@autogeneral.example",
+        tenant_legal_name="Auto General Services Pty Ltd",
+        contact_name="Accounts Payable",
+        property_prefix="Auto General Site",
+        titles=["Annual fire safety certificate", "Public liability insurance"],
+    )
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+
+    assert response.status_code == 200
+    compliance = [
+        c
+        for c in response.json()["candidates"]
+        if c["kind"] == "compliance_obligation"
+    ]
+    assert len(compliance) == 1
+    candidate = compliance[0]
+    assert candidate["target_kind"] == "obligation"
+    assert candidate["target_id"] == str(obligations[0].id)
+    assert candidate["related_target_ids"] == [
+        str(obligations[0].id),
+        str(obligations[1].id),
+    ]
+    assert candidate["recipient_email"] == "ap@autogeneral.example"
+    assert "2 compliance items due" in candidate["subject"]
+    assert "Annual fire safety certificate" in candidate["body"]
+    assert "Public liability insurance" in candidate["body"]
+    assert "Auto General Site 1 Suite 1" in candidate["body"]
+    assert "Auto General Site 2 Suite 2" in candidate["body"]
+    assert "2 items" in (candidate["detail"] or "")
+
+
 def test_compliance_evidence_upload_links_document_to_obligation(
     client: TestClient,
     session: Session,
@@ -3178,6 +3282,83 @@ def test_comms_dispatch_compliance_obligation_stamps_metadata(
     ] == []
 
 
+def test_comms_dispatch_grouped_compliance_obligation_stamps_each_source(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Sending a consolidated compliance draft settles every source row."""
+
+    entity, obligations = _seed_grouped_compliance_obligations(
+        session,
+        recipient_email="grouped-dispatch@example.test",
+        tenant_legal_name="Grouped Dispatch Tenant Pty Ltd",
+        property_prefix="Grouped Dispatch House",
+        titles=[
+            "Grouped dispatch compliance item 1",
+            "Grouped dispatch compliance item 2",
+        ],
+    )
+
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    candidate = next(
+        c
+        for c in queue.json()["candidates"]
+        if c["kind"] == "compliance_obligation"
+        and c["recipient_email"] == "grouped-dispatch@example.test"
+    )
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send_email(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="sg-grouped-compliance-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send_email)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "compliance_obligation",
+            "target_kind": "obligation",
+            "target_id": candidate["target_id"],
+            "related_target_ids": candidate["related_target_ids"],
+            "subject": candidate["subject"],
+            "body": candidate["body"],
+            "recipient_email": candidate["recipient_email"],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider_message_id"] == "sg-grouped-compliance-1"
+    for obligation in obligations:
+        session.refresh(obligation)
+        comms_stamp = obligation.obligation_metadata[comms_router.DISMISS_METADATA_KEY][
+            "compliance_obligation"
+        ]
+        assert comms_stamp["dispatched_at"]
+        assert date.fromisoformat(comms_stamp["next_eligible_on"]) > date.today()
+    refreshed_queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert refreshed_queue.status_code == 200
+    assert [
+        item
+        for item in refreshed_queue.json()["candidates"]
+        if item["kind"] == "compliance_obligation"
+        and item["recipient_email"] == "grouped-dispatch@example.test"
+    ] == []
+
+
 def test_comms_dismiss_compliance_obligation_stamps_metadata(
     client: TestClient,
     session: Session,
@@ -3250,6 +3431,64 @@ def test_comms_dismiss_compliance_obligation_stamps_metadata(
         candidate
         for candidate in queue.json()["candidates"]
         if candidate["kind"] == "compliance_obligation"
+    ] == []
+
+
+def test_comms_dismiss_grouped_compliance_obligation_stamps_each_source(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Dismissing a consolidated compliance draft settles every source row."""
+
+    entity, obligations = _seed_grouped_compliance_obligations(
+        session,
+        recipient_email="grouped-compliance@example.test",
+        tenant_legal_name="Grouped Compliance Tenant Pty Ltd",
+        titles=["Grouped compliance item 1", "Grouped compliance item 2"],
+    )
+
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    candidate = next(
+        c
+        for c in queue.json()["candidates"]
+        if c["kind"] == "compliance_obligation"
+        and c["recipient_email"] == "grouped-compliance@example.test"
+    )
+
+    response = client.post(
+        "/api/v1/comms/dismiss",
+        json={
+            "kind": "compliance_obligation",
+            "target_kind": "obligation",
+            "target_id": candidate["target_id"],
+            "related_target_ids": candidate["related_target_ids"],
+            "reason": "tenant will send one evidence pack",
+        },
+    )
+
+    assert response.status_code == 201
+    from apps.api.routers import comms as comms_router
+
+    for obligation in obligations:
+        session.refresh(obligation)
+        comms_stamp = obligation.obligation_metadata[comms_router.DISMISS_METADATA_KEY][
+            "compliance_obligation"
+        ]
+        assert comms_stamp["reason"] == "tenant will send one evidence pack"
+        assert comms_stamp["deferred_until"] == response.json()["deferred_until"]
+    refreshed_queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert refreshed_queue.status_code == 200
+    assert [
+        item
+        for item in refreshed_queue.json()["candidates"]
+        if item["kind"] == "compliance_obligation"
     ] == []
 
 
