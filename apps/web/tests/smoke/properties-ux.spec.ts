@@ -259,6 +259,38 @@ test("properties table row edit actions stay touch safe", async ({ page }) => {
   );
 });
 
+test("properties inline table editors and owner chips stay touch safe", async ({
+  page,
+}) => {
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+
+  const queenStreetRow = page.getByRole("row", {
+    name: /Queen Street Retail Centre/,
+  });
+  await expectTouchTarget(
+    queenStreetRow.getByRole("button", {
+      name: "Edit Property name for Queen Street Retail Centre",
+    }),
+  );
+  await expectTouchTarget(
+    queenStreetRow.getByRole("button", {
+      name: "Edit Street address for Queen Street Retail Centre",
+    }),
+  );
+  const ownerChip = queenStreetRow.getByRole("button", {
+    name: "Filter by ownership tag Queen Street Property Trust",
+  });
+  await expectTouchTarget(ownerChip);
+  await ownerChip.click();
+  await expectTouchTarget(
+    page.getByRole("button", { name: "Clear ownership tag filter" }),
+  );
+});
+
 test("properties image panel toggle stays touch safe", async ({ page }) => {
   await page.goto("/properties");
 

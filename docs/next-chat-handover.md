@@ -2,6 +2,32 @@
 
 Last updated: 2026-06-07
 
+## Codex continuation - 2026-06-07 (Properties inline editor touch targets - latest)
+
+Follow-up from the live Chrome + Computer Use cross-route UX sweep: desktop
+`/properties` table inline property-name and street-address editors measured
+28px high, and ownership tag filter chips measured 22px high. These row controls
+now use the 44px target baseline while preserving row selection, inline editing,
+ownership filtering, and the filtered-state clear action.
+
+Files changed:
+- `apps/web/src/components/inline-edit-cell.tsx` adds an opt-in `touchSafe`
+  mode that raises the read-only editor, active input/select, and save/cancel
+  controls to the 44px target baseline without changing existing call sites.
+- `apps/web/src/components/property-workspace.tsx` opts the desktop Properties
+  table name/street editors into the 44px baseline, raises owner filter chips,
+  and raises the clear-filter action.
+- `apps/web/tests/smoke/properties-ux.spec.ts` adds a focused smoke for the row
+  inline editors, owner chip, and clear-filter control.
+- `docs/product-roadmap.md` and `docs/design-governance.md` record the visible
+  Properties follow-up as Remba-pending/prototype-mode UX.
+
+Verification so far:
+- RED: `(cd apps/web && npm run test:smoke -- properties-ux.spec.ts)` first
+  failed with height `28`, expected `>= 44`.
+- GREEN: `(cd apps/web && npm run test:smoke -- properties-ux.spec.ts)` - 16
+  passed after the Properties target-size change.
+
 ## Codex continuation - 2026-06-07 (Notifications preview touch targets - latest)
 
 Follow-up from the live Chrome + Computer Use cross-route UX sweep: hidden

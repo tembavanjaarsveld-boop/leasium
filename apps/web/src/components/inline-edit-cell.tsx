@@ -17,6 +17,7 @@ type InlineEditCellProps = {
   ariaLabel: string;
   disabled?: boolean;
   className?: string;
+  touchSafe?: boolean;
   /**
    * Optional formatter so the read-only display can render differently
    * from the input value (e.g. truncate, prepend a tel: prefix).
@@ -61,6 +62,7 @@ export function InlineEditCell({
   ariaLabel,
   disabled = false,
   className,
+  touchSafe = false,
   formatDisplay,
   options,
   onSave,
@@ -142,7 +144,8 @@ export function InlineEditCell({
     return (
       <span
         className={cn(
-          "inline-flex min-h-7 items-center text-sm text-muted-foreground",
+          "inline-flex items-center text-sm text-muted-foreground",
+          touchSafe ? "min-h-11" : "min-h-7",
           className,
         )}
       >
@@ -158,7 +161,8 @@ export function InlineEditCell({
         onClick={() => setEditing(true)}
         aria-label={`Edit ${ariaLabel}`}
         className={cn(
-          "group inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-sm transition hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none",
+          "group inline-flex max-w-full items-center gap-1.5 rounded-md text-left text-sm transition hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none",
+          touchSafe ? "min-h-11 px-2 py-2" : "min-h-7 px-1.5 py-0.5",
           isEmpty && "text-muted-foreground italic",
           className,
         )}
@@ -205,7 +209,10 @@ export function InlineEditCell({
             }}
             disabled={pending}
             aria-label={ariaLabel}
-            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className={cn(
+              "flex-1 rounded-md border border-border bg-white text-sm outline-none focus-visible:border-primary",
+              touchSafe ? "min-h-11 px-3 py-2" : "min-h-7 px-2 py-1",
+            )}
           >
             {options!.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -239,7 +246,10 @@ export function InlineEditCell({
             }}
             disabled={pending}
             aria-label={ariaLabel}
-            className="min-h-7 flex-1 rounded-md border border-border bg-white px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className={cn(
+              "flex-1 rounded-md border border-border bg-white text-sm outline-none focus-visible:border-primary",
+              touchSafe ? "min-h-11 px-3 py-2" : "min-h-7 px-2 py-1",
+            )}
           />
         )}
         {pending ? (
@@ -251,7 +261,10 @@ export function InlineEditCell({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => void commit()}
               aria-label={`Save ${ariaLabel}`}
-              className="grid h-6 w-6 place-items-center rounded-md text-primary transition hover:bg-primary/10"
+              className={cn(
+                "grid place-items-center rounded-md text-primary transition hover:bg-primary/10",
+                touchSafe ? "h-11 w-11" : "h-6 w-6",
+              )}
             >
               <Check size={13} />
             </button>
@@ -260,7 +273,10 @@ export function InlineEditCell({
               onMouseDown={(event) => event.preventDefault()}
               onClick={cancel}
               aria-label={`Cancel ${ariaLabel}`}
-              className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition hover:bg-muted"
+              className={cn(
+                "grid place-items-center rounded-md text-muted-foreground transition hover:bg-muted",
+                touchSafe ? "h-11 w-11" : "h-6 w-6",
+              )}
             >
               <X size={13} />
             </button>

@@ -5174,7 +5174,7 @@ function Workspace({
                   </div>
                   <SecondaryButton
                     type="button"
-                    className="h-8 px-2.5"
+                    className="min-h-11 px-3"
                     onClick={clearOwnerTagFilter}
                     aria-label="Clear ownership tag filter"
                   >
@@ -5593,6 +5593,7 @@ function Workspace({
                                       ariaLabel={`Property name for ${property.name}`}
                                       placeholder="Add property name"
                                       className="font-medium"
+                                      touchSafe
                                       onSave={(next) =>
                                         savePropertyField(
                                           property.id,
@@ -5651,6 +5652,7 @@ function Workspace({
                                     value={property.street_address}
                                     ariaLabel={`Street address for ${property.name}`}
                                     placeholder="Add street address"
+                                    touchSafe
                                     formatDisplay={(value) =>
                                       value
                                         ? `${value}, ${property.suburb} ${property.state}`
@@ -5692,7 +5694,7 @@ function Workspace({
                                           type="button"
                                           title={badge.title ?? badge.label}
                                           aria-label={`Filter by ownership tag ${badge.label}`}
-                                          className={`${chipClassName} cursor-pointer text-left transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
+                                          className={`${chipClassName} min-h-11 px-3 py-2 cursor-pointer text-left transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
                                           onClick={(event) => {
                                             event.stopPropagation();
                                             applyOwnerTagFilter(tagKey);

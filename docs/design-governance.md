@@ -67,6 +67,11 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   the selected-property image panel toggle now uses the 44px minimum target baseline while
   keeping the same thumbnail, reviewed-image status copy, and expand/collapse behavior.
   Remba should review the media strip spacing with the wider Properties workspace density pass.
+- **Properties inline editor/owner-chip touch targets (2026-06-07, prototype mode, no Remba gate):**
+  the desktop Properties table inline property-name/street editors, ownership tag filter
+  chips, and the filtered-state clear action now use the 44px minimum target baseline while
+  preserving row selection, inline editing, and ownership filtering behavior. Remba should
+  review the taller row-control rhythm with the wider Properties workspace density pass.
 - **People tenant action touch target (2026-06-07, prototype mode, no Remba gate):**
   the People hub Tenants tab "Add tenant" action now uses the 44px minimum target baseline
   while keeping the same tenant-invite destination and People IA. Remba should review the
