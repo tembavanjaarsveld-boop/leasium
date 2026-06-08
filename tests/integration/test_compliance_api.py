@@ -1,6 +1,6 @@
 """Compliance check API integration tests."""
 
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -586,6 +586,138 @@ def test_complete_compliance_check_fires_no_provider_call(
     assert response.status_code == 200
     assert response.json()["source_document_id"] == str(evidence.id)
     assert response.json()["next_due_date"] == "2027-07-01"
+
+
+def _create_compliance_check(
+    client: TestClient,
+    entity_id: str,
+    scope: dict[str, str],
+    *,
+    certificate_expires_on: str | None,
+) -> dict:
+    payload = {
+        "entity_id": entity_id,
+        "property_id": scope["property_id"],
+        "title": "Certificate of classification renewal",
+        "kind": "certificate",
+        "recurrence_interval": 1,
+        "recurrence_unit": "years",
+        "next_due_date": "2030-01-01",
+        "owner_role": "ops",
+    }
+    if certificate_expires_on is not None:
+        payload["certificate_expires_on"] = certificate_expires_on
+    response = client.post("/api/v1/compliance/checks", json=payload)
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_certificate_expiry_projection_due_soon(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A certificate expiring inside the 30-day window projects due_soon."""
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+    expires = date.today() + timedelta(days=10)
+    body = _create_compliance_check(
+        client, entity_id, scope, certificate_expires_on=expires.isoformat()
+    )
+
+    assert body["certificate_expiry_status"] == "due_soon"
+    assert body["days_until_certificate_expiry"] == 10
+
+    # Projection is present on the list endpoint too.
+    listed = client.get(f"/api/v1/compliance/checks?entity_id={entity_id}").json()
+    assert listed[0]["certificate_expiry_status"] == "due_soon"
+    assert listed[0]["days_until_certificate_expiry"] == 10
+
+
+def test_certificate_expiry_projection_expired(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A past certificate expiry projects expired with negative days remaining."""
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+    expires = date.today() - timedelta(days=5)
+    body = _create_compliance_check(
+        client, entity_id, scope, certificate_expires_on=expires.isoformat()
+    )
+
+    assert body["certificate_expiry_status"] == "expired"
+    assert body["days_until_certificate_expiry"] == -5
+
+
+def test_certificate_expiry_projection_ok_and_none(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Far-future certificates project ok; absent certificates project none."""
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+
+    far = date.today() + timedelta(days=200)
+    ok_body = _create_compliance_check(
+        client, entity_id, scope, certificate_expires_on=far.isoformat()
+    )
+    assert ok_body["certificate_expiry_status"] == "ok"
+    assert ok_body["days_until_certificate_expiry"] == 200
+
+    none_body = _create_compliance_check(
+        client, entity_id, scope, certificate_expires_on=None
+    )
+    assert none_body["certificate_expiry_status"] == "none"
+    assert none_body["days_until_certificate_expiry"] is None
+
+
+def test_certificate_expiry_projection_is_read_only(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Reading the list/check projects expiry without mutating or calling a provider.
+
+    Asserts at the httpx boundary (same guard pattern as the completion test):
+    a read must not reach SendGrid/Twilio/Xero, and must not change the stored
+    certificate_expires_on / next_due_date.
+    """
+    import httpx
+
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+    expires = date.today() + timedelta(days=10)
+    body = _create_compliance_check(
+        client, entity_id, scope, certificate_expires_on=expires.isoformat()
+    )
+    check_id = body["id"]
+
+    original_request = httpx.Client.request
+
+    def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        target = str(url)
+        if target.startswith(("http://", "https://")) and "testserver" not in target:
+            raise AssertionError(
+                f"Compliance read attempted an outbound HTTP call to {target}."
+            )
+        return original_request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "request", _guarded_request)
+
+    read = client.get(f"/api/v1/compliance/checks/{check_id}")
+    assert read.status_code == 200
+    assert read.json()["certificate_expiry_status"] == "due_soon"
+    listed = client.get(f"/api/v1/compliance/checks?entity_id={entity_id}")
+    assert listed.status_code == 200
+
+    # No mutation: the stored row is unchanged after the read-only projection.
+    from stewart.core.models import ComplianceCheck
+
+    stored = session.get(ComplianceCheck, UUID(check_id))
+    assert stored is not None
+    assert stored.certificate_expires_on == expires
+    assert stored.next_due_date == date(2030, 1, 1)
+    assert stored.last_checked_at is None
 
 
 def test_compliance_check_requires_entity_access(

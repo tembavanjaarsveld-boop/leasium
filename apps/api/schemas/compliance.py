@@ -1,10 +1,10 @@
 """Schemas for recurring compliance checks."""
 
-from datetime import date, datetime
-from typing import Any
+from datetime import date, datetime, timedelta
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, computed_field
 from stewart.core.models import (
     ComplianceCheckKind,
     ComplianceCheckStatus,
@@ -13,6 +13,13 @@ from stewart.core.models import (
 )
 
 from apps.api.schemas.common import ApiModel
+
+# Days-before-expiry that count as "due soon". Mirrors the obligation due-soon
+# window in apps/api/routers/compliance.py::_obligation_status so the read-only
+# certificate projection stays consistent with the rest of the compliance code.
+CERTIFICATE_DUE_SOON_DAYS = 30
+
+CertificateExpiryStatus = Literal["expired", "due_soon", "ok", "none"]
 
 
 class ComplianceCheckCreate(BaseModel):
@@ -111,3 +118,34 @@ class ComplianceCheckRead(ApiModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def days_until_certificate_expiry(self) -> int | None:
+        """Whole days from today until the certificate expires.
+
+        Read-only projection. Negative when the certificate has already
+        expired; ``None`` when no certificate expiry is recorded. Uses the same
+        ``date.today()`` clock as the compliance router's obligation status.
+        """
+        if self.certificate_expires_on is None:
+            return None
+        return (self.certificate_expires_on - date.today()).days
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def certificate_expiry_status(self) -> CertificateExpiryStatus:
+        """Bucket the certificate against the due-soon window.
+
+        Pure projection over ``certificate_expires_on`` — no DB write, no
+        mutation, no provider call. ``due_soon`` matches the obligation
+        ``_obligation_status`` 30-day window for consistency.
+        """
+        if self.certificate_expires_on is None:
+            return "none"
+        today = date.today()
+        if self.certificate_expires_on < today:
+            return "expired"
+        if self.certificate_expires_on <= today + timedelta(days=CERTIFICATE_DUE_SOON_DAYS):
+            return "due_soon"
+        return "ok"
