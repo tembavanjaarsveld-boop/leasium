@@ -11,6 +11,7 @@ const clerkAppearancePath = path.join(
   "src/lib/clerk-appearance.ts",
 );
 const rootLayoutPath = path.join(process.cwd(), "src/app/layout.tsx");
+const uiComponentsPath = path.join(process.cwd(), "src/components/ui.tsx");
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -189,6 +190,8 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
     { path: "/properties", heading: "Acme Holdings Pty Ltd" },
     { path: "/people?tab=tenants", heading: "People" },
     { path: "/operations", heading: "Operations" },
+    { path: "/notifications", heading: "Notifications" },
+    { path: "/settings", heading: "Settings" },
   ];
 
   for (const viewport of [
@@ -227,6 +230,54 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
       expect(colors.toolbarBackground).not.toBe("rgb(255, 255, 255)");
     }
   }
+});
+
+test("neutral chip soft tone keeps readable text in dark", async ({
+  page,
+}) => {
+  // Read the canonical neutral soft class string straight from chipClass()
+  // so this test tracks the source instead of a copy that can drift.
+  const uiSource = await readFile(uiComponentsPath, "utf8");
+  const neutralSoftMatch = uiSource.match(
+    /neutral:\s*\{[\s\S]*?soft:\s*"([^"]+)"/,
+  );
+  expect(neutralSoftMatch).not.toBeNull();
+  const neutralSoftClasses = neutralSoftMatch![1];
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.appearance", "dark");
+  });
+  await page.goto("/");
+  await expectAppearance(page, "dark", "dark");
+
+  const probeChip = (classes: string) =>
+    page.evaluate((chipClasses) => {
+      const probe = document.createElement("span");
+      probe.className = `inline-flex items-center rounded-full ${chipClasses}`;
+      probe.textContent = "Neutral";
+      document.body.appendChild(probe);
+      const style = getComputedStyle(probe);
+      const colors = {
+        background: style.backgroundColor,
+        color: style.color,
+      };
+      probe.remove();
+      return colors;
+    }, classes);
+
+  // .bg-muted overrides to dark Slate 100 (#182133) in dark; the chip text
+  // must resolve to the dark Slate 500 token (#aab5c8). The light #475467
+  // reads at roughly 2.2:1 on that fill and fails AA.
+  const chipColors = await probeChip(neutralSoftClasses);
+  expect(chipColors.background).toBe("rgb(24, 33, 51)");
+  expect(chipColors.color).toBe("rgb(170, 181, 200)");
+
+  // Inline neutral-chip copies (evidence drawer, settings, billing
+  // readiness) still pin the static light slate-500 utility; the scoped
+  // .bg-muted.text-leasium-slate-500 dark override must catch them too.
+  const legacyChipColors = await probeChip("bg-muted text-leasium-slate-500");
+  expect(legacyChipColors.background).toBe("rgb(24, 33, 51)");
+  expect(legacyChipColors.color).toBe("rgb(170, 181, 200)");
 });
 
 test("Clerk auth screens pin light appearance tokens", async () => {

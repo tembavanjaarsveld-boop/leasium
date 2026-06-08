@@ -309,7 +309,10 @@ export function chipClass(
 
   const toneStyles: Record<StatusTone, { soft: string; bordered: string }> = {
     neutral: {
-      soft: "bg-muted text-leasium-slate-500",
+      // text-muted-foreground (not the static text-leasium-slate-500 hex):
+      // identical #475467 in light, and it picks up the dark override in
+      // globals.css so the chip text stays AA on the dark muted fill.
+      soft: "bg-muted text-muted-foreground",
       bordered: "border border-border bg-muted text-muted-foreground",
     },
     success: {

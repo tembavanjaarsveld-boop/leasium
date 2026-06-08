@@ -33,18 +33,19 @@ export type DashboardMetricTrend = {
 
 /**
  * SVG `stroke` props can't take Tailwind classes, so sparkline colours
- * are pinned to the Codex SoT hex values. Keep these in sync with
- * §3 (Brand palette / Neutral palette / Semantic colours) and
- * tailwind.config.ts. If you find yourself duplicating this map in
- * another SVG-based chart, lift it into a shared module.
+ * read the Codex SoT CSS variables directly — the canonical reference
+ * for non-Tailwind contexts per SoT §3. Using the vars (not the light
+ * hexes) means the dark-mode token remap in globals.css applies
+ * automatically. If you find yourself duplicating this map in another
+ * SVG-based chart, lift it into a shared module.
  */
 const SPARKLINE_STROKE = {
   // Codex slate.300 — neutral / no-change.
-  neutral: "#98A2B3",
+  neutral: "var(--leasium-slate-300)",
   // Codex success.
-  positive: "#12B76A",
+  positive: "var(--leasium-success)",
   // Codex danger.
-  negative: "#F04438",
+  negative: "var(--leasium-danger)",
 } as const;
 
 function MetricSparkline({

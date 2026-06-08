@@ -279,6 +279,23 @@ Info:                #84CAFF
 Info Soft:           #102A43
 ```
 
+Dark-mode mapping notes:
+
+- `-strong` text tokens (`text-success-strong`, `text-warning-strong`,
+  `text-danger-strong`) map to the base state colour in dark. The
+  `-strong` shades are darkened for light soft fills; on the dark soft
+  fills the base state colour is the readable one.
+- Neutral chip text resolves to dark Slate 500 (`#AAB5C8`) on the dark
+  muted fill (Slate 100, `#182133`). The light value (`#475467`) reads
+  at roughly 2.2:1 on that fill and fails AA — never pin it on a
+  dark-reachable surface.
+- Owner-tag chips (§3) are a known limitation in dark: the palette is
+  pre-balanced for light backgrounds only and currently renders
+  unthemed. Acceptable while dark mode is operator-internal; a dark
+  owner-tag ramp needs its own balancing pass.
+- Map tiles stay light in dark mode: light tiles in a contained rounded
+  frame for v1, rather than a custom dark tile set.
+
 ### Colour rules
 
 - Blue is the primary action and brand colour.

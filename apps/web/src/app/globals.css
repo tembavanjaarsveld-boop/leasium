@@ -206,12 +206,35 @@
   background-color: var(--leasium-danger-soft) !important;
 }
 
+/* Ask Leasium (dashboard) and the AI Inbox hero share one light hero
+   gradient: from-primary-soft/40 via-white to-accent-soft/25. All three
+   stops are static light hexes, so remap the whole gradient to the dark
+   soft tokens here instead of overriding three Tailwind stop variables. */
+:root[data-theme="dark"] .bg-gradient-to-br.via-white {
+  background-image: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--leasium-blue-soft) 40%, transparent),
+    var(--leasium-surface),
+    color-mix(in srgb, var(--leasium-teal-soft) 25%, transparent)
+  ) !important;
+}
+
 :root[data-theme="dark"] .text-foreground,
 :root[data-theme="dark"] .text-slate {
   color: var(--leasium-navy-800) !important;
 }
 
 :root[data-theme="dark"] .text-muted-foreground {
+  color: var(--leasium-slate-500) !important;
+}
+
+/* Inline neutral-chip copies (evidence drawer, settings, billing
+   readiness) still pair .bg-muted with the static light slate-500
+   utility instead of chipClass()'s text-muted-foreground. Scoped to the
+   bg-muted pairing so light-pinned public pages (welcome, account,
+   not-found) that use bare .text-leasium-slate-500 on light canvases
+   stay untouched. */
+:root[data-theme="dark"] .bg-muted.text-leasium-slate-500 {
   color: var(--leasium-slate-500) !important;
 }
 

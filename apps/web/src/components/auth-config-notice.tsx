@@ -54,7 +54,7 @@ export function ClerkSessionUnavailableNotice({
   return (
     <div
       className={cn(
-        "grid gap-3 rounded-xl border border-warning/40 bg-warning-soft p-5 text-sm text-leasium-navy-800 shadow-leasiumXs",
+        "grid gap-3 rounded-xl border border-warning/40 bg-warning-soft p-5 text-sm text-foreground shadow-leasiumXs",
         className,
       )}
     >
@@ -64,7 +64,7 @@ export function ClerkSessionUnavailableNotice({
           <h2 className="text-base font-semibold">
             Leasium login is still being configured.
           </h2>
-          <p className="leading-6 text-leasium-slate-600">
+          <p className="leading-6 text-slate">
             Sign-in could not finish because the live auth domain is not aligned
             with the Leasium domain yet.
           </p>
