@@ -2,7 +2,27 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 7: 2 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 8: 2 slices - latest)
+
+Two more on `main`, verified (backend **579 passed, 1 skipped**; ruff/eslint/tsc +
+operations smoke + production build green). Review-first; no send, no money
+movement, no migration.
+
+- **Arrears promise-to-pay frontend.** /operations?tab=arrears per-case detail
+  gains a "Promise to pay" panel: operator records amount (optional) / promised
+  date (optional) / notes (required) via `POST /arrears/cases/{id}/promise-to-pay`;
+  recorded promises render newest-first. Logs an operator note only — no payment,
+  charge, reconciliation, or tenant contact.
+- **Owner distribution operator-marked disbursed status (backend).** `POST
+  /owners/distributions/{id}/mark-disbursed` (requires approve=true) transitions a
+  reviewed row to `status=disbursed` with disbursed_by/at + audit, stored in
+  `distribution_metadata` (no migration — `status` is a free Text column). Records
+  that the operator paid the owner OUT OF BAND — no money movement, no bank/rail/
+  Xero call. History read now projects disbursed_by_user_id/disbursed_at/
+  disbursed_note. (Known follow-up the agent flagged: the review endpoint doesn't
+  yet block re-reviewing an already-disbursed row — left out of scope.)
+
+## Cowork continuation - 2026-06-08 (agent push wave 7: 2 slices)
 
 Two more on `main`, verified (backend **572 passed, 1 skipped**; ruff/eslint/tsc +
 maintenance smoke + production build green). Review-first; no send, no money

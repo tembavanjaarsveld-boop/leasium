@@ -8,6 +8,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 8 (2 slices):** Arrears promise-to-pay frontend
+  (operator logs amount/date/notes on a case, no payment/contact); owner
+  distribution operator-marked disbursed status (backend, records out-of-band
+  payment, no money movement/provider). No migration.
 - [x] **2026-06-08 agent push wave 7 (2 slices):** Maintenance completion-review
   frontend (operator records owner/tenant review on completed work orders, no
   notification); arrears operator-recorded promise-to-pay note (backend,
