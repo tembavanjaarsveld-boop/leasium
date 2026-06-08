@@ -63,6 +63,11 @@ class ComplianceCheckUpdate(BaseModel):
 
 
 class ComplianceCheckComplete(BaseModel):
+    # Review-first guardrail: completion is operator-approved by design. The
+    # caller must affirm the approval so a completion (which marks the current
+    # obligation done and rolls the check forward) cannot fire as a silent
+    # side-effect of any write-role request.
+    operator_approved: bool = False
     source_document_id: UUID | None = None
     completed_at: datetime | None = None
     next_due_date: date | None = None

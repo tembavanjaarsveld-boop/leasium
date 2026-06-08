@@ -2564,6 +2564,7 @@ function OperationsWorkspace() {
   const completeComplianceCheckMutation = useMutation({
     mutationFn: (check: ComplianceCheckRecord) =>
       completeComplianceCheck(check.id, {
+        operator_approved: true,
         source_document_id: check.source_document_id,
         completed_at: new Date().toISOString(),
         metadata: {

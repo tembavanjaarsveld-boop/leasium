@@ -314,6 +314,11 @@ def _append_completion_history(
         if payload.source_document_id
         else None,
         "actor": user.actor,
+        # Review-first audit fact: completion was an explicit operator
+        # approval, not an automatic/system roll-forward.
+        "operator_approved": True,
+        "approved_by": user.actor,
+        "approved_at": completed_at.isoformat(),
     }
     history.append(entry)
     metadata["completion_history"] = history
@@ -522,6 +527,14 @@ def complete_compliance_check(
     session: Annotated[Session, Depends(get_session)],
 ) -> ComplianceCheck:
     check = _check_for_user(check_id, user, session, WRITE_ROLES)
+    if not payload.operator_approved:
+        # Review-first guardrail (CLAUDE.md §2.1): completing a check marks the
+        # current obligation done and rolls the check forward. It only fires on
+        # an explicit operator approval, never as a silent write side-effect.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Compliance completion requires operator approval.",
+        )
     completed_at = payload.completed_at or utcnow()
     signature = _completion_signature(payload, completed_at)
     if _dict(check.check_metadata).get("last_completion_signature") == signature:
@@ -576,7 +589,7 @@ def complete_compliance_check(
         action="complete",
         target_table="compliance_check",
         target_id=check.id,
-        tool_output_summary=f"Completed compliance check {check.title}.",
+        tool_output_summary=f"Operator-approved completion of compliance check {check.title}.",
     )
     session.commit()
     session.refresh(check)

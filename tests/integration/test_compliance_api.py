@@ -234,6 +234,7 @@ def test_complete_compliance_check_links_evidence_and_rolls_forward(
     session.commit()
 
     complete_payload = {
+        "operator_approved": True,
         "source_document_id": str(evidence.id),
         "completed_at": "2026-07-02T00:00:00Z",
         "certificate_expires_on": "2027-07-01",
@@ -253,6 +254,10 @@ def test_complete_compliance_check_links_evidence_and_rolls_forward(
     assert body["current_obligation_id"] != completed_obligation_id
     assert body["metadata"]["completion_history"][-1]["source_document_id"] == str(evidence.id)
     assert body["metadata"]["completion_history"][-1]["reviewed_by"] == "ops@example.test"
+    last_completion = body["metadata"]["completion_history"][-1]
+    assert last_completion["operator_approved"] is True
+    assert last_completion["approved_by"] == f"user:{get_settings().dev_user_email}"
+    assert last_completion["approved_at"].startswith("2026-07-02T00:00:00")
 
     completed_obligation = session.get(Obligation, UUID(completed_obligation_id))
     assert completed_obligation is not None
@@ -330,6 +335,7 @@ def test_complete_compliance_check_rejects_cross_entity_evidence_without_mutatio
     response = client.post(
         f"/api/v1/compliance/checks/{check['id']}/complete",
         json={
+            "operator_approved": True,
             "source_document_id": str(other_document.id),
             "completed_at": "2026-07-02T00:00:00Z",
         },
@@ -460,6 +466,126 @@ def test_link_compliance_check_evidence_rejects_cross_entity_document(
     refreshed = client.get(f"/api/v1/compliance/checks/{check['id']}").json()
     assert refreshed["source_document_id"] is None
     assert "evidence_link_history" not in refreshed["metadata"]
+
+
+def test_complete_compliance_check_requires_operator_approval(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Review-first guardrail: completion only fires on explicit approval."""
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+    create_response = client.post(
+        "/api/v1/compliance/checks",
+        json={
+            "entity_id": entity_id,
+            "property_id": scope["property_id"],
+            "title": "Annual fire safety statement",
+            "kind": "fire_safety",
+            "recurrence_interval": 1,
+            "recurrence_unit": "years",
+            "next_due_date": "2026-07-01",
+            "owner_role": "ops",
+        },
+    )
+    assert create_response.status_code == 201
+    check = create_response.json()
+    current_obligation_id = check["current_obligation_id"]
+
+    # No operator_approved flag (defaults False) is rejected with no mutation.
+    response = client.post(
+        f"/api/v1/compliance/checks/{check['id']}/complete",
+        json={"completed_at": "2026-07-02T00:00:00Z"},
+    )
+    assert response.status_code == 422
+    assert "operator approval" in response.json()["detail"].lower()
+
+    refreshed = client.get(f"/api/v1/compliance/checks/{check['id']}").json()
+    assert refreshed["current_obligation_id"] == current_obligation_id
+    assert refreshed["next_due_date"] == "2026-07-01"
+    assert refreshed["last_checked_at"] is None
+    assert "completion_history" not in refreshed["metadata"]
+    obligation = session.get(Obligation, UUID(current_obligation_id))
+    assert obligation is not None
+    assert obligation.status != "completed"
+
+    # An explicit approval then completes and rolls the check forward.
+    approved = client.post(
+        f"/api/v1/compliance/checks/{check['id']}/complete",
+        json={"operator_approved": True, "completed_at": "2026-07-02T00:00:00Z"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["current_obligation_id"] != current_obligation_id
+
+
+def test_complete_compliance_check_fires_no_provider_call(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Operator-approved completion must never open an outbound provider call.
+
+    We assert at the httpx boundary: completion may read/write the DB and link
+    a stored document, but it must not reach SendGrid/Twilio/Xero. Any outbound
+    HTTP call to an external host fails the test loudly. The Starlette
+    TestClient is itself built on httpx.Client, so we allow testserver traffic
+    and guard only absolute external URLs.
+    """
+    import httpx
+
+    entity_id = _entity_id(session)
+    scope = _create_leased_shop(client, entity_id)
+    create_response = client.post(
+        "/api/v1/compliance/checks",
+        json={
+            "entity_id": entity_id,
+            "property_id": scope["property_id"],
+            "title": "Annual fire safety statement",
+            "kind": "fire_safety",
+            "recurrence_interval": 1,
+            "recurrence_unit": "years",
+            "next_due_date": "2026-07-01",
+            "owner_role": "ops",
+        },
+    )
+    assert create_response.status_code == 201
+    check = create_response.json()
+    evidence = StoredDocument(
+        entity_id=UUID(entity_id),
+        property_id=UUID(scope["property_id"]),
+        filename="fire-safety-certificate.pdf",
+        content_type="application/pdf",
+        byte_size=24,
+        file_data=b"certificate",
+        category=DocumentCategory.other,
+    )
+    session.add(evidence)
+    session.commit()
+
+    original_request = httpx.Client.request
+
+    def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        target = str(url)
+        if target.startswith(("http://", "https://")) and "testserver" not in target:
+            raise AssertionError(
+                f"Compliance completion attempted an outbound HTTP call to {target}."
+            )
+        return original_request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "request", _guarded_request)
+
+    response = client.post(
+        f"/api/v1/compliance/checks/{check['id']}/complete",
+        json={
+            "operator_approved": True,
+            "source_document_id": str(evidence.id),
+            "completed_at": "2026-07-02T00:00:00Z",
+            "certificate_expires_on": "2027-07-01",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["source_document_id"] == str(evidence.id)
+    assert response.json()["next_due_date"] == "2027-07-01"
 
 
 def test_compliance_check_requires_entity_access(
