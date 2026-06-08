@@ -27,6 +27,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { ActivityFeedPanel } from "@/components/dashboard/ActivityFeedPanel";
 import { AskLeasiumPanel } from "@/components/dashboard/AskLeasiumPanel";
+import { CompliancePanel } from "@/components/dashboard/CompliancePanel";
 import {
   type CommandCenterCounts,
   type CommandCenterItem,
@@ -2808,7 +2809,7 @@ export function Dashboard({
   const insightsOverviewQuery = useQuery<InsightsOverviewRecord>({
     queryKey: ["dashboard-insights-overview", selectedEntityId, asOf],
     queryFn: () => getInsightsOverview(selectedEntityId, asOf || undefined),
-    // Only feeds UpcomingLeaseEventsPanel, which the intake workspace hides.
+    // Feeds UpcomingLeaseEventsPanel + CompliancePanel, both hidden in intake.
     enabled: !isIntakeWorkspace && Boolean(selectedEntityId),
   });
   const onboardingQuery = useQuery({
@@ -4469,6 +4470,13 @@ export function Dashboard({
 
         {!isIntakeWorkspace ? (
           <UpcomingLeaseEventsPanel
+            overview={insightsOverviewQuery.data}
+            isLoading={insightsOverviewQuery.isLoading}
+          />
+        ) : null}
+
+        {!isIntakeWorkspace ? (
+          <CompliancePanel
             overview={insightsOverviewQuery.data}
             isLoading={insightsOverviewQuery.isLoading}
           />

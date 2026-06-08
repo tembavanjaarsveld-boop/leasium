@@ -361,6 +361,47 @@ test("dashboard recent activity disclosure keeps its control touch-friendly", as
   await expectTouchTarget(showFewer);
 });
 
+test("dashboard compliance cue surfaces overdue and due-soon counts with links", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+
+  await page.goto("/");
+
+  const compliancePanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Compliance" }),
+    })
+    .first();
+
+  // Default insights-overview fixture: overdue_count 1, due_soon_count 1,
+  // operator_approved_evidence_count 1, recently_completed_count 1.
+  await expect(compliancePanel.getByText("1 overdue")).toBeVisible();
+  await expect(compliancePanel.getByText("1 due soon")).toBeVisible();
+  await expect(compliancePanel.getByText("1 evidence approved")).toBeVisible();
+  await expect(
+    compliancePanel.getByText("1 recently completed"),
+  ).toBeVisible();
+  await expect(compliancePanel.getByText("Needs attention")).toBeVisible();
+
+  const openCompliance = compliancePanel.getByRole("link", {
+    name: "Open compliance",
+  });
+  await expect(openCompliance).toHaveAttribute(
+    "href",
+    "/operations?tab=compliance",
+  );
+  await expectTouchTarget(openCompliance);
+  await expect(
+    compliancePanel.getByRole("link", { name: "View insights" }),
+  ).toHaveAttribute("href", "/insights");
+});
+
 test("dashboard onboarding manage links action stays touch-safe", async ({
   page,
 }) => {
