@@ -2,7 +2,28 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 6: 2 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 7: 2 slices - latest)
+
+Two more on `main`, verified (backend **572 passed, 1 skipped**; ruff/eslint/tsc +
+maintenance smoke + production build green). Review-first; no send, no money
+movement, no migration.
+
+- **Maintenance completion-review frontend.** Maintenance detail page gains a
+  "Completion review" card (gated to completed work orders): operator records an
+  owner/tenant review (party, outcome confirmed|follow_up_requested, notes) via
+  `POST /maintenance/work-orders/{id}/completion-review` and the recorded reviews
+  list renders newest-first. Internal-only; no owner/tenant notification. (Named
+  `partyCompletionReviewMutation` to avoid colliding with the existing closeout
+  comms copy-review feature.)
+- **Arrears promise-to-pay note (backend).** `POST /arrears/cases/{id}/promise-to-pay`
+  records an operator note (promised_amount_cents?, promised_date?, notes) into
+  `arrears_metadata.promise_to_pay[]` + activity_history + audit; entity-role
+  gated; validates amount >= 0; no money movement / no provider call (future
+  tenant-notify hook marked). Projected as `promise_to_pay_notes_log` on the
+  arrears read (distinct from the existing scalar `promise_to_pay_notes` column) —
+  ready for a later frontend wave. No migration (reuses JSONB).
+
+## Cowork continuation - 2026-06-08 (agent push wave 6: 2 slices)
 
 Two more on `main`, verified (backend **567 passed, 1 skipped**; eslint + tsc +
 owner-distributions/spreadsheet smokes + production build green). Review-first;

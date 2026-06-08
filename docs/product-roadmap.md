@@ -8,6 +8,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 7 (2 slices):** Maintenance completion-review
+  frontend (operator records owner/tenant review on completed work orders, no
+  notification); arrears operator-recorded promise-to-pay note (backend,
+  review-first, no money/provider). No migration.
 - [x] **2026-06-08 agent push wave 6 (2 slices):** Wired distribution
   dispatch-review + Smart Intake review-summary into their UIs (Statements,
   spreadsheet review page); maintenance owner/tenant completion-review path
