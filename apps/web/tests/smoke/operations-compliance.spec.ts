@@ -545,3 +545,176 @@ test("operations compliance tab exports a per-check evidence packet without muta
   ).toEqual([]);
   expect(forbiddenPacketCalls).toEqual([]);
 });
+
+test("operations compliance tab surfaces operator-approved completion history and evidence state", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page, { operationsComplianceDemo: true });
+
+  const forbiddenMutationCalls: string[] = [];
+  // Per-test override: fulfill the compliance-checks GET directly with a
+  // constructed fixture (mirroring the seeded fire/bank checks from
+  // api-mocks) so the fire check carries the operator-approved completion
+  // fields the backend now records, plus extra entries to exercise the
+  // "show all" disclosure. There is no upstream API server in this mocked
+  // smoke, so route.fulfill — never route.fetch. Read/display only.
+  const overdueFireDueDate = "2026-05-10";
+  const complianceChecksFixture = [
+    {
+      id: "compliance-check-fire-1",
+      entity_id: "entity-1",
+      property_id: "property-1",
+      tenancy_unit_id: "unit-1",
+      tenant_id: "tenant-1",
+      lease_id: "lease-1",
+      assigned_user_id: "operator-2",
+      source_document_id: "document-compliance-fire-1",
+      current_obligation_id: "obligation-compliance-1",
+      title: "Annual fire safety statement",
+      kind: "fire_safety",
+      status: "active",
+      jurisdiction: "QLD",
+      authority: "Queensland Fire and Emergency Services",
+      recurrence_interval: 1,
+      recurrence_unit: "years",
+      last_checked_at: "2025-05-10T00:00:00.000Z",
+      next_due_date: overdueFireDueDate,
+      certificate_expires_on: "2026-06-30",
+      owner_role: "ops",
+      notes: "QFES statement needs certificate evidence before rollover.",
+      metadata: {
+        evidence_history: [
+          {
+            document_id: "document-compliance-fire-1",
+            added_at: "2025-05-10T01:00:00.000Z",
+            actor: "ops@example.test",
+          },
+        ],
+        completion_history: [
+          {
+            completed_at: "2024-05-09T01:00:00.000Z",
+            next_due_date: "2025-05-10",
+            source_document_id: "document-compliance-fire-prev",
+            operator_approved: true,
+            approved_by: "alex.operator@example.test",
+            approved_at: "2024-05-09T02:30:00.000Z",
+            notes: "First annual statement filed.",
+          },
+          {
+            completed_at: "2025-05-10T01:00:00.000Z",
+            next_due_date: "2026-05-10",
+            source_document_id: "document-compliance-fire-1",
+            operator_approved: true,
+            approved_by: "jordan.reviewer@example.test",
+            approved_at: "2025-05-10T03:15:00.000Z",
+            notes: "Renewal certificate reviewed and approved.",
+          },
+          {
+            completed_at: "2025-11-01T01:00:00.000Z",
+            next_due_date: "2026-05-10",
+            source_document_id: "document-compliance-fire-interim",
+            operator_approved: true,
+            approved_by: "sam.compliance@example.test",
+            approved_at: "2025-11-01T04:00:00.000Z",
+          },
+        ],
+      },
+      created_at: "2026-05-01T00:00:00.000Z",
+      updated_at: "2026-05-20T00:00:00.000Z",
+      deleted_at: null,
+    },
+    {
+      id: "compliance-check-bank-1",
+      entity_id: "entity-1",
+      property_id: "property-1",
+      tenancy_unit_id: "unit-1",
+      tenant_id: "tenant-1",
+      lease_id: "lease-1",
+      assigned_user_id: null,
+      source_document_id: null,
+      current_obligation_id: "obligation-compliance-2",
+      title: "Bank guarantee expiry",
+      kind: "bank_guarantee",
+      status: "active",
+      jurisdiction: "QLD",
+      authority: "Lease schedule",
+      recurrence_interval: 6,
+      recurrence_unit: "months",
+      last_checked_at: "2025-12-01T00:00:00.000Z",
+      next_due_date: "2026-06-01",
+      certificate_expires_on: null,
+      owner_role: "property_manager",
+      notes: "Review tenant guarantee before the expiry window.",
+      metadata: {
+        evidence_history: [],
+        completion_history: [],
+      },
+      created_at: "2026-05-01T00:00:00.000Z",
+      updated_at: "2026-05-20T00:00:00.000Z",
+      deleted_at: null,
+    },
+  ];
+
+  await page.route("**/api/v1/compliance/checks**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() !== "GET" ||
+      new URL(request.url()).pathname.replace("/api/v1", "") !==
+        "/compliance/checks"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: complianceChecksFixture });
+  });
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const apiPath = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      (apiPath.startsWith("/compliance/checks") ||
+        /email|sms|sendgrid|twilio|xero|basiq|payment|reconciliation/i.test(
+          apiPath,
+        ))
+    ) {
+      forbiddenMutationCalls.push(`${request.method()} ${apiPath}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations?tab=compliance");
+
+  const checkRow = page.getByTestId("compliance-check-compliance-check-fire-1");
+  await expect(checkRow).toContainText("Annual fire safety statement");
+
+  // Evidence + completed/due state badges read from the existing record.
+  await expect(checkRow.getByText("Evidence on file")).toBeVisible();
+  await expect(checkRow.getByText(/\d+d overdue/)).toBeVisible();
+
+  // Completion history disclosure: most-recent first, approver + approval date.
+  await expect(checkRow.getByText("Completion history")).toBeVisible();
+  await expect(checkRow).toContainText("3 recorded completions");
+  await expect(checkRow.getByText("Operator approved").first()).toBeVisible();
+  await expect(checkRow).toContainText("sam.compliance@example.test");
+  await expect(checkRow).toContainText("jordan.reviewer@example.test");
+
+  // The oldest entry is collapsed behind the "show all" disclosure.
+  await expect(checkRow).not.toContainText("alex.operator@example.test");
+
+  const showAllButton = checkRow.getByRole("button", {
+    name: "Show all 3 completions",
+  });
+  await expectTouchTarget(showAllButton);
+  await showAllButton.click();
+  await expect(checkRow).toContainText("alex.operator@example.test");
+  await expect(checkRow).toContainText("First annual statement filed.");
+
+  await checkRow
+    .getByRole("button", { name: "Show fewer completions" })
+    .click();
+  await expect(checkRow).not.toContainText("alex.operator@example.test");
+
+  expect(forbiddenMutationCalls).toEqual([]);
+});

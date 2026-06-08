@@ -1300,6 +1300,47 @@ function complianceCompletionNextDueLabel(check: ComplianceCheckRecord) {
   return formatDate(nextDue ?? check.next_due_date);
 }
 
+type ComplianceCompletionEntry = {
+  completedAt: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  operatorApproved: boolean;
+  sourceDocumentId: string | null;
+  notes: string | null;
+};
+
+// Most-recent-first view of the check's completion history, reading the
+// operator-approved completion fields the backend now records. Pure
+// read/display — no mutation.
+function complianceCompletionEntries(
+  check: ComplianceCheckRecord,
+): ComplianceCompletionEntry[] {
+  return complianceCompletionHistory(check)
+    .map((entry) => ({
+      completedAt: stringValue(entry, "completed_at"),
+      approvedBy:
+        stringValue(entry, "approved_by") ??
+        stringValue(entry, "approved_by_user_id"),
+      approvedAt: stringValue(entry, "approved_at"),
+      operatorApproved: entry.operator_approved === true,
+      sourceDocumentId: stringValue(entry, "source_document_id"),
+      notes: stringValue(entry, "notes"),
+    }))
+    .reverse();
+}
+
+function complianceHasEvidence(check: ComplianceCheckRecord) {
+  return complianceEvidenceCount(check) > 0;
+}
+
+function complianceEvidenceTone(check: ComplianceCheckRecord): StatusTone {
+  return complianceHasEvidence(check) ? "success" : "neutral";
+}
+
+function complianceEvidenceStatusLabel(check: ComplianceCheckRecord) {
+  return complianceHasEvidence(check) ? "Evidence on file" : "Evidence missing";
+}
+
 function complianceEvidencePacketCsv({
   check,
   properties,
@@ -2386,6 +2427,10 @@ function OperationsWorkspace() {
     certificateExpiresOn: string;
     file: File | null;
   } | null>(null);
+  // Read-only disclosure toggle for a check's completion history. Local
+  // UI state only — never mutates the check or calls a provider.
+  const [expandedCompletionHistoryId, setExpandedCompletionHistoryId] =
+    useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -4328,6 +4373,13 @@ function OperationsWorkspace() {
                           const hasEvidencePacket = Boolean(
                             sourceDocumentId || latestCompletion,
                           );
+                          const completionEntries =
+                            complianceCompletionEntries(check);
+                          const historyExpanded =
+                            expandedCompletionHistoryId === check.id;
+                          const visibleCompletionEntries = historyExpanded
+                            ? completionEntries
+                            : completionEntries.slice(0, 2);
                           return (
                             <div
                               key={check.id}
@@ -4342,6 +4394,11 @@ function OperationsWorkspace() {
                                   {check.status === "active"
                                     ? dueLabel(check.next_due_date)
                                     : complianceCheckStatusLabel(check)}
+                                </StatusBadge>
+                                <StatusBadge
+                                  tone={complianceEvidenceTone(check)}
+                                >
+                                  {complianceEvidenceStatusLabel(check)}
                                 </StatusBadge>
                                 <span className="text-xs font-medium text-muted-foreground">
                                   {sentenceLabel(check.kind)}
@@ -4623,6 +4680,100 @@ function OperationsWorkspace() {
                                   <p className="text-xs text-muted-foreground">
                                     {COMPLIANCE_REVIEW_PACKET_GUARDRAIL}
                                   </p>
+                                </div>
+                              ) : null}
+                              {completionEntries.length > 0 ? (
+                                <div className="grid gap-2 rounded-xl border border-border bg-muted/20 p-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <History
+                                      size={14}
+                                      className="shrink-0 text-muted-foreground"
+                                    />
+                                    <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                                      Completion history
+                                    </h4>
+                                    <span className="text-xs text-muted-foreground">
+                                      {completionEntries.length === 1
+                                        ? "1 recorded completion"
+                                        : `${completionEntries.length} recorded completions`}
+                                    </span>
+                                  </div>
+                                  <ol className="grid gap-2">
+                                    {visibleCompletionEntries.map(
+                                      (entry, index) => (
+                                        <li
+                                          key={`${check.id}-completion-${index}`}
+                                          className="grid gap-1 rounded-lg border border-border bg-white px-3 py-2"
+                                        >
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-semibold text-foreground">
+                                              {entry.completedAt
+                                                ? formatDate(entry.completedAt)
+                                                : "Completion date not recorded"}
+                                            </span>
+                                            {entry.operatorApproved ? (
+                                              <StatusBadge tone="success">
+                                                Operator approved
+                                              </StatusBadge>
+                                            ) : (
+                                              <StatusBadge tone="neutral">
+                                                Approval not recorded
+                                              </StatusBadge>
+                                            )}
+                                          </div>
+                                          <p className="text-xs text-muted-foreground">
+                                            {[
+                                              entry.approvedBy
+                                                ? `Approved by ${entry.approvedBy}`
+                                                : null,
+                                              entry.approvedAt
+                                                ? `Approved ${formatDateTime(
+                                                    entry.approvedAt,
+                                                  )}`
+                                                : null,
+                                              entry.sourceDocumentId
+                                                ? `Evidence ${entry.sourceDocumentId}`
+                                                : null,
+                                            ]
+                                              .filter(Boolean)
+                                              .join(" - ") ||
+                                              "No approval detail recorded"}
+                                          </p>
+                                          {entry.notes ? (
+                                            <p className="text-xs text-muted-foreground">
+                                              {entry.notes}
+                                            </p>
+                                          ) : null}
+                                        </li>
+                                      ),
+                                    )}
+                                  </ol>
+                                  {completionEntries.length > 2 ? (
+                                    <SecondaryButton
+                                      type="button"
+                                      className="min-h-11 w-full px-3 sm:w-auto"
+                                      onClick={() =>
+                                        setExpandedCompletionHistoryId(
+                                          (current) =>
+                                            current === check.id
+                                              ? null
+                                              : check.id,
+                                        )
+                                      }
+                                    >
+                                      <ChevronDown
+                                        size={15}
+                                        className={
+                                          historyExpanded
+                                            ? "rotate-180 transition-transform"
+                                            : "transition-transform"
+                                        }
+                                      />
+                                      {historyExpanded
+                                        ? "Show fewer completions"
+                                        : `Show all ${completionEntries.length} completions`}
+                                    </SecondaryButton>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
