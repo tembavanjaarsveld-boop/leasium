@@ -234,7 +234,26 @@ function TenantsTab({ entityId }: { entityId: string }) {
           <p className="text-sm text-muted-foreground">No tenants yet.</p>
         ) : null}
         <ul className="grid gap-2">
-          {tenants.map((tenant) => (
+          {tenants.map((tenant) => {
+            const contactEmail = tenant.contact_email || null;
+            // Avoid repeating the same email: rows whose display name is the
+            // contact email show it once, and identical billing emails render
+            // as "same as contact".
+            const nameIsContactEmail = Boolean(
+              contactEmail &&
+                tenant.legal_name.trim().toLowerCase() ===
+                  contactEmail.toLowerCase(),
+            );
+            const billingSameAsContact = Boolean(
+              tenant.billing_email &&
+                contactEmail &&
+                tenant.billing_email.toLowerCase() ===
+                  contactEmail.toLowerCase(),
+            );
+            const contactLine = nameIsContactEmail
+              ? tenant.contact_name
+              : contactEmail || tenant.contact_name || "No contact";
+            return (
             <li
               key={tenant.id}
               className="grid gap-2 rounded-lg border border-border bg-white px-3 py-3 text-sm md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
@@ -248,13 +267,13 @@ function TenantsTab({ entityId }: { entityId: string }) {
                 </p>
               </div>
               <div className="min-w-0 text-muted-foreground">
+                {contactLine ? <p className="truncate">{contactLine}</p> : null}
                 <p className="truncate">
-                  {tenant.contact_email || tenant.contact_name || "No contact"}
-                </p>
-                <p className="truncate">
-                  {tenant.billing_email
-                    ? `Billing: ${tenant.billing_email}`
-                    : "Billing email not set"}
+                  {billingSameAsContact
+                    ? "Billing: same as contact"
+                    : tenant.billing_email
+                      ? `Billing: ${tenant.billing_email}`
+                      : "Billing email not set"}
                 </p>
               </div>
               <div className="flex flex-wrap items-start justify-start gap-2 md:justify-end">
@@ -269,7 +288,8 @@ function TenantsTab({ entityId }: { entityId: string }) {
                 </Link>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </div>
     </SectionPanel>

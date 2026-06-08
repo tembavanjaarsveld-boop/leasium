@@ -2808,7 +2808,8 @@ export function Dashboard({
   const insightsOverviewQuery = useQuery<InsightsOverviewRecord>({
     queryKey: ["dashboard-insights-overview", selectedEntityId, asOf],
     queryFn: () => getInsightsOverview(selectedEntityId, asOf || undefined),
-    enabled: Boolean(selectedEntityId),
+    // Only feeds UpcomingLeaseEventsPanel, which the intake workspace hides.
+    enabled: !isIntakeWorkspace && Boolean(selectedEntityId),
   });
   const onboardingQuery = useQuery({
     queryKey: ["dashboard-onboarding", selectedEntityId],
@@ -3577,7 +3578,7 @@ export function Dashboard({
     })),
     ...activeOnboardings.slice(0, 3).map((item) => ({
       id: item.id,
-      title: "Tenant onboarding due",
+      title: "Tenant onboarding",
       meta: item.status,
       date: item.due_date,
       tone: "primary" as StatusTone,
@@ -3741,47 +3742,64 @@ export function Dashboard({
             already links to both. The four operational cards (Operations,
             Billing blockers, Needs review, Blocked docs) all answer
             "what needs me right now?" which is what the metric strip is for.
+            The intake workspace keeps only the two intake-relevant cards.
             Pending Remba review. */}
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <DashboardMetricCard
-            href="/operations"
-            label="Operations"
-            count={operationsMetricLoading ? "Checking" : operationsMetricCount}
-            chip={operationsMetricLoading ? "Checking" : operationsMetricChip}
-            tone={operationsMetricLoading ? "neutral" : operationsMetricTone}
-            nextAction={
-              operationsMetricLoading
-                ? "Checking key dates."
-                : operationsMetricNextAction
-            }
-            icon={<AlertTriangle size={17} />}
-            trend={obligationsTrend}
-          />
-          <DashboardMetricCard
-            href="/billing-readiness"
-            label="Billing blockers"
-            count={billingMetricLoading ? "Checking" : billingMetricCount}
-            chip={
-              billingMetricLoading
-                ? "Checking"
-                : billingMetricCount
-                  ? "Blocked"
-                  : "Ready"
-            }
-            tone={
-              billingMetricLoading
-                ? "neutral"
-                : billingMetricCount
-                  ? "danger"
-                  : "success"
-            }
-            nextAction={
-              billingMetricLoading
-                ? "Checking billing readiness."
-                : billingMetricNextAction
-            }
-            icon={<ReceiptText size={17} />}
-          />
+        <section
+          className={
+            isIntakeWorkspace
+              ? "grid gap-3 sm:grid-cols-2"
+              : "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+          }
+        >
+          {!isIntakeWorkspace ? (
+            <>
+              <DashboardMetricCard
+                href="/operations"
+                label="Operations"
+                count={
+                  operationsMetricLoading ? "Checking" : operationsMetricCount
+                }
+                chip={
+                  operationsMetricLoading ? "Checking" : operationsMetricChip
+                }
+                tone={
+                  operationsMetricLoading ? "neutral" : operationsMetricTone
+                }
+                nextAction={
+                  operationsMetricLoading
+                    ? "Checking key dates."
+                    : operationsMetricNextAction
+                }
+                icon={<AlertTriangle size={17} />}
+                trend={obligationsTrend}
+              />
+              <DashboardMetricCard
+                href="/billing-readiness"
+                label="Billing blockers"
+                count={billingMetricLoading ? "Checking" : billingMetricCount}
+                chip={
+                  billingMetricLoading
+                    ? "Checking"
+                    : billingMetricCount
+                      ? "Blocked"
+                      : "Ready"
+                }
+                tone={
+                  billingMetricLoading
+                    ? "neutral"
+                    : billingMetricCount
+                      ? "danger"
+                      : "success"
+                }
+                nextAction={
+                  billingMetricLoading
+                    ? "Checking billing readiness."
+                    : billingMetricNextAction
+                }
+                icon={<ReceiptText size={17} />}
+              />
+            </>
+          ) : null}
           <DashboardMetricCard
             href="/intake"
             label="Needs review"
@@ -3840,6 +3858,9 @@ export function Dashboard({
 
         <section className="grid gap-5 lg:grid-cols-[430px_minmax(0,1fr)]">
           <div className="grid gap-5">
+            {/* The full drop-zone + review-queue panel lives on the intake
+                workspace; the dashboard shows a compact link card instead. */}
+            {isIntakeWorkspace ? (
             <SectionPanel
               title="Smart Intake"
               description="Upload. Review. Automate. Every change stays under your control."
@@ -4135,6 +4156,30 @@ export function Dashboard({
                 </div>
               </div>
             </SectionPanel>
+            ) : (
+              <SectionPanel
+                title="Smart Intake"
+                description="Drop documents and review extractions."
+                icon={<Sparkles size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge tone={reviewMetricCount ? "primary" : "neutral"}>
+                    {reviewMetricLoading
+                      ? "Preparing"
+                      : `${reviewMetricCount} waiting`}
+                  </StatusBadge>
+                }
+              >
+                <div className="grid gap-3 p-4">
+                  <Link
+                    href="/intake"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
+                  >
+                    <Sparkles size={15} />
+                    Open Smart Intake
+                  </Link>
+                </div>
+              </SectionPanel>
+            )}
 
             {isIntakeWorkspace ? (
               <RegisterImportPanel
@@ -4353,9 +4398,11 @@ export function Dashboard({
                           <span className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
                             {event.title}
                           </span>
-                          <StatusBadge tone={event.tone}>
-                            {dueLabel(event.date)}
-                          </StatusBadge>
+                          {event.date ? (
+                            <StatusBadge tone={event.tone}>
+                              {dueLabel(event.date)}
+                            </StatusBadge>
+                          ) : null}
                         </div>
                         <div className="mt-1 text-xs capitalize leading-4 text-muted-foreground">
                           {event.meta}

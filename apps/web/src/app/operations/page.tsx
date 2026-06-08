@@ -31,6 +31,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -2101,21 +2102,17 @@ function queueKindLabel(task: QueueItem) {
   return labels[task.kind];
 }
 
-function queueKindTone(task: QueueItem): StatusTone {
-  if (task.kind === "document_intake" || task.kind === "arrears") {
-    return "primary";
-  }
-  if (task.kind === "maintenance") {
-    return "warning";
-  }
-  return "neutral";
-}
-
-function queueDateLabel(task: QueueItem) {
+// One urgency chip per row: overdue wins, then due-soon, then the
+// scheduled/no-date neutral tone. Smart Intake rows have no due date
+// (dueDate is the received timestamp), so they keep their review chip.
+function queueUrgencyChip(task: QueueItem): { label: string; tone: StatusTone } {
   if (task.kind === "document_intake") {
-    return formatDateTime(task.dueDate);
+    return { label: task.chip, tone: task.tone };
   }
-  return dueLabel(task.dueDate);
+  return {
+    label: dueLabel(task.dueDate),
+    tone: queueBucketTone(queueBucketId(task)),
+  };
 }
 
 function buildQueueItems(
@@ -2370,6 +2367,9 @@ function OperationsWorkspace() {
     id: string;
     message: string;
   } | null>(null);
+  // Two-click inline confirm for the destructive Waive action on
+  // obligation queue rows. Local-state only — no provider call.
+  const [waiveConfirmId, setWaiveConfirmId] = useState<string | null>(null);
   const [
     complianceCompletionConfirmation,
     setComplianceCompletionConfirmation,
@@ -2977,23 +2977,12 @@ function OperationsWorkspace() {
     })
     .filter((row) => row.count > 0 && row.id !== currentUser?.id)
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  const urgentMaintenance = maintenance.filter(
-    (item) =>
-      maintenanceIsOpen(item) && ["urgent", "high"].includes(item.priority),
-  );
-  const awaitingApproval = maintenance.filter(
-    (item) =>
-      maintenanceIsOpen(item) &&
-      (item.status === "awaiting_approval" ||
-        item.approval_status === "pending"),
-  );
-  const activeArrears = arrears.filter(arrearsIsOpen);
-  const disputedArrears = activeArrears.filter((item) =>
-    ["raised", "under_review", "escalated"].includes(item.dispute_status),
-  );
-  const remindersDue = activeArrears.filter(
-    (item) => item.next_reminder_on && dueRank(item.next_reminder_on) <= 0,
-  );
+  const overdueWorkCount = openQueueItems.filter(
+    (item) => queueBucketId(item) === "overdue",
+  ).length;
+  const dueSoonWorkCount = openQueueItems.filter(
+    (item) => queueBucketId(item) === "due_soon",
+  ).length;
   const openComplianceChecks = complianceChecks.filter(
     (check) => check.status !== "archived" && !check.deleted_at,
   );
@@ -3476,25 +3465,46 @@ function OperationsWorkspace() {
             <CheckCircle2 size={15} className="text-success" />
             Complete
           </SecondaryButton>
-          <SecondaryButton
-            type="button"
-            className="h-9 px-3"
-            aria-label={
-              options?.compactLabels
-                ? "Skip obligation from work controls"
-                : undefined
-            }
-            onClick={() =>
-              updateObligationMutation.mutate({
-                obligation: item.record,
-                status: "waived",
-              })
-            }
-            disabled={updateObligationMutation.isPending}
-          >
-            <Ban size={15} className="text-danger" />
-            Waive
-          </SecondaryButton>
+          {waiveConfirmId === item.id ? (
+            <span className="inline-flex min-h-9 items-center justify-center gap-2 px-2 text-xs font-medium text-muted-foreground">
+              Waive?
+              <button
+                type="button"
+                className="font-semibold text-danger hover:underline"
+                onClick={() => {
+                  setWaiveConfirmId(null);
+                  updateObligationMutation.mutate({
+                    obligation: item.record,
+                    status: "waived",
+                  });
+                }}
+                disabled={updateObligationMutation.isPending}
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                className="font-semibold hover:underline"
+                onClick={() => setWaiveConfirmId(null)}
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="inline-flex min-h-9 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition duration-200 ease-leasium hover:text-foreground hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={
+                options?.compactLabels
+                  ? "Skip obligation from work controls"
+                  : undefined
+              }
+              onClick={() => setWaiveConfirmId(item.id)}
+              disabled={updateObligationMutation.isPending}
+            >
+              Waive
+            </button>
+          )}
         </>
       );
     }
@@ -3558,11 +3568,12 @@ function OperationsWorkspace() {
           <span className="text-leasium-body-compact font-medium leading-5 text-foreground">
             {item.title}
           </span>
-          <StatusBadge tone={item.tone}>{queueDateLabel(item)}</StatusBadge>
-          <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
-          <StatusBadge tone={queueKindTone(item)}>
-            {queueKindLabel(item)}
+          <StatusBadge tone={queueUrgencyChip(item).tone}>
+            {queueUrgencyChip(item).label}
           </StatusBadge>
+          <span className="text-xs font-medium text-muted-foreground">
+            {queueKindLabel(item)}
+          </span>
         </div>
         <p className="mt-1 text-sm leading-5 text-muted-foreground">
           {item.description}
@@ -3707,54 +3718,54 @@ function OperationsWorkspace() {
           <>
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <MetricCard
+                icon={<ClipboardList size={17} className="text-primary" />}
+                label="Open work"
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : openQueueItems.length
+                }
+                description="Everything in the queue below."
+              />
+              <MetricCard
                 icon={<AlertTriangle size={17} className="text-primary" />}
-                label="Urgent maintenance"
+                label="Overdue"
                 value={
                   operationsLoading
                     ? OPERATIONS_METRIC_LOADING_LABEL
-                    : urgentMaintenance.length
+                    : overdueWorkCount
                 }
-                description="High and urgent open work."
-              />
-              <MetricCard
-                icon={<ShieldCheck size={17} className="text-primary" />}
-                label="Awaiting approval"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : awaitingApproval.length
-                }
-                description="Quotes or works needing approval."
-              />
-              <MetricCard
-                icon={<HandCoins size={17} className="text-primary" />}
-                label="Active arrears"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : activeArrears.length
-                }
-                description="Open credit-control cases."
-              />
-              <MetricCard
-                icon={<FileWarning size={17} className="text-primary" />}
-                label="Disputed"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : disputedArrears.length
-                }
-                description="Raised or escalated disputes."
+                description="Queue items past their due date."
               />
               <MetricCard
                 icon={<Clock3 size={17} className="text-primary" />}
-                label="Reminders due"
+                label="Due soon"
                 value={
                   operationsLoading
                     ? OPERATIONS_METRIC_LOADING_LABEL
-                    : remindersDue.length
+                    : dueSoonWorkCount
                 }
-                description="Arrears follow-ups due now."
+                description="Queue items due within 7 days."
+              />
+              <MetricCard
+                icon={<UserRound size={17} className="text-primary" />}
+                label="Unassigned"
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : unassignedWorkCount
+                }
+                description="Open work without an owner yet."
+              />
+              <MetricCard
+                icon={<MailCheck size={17} className="text-primary" />}
+                label="Follow-up due"
+                value={
+                  operationsLoading
+                    ? OPERATIONS_METRIC_LOADING_LABEL
+                    : followUpDueCount
+                }
+                description="Assignment reminders due now."
               />
             </section>
 
@@ -3870,10 +3881,10 @@ function OperationsWorkspace() {
                 description={selectedEntity?.name ?? "Current entity"}
                 icon={<ClipboardList size={17} className="text-primary" />}
                 actions={
-                  <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end xl:w-auto">
+                  <ExportDigestMenu>
                     <SecondaryButton
                       type="button"
-                      className="min-h-11 w-full px-3 sm:w-auto"
+                      className="min-h-11 w-full justify-start px-3"
                       disabled={!selectedEntityId || operationsLoading}
                       onClick={downloadQueueCsv}
                     >
@@ -3882,7 +3893,7 @@ function OperationsWorkspace() {
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="min-h-11 w-full px-3 sm:w-auto"
+                      className="min-h-11 w-full justify-start px-3"
                       disabled={!selectedEntityId || operationsLoading}
                       onClick={copyQueueCsv}
                     >
@@ -3891,7 +3902,7 @@ function OperationsWorkspace() {
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="h-10 w-full px-3 sm:w-auto"
+                      className="min-h-11 w-full justify-start px-3"
                       disabled={
                         assignmentPending || readyNotificationItems.length === 0
                       }
@@ -3917,14 +3928,14 @@ function OperationsWorkspace() {
                           event.target.value as WorkAssignmentDigestCadence,
                         )
                       }
-                      className="w-full sm:w-36"
+                      className="w-full"
                     >
                       <option value="daily">Daily digest</option>
                       <option value="weekly">Weekly digest</option>
                     </Select>
                     <SecondaryButton
                       type="button"
-                      className="h-10 w-full px-3 sm:w-auto"
+                      className="min-h-11 w-full justify-start px-3"
                       disabled={
                         !selectedEntityId ||
                         workAssignmentDigestMutation.isPending
@@ -3940,7 +3951,7 @@ function OperationsWorkspace() {
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
-                      className="h-10 w-full px-3 sm:w-auto"
+                      className="min-h-11 w-full justify-start px-3"
                       disabled={
                         !selectedEntityId ||
                         workAssignmentDigestMutation.isPending
@@ -3950,28 +3961,7 @@ function OperationsWorkspace() {
                       <Send size={15} />
                       Send digest
                     </SecondaryButton>
-                    <Select
-                      aria-label="Queue assignee"
-                      value={assigneeFilter}
-                      onChange={(event) =>
-                        setAssigneeFilter(event.target.value as AssigneeFilter)
-                      }
-                      className="w-full sm:w-52"
-                    >
-                      <option value="all">All open work</option>
-                      <option value="unassigned">Unassigned</option>
-                      <option value="follow_up">Follow-up due</option>
-                      {currentUser ? <option value="me">My work</option> : null}
-                      {assignableMembers.map((member) => (
-                        <option
-                          key={member.id}
-                          value={memberAssigneeFilter(member.id)}
-                        >
-                          {memberLabel(member)}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
+                  </ExportDigestMenu>
                 }
               >
                 <div className="border-b border-border bg-muted/30 px-4 py-3">
@@ -4086,6 +4076,27 @@ function OperationsWorkspace() {
                         </button>
                       );
                     })}
+                    <Select
+                      aria-label="Queue assignee"
+                      value={assigneeFilter}
+                      onChange={(event) =>
+                        setAssigneeFilter(event.target.value as AssigneeFilter)
+                      }
+                      className="w-full sm:ml-auto sm:w-52"
+                    >
+                      <option value="all">All open work</option>
+                      <option value="unassigned">Unassigned</option>
+                      <option value="follow_up">Follow-up due</option>
+                      {currentUser ? <option value="me">My work</option> : null}
+                      {assignableMembers.map((member) => (
+                        <option
+                          key={member.id}
+                          value={memberAssigneeFilter(member.id)}
+                        >
+                          {memberLabel(member)}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                   {noticeInboxItems.length > 0 ? (
                     <AssignmentNoticeInbox
@@ -4283,6 +4294,21 @@ function OperationsWorkspace() {
 
                 <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(19rem,0.9fr)]">
                   <div className="grid gap-4">
+                    {!operationsLoading && openComplianceChecks.length === 0 ? (
+                      <section className="flex min-h-11 flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-3 py-2">
+                        <ShieldCheck
+                          size={15}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Recurring checks
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          None yet — fire safety, insurance, bank guarantee,
+                          make-good, and certificate checks will appear here.
+                        </p>
+                      </section>
+                    ) : (
                     <section className="rounded-xl border border-border bg-white">
                       <div className="border-b border-border px-3 py-2">
                         <h3 className="text-sm font-semibold text-foreground">
@@ -4312,14 +4338,13 @@ function OperationsWorkspace() {
                                   {check.title}
                                 </span>
                                 <StatusBadge tone={complianceCheckTone(check)}>
-                                  {dueLabel(check.next_due_date)}
+                                  {check.status === "active"
+                                    ? dueLabel(check.next_due_date)
+                                    : complianceCheckStatusLabel(check)}
                                 </StatusBadge>
-                                <StatusBadge tone={complianceCheckTone(check)}>
-                                  {complianceCheckStatusLabel(check)}
-                                </StatusBadge>
-                                <StatusBadge tone="neutral">
+                                <span className="text-xs font-medium text-muted-foreground">
                                   {sentenceLabel(check.kind)}
-                                </StatusBadge>
+                                </span>
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {[
@@ -4602,16 +4627,9 @@ function OperationsWorkspace() {
                             </div>
                           );
                         })}
-                        {!operationsLoading &&
-                        openComplianceChecks.length === 0 ? (
-                          <EmptyState
-                            icon={<ShieldCheck size={18} />}
-                            title="No recurring checks"
-                            description="Fire safety, insurance, bank guarantee, make-good, and certificate checks will appear here."
-                          />
-                        ) : null}
                       </div>
                     </section>
+                    )}
 
                     <section className="rounded-xl border border-border bg-white">
                       <div className="border-b border-border px-3 py-2">
@@ -4636,9 +4654,9 @@ function OperationsWorkspace() {
                               <StatusBadge tone={obligationTone(obligation)}>
                                 {dueLabel(obligation.due_date)}
                               </StatusBadge>
-                              <StatusBadge tone={obligationTone(obligation)}>
+                              <span className="text-xs font-medium text-muted-foreground">
                                 {sentenceLabel(obligation.status)}
-                              </StatusBadge>
+                              </span>
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {[
@@ -4668,6 +4686,21 @@ function OperationsWorkspace() {
                   </div>
 
                   <div className="grid gap-4">
+                    {!operationsLoading && complianceIntakes.length === 0 ? (
+                      <section className="flex min-h-11 flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-3 py-2">
+                        <ClipboardList
+                          size={15}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Smart Intake reviews
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          None waiting — insurance certificates and inspection
+                          reports for review will appear here.
+                        </p>
+                      </section>
+                    ) : (
                     <section className="rounded-xl border border-border bg-white">
                       <div className="border-b border-border px-3 py-2">
                         <h3 className="text-sm font-semibold text-foreground">
@@ -4707,15 +4740,9 @@ function OperationsWorkspace() {
                             </Link>
                           </div>
                         ))}
-                        {!operationsLoading && complianceIntakes.length === 0 ? (
-                          <EmptyState
-                            icon={<ClipboardList size={18} />}
-                            title="No compliance intakes"
-                            description="Insurance certificates and inspection reports waiting for review will appear here."
-                          />
-                        ) : null}
                       </div>
                     </section>
+                    )}
 
                     <section className="rounded-xl border border-border bg-white">
                       <div className="border-b border-border px-3 py-2">
@@ -5739,6 +5766,61 @@ function OperationsWorkspace() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+// Local overflow menu for the queue export/digest controls. Review-only
+// container: every item keeps its own explicit handler and guard, so no
+// provider call fires from opening or closing the menu.
+function ExportDigestMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative w-full sm:w-auto">
+      <SecondaryButton
+        type="button"
+        className="min-h-11 w-full px-3 sm:w-auto"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Download size={15} />
+        Export & digest
+        <ChevronDown
+          size={15}
+          className={cn(
+            "transition duration-200 ease-leasium",
+            open && "rotate-180",
+          )}
+        />
+      </SecondaryButton>
+      {open ? (
+        <div className="absolute right-0 z-30 mt-2 grid w-72 gap-2 rounded-2xl border border-border bg-white p-3 shadow-leasiumSm">
+          {children}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

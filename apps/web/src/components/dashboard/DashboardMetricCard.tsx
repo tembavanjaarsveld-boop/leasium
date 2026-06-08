@@ -166,7 +166,9 @@ export function DashboardMetricCard({
         <div className="text-3xl font-semibold tracking-normal">{count}</div>
         <StatusBadge tone={tone}>{chip}</StatusBadge>
       </div>
-      {trend ? (
+      {/* A zero delta renders a dangling "· vs last week" next to a flat
+          sparkline; only show the trend row when something actually moved. */}
+      {trend && trend.delta !== 0 ? (
         <div className="mt-2 flex items-center justify-between gap-2">
           <MetricDeltaBadge
             delta={trend.delta}

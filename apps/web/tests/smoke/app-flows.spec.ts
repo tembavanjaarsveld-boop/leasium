@@ -130,14 +130,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
   await expectTouchTarget(
-    page
-      .getByTestId("review-intake-intake-1")
-      .getByRole("link", { name: "Review" }),
-  );
-  await expectTouchTarget(
-    page
-      .getByTestId("review-intake-intake-1")
-      .getByRole("button", { name: "Clear" }),
+    page.getByRole("link", { name: "Open Smart Intake" }),
   );
   const workspaceToolbar = page.getByRole("toolbar", {
     name: "Workspace utilities",
@@ -1945,6 +1938,10 @@ test("operations workspace surfaces maintenance and arrears work", async ({
     page.getByText("Assigned to Temba van Jaarsveld").first(),
   ).toBeVisible();
   await expect(page.getByText("Notification ready").first()).toBeVisible();
+  const exportDigestMenu = page.getByRole("button", {
+    name: "Export & digest",
+  });
+  await exportDigestMenu.click();
   await expect(
     page.getByRole("button", { name: /Send ready notices 1/ }),
   ).toBeVisible();
@@ -1965,6 +1962,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   expect(queueCsv).toContain(
     "Local-only review export: downloading this file does not send SendGrid or Twilio messages, send tenant, owner, or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, perform Xero/Basiq writes, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.",
   );
+  await page.keyboard.press("Escape");
   const tenantInsuranceReviewLink = page
     .locator("a")
     .filter({ hasText: "tenant-uploaded-insurance.txt" })
@@ -1981,7 +1979,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByRole("button", { name: "Send notice" }).first().click();
   await expect(page.getByText("Email queued").first()).toBeVisible();
   await expect(page.getByText("Recent activity").first()).toBeVisible();
+  await exportDigestMenu.click();
   await page.getByRole("button", { name: "Generate digest" }).click();
+  await page.keyboard.press("Escape");
   await expect(page.getByText("Work digest generated")).toBeVisible();
   await expect(page.getByText("No messages sent")).toBeVisible();
   const digestMessagePreview = page
@@ -1993,7 +1993,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
     page.getByText("Leasium Daily Work digest: 4 items"),
   ).toBeVisible();
   await expect(page.getByText("- Air conditioning fault")).toBeVisible();
+  await exportDigestMenu.click();
   await page.getByRole("button", { name: "Send digest" }).click();
+  await page.keyboard.press("Escape");
   await expect(page.getByText("1 email queued")).toBeVisible();
   await expect(
     page.getByText("Digest email was queued by SendGrid."),

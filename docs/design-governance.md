@@ -2197,3 +2197,64 @@ layout), and modal scale magnitude (0.97 → 1 — barely perceptible).
   `muted`, etc.); components use a mix. Remba decision: standardize on
   one naming layer (recommend short aliases as the public API and
   `leasium-*` for hover/pressed variants).
+
+## Live UX Review Fixes 2026-06-08
+
+Status: pending Remba review (prototype-mode stance per 2026-05-23; queued
+for whenever design review resumes). A signed-in live walkthrough of
+leasium.ai (`docs/ux-review-2026-06-08.md`) produced 17 findings; all were
+implemented in one sweep across the web app. Numbered follow-ups:
+
+1. **Property rename affordance** — the Portfolio row *title* is no longer
+   an instant inline-edit; titles are plain text and rename lives behind the
+   row pencil → property editor with explicit save. Street-address inline
+   edit is unchanged. Remba: confirm the title/select interaction reads.
+2. **Branded 404 + /smart-intake redirect** — new `app/not-found.tsx`
+   (wordmark, Back to Dashboard, Open Smart Intake) and a permanent
+   `/smart-intake → /intake` redirect in `next.config.ts`.
+3. **Operations KPI vocabulary** — the five Operations strip cards now read
+   Open work / Overdue / Due soon / Unassigned / Follow-up due, computed
+   from the same queue data as the bucket chips (previously five zeros from
+   raw maintenance/arrears records above a 65-item queue).
+4. **Billing Readiness blocker grouping** — action-queue blockers group by
+   issue type within each tenancy with an "N issues" chip and deduped
+   detail/CTA lines; Insights Live Exceptions dedupe with ×N chips.
+5. **Stale next-due flag** — lease strips whose next-due parses before
+   today get a danger "Stale" chip + warning tint.
+6. **One urgency chip per row** — Operations queue and compliance rows
+   show one chip (overdue XOR due soon XOR scheduled) + muted type text.
+7. **Toolbar consolidation** — Operations export/digest controls live in
+   one "Export & digest" menu; queue filter select joined the chip row;
+   Notifications' four export buttons collapsed into one "Export" menu.
+8. **Destructive demotion** — Waive (Operations rows), Deactivate
+   (Settings operators), Delete tenant (record header) are now subdued
+   text-destructive actions with confirm steps, separated from primaries.
+9. **Money hub live state** — Billing/Xero/Basiq cards show live counts
+   (rent-roll blockers, ready-to-bill, Xero issues, feed status) with
+   skeleton/fallback states; Statements stays static (no cheap GET).
+10. **Empty compliance panels collapse** — empty Recurring checks / Smart
+    Intake reviews render one-line rows instead of viewport-tall empties.
+11. **Chip truncation** — owner chips ellipsise correctly (inner truncate
+    span; `title` kept); property type labels sentence-cased at render.
+12. **Settings stat cards** — Auth mode / Operator login / Clerk config
+    render StatusBadges instead of giant lowercase words; Operators count
+    stays numeric. Deactivate/email-dedupe per items 8/13.
+13. **Identity dedupe** — operator and People rows show an email once when
+    it is also the display name; "Billing: same as contact" when equal.
+14. **Notifications copy** — KPI cards drop the self-labelling chip,
+    "1 notice" pluralises, raw template keys render as plain titles
+    ("Standard work assignment · v1") with raw-key fallback.
+15. **Dashboard ↔ Smart Intake separation** — `/` shows a compact Smart
+    Intake link card (pending count + Open Smart Intake); `/intake` keeps
+    the full drop-zone/review workspace and only intake KPI cards.
+16. **Dashboard card nits** — "· vs last week" renders only with a real
+    non-zero delta; onboarding events drop the literal "-" badge and the
+    "Tenant onboarding - Tenant" placeholder title (display-side strip;
+    backend `insights.py:1212` still emits the placeholder when the tenant
+    lookup fails — candidate API fix later).
+17. **Insights copy joins** — blocker fragments sentence-case after each
+    ". " join at render time.
+
+Smoke specs updated for the new menus/labels (app-flows, operations-ux,
+properties-ux, notifications). Frontend eslint + tsc clean; full smoke +
+production build runs recorded in the handover.

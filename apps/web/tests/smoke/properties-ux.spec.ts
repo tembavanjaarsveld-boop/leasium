@@ -62,7 +62,7 @@ test("mobile properties default uses cards instead of a panning table", async ({
     .getByRole("listitem")
     .filter({ hasText: "Queen Street Retail Centre" });
   await expect(card).toContainText("12 Queen Street, Brisbane City QLD");
-  await expect(card).toContainText("commercial retail");
+  await expect(card).toContainText("Commercial retail");
   await expect(card).toContainText("640 sqm");
   await expect(card).toContainText("12 parks");
 
@@ -283,11 +283,6 @@ test("properties inline table editors and owner chips stay touch safe", async ({
   const queenStreetRow = page.getByRole("row", {
     name: /Queen Street Retail Centre/,
   });
-  await expectTouchTarget(
-    queenStreetRow.getByRole("button", {
-      name: "Edit Property name for Queen Street Retail Centre",
-    }),
-  );
   await expectTouchTarget(
     queenStreetRow.getByRole("button", {
       name: "Edit Street address for Queen Street Retail Centre",

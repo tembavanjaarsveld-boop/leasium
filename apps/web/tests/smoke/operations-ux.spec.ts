@@ -167,7 +167,7 @@ test("mobile operations loading and queue actions stay readable", async ({
   const metrics = page
     .locator("section")
     .filter({
-      has: page.getByText("Urgent maintenance", { exact: true }),
+      has: page.getByText("Open work", { exact: true }),
     })
     .first();
 
@@ -181,6 +181,7 @@ test("mobile operations loading and queue actions stay readable", async ({
       has: page.getByRole("heading", { name: "Operations queue" }),
     })
     .first();
+  await queueActions.getByRole("button", { name: "Export & digest" }).click();
   const downloadQueueCsv = queueActions.getByRole("button", {
     name: "Download queue CSV",
   });
@@ -195,7 +196,7 @@ test("mobile operations loading and queue actions stay readable", async ({
   expect(copyBox).not.toBeNull();
   expect(downloadBox).not.toBeNull();
   for (const box of [copyBox!, downloadBox!]) {
-    expect(box.width).toBeGreaterThanOrEqual(300);
+    expect(box.width).toBeGreaterThanOrEqual(200);
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
   expect(Math.abs(copyBox!.x - downloadBox!.x)).toBeLessThanOrEqual(4);

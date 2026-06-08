@@ -87,10 +87,15 @@ test("notifications exports provider readiness review CSV", async ({ page }) => 
   ).toBeVisible();
   await expect(page.getByText("Provider setup checks")).toBeVisible();
 
-  const copyButton = page.getByRole("button", {
+  const exportMenuButton = page.getByRole("button", {
+    name: "Export",
+    exact: true,
+  });
+  await exportMenuButton.click();
+  const copyButton = page.getByRole("menuitem", {
     name: "Copy readiness CSV",
   });
-  const downloadButton = page.getByRole("button", {
+  const downloadButton = page.getByRole("menuitem", {
     name: "Download readiness CSV",
   });
   await expect(copyButton).toBeVisible();
@@ -114,6 +119,7 @@ test("notifications exports provider readiness review CSV", async ({ page }) => 
   expect(copiedCsv).toBeTruthy();
 
   const downloadPromise = page.waitForEvent("download");
+  await exportMenuButton.click();
   await downloadButton.click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(
@@ -185,7 +191,12 @@ test("notifications exports work notification review packet without provider cal
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
 
-  const copyButton = page.getByRole("button", {
+  const exportMenuButton = page.getByRole("button", {
+    name: "Export",
+    exact: true,
+  });
+  await exportMenuButton.click();
+  const copyButton = page.getByRole("menuitem", {
     name: "Copy review packet",
   });
   await expect(copyButton).toBeVisible();
@@ -196,7 +207,8 @@ test("notifications exports work notification review packet without provider cal
   await copyButton.click();
   await expect(page.getByText("Review packet copied")).toBeVisible();
 
-  const downloadButton = page.getByRole("button", {
+  await exportMenuButton.click();
+  const downloadButton = page.getByRole("menuitem", {
     name: "Download review packet CSV",
   });
   await expect(downloadButton).toBeVisible();

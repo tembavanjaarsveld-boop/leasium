@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  ChevronDown,
   ClipboardCopy,
   Clock3,
   Download,
@@ -15,7 +16,7 @@ import {
   Send,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
@@ -203,6 +204,16 @@ function setupCheckLabel(status: string) {
   return "Missing";
 }
 
+// Mirrors notificationTemplateTitle in settings/page.tsx (kept local so this
+// page does not import another page module). Unknown keys fall back to the
+// raw template key.
+const templateKeyTitles: Record<string, string> = {
+  work_assignment_notification: "Standard work assignment",
+  work_assignment_follow_up: "Follow-up assignment notice",
+  work_assignment_digest: "Standard work digest",
+  work_assignment_digest_owner_review: "Owner review digest",
+};
+
 function templateLabel(
   templateKey: string | null | undefined,
   templateVersion: string | null | undefined,
@@ -210,7 +221,10 @@ function templateLabel(
   if (!templateKey && !templateVersion) {
     return null;
   }
-  return [templateKey, templateVersion].filter(Boolean).join(" ");
+  const title = templateKey
+    ? (templateKeyTitles[templateKey] ?? templateKey)
+    : null;
+  return [title, templateVersion].filter(Boolean).join(" · ");
 }
 
 function providerHistoryTone(status: string | null | undefined): StatusTone {
@@ -545,6 +559,82 @@ function FilterButton({
         {count}
       </span>
     </button>
+  );
+}
+
+function ExportMenu({
+  actions,
+}: {
+  actions: Array<{
+    key: string;
+    label: string;
+    icon: ReactNode;
+    onSelect: () => void;
+  }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      if (
+        containerRef.current &&
+        event.target instanceof Node &&
+        !containerRef.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+  return (
+    <div ref={containerRef} className="relative">
+      <SecondaryButton
+        type="button"
+        className="min-h-11 rounded-lg px-3 text-xs"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((previous) => !previous)}
+      >
+        <Download size={14} />
+        Export
+        <ChevronDown size={14} />
+      </SecondaryButton>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-20 mt-1 w-64 rounded-xl border border-border bg-white p-1 shadow-leasiumMd"
+        >
+          {actions.map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              role="menuitem"
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-foreground transition duration-200 ease-leasium hover:bg-muted"
+              onClick={() => {
+                setOpen(false);
+                action.onSelect();
+              }}
+            >
+              {action.icon}
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1271,6 +1361,14 @@ function NoticeRow({
   );
 }
 
+const countCardValueClass: Record<StatusTone, string> = {
+  neutral: "text-foreground",
+  primary: "text-primary",
+  success: "text-success-strong",
+  warning: "text-warning-strong",
+  danger: "text-danger-strong",
+};
+
 function NotificationsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
@@ -1618,9 +1716,13 @@ function NotificationsWorkspace() {
               <div className="text-xs font-semibold uppercase text-muted-foreground">
                 {card.label}
               </div>
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="text-2xl font-semibold">{card.value}</div>
-                <StatusBadge tone={card.tone}>{card.label}</StatusBadge>
+              <div
+                className={cn(
+                  "mt-2 text-2xl font-semibold",
+                  countCardValueClass[card.tone],
+                )}
+              >
+                {card.value}
               </div>
             </div>
           ))}
@@ -1634,40 +1736,37 @@ function NotificationsWorkspace() {
             center ? (
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone="neutral">
-                  {center.notice_count} notices
+                  {center.notice_count}{" "}
+                  {center.notice_count === 1 ? "notice" : "notices"}
                 </StatusBadge>
-                <SecondaryButton
-                  type="button"
-                  className="min-h-11 rounded-lg px-3 text-xs"
-                  onClick={() => void copyReviewPacket()}
-                >
-                  <ClipboardCopy size={14} />
-                  Copy review packet
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  className="min-h-11 rounded-lg px-3 text-xs"
-                  onClick={downloadReviewPacketCsv}
-                >
-                  <Download size={14} />
-                  Download review packet CSV
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  className="min-h-11 rounded-lg px-3 text-xs"
-                  onClick={() => void copyProviderReadinessCsv()}
-                >
-                  <ClipboardCopy size={14} />
-                  Copy readiness CSV
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  className="min-h-11 rounded-lg px-3 text-xs"
-                  onClick={downloadProviderReadinessCsv}
-                >
-                  <Download size={14} />
-                  Download readiness CSV
-                </SecondaryButton>
+                <ExportMenu
+                  actions={[
+                    {
+                      key: "copy-review-packet",
+                      label: "Copy review packet",
+                      icon: <ClipboardCopy size={14} />,
+                      onSelect: () => void copyReviewPacket(),
+                    },
+                    {
+                      key: "download-review-packet",
+                      label: "Download review packet CSV",
+                      icon: <Download size={14} />,
+                      onSelect: downloadReviewPacketCsv,
+                    },
+                    {
+                      key: "copy-readiness",
+                      label: "Copy readiness CSV",
+                      icon: <ClipboardCopy size={14} />,
+                      onSelect: () => void copyProviderReadinessCsv(),
+                    },
+                    {
+                      key: "download-readiness",
+                      label: "Download readiness CSV",
+                      icon: <Download size={14} />,
+                      onSelect: downloadProviderReadinessCsv,
+                    },
+                  ]}
+                />
               </div>
             ) : null
           }

@@ -616,6 +616,13 @@ function ownershipStructureLabel(value: string | null | undefined) {
   );
 }
 
+// Display-only sentence-casing for stored property_type values
+// ("commercial_office" -> "Commercial office"). Never persisted.
+function propertyTypeLabel(value: string) {
+  const label = value.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -5189,7 +5196,9 @@ function Workspace({
                         ownerTagFilter
                       }
                     >
-                      {activeOwnerTag?.label ?? ownerTagFilter}
+                      <span className="truncate">
+                        {activeOwnerTag?.label ?? ownerTagFilter}
+                      </span>
                     </span>
                     <span className="text-muted-foreground">
                       Showing properties with this ownership tag.
@@ -5610,21 +5619,8 @@ function Workspace({
                                 }}
                               >
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span data-inline-edit>
-                                    <InlineEditCell
-                                      value={property.name}
-                                      ariaLabel={`Property name for ${property.name}`}
-                                      placeholder="Add property name"
-                                      className="font-medium"
-                                      touchSafe
-                                      onSave={(next) =>
-                                        savePropertyField(
-                                          property.id,
-                                          "name",
-                                          next,
-                                        )
-                                      }
-                                    />
+                                  <span className="font-medium">
+                                    {property.name}
                                   </span>
                                   {(() => {
                                     const occupancy = occupancyByPropertyId.get(
@@ -5706,7 +5702,9 @@ function Workspace({
                                             title={badge.title ?? badge.label}
                                             className={chipClassName}
                                           >
-                                            {badge.label}
+                                            <span className="truncate">
+                                              {badge.label}
+                                            </span>
                                           </span>
                                         );
                                       }
@@ -5723,14 +5721,16 @@ function Workspace({
                                             applyOwnerTagFilter(tagKey);
                                           }}
                                         >
-                                          {badge.label}
+                                          <span className="truncate">
+                                            {badge.label}
+                                          </span>
                                         </button>
                                       );
                                     })}
                                 </div>
                               </td>
                               <td className={rowCellPadding}>
-                                {property.property_type.replaceAll("_", " ")}
+                                {propertyTypeLabel(property.property_type)}
                               </td>
                               {showAreaColumn ? (
                                 <td className={rowCellPadding}>
@@ -5887,7 +5887,7 @@ function Workspace({
                         title={badge.title ?? badge.label}
                         className={`inline-flex max-w-[18rem] items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(badge.palette)}`}
                       >
-                        {badge.label}
+                        <span className="truncate">{badge.label}</span>
                       </span>
                     ))}
                   </div>
@@ -7087,7 +7087,7 @@ function PropertyMobileListView({
         const occupancy = occupancyByPropertyId.get(property.id);
         const expiry = nextExpiryByPropertyId.get(property.id);
         const isSelected = property.id === selectedPropertyId;
-        const propertyType = property.property_type.replaceAll("_", " ");
+        const propertyType = propertyTypeLabel(property.property_type);
         const areaLabel =
           property.building_sqm === null || property.building_sqm === undefined
             ? "Area not set"

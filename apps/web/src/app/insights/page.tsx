@@ -321,7 +321,59 @@ function CountPill({ label, value }: { label: string; value: number | string }) 
   );
 }
 
-function ExceptionRow({ item }: { item: LiveExceptionRecord }) {
+type GroupedLiveException = {
+  item: LiveExceptionRecord;
+  chip: string;
+  count: number;
+  details: string[];
+};
+
+function chipLeadingCount(chip: string) {
+  const match = /^(\d+)\b/.exec(chip);
+  return match ? Number(match[1]) : null;
+}
+
+// Collapse near-duplicate live exceptions: rows sharing title + source +
+// destination merge into one row with a ×N count chip. Differing details
+// (e.g. per-unit billing blockers for the same tenant) join into one
+// description, and the chip keeps the highest blocker count.
+function groupLiveExceptions(
+  items: LiveExceptionRecord[],
+): GroupedLiveException[] {
+  const groups: GroupedLiveException[] = [];
+  const byKey = new Map<string, GroupedLiveException>();
+  for (const item of items) {
+    const key = `${item.title}|${item.source}|${item.href}`;
+    const group = byKey.get(key);
+    if (!group) {
+      const next = { item, chip: item.chip, count: 1, details: [item.detail] };
+      byKey.set(key, next);
+      groups.push(next);
+      continue;
+    }
+    group.count += 1;
+    if (!group.details.includes(item.detail)) {
+      group.details.push(item.detail);
+    }
+    const currentCount = chipLeadingCount(group.chip);
+    const nextCount = chipLeadingCount(item.chip);
+    if (nextCount !== null && (currentCount === null || nextCount > currentCount)) {
+      group.chip = item.chip;
+    }
+  }
+  return groups;
+}
+
+// Sentence-case joined blocker fragments at render time, e.g.
+// "…not connected to Xero. base rent is missing…" → "…Base rent is missing…".
+function formatExceptionDetail(detail: string) {
+  return detail
+    .replace(/^[a-z]/, (letter) => letter.toUpperCase())
+    .replace(/\. [a-z]/g, (joined) => joined.toUpperCase());
+}
+
+function ExceptionRow({ group }: { group: GroupedLiveException }) {
+  const { item } = group;
   return (
     <Link
       href={item.href}
@@ -330,10 +382,13 @@ function ExceptionRow({ item }: { item: LiveExceptionRecord }) {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <div className="font-semibold">{item.title}</div>
-          <StatusBadge tone={item.severity}>{item.chip}</StatusBadge>
+          <StatusBadge tone={item.severity}>{group.chip}</StatusBadge>
+          {group.count > 1 ? (
+            <StatusBadge tone="neutral">×{group.count}</StatusBadge>
+          ) : null}
         </div>
         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-          {item.detail}
+          {formatExceptionDetail(group.details.join(" "))}
         </p>
       </div>
       <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -1440,8 +1495,8 @@ function InsightsWorkspace() {
                 }
               >
                 <div className="divide-y divide-border">
-                  {overview.live_exceptions.map((item) => (
-                    <ExceptionRow key={item.id} item={item} />
+                  {groupLiveExceptions(overview.live_exceptions).map((group) => (
+                    <ExceptionRow key={group.item.id} group={group} />
                   ))}
                   {overview.live_exceptions.length === 0 ? (
                     <EmptyState

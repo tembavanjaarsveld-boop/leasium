@@ -91,6 +91,12 @@ type BlockerGroup = {
   items: BlockerItem[];
 };
 
+type BlockerIssueGroup = {
+  key: string;
+  title: string;
+  items: BlockerItem[];
+};
+
 type MonthEndChecklistStatus = "clear" | "review" | "blocked";
 
 type MonthEndChecklistItem = {
@@ -1646,12 +1652,41 @@ function blockerAction(item: BlockerItem): BlockerAction {
   };
 }
 
+function groupBlockerItemsByTitle(items: BlockerItem[]): BlockerIssueGroup[] {
+  const groups = new Map<string, BlockerIssueGroup>();
+  for (const item of items) {
+    const title = blockerTitle(item);
+    const key = `${item.kind}-${title}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    groups.set(key, { key, title, items: [item] });
+  }
+  return Array.from(groups.values());
+}
+
 function leaseContext(row: RentRollRow) {
   if (!row.lease_id) {
     return "No lease attached";
   }
   const status = row.lease_status?.replaceAll("_", " ") ?? "Lease";
   return `${status} lease, next due ${formatDate(row.next_due_date)}`;
+}
+
+function isNextDueStale(row: RentRollRow) {
+  if (!row.lease_id || !row.next_due_date) {
+    return false;
+  }
+  const value = row.next_due_date;
+  const due = new Date(value.length === 10 ? `${value}T00:00:00` : value);
+  if (Number.isNaN(due.getTime())) {
+    return false;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() < today.getTime();
 }
 
 function KpiCard({
@@ -4648,45 +4683,85 @@ function BillingReadinessWorkspace() {
                             {group.items.length === 1 ? "" : "s"}
                           </StatusBadge>
                         </div>
-                        <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                          {leaseContext(group.row)}
+                        <div
+                          className={
+                            isNextDueStale(group.row)
+                              ? "flex flex-wrap items-center gap-2 rounded-md bg-warning-soft px-3 py-2 text-xs text-warning-strong"
+                              : "rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"
+                          }
+                        >
+                          <span>{leaseContext(group.row)}</span>
+                          {isNextDueStale(group.row) ? (
+                            <StatusBadge tone="danger">Stale</StatusBadge>
+                          ) : null}
                         </div>
                         <div className="grid gap-2">
-                          {group.items.map((item) => {
-                            const action = blockerAction(item);
-                            return (
-                              <div
-                                key={item.id}
-                                className="grid gap-2 rounded-lg border border-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                              >
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <StatusBadge tone={kindTone(item.kind)}>
-                                      {blockerChipLabel(item)}
-                                    </StatusBadge>
-                                    <span className="font-medium">
-                                      {blockerTitle(item)}
-                                    </span>
+                          {groupBlockerItemsByTitle(group.items).map(
+                            (issue) => {
+                              const first = issue.items[0];
+                              const detailLines = Array.from(
+                                new Set(
+                                  issue.items.map(
+                                    (item) =>
+                                      `${item.row.tenant_name ?? "Vacant"} / ${item.row.unit_label} / ${item.row.property_name}`,
+                                  ),
+                                ),
+                              );
+                              const actions = Array.from(
+                                new Map(
+                                  issue.items.map((item) => {
+                                    const action = blockerAction(item);
+                                    return [action.href, action] as const;
+                                  }),
+                                ).values(),
+                              );
+                              return (
+                                <div
+                                  key={issue.key}
+                                  className="grid gap-2 rounded-lg border border-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <StatusBadge tone={kindTone(first.kind)}>
+                                        {blockerChipLabel(first)}
+                                      </StatusBadge>
+                                      <span className="font-medium">
+                                        {issue.title}
+                                      </span>
+                                      {issue.items.length > 1 ? (
+                                        <StatusBadge tone="neutral">
+                                          {issue.items.length} issues
+                                        </StatusBadge>
+                                      ) : null}
+                                    </div>
+                                    {detailLines.map((line) => (
+                                      <div
+                                        key={line}
+                                        className="mt-1 text-xs text-muted-foreground"
+                                      >
+                                        {line}
+                                      </div>
+                                    ))}
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      {blockerGuidance(first)}
+                                    </div>
                                   </div>
-                                  <div className="mt-1 text-xs text-muted-foreground">
-                                    {item.row.tenant_name ?? "Vacant"} /{" "}
-                                    {item.row.unit_label} /{" "}
-                                    {item.row.property_name}
-                                  </div>
-                                  <div className="mt-1 text-xs text-muted-foreground">
-                                    {blockerGuidance(item)}
+                                  <div className="grid gap-2">
+                                    {actions.map((action) => (
+                                      <Link
+                                        key={action.href}
+                                        href={action.href}
+                                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                      >
+                                        <ArrowUpRight size={15} />
+                                        {action.label}
+                                      </Link>
+                                    ))}
                                   </div>
                                 </div>
-                                <Link
-                                  href={action.href}
-                                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-                                >
-                                  <ArrowUpRight size={15} />
-                                  {action.label}
-                                </Link>
-                              </div>
-                            );
-                          })}
+                              );
+                            },
+                          )}
                         </div>
                       </article>
                     ))}

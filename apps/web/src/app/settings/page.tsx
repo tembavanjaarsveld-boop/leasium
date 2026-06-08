@@ -1338,6 +1338,16 @@ function accessStatusLabel(member: SecurityMemberRecord) {
   return "Not linked";
 }
 
+function authModeLabel(mode: string) {
+  if (mode === "clerk") {
+    return "Clerk";
+  }
+  if (mode === "dev") {
+    return "Dev";
+  }
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
 function inviteTone(member: SecurityMemberRecord): StatusTone {
   if (member.login_linked || member.invite_email_status === "accepted") {
     return "success";
@@ -2062,12 +2072,14 @@ function MetricCard({
   detail,
   tone = "neutral",
   icon,
+  statusValue = false,
 }: {
   label: string;
   value: string | number;
   detail: string;
   tone?: StatusTone;
   icon?: ReactNode;
+  statusValue?: boolean;
 }) {
   const toneClass = {
     neutral: "bg-muted text-leasium-slate-500",
@@ -2080,7 +2092,13 @@ function MetricCard({
     <div className="rounded-md border border-border bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xl font-semibold">{value}</div>
+          {statusValue ? (
+            <div className="flex min-h-8 items-center">
+              <StatusBadge tone={tone}>{value}</StatusBadge>
+            </div>
+          ) : (
+            <div className="text-2xl font-semibold">{value}</div>
+          )}
           <div className="mt-1 text-sm font-medium">{label}</div>
         </div>
         <div className={`rounded-xl p-2 ${toneClass}`}>
@@ -3541,13 +3559,18 @@ function SettingsWorkspace() {
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard
                 label="Auth mode"
-                value={securityWorkspace?.auth.auth_mode ?? "Checking"}
+                value={
+                  securityWorkspace
+                    ? authModeLabel(securityWorkspace.auth.auth_mode)
+                    : "Checking"
+                }
                 detail={
                   securityWorkspace?.auth.login_boundary ??
                   "Checking current login boundary."
                 }
                 tone={operatorLoginEnforced ? "success" : "neutral"}
                 icon={<ShieldCheck size={18} />}
+                statusValue
               />
               <MetricCard
                 label="Operator login"
@@ -3573,6 +3596,7 @@ function SettingsWorkspace() {
                       : "warning"
                 }
                 icon={<KeyRound size={18} />}
+                statusValue
               />
               <MetricCard
                 label="Clerk config"
@@ -3586,6 +3610,7 @@ function SettingsWorkspace() {
                 detail="Secret and JWKS settings are tracked without exposing values."
                 tone={clerkConfigReady ? "success" : "neutral"}
                 icon={<PlugZap size={18} />}
+                statusValue
               />
               <MetricCard
                 label="Operators"
@@ -3786,9 +3811,11 @@ function SettingsWorkspace() {
                         <div className="break-words font-medium">
                           {member.display_name}
                         </div>
-                        <div className="mt-1 break-all text-xs text-muted-foreground">
-                          {member.email}
-                        </div>
+                        {member.display_name !== member.email ? (
+                          <div className="mt-1 break-all text-xs text-muted-foreground">
+                            {member.email}
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-wrap gap-2">
@@ -3930,30 +3957,53 @@ function SettingsWorkspace() {
                             Unlink login
                           </SecondaryButton>
                         ) : null}
-                        <SecondaryButton
-                          type="button"
-                          className={`min-h-10 justify-center ${
-                            member.is_active ? "text-danger-strong" : ""
-                          }`}
-                          disabled={
-                            isSelf ||
-                            isUpdating ||
-                            !securityQuery.data?.can_manage_security
-                          }
-                          onClick={() =>
-                            memberMutation.mutate({
-                              memberId: member.id,
-                              payload: { is_active: !member.is_active },
-                            })
-                          }
-                        >
-                          {member.is_active ? (
+                        {member.is_active ? (
+                          <button
+                            type="button"
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground transition hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={
+                              isSelf ||
+                              isUpdating ||
+                              !securityQuery.data?.can_manage_security
+                            }
+                            onClick={() => {
+                              if (
+                                typeof window !== "undefined" &&
+                                !window.confirm(
+                                  `Deactivate ${member.display_name}? They lose access until reactivated.`,
+                                )
+                              ) {
+                                return;
+                              }
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: { is_active: false },
+                              });
+                            }}
+                          >
                             <Ban size={14} />
-                          ) : (
+                            Deactivate
+                          </button>
+                        ) : (
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-10 justify-center"
+                            disabled={
+                              isSelf ||
+                              isUpdating ||
+                              !securityQuery.data?.can_manage_security
+                            }
+                            onClick={() =>
+                              memberMutation.mutate({
+                                memberId: member.id,
+                                payload: { is_active: true },
+                              })
+                            }
+                          >
                             <CheckCircle2 size={14} />
-                          )}
-                          {member.is_active ? "Deactivate" : "Activate"}
-                        </SecondaryButton>
+                            Activate
+                          </SecondaryButton>
+                        )}
                       </div>
                     </article>
                   );
@@ -4010,9 +4060,11 @@ function SettingsWorkspace() {
                             <div className="font-medium">
                               {member.display_name}
                             </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {member.email}
-                            </div>
+                            {member.display_name !== member.email ? (
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {member.email}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex flex-wrap gap-2">
@@ -4149,30 +4201,52 @@ function SettingsWorkspace() {
                                   Unlink login
                                 </SecondaryButton>
                               ) : null}
-                              <SecondaryButton
-                                type="button"
-                                className={
-                                  member.is_active ? "text-danger-strong" : ""
-                                }
-                                disabled={
-                                  isSelf ||
-                                  isUpdating ||
-                                  !securityQuery.data?.can_manage_security
-                                }
-                                onClick={() =>
-                                  memberMutation.mutate({
-                                    memberId: member.id,
-                                    payload: { is_active: !member.is_active },
-                                  })
-                                }
-                              >
-                                {member.is_active ? (
+                              {member.is_active ? (
+                                <button
+                                  type="button"
+                                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={
+                                    isSelf ||
+                                    isUpdating ||
+                                    !securityQuery.data?.can_manage_security
+                                  }
+                                  onClick={() => {
+                                    if (
+                                      typeof window !== "undefined" &&
+                                      !window.confirm(
+                                        `Deactivate ${member.display_name}? They lose access until reactivated.`,
+                                      )
+                                    ) {
+                                      return;
+                                    }
+                                    memberMutation.mutate({
+                                      memberId: member.id,
+                                      payload: { is_active: false },
+                                    });
+                                  }}
+                                >
                                   <Ban size={14} />
-                                ) : (
+                                  Deactivate
+                                </button>
+                              ) : (
+                                <SecondaryButton
+                                  type="button"
+                                  disabled={
+                                    isSelf ||
+                                    isUpdating ||
+                                    !securityQuery.data?.can_manage_security
+                                  }
+                                  onClick={() =>
+                                    memberMutation.mutate({
+                                      memberId: member.id,
+                                      payload: { is_active: true },
+                                    })
+                                  }
+                                >
                                   <CheckCircle2 size={14} />
-                                )}
-                                {member.is_active ? "Deactivate" : "Activate"}
-                              </SecondaryButton>
+                                  Activate
+                                </SecondaryButton>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -4290,9 +4364,11 @@ function SettingsWorkspace() {
                               : "No access"}
                           </StatusBadge>
                         </div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {member.email}
-                        </div>
+                        {member.display_name !== member.email ? (
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {member.email}
+                          </div>
+                        ) : null}
                       </div>
 
                       {/* Email + SMS — flat, no inner boxes */}

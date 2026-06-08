@@ -23,8 +23,20 @@ import { useEffect, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
-import { PageHeader, SectionPanel, Select, StatusBadge } from "@/components/ui";
-import { listEntities } from "@/lib/api";
+import {
+  PageHeader,
+  SectionPanel,
+  Select,
+  SkeletonLine,
+  StatusBadge,
+} from "@/components/ui";
+import {
+  getBasiqConnectionStatus,
+  getXeroStatus,
+  listEntities,
+  listRentRoll,
+  type RentRollRow,
+} from "@/lib/api";
 import {
   isManagingAgentOperatingMode,
   useOperatingMode,
@@ -101,6 +113,17 @@ function moneyDestinations(showOwnerDispatch: boolean): MoneyDestination[] {
   ];
 }
 
+function billingReadinessCounts(rows: RentRollRow[]) {
+  const blocked = rows.filter(
+    (row) =>
+      (row.invoice_readiness_blockers?.length ?? 0) +
+        (row.xero_readiness_blockers?.length ?? 0) +
+        (row.gst_readiness_blockers?.length ?? 0) >
+      0,
+  ).length;
+  return { blocked, ready: rows.length - blocked };
+}
+
 function isMoneyTab(value: string | null): value is MoneyTab {
   return (
     value === "billing" ||
@@ -127,6 +150,24 @@ function MoneyContent() {
   });
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<MoneyTab>("billing");
+
+  // Read-only summaries reused from the underlying workspaces; no provider
+  // mutations fire from this hub.
+  const rentRollQuery = useQuery({
+    queryKey: ["money-rent-roll", selectedEntityId],
+    queryFn: () => listRentRoll({ entity_id: selectedEntityId }),
+    enabled: Boolean(selectedEntityId) && activeTab === "billing",
+  });
+  const xeroStatusQuery = useQuery({
+    queryKey: ["money-xero-status", selectedEntityId],
+    queryFn: () => getXeroStatus(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "xero",
+  });
+  const basiqStatusQuery = useQuery({
+    queryKey: ["money-basiq-status", selectedEntityId],
+    queryFn: () => getBasiqConnectionStatus(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "basiq",
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -160,6 +201,52 @@ function MoneyContent() {
   const activeDestination =
     destinations.find((destination) => destination.key === activeTab) ??
     destinations[0];
+
+  const liveStateLoading =
+    Boolean(selectedEntityId) &&
+    ((activeDestination.key === "billing" && rentRollQuery.isLoading) ||
+      (activeDestination.key === "xero" && xeroStatusQuery.isLoading) ||
+      (activeDestination.key === "basiq" && basiqStatusQuery.isLoading));
+
+  let liveBadges: ReactNode = null;
+  if (activeDestination.key === "billing" && rentRollQuery.data) {
+    const counts = billingReadinessCounts(rentRollQuery.data);
+    liveBadges = (
+      <>
+        <StatusBadge tone={counts.blocked ? "warning" : "success"}>
+          {counts.blocked} blocked tenanc{counts.blocked === 1 ? "y" : "ies"}
+        </StatusBadge>
+        <StatusBadge tone={counts.ready ? "success" : "neutral"}>
+          {counts.ready} ready to bill
+        </StatusBadge>
+      </>
+    );
+  } else if (activeDestination.key === "xero" && xeroStatusQuery.data) {
+    const status = xeroStatusQuery.data;
+    liveBadges = (
+      <>
+        <StatusBadge tone={status.connection.connected ? "success" : "warning"}>
+          {status.connection.connected ? "Connected" : "Not connected"}
+        </StatusBadge>
+        <StatusBadge tone={status.issues.length ? "warning" : "success"}>
+          {status.issues.length} mapping issue
+          {status.issues.length === 1 ? "" : "s"}
+        </StatusBadge>
+      </>
+    );
+  } else if (activeDestination.key === "basiq" && basiqStatusQuery.data) {
+    const status = basiqStatusQuery.data;
+    liveBadges = (
+      <>
+        <StatusBadge tone={status.connected ? "success" : "neutral"}>
+          {status.connected ? "Bank feed connected" : "Bank feed not connected"}
+        </StatusBadge>
+        <StatusBadge tone={status.configured ? "success" : "warning"}>
+          {status.configured ? "Provider configured" : "Provider not configured"}
+        </StatusBadge>
+      </>
+    );
+  }
 
   return (
     <main className="min-h-screen">
@@ -232,11 +319,19 @@ function MoneyContent() {
         >
           <div className="grid gap-4 p-4">
             <div className="flex flex-wrap gap-2">
-              {activeDestination.badges.map((badge) => (
-                <StatusBadge key={badge} tone="neutral">
-                  {badge}
-                </StatusBadge>
-              ))}
+              {liveStateLoading ? (
+                <>
+                  <SkeletonLine className="h-6 w-36 rounded-full" />
+                  <SkeletonLine className="h-6 w-28 rounded-full" />
+                </>
+              ) : (
+                (liveBadges ??
+                  activeDestination.badges.map((badge) => (
+                    <StatusBadge key={badge} tone="neutral">
+                      {badge}
+                    </StatusBadge>
+                  )))
+              )}
             </div>
             <p className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary-soft/60 px-3 py-2 text-sm text-muted-foreground">
               <ShieldCheck size={16} className="mt-0.5 shrink-0 text-primary" />

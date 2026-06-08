@@ -2,6 +2,74 @@
 
 Last updated: 2026-06-08
 
+## Cowork continuation - 2026-06-08 (Live UX review sweep - latest)
+
+A signed-in live walkthrough of leasium.ai produced `docs/ux-review-2026-06-08.md`
+(17 findings); all 17 were implemented in one frontend-only sweep. Backend
+untouched. Numbered follow-up detail lives in `docs/design-governance.md`
+§Live UX Review Fixes 2026-06-08; roadmap entry added under Built.
+
+Files changed:
+- `apps/web/src/components/property-workspace.tsx`: row title no longer
+  inline-edits (rename via pencil/editor only), owner-chip ellipsis fix
+  (inner truncate span), property-type labels sentence-cased.
+- `apps/web/src/app/operations/page.tsx`: KPI strip re-pointed at queue data
+  (Open work / Overdue / Due soon / Unassigned / Follow-up due), one urgency
+  chip per row, "Export & digest" overflow menu, queue filter merged into the
+  chip row, Waive demoted behind two-click confirm, empty compliance panels
+  collapse to one-liners.
+- `apps/web/src/app/billing-readiness/page.tsx`: action-queue blockers grouped
+  by issue type with "N issues" chips + deduped details/CTAs; stale next-due
+  dates get a danger "Stale" chip + warning tint.
+- `apps/web/src/app/money/page.tsx`: live state badges via existing GETs
+  (listRentRoll / getXeroStatus / getBasiqConnectionStatus) with skeleton and
+  quiet error fallback; Statements stays static.
+- `apps/web/src/app/insights/page.tsx`: Live Exceptions dedupe with xN chips;
+  sentence-cased blocker joins.
+- `apps/web/src/app/notifications/page.tsx`: KPI cards drop self-labelling
+  chips, "Export" overflow menu for the four packet/readiness exports,
+  "1 notice" pluralisation, template keys render as plain titles.
+- `apps/web/src/app/people/page.tsx` + `apps/web/src/app/tenants/[tenantId]/page.tsx`:
+  email dedupe ("Billing: same as contact"); Delete tenant demoted out of the
+  header primary row, confirm kept.
+- `apps/web/src/app/settings/page.tsx`: Security stat cards render StatusBadges
+  (Clerk/Enforced/Ready) instead of giant lowercase enums; Deactivate demoted
+  to subdued text button with window.confirm; operator email shown once when
+  it is the display name.
+- `apps/web/src/components/dashboard.tsx` + `dashboard/DashboardMetricCard.tsx`
+  + `dashboard/UpcomingLeaseEventsPanel.tsx`: mode separation — `/` shows a
+  compact Smart Intake link card, `/intake` keeps the full intake workspace
+  with intake-only KPIs; trend line renders only with a real non-zero delta;
+  onboarding events drop the literal "-" badge and the "Tenant onboarding -
+  Tenant" placeholder (display-side strip; backend insights.py:1212 still
+  emits the placeholder when the tenant lookup fails - candidate API fix).
+- `apps/web/src/app/not-found.tsx` (new): branded 404 with Back to Dashboard
+  + Open Smart Intake links.
+- `apps/web/next.config.ts`: permanent `/smart-intake` -> `/intake` redirect.
+- Smoke specs updated: `app-flows.spec.ts` (dashboard compact card, operations
+  export menu open/Escape choreography), `operations-ux.spec.ts` (Open work
+  label, menu-resident CSV buttons), `notifications.spec.ts` (Export menu,
+  menuitem roles), `properties-ux.spec.ts` (title-edit assertion removed,
+  "Commercial retail" casing).
+
+Verification (on Temba's Mac via Desktop Commander):
+- `./node_modules/.bin/eslint src/app src/components tests/smoke/...` - clean.
+- `./node_modules/.bin/tsc --noEmit` - clean.
+- Full smoke: `NODE_ENV=development ./node_modules/.bin/playwright test` -
+  247 passed, 16 skipped (Clerk-gated), 7 failed on first run; all 7 re-passed
+  with `--last-failed --workers=2` (dev-server route-compile contention under
+  8 workers, plus one legit casing assertion fixed). Port 3000 had a stale dev
+  server that had to be killed first.
+- Production build: `NEXT_TEST_WASM_DIR=... ./node_modules/.bin/next build` -
+  exit 0.
+
+Not committed or pushed - working tree holds this sweep as unstaged changes
+plus untracked `docs/ux-review-2026-06-08.md`, `apps/web/src/app/not-found.tsx`,
+and `docs/external-skills/ui-ux-pro-max/`. Commit per the per-topic/bundle
+convention on Temba's go (suggested: one "Live UX review sweep v1" bundle).
+Vercel deploy reminder: commit with the gmail author identity or the deploy
+will be blocked.
+
 ## Codex continuation - 2026-06-08 (Settings finance row-action targets - latest)
 
 Continuation after the maintenance detail row-action pass. A live Chrome review

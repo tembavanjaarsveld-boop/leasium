@@ -2321,48 +2321,13 @@ function TenantDetail() {
           title={tenantName(tenant)}
           description="Onboarding, leases, access, documents, and source history."
           actions={
-            <>
-              <SecondaryButton type="button" onClick={startEdit}>
-                <Edit3 size={15} />
-                Edit profile
-              </SecondaryButton>
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  const activeLeases = linkedLeases.filter(
-                    (lease) =>
-                      lease.status === "active" ||
-                      lease.status === "holding_over",
-                  ).length;
-                  const warning =
-                    activeLeases > 0
-                      ? `\n\n${activeLeases} active lease${
-                          activeLeases === 1 ? "" : "s"
-                        } will stay on file but lose their tenant link.`
-                      : "";
-                  if (
-                    typeof window === "undefined" ||
-                    window.confirm(
-                      `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
-                    )
-                  ) {
-                    deleteTenantMutation.mutate();
-                  }
-                }}
-                disabled={deleteTenantMutation.isPending}
-                className="text-danger hover:bg-danger/5"
-                aria-label="Delete tenant"
-              >
-                {deleteTenantMutation.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Trash2 size={15} />
-                )}
-                Delete tenant
-              </SecondaryButton>
-            </>
+            <SecondaryButton type="button" onClick={startEdit}>
+              <Edit3 size={15} />
+              Edit profile
+            </SecondaryButton>
           }
           summary={
+            <>
             <section className="grid gap-4 bg-white/60 py-4 sm:grid-cols-2 xl:grid-cols-5">
               <div className="grid gap-1 px-1">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
@@ -2453,6 +2418,43 @@ function TenantDetail() {
                 </div>
               </div>
             </section>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const activeLeases = linkedLeases.filter(
+                    (lease) =>
+                      lease.status === "active" ||
+                      lease.status === "holding_over",
+                  ).length;
+                  const warning =
+                    activeLeases > 0
+                      ? `\n\n${activeLeases} active lease${
+                          activeLeases === 1 ? "" : "s"
+                        } will stay on file but lose their tenant link.`
+                      : "";
+                  if (
+                    typeof window === "undefined" ||
+                    window.confirm(
+                      `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
+                    )
+                  ) {
+                    deleteTenantMutation.mutate();
+                  }
+                }}
+                disabled={deleteTenantMutation.isPending}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-danger/80 transition duration-200 ease-leasium hover:bg-danger/5 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Delete tenant"
+              >
+                {deleteTenantMutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                Delete tenant
+              </button>
+            </div>
+            </>
           }
         >
           {deleteTenantMutation.error ? (

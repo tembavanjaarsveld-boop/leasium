@@ -41,6 +41,18 @@ function leaseEventKindLabel(kind: LeaseEventRecord["kind"]) {
   }
 }
 
+function leaseEventTitle(event: LeaseEventRecord) {
+  // The API falls back to a "Tenant onboarding - Tenant" placeholder when
+  // the tenant record has no name; render it as plain "Tenant onboarding".
+  if (
+    event.kind === "tenant_onboarding" &&
+    event.title === "Tenant onboarding - Tenant"
+  ) {
+    return "Tenant onboarding";
+  }
+  return event.title;
+}
+
 function leaseEventKindTone(kind: LeaseEventRecord["kind"]): StatusTone {
   switch (kind) {
     case "lease_expiry":
@@ -211,27 +223,32 @@ export function UpcomingLeaseEventsPanel({
                   <div className="px-0.5 text-leasium-micro font-semibold uppercase tracking-wide text-muted-foreground">
                     {DATE_BUCKET_LABEL[bucket]}
                   </div>
-                  {bucketEvents.map((event) => (
-                    <Link
-                      key={event.id}
-                      href={event.href || "/properties"}
-                      className="animate-leasium-row-in grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition duration-200 ease-leasium hover:bg-muted/40"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge tone={leaseEventKindTone(event.kind)}>
-                            {leaseEventKindLabel(event.kind)}
-                          </StatusBadge>
-                          <span className="font-medium text-foreground">
-                            {event.title}
-                          </span>
+                  {bucketEvents.map((event) => {
+                    const urgencyLabel = leaseEventUrgencyLabel(event);
+                    return (
+                      <Link
+                        key={event.id}
+                        href={event.href || "/properties"}
+                        className="animate-leasium-row-in grid gap-1 rounded-md border border-border bg-white p-3 text-sm transition duration-200 ease-leasium hover:bg-muted/40"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone={leaseEventKindTone(event.kind)}>
+                              {leaseEventKindLabel(event.kind)}
+                            </StatusBadge>
+                            <span className="font-medium text-foreground">
+                              {leaseEventTitle(event)}
+                            </span>
+                          </div>
+                          {urgencyLabel && urgencyLabel !== "-" ? (
+                            <StatusBadge tone={leaseEventUrgencyTone(event)}>
+                              {urgencyLabel}
+                            </StatusBadge>
+                          ) : null}
                         </div>
-                        <StatusBadge tone={leaseEventUrgencyTone(event)}>
-                          {leaseEventUrgencyLabel(event)}
-                        </StatusBadge>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               );
             })}
