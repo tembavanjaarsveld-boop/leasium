@@ -1363,6 +1363,20 @@ export type ArrearsEscalationStatus =
   | "referred"
   | "closed";
 
+export type ArrearsPromiseToPayRecord = {
+  promised_amount_cents: number | null;
+  promised_date: string | null;
+  notes: string | null;
+  recorded_by: string | null;
+  recorded_at: string | null;
+};
+
+export type ArrearsPromiseToPayPayload = {
+  promised_amount_cents?: number | null;
+  promised_date?: string | null;
+  notes: string;
+};
+
 export type ArrearsCaseRecord = {
   id: string;
   entity_id: string;
@@ -1398,6 +1412,7 @@ export type ArrearsCaseRecord = {
   assigned_user_id: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
+  promise_to_pay_notes_log: ArrearsPromiseToPayRecord[];
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -4431,6 +4446,19 @@ export function updateArrearsCase(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function recordArrearsPromiseToPay(
+  arrearsCaseId: string,
+  payload: ArrearsPromiseToPayPayload,
+) {
+  return request<ArrearsCaseRecord>(
+    `/arrears/cases/${arrearsCaseId}/promise-to-pay`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function sendArrearsAssignmentNotification(arrearsCaseId: string) {

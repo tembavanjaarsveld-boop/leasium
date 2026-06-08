@@ -1069,6 +1069,13 @@ const arrearsCases = [
     assigned_user_id: operatorId,
     notes: "Follow up after statement pack is sent.",
     metadata: {},
+    promise_to_pay_notes_log: [] as Array<{
+      promised_amount_cents: number | null;
+      promised_date: string | null;
+      notes: string | null;
+      recorded_by: string | null;
+      recorded_at: string | null;
+    }>,
     created_at: "2026-05-18T00:00:00.000Z",
     updated_at: "2026-05-19T00:00:00.000Z",
     deleted_at: null,
@@ -8045,6 +8052,30 @@ export async function mockLeasiumApi(
 
     if (
       method === "POST" &&
+      path === "/arrears/cases/arrears-1/promise-to-pay"
+    ) {
+      const payload = request.postDataJSON() as {
+        promised_amount_cents?: number | null;
+        promised_date?: string | null;
+        notes: string;
+      };
+      arrearsCases[0].promise_to_pay_notes_log = [
+        ...arrearsCases[0].promise_to_pay_notes_log,
+        {
+          promised_amount_cents: payload.promised_amount_cents ?? null,
+          promised_date: payload.promised_date ?? null,
+          notes: payload.notes,
+          recorded_by: "Operator",
+          recorded_at: "2026-05-21T02:00:00.000Z",
+        },
+      ];
+      arrearsCases[0].updated_at = "2026-05-21T02:00:00.000Z";
+      await fulfillJson(route, arrearsCases[0]);
+      return;
+    }
+
+    if (
+      method === "POST" &&
       path === "/arrears/cases/arrears-1/assignment-notification/send-email"
     ) {
       Object.assign(arrearsCases[0], {
@@ -9242,6 +9273,7 @@ export async function mockLeasiumApi(
         ...arrearsCases[0],
         ...payload,
         id: "arrears-created",
+        promise_to_pay_notes_log: [],
         total_balance_cents: total,
         created_at: "2026-05-20T02:00:00.000Z",
         updated_at: "2026-05-20T02:00:00.000Z",

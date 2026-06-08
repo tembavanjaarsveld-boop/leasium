@@ -483,6 +483,66 @@ test("arrears review packet mobile controls stay touch-safe without mutations", 
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+test("arrears promise-to-pay records an operator note without payment or provider calls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const forbiddenCalls: string[] = [];
+  const forbiddenPathPatterns = [
+    "/payment",
+    "/reconciliation",
+    "/invoice",
+    "/xero",
+    "/basiq",
+    "/providers",
+    "/provider-dispatch",
+    "/comms",
+    "/work-assignments",
+  ];
+  const forbiddenSendPathPattern = /email|sms|sendgrid|twilio/i;
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (request.method() !== "GET") {
+      if (
+        forbiddenPathPatterns.some((pattern) => path.startsWith(pattern)) ||
+        forbiddenSendPathPattern.test(path)
+      ) {
+        forbiddenCalls.push(`${request.method()} ${path}`);
+      }
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations?tab=arrears");
+
+  const form = page.getByTestId("arrears-promise-to-pay-form-arrears-1");
+  await expect(form).toBeVisible({ timeout: 15_000 });
+
+  await form.getByLabel("Promised amount (optional)").fill("4400");
+  await form.getByLabel("Promised date (optional)").fill("2026-06-15");
+  await form
+    .getByLabel("Notes")
+    .fill("Tenant promised half the balance by mid-June.");
+
+  const submit = form.getByRole("button", { name: "Record promise to pay" });
+  const submitBox = await submit.boundingBox();
+  expect(submitBox).not.toBeNull();
+  expect(submitBox!.height).toBeGreaterThanOrEqual(44);
+
+  await submit.click();
+
+  await expect(
+    page.getByText("Tenant promised half the balance by mid-June."),
+  ).toBeVisible();
+  await expect(page.getByText("Promised 15 June 2026")).toBeVisible();
+
+  expect(forbiddenCalls).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("maintenance detail loading states use structured skeleton rows", async ({
   page,
 }) => {

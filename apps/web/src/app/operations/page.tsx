@@ -76,6 +76,7 @@ import {
   getSecurityWorkspace,
   listTenantOnboardings,
   listTenants,
+  recordArrearsPromiseToPay,
   runWorkAssignmentDigest,
   type MaintenancePriority,
   type MaintenanceWorkOrderRecord,
@@ -2856,6 +2857,17 @@ function OperationsWorkspace() {
     onSuccess: invalidateOperations,
   });
 
+  const recordArrearsPromiseToPayMutation = useMutation({
+    mutationFn: (payload: {
+      id: string;
+      data: Parameters<typeof recordArrearsPromiseToPay>[1];
+    }) => recordArrearsPromiseToPay(payload.id, payload.data),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["operations-arrears", selectedEntityId],
+      }),
+  });
+
   const sendReadyAssignmentNotificationsMutation = useMutation({
     mutationFn: async (items: AssignableQueueItem[]) => {
       const results = [];
@@ -3124,6 +3136,7 @@ function OperationsWorkspace() {
     assignObligationMutation.error ||
     sendMaintenanceAssignmentNotificationMutation.error ||
     sendArrearsAssignmentNotificationMutation.error ||
+    recordArrearsPromiseToPayMutation.error ||
     sendObligationAssignmentNotificationMutation.error ||
     sendReadyAssignmentNotificationsMutation.error ||
     workAssignmentDigestMutation.error ||
@@ -5802,6 +5815,20 @@ function OperationsWorkspace() {
                             )}
                           />
                         </div>
+                        <div className="xl:col-span-2">
+                          <ArrearsPromiseToPay
+                            arrearsCase={arrearsCase}
+                            onRecord={(data) =>
+                              recordArrearsPromiseToPayMutation.mutateAsync({
+                                id: arrearsCase.id,
+                                data,
+                              })
+                            }
+                            disabled={
+                              recordArrearsPromiseToPayMutation.isPending
+                            }
+                          />
+                        </div>
                       </div>
                     ))}
                     {!operationsLoading && filteredArrears.length === 0 ? (
@@ -7178,6 +7205,150 @@ function ArrearsActions({
         Resolve
       </SecondaryButton>
     </div>
+  );
+}
+
+function ArrearsPromiseToPay({
+  arrearsCase,
+  onRecord,
+  disabled,
+}: {
+  arrearsCase: ArrearsCaseRecord;
+  onRecord: (data: {
+    promised_amount_cents?: number | null;
+    promised_date?: string | null;
+    notes: string;
+  }) => Promise<unknown>;
+  disabled: boolean;
+}) {
+  const [amount, setAmount] = useState("");
+  const [promisedDate, setPromisedDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const log = arrearsCase.promise_to_pay_notes_log ?? [];
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedNotes = notes.trim();
+    if (!trimmedNotes) {
+      setError("Notes are required to record a promise to pay.");
+      return;
+    }
+    setError(null);
+    try {
+      await onRecord({
+        promised_amount_cents: amount.trim()
+          ? dollarsToCents(amount)
+          : null,
+        promised_date: promisedDate || null,
+        notes: trimmedNotes,
+      });
+      setAmount("");
+      setPromisedDate("");
+      setNotes("");
+    } catch {
+      setError("Could not record the promise to pay. Try again.");
+    }
+  }
+
+  return (
+    <SectionPanel
+      title="Promise to pay"
+      description="Record what the tenant told you. This logs an operator note only — it does not take payment, create a charge, reconcile, or contact the tenant."
+      icon={<ReceiptText size={17} className="text-primary" />}
+    >
+      <form
+        onSubmit={submit}
+        data-testid={`arrears-promise-to-pay-form-${arrearsCase.id}`}
+        className="grid gap-3"
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Promised amount (optional)">
+            <Input
+              inputMode="decimal"
+              placeholder="0.00"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          </Field>
+          <Field label="Promised date (optional)">
+            <Input
+              type="date"
+              value={promisedDate}
+              onChange={(event) => setPromisedDate(event.target.value)}
+            />
+          </Field>
+        </div>
+        <Field label="Notes" error={error ?? undefined}>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={3}
+            required
+            placeholder="What the tenant promised and when."
+            className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+          />
+        </Field>
+        <div>
+          <Button type="submit" disabled={disabled || !notes.trim()}>
+            <ReceiptText size={15} />
+            Record promise to pay
+          </Button>
+        </div>
+      </form>
+      <div className="mt-4 grid gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Recorded promises
+        </span>
+        {log.length === 0 ? (
+          <EmptyState
+            icon={<ReceiptText size={18} />}
+            title="No promises recorded"
+            description="Recorded promise-to-pay notes will appear here, newest first."
+          />
+        ) : (
+          <ul className="grid gap-2">
+            {[...log]
+              .sort((a, b) =>
+                (b.recorded_at ?? "").localeCompare(a.recorded_at ?? ""),
+              )
+              .map((promise, index) => (
+                <li
+                  key={`${promise.recorded_at ?? "promise"}-${index}`}
+                  className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="primary">
+                      {promise.promised_amount_cents != null
+                        ? formatMoney(
+                            promise.promised_amount_cents,
+                            arrearsCase.currency,
+                          )
+                        : "No amount"}
+                    </StatusBadge>
+                    <span className="text-xs text-muted-foreground">
+                      Promised{" "}
+                      {promise.promised_date
+                        ? formatDate(promise.promised_date)
+                        : "no date"}
+                    </span>
+                  </div>
+                  {promise.notes ? (
+                    <p className="mt-1 text-sm text-foreground">
+                      {promise.notes}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {promise.recorded_by ?? "Operator"} -{" "}
+                    {formatDateTime(promise.recorded_at)}
+                  </p>
+                </li>
+              ))}
+          </ul>
+        )}
+      </div>
+    </SectionPanel>
   );
 }
 
