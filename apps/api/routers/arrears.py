@@ -1,12 +1,13 @@
 """Arrears and credit control routes."""
 
+from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.audit import audit_log
+from stewart.core.audit import AuditOutcome, audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     AppUser,
@@ -25,7 +26,13 @@ from stewart.core.settings import get_settings
 from stewart.integrations.communications import send_work_assignment_email
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
-from apps.api.schemas.arrears import ArrearsCaseCreate, ArrearsCaseRead, ArrearsCaseUpdate
+from apps.api.schemas.arrears import (
+    PROMISE_TO_PAY_KEY,
+    ArrearsCaseCreate,
+    ArrearsCaseRead,
+    ArrearsCaseUpdate,
+    ArrearsPromiseToPayCreate,
+)
 from apps.api.work_assignments import (
     assignment_notification_sent,
     record_work_assignment_delivery,
@@ -34,6 +41,8 @@ from apps.api.work_assignments import (
     work_assignment_email_preference_skipped_result,
     work_url,
 )
+
+ACTIVITY_HISTORY_KEY = "activity_history"
 
 router = APIRouter(prefix="/arrears/cases", tags=["arrears"])
 
@@ -210,6 +219,58 @@ def _arrears_case_for_user(
         raise _not_found("Arrears case")
     assert_entity_role(session, user, arrears_case.entity_id, roles)
     return arrears_case
+
+
+def _append_activity_history(
+    metadata: dict[str, Any] | None,
+    entry: dict[str, Any],
+) -> dict[str, Any]:
+    next_metadata = dict(metadata or {})
+    current_history = next_metadata.get(ACTIVITY_HISTORY_KEY)
+    history = list(current_history) if isinstance(current_history, list) else []
+    history.append(entry)
+    next_metadata[ACTIVITY_HISTORY_KEY] = history
+    return next_metadata
+
+
+def _append_promise_to_pay(
+    metadata: dict[str, Any] | None,
+    *,
+    actor: str,
+    promised_amount_cents: int | None,
+    promised_date: date | None,
+    notes: str,
+) -> dict[str, Any]:
+    """Append an operator-recorded tenant promise-to-pay / payment-plan note.
+
+    Records the note only — the tenant is NOT contacted, no payment is taken,
+    no charge is created, and nothing is reconciled (review-first; no provider
+    call). Adds a ``promise_to_pay`` entry plus an activity-history event so the
+    arrears-case timeline reflects the recorded promise.
+    """
+    next_metadata = dict(metadata or {})
+    existing = next_metadata.get(PROMISE_TO_PAY_KEY)
+    promises = list(existing) if isinstance(existing, list) else []
+    recorded_at = utcnow().isoformat()
+    promise = {
+        "promised_amount_cents": promised_amount_cents,
+        "promised_date": promised_date.isoformat() if promised_date is not None else None,
+        "notes": notes.strip(),
+        "recorded_by": actor,
+        "recorded_at": recorded_at,
+    }
+    promises.append(promise)
+    next_metadata[PROMISE_TO_PAY_KEY] = promises
+    return _append_activity_history(
+        next_metadata,
+        {
+            "timestamp": recorded_at,
+            "actor": actor,
+            "source": "operator_api",
+            "event": "promise_to_pay_recorded",
+            "summary": "Recorded tenant promise-to-pay note.",
+        },
+    )
 
 
 @router.get("", response_model=list[ArrearsCaseRead])
@@ -394,6 +455,57 @@ def send_arrears_assignment_notification_email(
         ),
     )
     session.commit()
+    session.refresh(arrears_case)
+    return arrears_case
+
+
+@router.post("/{arrears_case_id}/promise-to-pay", response_model=ArrearsCaseRead)
+def record_arrears_promise_to_pay(
+    arrears_case_id: UUID,
+    payload: ArrearsPromiseToPayCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ArrearsCase:
+    """Operator records a tenant promise-to-pay / payment-plan note.
+
+    Review-first: this stores what the operator heard from the tenant. It does
+    NOT take payment, create a charge, reconcile, or contact the tenant — a
+    future tenant-notify hook would attach where noted below (no SendGrid /
+    Twilio / Xero call here).
+    """
+    arrears_case = _arrears_case_for_user(arrears_case_id, user, session, WRITE_ROLES)
+    arrears_case.arrears_metadata = _append_promise_to_pay(
+        arrears_case.arrears_metadata,
+        actor=user.actor,
+        promised_amount_cents=payload.promised_amount_cents,
+        promised_date=payload.promised_date,
+        notes=payload.notes,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=arrears_case.entity_id,
+        action="update",
+        target_table="arrears_case",
+        target_id=arrears_case.id,
+        tool_name="arrears.promise_to_pay.record",
+        tool_input={
+            "arrears_case_id": str(arrears_case.id),
+            "promised_amount_cents": payload.promised_amount_cents,
+            "promised_date": (
+                payload.promised_date.isoformat() if payload.promised_date is not None else None
+            ),
+        },
+        tool_output_summary=(
+            "Recorded operator-entered tenant promise-to-pay note; no tenant, "
+            "provider, billing, payment, charge, or reconciliation action ran."
+        ),
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    # Future tenant-notify hook goes here (review-only in v1; no SendGrid/Twilio call).
     session.refresh(arrears_case)
     return arrears_case
 

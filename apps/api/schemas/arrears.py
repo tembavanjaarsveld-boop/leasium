@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, computed_field
 from stewart.core.models import (
     ArrearsCaseStatus,
     ArrearsDisputeStatus,
@@ -12,6 +12,71 @@ from stewart.core.models import (
 )
 
 from apps.api.schemas.common import ApiModel
+
+PROMISE_TO_PAY_KEY = "promise_to_pay"
+
+
+def _ptp_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _ptp_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
+class ArrearsPromiseToPayCreate(BaseModel):
+    """Operator-recorded tenant promise-to-pay / payment-plan note.
+
+    Records what the operator heard from the tenant. It does not take payment,
+    create a charge, reconcile, or contact the tenant — see the router endpoint
+    for the future tenant-notify hook attachment point.
+    """
+
+    promised_amount_cents: int | None = Field(default=None, ge=0)
+    promised_date: date | None = None
+    notes: str = Field(min_length=1, max_length=2000)
+
+
+class ArrearsPromiseToPayRead(BaseModel):
+    promised_amount_cents: int | None
+    promised_date: str | None
+    notes: str | None
+    recorded_by: str | None
+    recorded_at: str | None
+
+
+def _promises_to_pay_from_metadata(
+    metadata: dict[str, Any] | None,
+) -> list[ArrearsPromiseToPayRead]:
+    """Project the operator-recorded tenant promise-to-pay notes.
+
+    Reads the ``promise_to_pay`` list the arrears router appends to
+    ``arrears_metadata``. Returns an empty list when none recorded yet.
+    """
+    raw = (metadata or {}).get(PROMISE_TO_PAY_KEY)
+    if not isinstance(raw, list):
+        return []
+    promises: list[ArrearsPromiseToPayRead] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        promises.append(
+            ArrearsPromiseToPayRead(
+                promised_amount_cents=_ptp_int(entry.get("promised_amount_cents")),
+                promised_date=_ptp_text(entry.get("promised_date")),
+                notes=_ptp_text(entry.get("notes")),
+                recorded_by=_ptp_text(entry.get("recorded_by")),
+                recorded_at=_ptp_text(entry.get("recorded_at")),
+            )
+        )
+    return promises
 
 
 class ArrearsCaseCreate(BaseModel):
@@ -126,3 +191,8 @@ class ArrearsCaseRead(ApiModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def promise_to_pay_notes_log(self) -> list[ArrearsPromiseToPayRead]:
+        return _promises_to_pay_from_metadata(self.metadata)

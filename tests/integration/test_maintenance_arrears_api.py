@@ -2435,3 +2435,167 @@ def test_maintenance_completion_review_fires_no_provider_call(
     )
     assert response.status_code == 200
     assert response.json()["completion_reviews"][0]["outcome"] == "confirmed"
+
+
+def _create_arrears_case(client: TestClient, context: dict[str, str]) -> str:
+    response = client.post(
+        "/api/v1/arrears/cases",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "tenant_id": context["tenant_id"],
+            "balance_current_cents": 120000,
+            "total_balance_cents": 120000,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_arrears_promise_to_pay_records_operator_note(
+    client: TestClient,
+    session: Session,
+) -> None:
+    from stewart.core.models import ArrearsCase
+
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    response = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={
+            "promised_amount_cents": 80000,
+            "promised_date": "2026-06-30",
+            "notes": "Tenant promised partial payment after payroll run.",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    promises = body["metadata"]["promise_to_pay"]
+    assert len(promises) == 1
+    assert promises[0]["promised_amount_cents"] == 80000
+    assert promises[0]["promised_date"] == "2026-06-30"
+    assert promises[0]["notes"] == "Tenant promised partial payment after payroll run."
+    assert promises[0]["recorded_by"] == f"user:{get_settings().dev_user_email}"
+    assert promises[0]["recorded_at"]
+    # Projected onto the read schema for the frontend (later wave).
+    assert body["promise_to_pay_notes_log"][0]["promised_amount_cents"] == 80000
+    assert body["promise_to_pay_notes_log"][0]["notes"] == (
+        "Tenant promised partial payment after payroll run."
+    )
+
+    history = body["metadata"]["activity_history"]
+    assert history[-1]["event"] == "promise_to_pay_recorded"
+    assert history[-1]["summary"] == "Recorded tenant promise-to-pay note."
+
+    case = session.get(ArrearsCase, UUID(arrears_case_id))
+    assert case is not None
+    assert len(case.arrears_metadata["promise_to_pay"]) == 1
+
+    audit_rows = session.scalars(
+        select(AuditAction).where(AuditAction.target_table == "arrears_case")
+    ).all()
+    assert audit_rows[-1].action == "update"
+    assert audit_rows[-1].tool_name == "arrears.promise_to_pay.record"
+
+
+def test_arrears_promise_to_pay_allows_notes_only(
+    client: TestClient,
+    session: Session,
+) -> None:
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    response = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={"notes": "Tenant will call back next week with a plan."},
+    )
+    assert response.status_code == 200
+    promises = response.json()["promise_to_pay_notes_log"]
+    assert len(promises) == 1
+    assert promises[0]["promised_amount_cents"] is None
+    assert promises[0]["promised_date"] is None
+
+
+def test_arrears_promise_to_pay_rejects_negative_amount(
+    client: TestClient,
+    session: Session,
+) -> None:
+    from stewart.core.models import ArrearsCase
+
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    response = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={"promised_amount_cents": -100, "notes": "Bad amount."},
+    )
+    assert response.status_code == 422
+    case = session.get(ArrearsCase, UUID(arrears_case_id))
+    assert case is not None
+    assert "promise_to_pay" not in (case.arrears_metadata or {})
+
+
+def test_arrears_promise_to_pay_requires_entity_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    from stewart.core.models import ArrearsCase
+
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert entity is not None
+    other_entity = Entity(organisation_id=entity.organisation_id, name="No Role Arrears Entity")
+    session.add(other_entity)
+    session.commit()
+
+    case = session.get(ArrearsCase, UUID(arrears_case_id))
+    assert case is not None
+    case.entity_id = other_entity.id
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={"notes": "Should be denied."},
+    )
+    assert response.status_code == 403
+
+
+def test_arrears_promise_to_pay_fires_no_provider_call(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Recording a promise-to-pay note must never open an outbound provider call.
+
+    Review-first: the operator records what they heard from the tenant; the
+    tenant is not contacted, no payment/charge/reconciliation runs. We assert at
+    the httpx boundary that no external SendGrid/Twilio/Xero call is made. The
+    Starlette TestClient is itself built on httpx.Client, so testserver traffic
+    is allowed and only absolute external URLs fail the test.
+    """
+    import httpx
+
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    original_request = httpx.Client.request
+
+    def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        target = str(url)
+        if target.startswith(("http://", "https://")) and "testserver" not in target:
+            raise AssertionError(
+                f"Promise-to-pay attempted an outbound HTTP call to {target}."
+            )
+        return original_request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "request", _guarded_request)
+
+    response = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={"promised_amount_cents": 50000, "notes": "Plan agreed verbally."},
+    )
+    assert response.status_code == 200
+    assert response.json()["promise_to_pay_notes_log"][0]["promised_amount_cents"] == 50000
