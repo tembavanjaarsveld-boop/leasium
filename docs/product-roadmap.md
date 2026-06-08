@@ -8,6 +8,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 10 (2 slices):** Compliance certificate-expiry
+  badge on the operations compliance tab (from the wave-9 projection); guard so
+  re-reviewing a disbursed owner distribution returns 409 instead of silently
+  reverting it. No migration.
 - [x] **2026-06-08 agent push wave 9 (3 slices):** Maintenance work-order activity
   timeline UI (mapped event labels, reverse-chron, cap + expander); Statements
   distribution disbursed badge + confirm-gated mark-disbursed; compliance

@@ -2,7 +2,21 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 9: 3 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 10: 2 slices - latest)
+
+Two on `main`, verified (backend **585 passed, 1 skipped**; ruff/eslint/tsc +
+compliance smoke + clean production build). Review-first; no migration.
+
+- **Compliance cert-expiry badge (operations tab).** /operations?tab=compliance now
+  shows a certificate-expiry StatusBadge per check from the wave-9 projection
+  (expired→danger / due_soon→warning / valid), with "due in N days" / "expired N
+  days ago" copy. Read-only.
+- **Guard distribution re-review of disbursed rows.** `POST /owners/distributions/
+  review` now returns 409 if the matched row is already `disbursed`, so a
+  re-review can't silently revert a disbursed distribution to reviewed or lose its
+  disbursement marker (the gap flagged in wave 8). Draft→reviewed unchanged.
+
+## Cowork continuation - 2026-06-08 (agent push wave 9: 3 slices)
 
 Three polish slices on `main`, verified (ruff + compliance/owners backend + eslint/
 tsc + operations/owner-distributions smokes + production build green). Review-first;
