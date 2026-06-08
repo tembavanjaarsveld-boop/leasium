@@ -196,3 +196,19 @@ class ArrearsCaseRead(ApiModel):
     @property
     def promise_to_pay_notes_log(self) -> list[ArrearsPromiseToPayRead]:
         return _promises_to_pay_from_metadata(self.metadata)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def latest_promise_to_pay(self) -> ArrearsPromiseToPayRead | None:
+        promises = _promises_to_pay_from_metadata(self.metadata)
+        if not promises:
+            return None
+        return max(
+            promises,
+            key=lambda promise: promise.recorded_at or "",
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def has_promise_to_pay(self) -> bool:
+        return bool(_promises_to_pay_from_metadata(self.metadata))

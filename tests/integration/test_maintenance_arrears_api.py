@@ -2599,3 +2599,60 @@ def test_arrears_promise_to_pay_fires_no_provider_call(
     )
     assert response.status_code == 200
     assert response.json()["promise_to_pay_notes_log"][0]["promised_amount_cents"] == 50000
+
+
+def test_arrears_latest_promise_to_pay_projection(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The read schema surfaces the newest promise-to-pay note for display."""
+
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    first = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={
+            "promised_amount_cents": 40000,
+            "promised_date": "2026-06-15",
+            "notes": "Tenant promised first instalment.",
+        },
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        f"/api/v1/arrears/cases/{arrears_case_id}/promise-to-pay",
+        json={
+            "promised_amount_cents": 80000,
+            "promised_date": "2026-06-30",
+            "notes": "Tenant promised the balance after payroll.",
+        },
+    )
+    assert second.status_code == 200
+    body = second.json()
+
+    assert body["has_promise_to_pay"] is True
+    assert len(body["promise_to_pay_notes_log"]) == 2
+    latest = body["latest_promise_to_pay"]
+    assert latest is not None
+    assert latest["promised_amount_cents"] == 80000
+    assert latest["promised_date"] == "2026-06-30"
+    assert latest["notes"] == "Tenant promised the balance after payroll."
+    assert latest == body["promise_to_pay_notes_log"][-1]
+
+
+def test_arrears_latest_promise_to_pay_absent_when_none_recorded(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A case with no promise-to-pay notes exposes the empty projection."""
+
+    context = _lease_context(client, session)
+    arrears_case_id = _create_arrears_case(client, context)
+
+    response = client.get(f"/api/v1/arrears/cases/{arrears_case_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_promise_to_pay"] is False
+    assert body["latest_promise_to_pay"] is None
+    assert body["promise_to_pay_notes_log"] == []
