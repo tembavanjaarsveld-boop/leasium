@@ -2,7 +2,31 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 8: 2 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 9: 3 slices - latest)
+
+Three polish slices on `main`, verified (ruff + compliance/owners backend + eslint/
+tsc + operations/owner-distributions smokes + production build green). Review-first;
+no send, no money movement, no migration.
+
+- **Maintenance work-order activity timeline UI.** The work-order detail Activity
+  panel now maps event keys to friendly labels (created/updated/comment_added/
+  completion_review_recorded/vendor_portal_*/provider_delivery_* etc.), reverse-
+  chronological, with a cap + show-all expander. Read-only.
+- **Statements: distribution disbursed badge + mark-disbursed.** Distribution
+  history disclosure shows a status StatusBadge (draft/reviewed/disbursed) + a
+  "Disbursed {date} by {who}" line, and a confirm-gated "Mark disbursed" action on
+  reviewed rows calling `POST /owners/distributions/{id}/mark-disbursed`. Records
+  out-of-band payment; moves no money.
+- **Compliance certificate-expiry projection (backend).** `ComplianceCheckRead`
+  gains computed `certificate_expiry_status` (expired|due_soon|ok|none) +
+  `days_until_certificate_expiry`, 30-day window matching the obligation due-soon
+  convention. Additive read-only; no list-shape change, no migration.
+
+(Process note: run the dev-server smoke and `next build` separately — they share
+`.next` and a concurrent run throws a spurious PageNotFoundError; `rm -rf .next`
+then build alone.)
+
+## Cowork continuation - 2026-06-08 (agent push wave 8: 2 slices)
 
 Two more on `main`, verified (backend **579 passed, 1 skipped**; ruff/eslint/tsc +
 operations smoke + production build green). Review-first; no send, no money

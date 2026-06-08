@@ -8,6 +8,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 9 (3 slices):** Maintenance work-order activity
+  timeline UI (mapped event labels, reverse-chron, cap + expander); Statements
+  distribution disbursed badge + confirm-gated mark-disbursed; compliance
+  certificate-expiry projection (certificate_expiry_status + days_until, backend).
+  Review-first, no send/money, no migration.
 - [x] **2026-06-08 agent push wave 8 (2 slices):** Arrears promise-to-pay frontend
   (operator logs amount/date/notes on a case, no payment/contact); owner
   distribution operator-marked disbursed status (backend, records out-of-band
