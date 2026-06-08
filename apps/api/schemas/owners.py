@@ -190,3 +190,36 @@ class OwnerDistributionHistoryRead(BaseModel):
     records: list[OwnerDistributionHistoryRecord] = Field(default_factory=list)
     guardrail: str
     generated_at: datetime
+
+
+class OwnerDistributionDispatchDraft(BaseModel):
+    """A review-only owner-facing distribution dispatch draft.
+
+    Mirrors the statement dispatch-review shape: recipient readiness drawn
+    from the owner's billing email plus an owner-facing subject/body draft
+    summarising the net distribution. Nothing here is sent — the draft is
+    for the operator to read, edit, or copy before any future explicit send.
+    """
+
+    owner_id: UUID | None = None
+    owner_identity: str
+    recipient_name: str | None = None
+    recipient_email: str | None = None
+    ready: bool
+    blocked_reason: str | None = None
+    subject: str
+    body: str
+    net_distribution_cents: int
+    fee_inc_gst_cents: int
+    needs_attention: bool
+
+
+class OwnerDistributionDispatchReviewRead(BaseModel):
+    """Read response for ``GET /api/v1/owners/distributions/dispatch-review``."""
+
+    entity_id: UUID
+    month: str
+    entity_gst_registered: bool
+    drafts: list[OwnerDistributionDispatchDraft] = Field(default_factory=list)
+    guardrail: str
+    generated_at: datetime

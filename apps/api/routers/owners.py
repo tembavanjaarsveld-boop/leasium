@@ -49,6 +49,8 @@ from stewart.services.owner_distributions import compute_owner_distributions
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.owners import (
+    OwnerDistributionDispatchDraft,
+    OwnerDistributionDispatchReviewRead,
     OwnerDistributionHistoryRead,
     OwnerDistributionHistoryRecord,
     OwnerDistributionLine,
@@ -1478,6 +1480,129 @@ def get_owner_distributions(
         entity_gst_registered=entity_gst_registered,
         lines=lines,
         guardrail=_DISTRIBUTION_GUARDRAIL,
+        generated_at=utcnow(),
+    )
+
+
+_DISTRIBUTION_DISPATCH_GUARDRAIL = (
+    "Review-only distribution dispatch draft. Nothing is sent: this drafts an "
+    "owner-facing summary for the operator to read, edit, or copy. It makes no "
+    "SendGrid email, SMS, Xero, bank, or payment-rail call and moves no money. "
+    "Per-owner sending is not available in this version."
+)
+
+
+def _build_distribution_dispatch_draft(
+    line: OwnerDistributionLine,
+    statement: OwnerStatementRead | None,
+    month: str,
+) -> OwnerDistributionDispatchDraft:
+    """Build one review-only owner-facing dispatch draft (no send).
+
+    Recipient readiness comes from the owner's ``billing_email`` (the same
+    source the statement dispatch-review panel uses). The subject + body are a
+    plain owner-facing summary of the net distribution for the period; they are
+    never transmitted here.
+    """
+
+    recipient_email = statement.billing_email if statement else None
+    recipient_name = statement.billing_contact_name if statement else None
+    ready = bool(recipient_email)
+    blocked_reason = (
+        None
+        if ready
+        else "No owner billing email on record — add one before any send."
+    )
+
+    greeting = recipient_name or line.owner_identity
+    subject = f"Your distribution for {month}"
+    body_lines = [
+        f"Hi {greeting},",
+        "",
+        f"Here is a summary of your distribution for {month}.",
+        "",
+        f"Rent collected: {_format_money(line.rent_collected_cents)}",
+        (
+            f"Management fee (inc GST): {_format_money(line.fee_inc_gst_cents)}"
+            f" ({_format_pct(line.management_fee_pct)})"
+        ),
+        f"Net distribution: {_format_money(line.net_distribution_cents)}",
+        "",
+        "This is a draft for review only and has not been sent.",
+    ]
+    body = "\n".join(body_lines)
+
+    return OwnerDistributionDispatchDraft(
+        owner_id=line.owner_id,
+        owner_identity=line.owner_identity,
+        recipient_name=recipient_name,
+        recipient_email=recipient_email,
+        ready=ready,
+        blocked_reason=blocked_reason,
+        subject=subject,
+        body=body,
+        net_distribution_cents=line.net_distribution_cents,
+        fee_inc_gst_cents=line.fee_inc_gst_cents,
+        needs_attention=line.needs_attention,
+    )
+
+
+@router.get(
+    "/distributions/dispatch-review",
+    response_model=OwnerDistributionDispatchReviewRead,
+)
+def get_owner_distribution_dispatch_review(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+    owner_id: Annotated[
+        UUID | None,
+        Query(description="Optionally restrict the draft to one owner."),
+    ] = None,
+) -> OwnerDistributionDispatchReviewRead:
+    """Draft a review-only owner-facing distribution dispatch per owner.
+
+    Managing-agent / hybrid only. Mirrors the statement dispatch-review panel:
+    it reports recipient readiness from the owner billing email and builds an
+    owner-facing subject + body summarising the net distribution. It is a pure
+    read/compute path — it sends nothing, writes nothing, and makes no provider,
+    bank, or payment-rail call.
+
+    Future explicit-send hook: an operator-approved
+    ``POST /owners/distributions/dispatch`` (with ``approve=true`` per owner)
+    would attach here to transmit a reviewed draft and persist a receipt. That
+    send is deliberately not built in this version.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    _assert_distribution_mode(session, user)
+    statements, lines, entity_gst_registered = _build_distribution_lines(
+        entity_id, session, month
+    )
+    statements_by_owner = {
+        item.owner_identity.casefold(): item for item in statements.owners
+    }
+    drafts = [
+        _build_distribution_dispatch_draft(
+            line,
+            statements_by_owner.get(line.owner_identity.casefold()),
+            statements.month,
+        )
+        for line in lines
+        if owner_id is None or line.owner_id == owner_id
+    ]
+    return OwnerDistributionDispatchReviewRead(
+        entity_id=entity_id,
+        month=statements.month,
+        entity_gst_registered=entity_gst_registered,
+        drafts=drafts,
+        guardrail=_DISTRIBUTION_DISPATCH_GUARDRAIL,
         generated_at=utcnow(),
     )
 

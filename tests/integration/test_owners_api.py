@@ -2405,3 +2405,127 @@ def test_distribution_history_denied_for_self_managed_owner(
     detail = response.json()["detail"].lower()
     assert "managing-agent" in detail
     assert "hybrid" in detail
+
+
+def _seed_distribution_scope_without_billing_email(
+    session: Session,
+) -> _OwnerSeedScope:
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Distribution Trust",
+        trustee_name="Dist Trustee Pty Ltd",
+        billing_email=None,
+        properties=[
+            ("Distribution Property", [(date(2026, 4, 10), 1_000_000, 1_000_000)])
+        ],
+    )
+    owner = _seeded_owner(session, "Distribution Trust")
+    owner.management_fee_pct = Decimal("7.5")
+    session.commit()
+    return scope
+
+
+def test_distribution_dispatch_review_returns_recipient_readiness_and_draft(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Ready when the owner billing email is present; draft carries net + period."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions/dispatch-review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["month"] == "2026-04"
+    assert len(body["drafts"]) == 1
+    draft = body["drafts"][0]
+    assert draft["recipient_email"] == "owner@example.com"
+    assert draft["ready"] is True
+    assert draft["blocked_reason"] is None
+    assert draft["net_distribution_cents"] == 917_500
+    # Owner-facing draft summarises the net distribution and the period.
+    assert "2026-04" in draft["subject"]
+    assert "2026-04" in draft["body"]
+    assert "$9,175" in draft["body"]  # net distribution
+    assert "not been sent" in draft["body"].lower()
+    assert "not available" in body["guardrail"].lower()
+
+
+def test_distribution_dispatch_review_flags_missing_billing_email(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A missing billing email blocks readiness with a reason but still 200s."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope_without_billing_email(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions/dispatch-review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 200
+    draft = response.json()["drafts"][0]
+    assert draft["recipient_email"] is None
+    assert draft["ready"] is False
+    assert "billing email" in draft["blocked_reason"].lower()
+    # The draft body is still built for operator review.
+    assert "$9,175" in draft["body"]
+
+
+def test_distribution_dispatch_review_denied_for_self_managed_owner(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Self-managed owner-operators cannot reach the dispatch-review draft."""
+
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions/dispatch-review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 403
+    detail = response.json()["detail"].lower()
+    assert "managing-agent" in detail
+    assert "hybrid" in detail
+
+
+def test_distribution_dispatch_review_sends_nothing_and_persists_nothing(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """The draft fires no email/rail call and writes no OwnerDistribution row."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+
+    import apps.api.routers.owners as owners_router
+
+    def _fail(*_args: Any, **_kwargs: Any) -> None:  # pragma: no cover - guard
+        raise AssertionError("Dispatch-review is review-only — no send may occur.")
+
+    monkeypatch.setattr(owners_router, "send_owner_statement_email", _fail)
+    monkeypatch.setattr(owners_router, "configured_rail", _fail, raising=False)
+
+    response = client.get(
+        "/api/v1/owners/distributions/dispatch-review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 200
+    assert len(response.json()["drafts"]) == 1
+    # No reviewed-distribution row was written by a read-only draft.
+    rows = list(
+        session.scalars(
+            select(OwnerDistribution).where(
+                OwnerDistribution.entity_id == UUID(scope["entity_id"])
+            )
+        ).all()
+    )
+    assert rows == []
