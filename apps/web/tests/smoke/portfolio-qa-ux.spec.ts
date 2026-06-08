@@ -269,6 +269,109 @@ test("portfolio QA enrichment candidate previews sourced suggestions and applies
   await expect(card).toHaveCount(0);
 });
 
+test("portfolio QA bulk fix review applies staged rows in one reviewed request and reports skips", async ({
+  page,
+}) => {
+  const bulkFixCalls: Array<Record<string, unknown>> = [];
+  const tenantPatchCalls: string[] = [];
+  await mockLeasiumApi(page);
+  await page.route(
+    (url) => url.pathname.endsWith("/api/v1/tenants"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify([
+          {
+            id: "tenant-2",
+            entity_id: "entity-1",
+            legal_name: "Northwind Fitness Pty Ltd",
+            trading_name: "Northwind Fitness",
+            abn: "56123456789",
+            contact_name: "Leo Nguyen",
+            contact_email: "leo@example.com",
+            contact_phone: "0400 333 444",
+            billing_email: null,
+            notes: null,
+            metadata: {},
+          },
+          {
+            id: "tenant-3",
+            entity_id: "entity-1",
+            legal_name: "Harbour Yoga Pty Ltd",
+            trading_name: "Harbour Yoga",
+            abn: null,
+            contact_name: null,
+            contact_email: "hello@harbouryoga.example",
+            contact_phone: null,
+            billing_email: null,
+            notes: null,
+            metadata: {},
+          },
+        ]),
+      });
+    },
+  );
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (
+      request.method() === "POST" &&
+      pathname.endsWith("/portfolio-qa/bulk-fixes/apply")
+    ) {
+      bulkFixCalls.push(request.postDataJSON() as Record<string, unknown>);
+    }
+    if (
+      request.method() === "PATCH" &&
+      /\/api\/v1\/tenants\/[^/]+$/.test(pathname)
+    ) {
+      tenantPatchCalls.push(pathname);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/portfolio-qa");
+
+  await page
+    .getByRole("button", { name: /Tenant contacts Clean invite details/ })
+    .click();
+  const contactPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Tenant contact enrichment" }),
+  });
+  await expect(contactPanel.getByText("Northwind Fitness")).toBeVisible();
+  await expect(contactPanel.getByText("Harbour Yoga")).toBeVisible();
+
+  await contactPanel.getByRole("button", { name: "Stage suggestions" }).click();
+  await expect(
+    contactPanel.getByText("Review staged tenant suggestions"),
+  ).toBeVisible();
+  expect(bulkFixCalls).toEqual([]);
+
+  await contactPanel
+    .getByRole("button", { name: "Save staged fixes" })
+    .click();
+
+  await expect(
+    contactPanel.getByText(
+      "2 tenant contact fixes saved; 4 fields applied, 4 skipped.",
+    ),
+  ).toBeVisible();
+  expect(bulkFixCalls).toHaveLength(1);
+  expect(bulkFixCalls[0].issue_class).toBe("tenant_contact");
+  const changes = bulkFixCalls[0].changes as Array<Record<string, unknown>>;
+  expect(changes).toHaveLength(2);
+  expect(changes.map((change) => change.target_id)).toEqual([
+    "tenant-2",
+    "tenant-3",
+  ]);
+  expect(tenantPatchCalls).toEqual([]);
+});
+
 test("portfolio QA enrichment preview surfaces a 503 inline without firing apply", async ({
   page,
 }) => {

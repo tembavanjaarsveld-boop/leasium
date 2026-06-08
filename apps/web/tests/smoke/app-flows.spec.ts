@@ -1792,6 +1792,16 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
   const cleanupReportPath = await cleanupReportDownload.path();
   expect(cleanupReportPath).not.toBeNull();
   const cleanupReportCsv = await readFile(cleanupReportPath!, "utf8");
+  const cleanupReportLines = cleanupReportCsv.split("\n");
+  expect(cleanupReportLines[0]).toBe(
+    '"Category","Item","Status","Metric","Detail","Action","Extra","Resolved","Outstanding"',
+  );
+  expect(
+    cleanupReportLines.some(
+      (line) =>
+        line.startsWith('"Completion state"') && /,"\d+","\d+"$/.test(line),
+    ),
+  ).toBe(true);
   expect(cleanupReportCsv).toContain("Blocker drilldown");
   expect(cleanupReportCsv).toContain(
     "Bright Cafe (Bright Cafe Pty Ltd) / Queen Street Retail Centre",

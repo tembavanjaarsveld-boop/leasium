@@ -46,6 +46,7 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  applyPortfolioQaBulkFixes,
   applyPublicEnrichment,
   createBillingDraftsFromChargeRules,
   createTenantOnboarding,
@@ -2194,7 +2195,17 @@ function cleanupReportCsv({
   blockedFollowups: BlockedFollowup[];
 }) {
   const rows: Array<Array<string | number | null | undefined>> = [
-    ["Category", "Item", "Status", "Metric", "Detail", "Action", "Extra"],
+    [
+      "Category",
+      "Item",
+      "Status",
+      "Metric",
+      "Detail",
+      "Action",
+      "Extra",
+      "Resolved",
+      "Outstanding",
+    ],
     [
       "Summary",
       verdict.title,
@@ -2212,6 +2223,8 @@ function cleanupReportCsv({
       item.detail,
       "Open section",
       item.tab,
+      Math.min(item.ready, item.total),
+      Math.max(item.total - item.ready, 0),
     ]),
     ...reportingGates.map((gate) => [
       "Reporting gate",
@@ -3465,7 +3478,8 @@ function PortfolioCompletionPanel({
                   />
                 </div>
                 <div className="mt-2 text-xs font-medium text-muted-foreground">
-                  {percent}% ready
+                  {percent}% ready - {Math.min(item.ready, item.total)}{" "}
+                  resolved, {Math.max(item.total - item.ready, 0)} outstanding
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
                   {item.detail}
@@ -4066,21 +4080,18 @@ function PortfolioQaWorkspace() {
     mutationFn: async (
       items: Array<{ tenant: TenantRecord; draft: TenantContactDraft }>,
     ) => {
-      const results = await Promise.allSettled(
-        items.map(({ tenant, draft }) =>
-          updateTenant(tenant.id, tenantContactPayload(tenant, draft)),
-        ),
-      );
-      return { items, results };
+      const result = await applyPortfolioQaBulkFixes({
+        issue_class: "tenant_contact",
+        changes: items.map(({ tenant, draft }) => ({
+          target_id: tenant.id,
+          fields: tenantContactPayload(tenant, draft),
+        })),
+      });
+      return { result };
     },
-    onSuccess: ({ items, results }) => {
-      const savedIds = new Set(
-        items
-          .filter((_item, index) => results[index]?.status === "fulfilled")
-          .map((item) => item.tenant.id),
-      );
+    onSuccess: ({ result }) => {
+      const savedIds = new Set(result.applied.map((row) => row.target_id));
       const saved = savedIds.size;
-      const failed = results.length - saved;
       setTenantDrafts((current) => {
         const next = { ...current };
         for (const id of savedIds) {
@@ -4089,9 +4100,7 @@ function PortfolioQaWorkspace() {
         return next;
       });
       setTenantFixResult(
-        failed
-          ? `${saved} tenant contact fixes saved; ${failed} need review.`
-          : `${saved} tenant contact fixes saved.`,
+        `${saved} tenant contact fixes saved; ${result.applied.length} fields applied, ${result.skipped.length} skipped.`,
       );
       queryClient.invalidateQueries({
         queryKey: ["tenants", selectedEntityId],
@@ -4135,21 +4144,18 @@ function PortfolioQaWorkspace() {
     mutationFn: async (
       items: Array<{ property: PropertyRecord; draft: PropertyBillingDraft }>,
     ) => {
-      const results = await Promise.allSettled(
-        items.map(({ property, draft }) =>
-          updateProperty(property.id, propertyBillingPayload(property, draft)),
-        ),
-      );
-      return { items, results };
+      const result = await applyPortfolioQaBulkFixes({
+        issue_class: "owner_billing",
+        changes: items.map(({ property, draft }) => ({
+          target_id: property.id,
+          fields: propertyBillingPayload(property, draft),
+        })),
+      });
+      return { result };
     },
-    onSuccess: ({ items, results }) => {
-      const savedIds = new Set(
-        items
-          .filter((_item, index) => results[index]?.status === "fulfilled")
-          .map((item) => item.property.id),
-      );
+    onSuccess: ({ result }) => {
+      const savedIds = new Set(result.applied.map((row) => row.target_id));
       const saved = savedIds.size;
-      const failed = results.length - saved;
       setPropertyDrafts((current) => {
         const next = { ...current };
         for (const id of savedIds) {
@@ -4158,9 +4164,7 @@ function PortfolioQaWorkspace() {
         return next;
       });
       setPropertyFixResult(
-        failed
-          ? `${saved} owner billing fixes saved; ${failed} need review.`
-          : `${saved} owner billing fixes saved.`,
+        `${saved} owner billing fixes saved; ${result.applied.length} fields applied, ${result.skipped.length} skipped.`,
       );
       queryClient.invalidateQueries({
         queryKey: ["properties", selectedEntityId],

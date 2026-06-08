@@ -36,6 +36,7 @@ from apps.api.routers import (
     owner_portal,
     owners,
     payments,
+    portfolio_qa,
     properties,
     register_imports,
     security,
@@ -159,6 +160,7 @@ app.include_router(documents.router, prefix="/api/v1")
 app.include_router(document_intakes.router, prefix="/api/v1")
 app.include_router(register_imports.router, prefix="/api/v1")
 app.include_router(enrichment.router, prefix="/api/v1")
+app.include_router(portfolio_qa.router, prefix="/api/v1")
 app.include_router(xero.router, prefix="/api/v1")
 app.include_router(basiq.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
