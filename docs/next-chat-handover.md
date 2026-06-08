@@ -2,7 +2,21 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 10: 2 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 11: 2 slices - latest)
+
+Two on `main`, verified (ruff + arrears backend 35 passed + eslint/tsc + dashboard
+smoke + clean production build). Review-first; no migration.
+
+- **Dashboard compliance cue card.** New `dashboard/CompliancePanel.tsx` on the main
+  `/` dashboard (gated off the `/intake` workspace, fed by the existing
+  insights-overview query — no new fetch): overdue/due-soon chips + operator-
+  approved-evidence/recently-completed chips + links to /operations?tab=compliance
+  and /insights. Hidden when there's no compliance data.
+- **Arrears latest promise-to-pay projection (backend).** ArrearsCaseRead gains
+  computed `latest_promise_to_pay` (newest log entry by recorded_at) +
+  `has_promise_to_pay`, reusing the existing promise log parser. Additive read-only.
+
+## Cowork continuation - 2026-06-08 (agent push wave 10: 2 slices)
 
 Two on `main`, verified (backend **585 passed, 1 skipped**; ruff/eslint/tsc +
 compliance smoke + clean production build). Review-first; no migration.

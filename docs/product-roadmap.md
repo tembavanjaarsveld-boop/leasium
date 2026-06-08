@@ -8,6 +8,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 11 (2 slices):** Dashboard compliance cue card
+  (overdue/due-soon + evidence counts, links into compliance/insights, from
+  existing overview data); arrears latest promise-to-pay projection (backend,
+  read-only). No migration.
 - [x] **2026-06-08 agent push wave 10 (2 slices):** Compliance certificate-expiry
   badge on the operations compliance tab (from the wave-9 projection); guard so
   re-reviewing a disbursed owner distribution returns 409 instead of silently
