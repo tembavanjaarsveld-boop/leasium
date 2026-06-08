@@ -3,7 +3,7 @@
 import hashlib
 import secrets
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -19,6 +19,8 @@ from stewart.core.models import (
     ArrearsEscalationStatus,
     AuditAction,
     BillingDraft,
+    ComplianceCheck,
+    ComplianceCheckStatus,
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
@@ -254,6 +256,61 @@ def _metadata_string(metadata: dict[str, object], *keys: str) -> str | None:
     return None
 
 
+# A recurring-register completion counts as "recent" for the snapshot roll-up
+# when its operator approval landed within this many days of the as-of date.
+RECENT_COMPLETION_DAYS = 90
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+class _RegisterCompletion:
+    """Read-only projection of a recurring ComplianceCheck's latest operator
+    approval, keyed by the check's current (rolled-forward) obligation."""
+
+    __slots__ = ("check_id", "completed_at", "completed_by", "operator_approved_evidence")
+
+    def __init__(self, check: ComplianceCheck) -> None:
+        self.check_id = check.id
+        metadata = check.check_metadata if isinstance(check.check_metadata, dict) else {}
+        history = [
+            entry
+            for entry in _metadata_list(metadata, "completion_history")
+            if isinstance(entry, dict)
+        ]
+        latest = history[-1] if history else {}
+        self.completed_at = _parse_iso_datetime(
+            latest.get("approved_at") or latest.get("completed_at")
+        )
+        approved_by = latest.get("approved_by") or latest.get("actor")
+        self.completed_by = approved_by if isinstance(approved_by, str) and approved_by else None
+        operator_approved = latest.get("operator_approved") is True
+        has_evidence = bool(
+            latest.get("source_document_id") or check.source_document_id is not None
+        )
+        self.operator_approved_evidence = operator_approved and has_evidence
+
+
+def _register_completions_by_obligation(
+    checks: list[ComplianceCheck],
+) -> dict[UUID, _RegisterCompletion]:
+    completions: dict[UUID, _RegisterCompletion] = {}
+    for check in checks:
+        if check.current_obligation_id is None:
+            continue
+        completions[check.current_obligation_id] = _RegisterCompletion(check)
+    return completions
+
+
 def _is_fire_safety_obligation(obligation: Obligation, metadata: dict[str, object]) -> bool:
     haystack = " ".join(
         part
@@ -275,7 +332,9 @@ def _build_compliance_snapshot(
     units_by_id: dict[UUID, TenancyUnit],
     tenants_by_id: dict[UUID, Tenant],
     leases_by_id: dict[UUID, Lease],
+    register_completions: dict[UUID, _RegisterCompletion] | None = None,
 ) -> ComplianceSnapshotRead:
+    register_completions = register_completions or {}
     open_items = [
         item
         for item in obligations
@@ -287,6 +346,10 @@ def _build_compliance_snapshot(
     missing_evidence_count = 0
     fire_safety_count = 0
     inspection_report_count = 0
+    tracked_check_count = 0
+    operator_approved_evidence_count = 0
+    recently_completed_count = 0
+    recent_completion_floor = as_of - timedelta(days=RECENT_COMPLETION_DAYS)
 
     for obligation in open_items:
         metadata = obligation.obligation_metadata or {}
@@ -310,6 +373,23 @@ def _build_compliance_snapshot(
             fire_safety_count += 1
         if _metadata_string(metadata, "document_type") == "inspection_report":
             inspection_report_count += 1
+
+        completion = register_completions.get(obligation.id)
+        register_check_id = completion.check_id if completion else None
+        last_completed_at = completion.completed_at if completion else None
+        last_completed_by = completion.completed_by if completion else None
+        operator_approved_evidence = (
+            completion.operator_approved_evidence if completion else False
+        )
+        if completion is not None:
+            tracked_check_count += 1
+        if operator_approved_evidence:
+            operator_approved_evidence_count += 1
+        if (
+            last_completed_at is not None
+            and last_completed_at.date() >= recent_completion_floor
+        ):
+            recently_completed_count += 1
 
         prop = properties_by_id.get(obligation.property_id) if obligation.property_id else None
         unit = units_by_id.get(obligation.tenancy_unit_id) if obligation.tenancy_unit_id else None
@@ -340,6 +420,10 @@ def _build_compliance_snapshot(
                 latest_evidence_at=latest_evidence.get("linked_at"),
                 latest_evidence_actor=latest_evidence.get("actor"),
                 inspection_type=inspection_type,
+                register_check_id=register_check_id,
+                last_completed_at=last_completed_at,
+                last_completed_by=last_completed_by,
+                operator_approved_evidence=operator_approved_evidence,
                 rank=days,
             )
         )
@@ -356,6 +440,9 @@ def _build_compliance_snapshot(
         delegated_owner_count=sum(1 for item in open_items if item.owner_role is not None),
         fire_safety_count=fire_safety_count,
         inspection_report_count=inspection_report_count,
+        tracked_check_count=tracked_check_count,
+        operator_approved_evidence_count=operator_approved_evidence_count,
+        recently_completed_count=recently_completed_count,
         category_counts=dict(Counter(_enum_value(item.category) for item in open_items)),
         status_counts=dict(Counter(_enum_value(item.status) for item in open_items)),
         next_items=rows[:10],
@@ -840,6 +927,16 @@ def _build_insights_overview(
     due_soon_obligations = [
         item for item in open_obligations if as_of <= item.due_date <= due_soon_until
     ]
+    compliance_checks = list(
+        session.scalars(
+            select(ComplianceCheck).where(
+                ComplianceCheck.entity_id == entity_id,
+                ComplianceCheck.deleted_at.is_(None),
+                ComplianceCheck.status != ComplianceCheckStatus.archived,
+            )
+        )
+    )
+    register_completions = _register_completions_by_obligation(compliance_checks)
     compliance_snapshot = _build_compliance_snapshot(
         obligations,
         as_of=as_of,
@@ -848,6 +945,7 @@ def _build_insights_overview(
         units_by_id=units_by_id,
         tenants_by_id=tenants_by_id,
         leases_by_id=leases_by_id,
+        register_completions=register_completions,
     )
 
     maintenance_work_orders = list(

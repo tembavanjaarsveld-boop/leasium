@@ -187,6 +187,12 @@ class ComplianceRiskItemRead(BaseModel):
     latest_evidence_at: datetime | None = None
     latest_evidence_actor: str | None = None
     inspection_type: str | None = None
+    # Recurring-register completion projection (read-only). Populated when the
+    # open obligation is the current obligation of a recurring ComplianceCheck.
+    register_check_id: UUID | None = None
+    last_completed_at: datetime | None = None
+    last_completed_by: str | None = None
+    operator_approved_evidence: bool = False
     rank: int = 0
 
 
@@ -199,6 +205,10 @@ class ComplianceSnapshotRead(BaseModel):
     delegated_owner_count: int = 0
     fire_safety_count: int = 0
     inspection_report_count: int = 0
+    # Recurring-register completion roll-up (read-only projection).
+    tracked_check_count: int = 0
+    operator_approved_evidence_count: int = 0
+    recently_completed_count: int = 0
     category_counts: dict[str, int] = Field(default_factory=dict)
     status_counts: dict[str, int] = Field(default_factory=dict)
     next_items: list[ComplianceRiskItemRead] = Field(default_factory=list)

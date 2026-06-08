@@ -17,6 +17,10 @@ from stewart.core.models import (
     BillingDraft,
     BillingDraftLine,
     BillingDraftStatus,
+    ComplianceCheck,
+    ComplianceCheckKind,
+    ComplianceCheckStatus,
+    ComplianceRecurrenceUnit,
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -692,3 +696,176 @@ def test_expired_insights_snapshot_public_link_is_blocked(
 
     public_response = client.get(f"/api/v1/insights/snapshots/public/{created['token']}")
     assert public_response.status_code == 404
+
+
+def test_insights_compliance_snapshot_reflects_register_completion_and_evidence(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    as_of = "2026-05-19"
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Register Compliance Tower",
+            "street_address": "200 Edward Street",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_retail",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    evidence_document_id = uuid4()
+    # Current (rolled-forward) obligation backed by a recurring check that has
+    # an operator-approved completion with evidence.
+    tracked_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        title="Annual fire safety statement",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=date(2026, 6, 10),
+        priority=1,
+        owner_role=UserRole.ops,
+        obligation_metadata={"compliance_type": "fire_safety"},
+    )
+    session.add(tracked_obligation)
+    session.flush()
+
+    completed_check = ComplianceCheck(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        title="Annual fire safety statement",
+        kind=ComplianceCheckKind.fire_safety,
+        status=ComplianceCheckStatus.active,
+        recurrence_interval=1,
+        recurrence_unit=ComplianceRecurrenceUnit.years,
+        next_due_date=date(2026, 6, 10),
+        owner_role=UserRole.ops,
+        source_document_id=evidence_document_id,
+        current_obligation_id=tracked_obligation.id,
+        check_metadata={
+            "completion_history": [
+                {
+                    "completed_at": "2026-05-10T03:04:05+00:00",
+                    "approved_at": "2026-05-10T03:04:05+00:00",
+                    "approved_by": "ops@example.test",
+                    "actor": "ops@example.test",
+                    "operator_approved": True,
+                    "source_document_id": str(evidence_document_id),
+                    "next_due_date": "2026-06-10",
+                }
+            ],
+        },
+    )
+
+    # A separate, still-overdue compliance obligation with no recurring check.
+    overdue_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        title="Lift registration overdue",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.overdue,
+        due_date=date(2026, 5, 1),
+        priority=1,
+        obligation_metadata={},
+    )
+    session.add_all([completed_check, overdue_obligation])
+    session.commit()
+
+    response = client.get(f"/api/v1/insights/overview?entity_id={entity_id}&as_of={as_of}")
+    assert response.status_code == 200
+    compliance = response.json()["compliance_snapshot"]
+
+    # Roll-forward + overdue accounting via the raw obligations is unchanged.
+    assert compliance["open_count"] == 2
+    assert compliance["overdue_count"] == 1
+    assert compliance["due_soon_count"] == 1
+
+    # Register-completion roll-up reflects the operator-approved evidence.
+    assert compliance["tracked_check_count"] == 1
+    assert compliance["operator_approved_evidence_count"] == 1
+    assert compliance["recently_completed_count"] == 1
+
+    items = {item["title"]: item for item in compliance["next_items"]}
+
+    tracked_item = items["Annual fire safety statement"]
+    assert tracked_item["register_check_id"] == str(completed_check.id)
+    assert tracked_item["operator_approved_evidence"] is True
+    assert tracked_item["last_completed_by"] == "ops@example.test"
+    assert tracked_item["last_completed_at"] is not None
+
+    overdue_item = items["Lift registration overdue"]
+    assert overdue_item["status"] == "overdue"
+    assert overdue_item["register_check_id"] is None
+    assert overdue_item["operator_approved_evidence"] is False
+    assert overdue_item["last_completed_at"] is None
+
+
+def test_insights_overview_is_read_only_for_compliance_register(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The overview must not mutate the register or fire any provider call."""
+    entity_id = _entity_id(session)
+
+    tracked_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        title="Sprinkler certification",
+        category=ObligationCategory.compliance,
+        status=ObligationStatus.due_soon,
+        due_date=date(2026, 6, 10),
+        priority=1,
+        obligation_metadata={},
+    )
+    session.add(tracked_obligation)
+    session.flush()
+
+    check = ComplianceCheck(
+        entity_id=UUID(entity_id),
+        title="Sprinkler certification",
+        kind=ComplianceCheckKind.fire_safety,
+        status=ComplianceCheckStatus.active,
+        recurrence_interval=1,
+        recurrence_unit=ComplianceRecurrenceUnit.years,
+        next_due_date=date(2026, 6, 10),
+        current_obligation_id=tracked_obligation.id,
+        check_metadata={
+            "completion_history": [
+                {
+                    "approved_at": "2026-05-10T03:04:05+00:00",
+                    "approved_by": "ops@example.test",
+                    "operator_approved": True,
+                }
+            ]
+        },
+    )
+    session.add(check)
+    session.commit()
+
+    # Read the persisted values back so the comparison is DB-consistent
+    # (SQLite round-trips drop tzinfo); we are asserting no mutation, not tz shape.
+    session.refresh(check)
+    session.refresh(tracked_obligation)
+    check_updated_at = check.updated_at
+    obligation_status_before = tracked_obligation.status
+
+    response = client.get(
+        f"/api/v1/insights/overview?entity_id={entity_id}&as_of=2026-05-19"
+    )
+    assert response.status_code == 200
+
+    session.refresh(check)
+    session.refresh(tracked_obligation)
+    # No write to the register, its obligation, or its evidence linkage.
+    assert check.updated_at == check_updated_at
+    assert check.next_due_date == date(2026, 6, 10)
+    assert tracked_obligation.status == obligation_status_before
+    assert tracked_obligation.completed_at is None
+    # No provider mutation surfaces leak through the read-only payload.
+    assert "tool_input" not in response.text
