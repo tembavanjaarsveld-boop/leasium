@@ -8,6 +8,13 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push waves 3-4 (5 slices):** Owner distribution history +
+  CSV export; compliance check completion now operator-approved (422 without
+  `operator_approved`); owner distribution review-only PDF; compliance evidence +
+  completion-history UI on /operations?tab=compliance; Insights compliance_snapshot
+  enriched with recurring-register completion/evidence (additive, no new endpoint).
+  All review-first, no provider send, no money movement, no migration. Detail in
+  `docs/next-chat-handover.md`.
 - [x] **2026-06-08 agent push wave 2 (3 slices):** Owner distributions +
   management-fee deduction v1 — review-first computed disbursements (rent
   collected − management fee inc-GST, AU 10% GST when the agent entity is

@@ -2,7 +2,46 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 2: 3 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push waves 3-4: 5 slices - latest)
+
+Two more parallel waves on `main`, verified on the Mac (ruff clean; backend
+**551 passed, 1 skipped**; eslint + tsc + focused smokes + production build green).
+Guardrails intact — no provider send, no money movement, distributions/PDF are
+review-only, compliance completion is operator-approved.
+
+Wave 3:
+- **Owner distribution history + CSV export.** `GET /owners/distributions/history`
+  (persisted reviewed records, newest first, owner/month filters, managing_agent|
+  hybrid gated); Statements "Distribution history" disclosure + formula-hardened
+  CSV export. Owner-portal has no real disbursement/trust entry point yet (every
+  route already operating-mode gated) — added a gate-requirement comment for when
+  one lands.
+- **Compliance completion now requires operator approval.** `POST /compliance/
+  checks/{id}/complete` returns 422 unless `operator_approved=true`; completion
+  history records operator_approved/approved_by/approved_at; operations tab sends
+  the flag (the Complete click is the approval). No schema change (existing
+  completion_history JSONB).
+
+Wave 4:
+- **Owner distribution PDF.** `GET /owners/distributions/pdf` — review-only summary
+  PDF reusing the owner-statement PDF builder (extracted `_render_pdf_lines`);
+  Statements "Download distribution PDF" action. Gated, no send.
+- **Compliance evidence + history UI.** /operations?tab=compliance now shows an
+  evidence StatusBadge, a collapsed completion-history disclosure (operator
+  approver + date + notes, most-recent first), and clearer completed/due/overdue
+  state — all read-only from existing record fields.
+- **Insights compliance snapshot enrichment.** The existing read-only
+  compliance_snapshot now reflects the recurring register: per-row
+  register_check_id / last_completed_at / last_completed_by /
+  operator_approved_evidence, plus roll-up tracked_check_count /
+  operator_approved_evidence_count / recently_completed_count. Additive, no new
+  endpoint (§2.11), no migration. New snapshot fields default safely — an Insights
+  frontend wave could later surface them.
+
+Still no new migration since `20260608_0039` (waves 3-4 are read/export/gate/UI
+only). Payments AU-rails adapter still parked pending the provider pick.
+
+## Cowork continuation - 2026-06-08 (agent push wave 2: 3 slices)
 
 Three more slices on `main`, parallel agents, verified on the Mac (ruff clean;
 backend **546 passed, 1 skipped**; eslint + tsc + focused smokes + production
