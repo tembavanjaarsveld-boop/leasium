@@ -2,7 +2,59 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (Live UX review sweep - latest)
+## Cowork continuation - 2026-06-08 (24h agent push: 5 slices - latest)
+
+A parallel-agent build session shipped five slices on `main`, each committed
+separately, all verified on Temba's Mac (ruff + pytest backend; eslint + tsc +
+focused Playwright smoke + production `next build` frontend). Full backend suite
+afterwards: **519 passed, 1 skipped** (migrations skip = no TEST_DATABASE_URL).
+Production build compiled clean. Provider guardrails intact — no Xero/SendGrid/
+Twilio/payment call added anywhere; new comms-template and vendor-messaging
+paths are review-first / in-app only.
+
+Commits (oldest first):
+- `6c1481d` Portfolio QA reviewed bulk-fix apply + completion report columns.
+  New `POST /api/v1/portfolio-qa/bulk-fixes/apply` applies operator-staged
+  tenant-contact / owner-billing fixes in one reviewed transaction (per-record +
+  batch audit, allowlists mirror the page payload helpers, skips report reasons);
+  staged batch saves now send one request; cleanup CSV + completion cards gain
+  Resolved/Outstanding columns. AI enrichment was already shipped — left as-is,
+  deliberately NOT extended to private contact fields.
+- `271bd8a` Vendor portal messaging v1 (in-app two-way threads). No new table —
+  reuses `work_order_metadata["comments"]`; comments now carry
+  `author`/`author_label` (contractor vs property_team, operator identity never
+  leaks); new bearer-scoped `GET /vendor-portal/account/work-orders/{id}/messages`;
+  contractor job-card thread + operator ContractorMessagesCard on maintenance
+  detail; notify-hook markers only, no provider send.
+- `b1a... (test fix in this commit set)` updated two pre-existing vendor-portal
+  projection tests for the additive author fields.
+- `eadbfe1` Dark-mode hardening: neutral chip AA contrast fix, dark surface
+  audit extended to /notifications + /settings, sparkline + auth-notice tokens,
+  SoT dark mapping notes. (Dark mode v1 itself shipped 2026-06-01.)
+- `41749e2` Editable comms templates with versioning v1. `POST
+  /branded-communication-templates/{id}/versions` (non-destructive vN+1) +
+  `/render-preview` (server render so preview === delivery); migration
+  `20260608_0037` adds `updated_by_user_id` + seeds 4 system v1 email templates
+  per entity; Work notice/digest sends resolve custom templates with managed
+  fallback, no guardrail change; comms drawer gains save-as-version, version
+  history, server preview panel.
+- `bf55a06` Properties map + calendar v2. leaflet 1.9.4; real `PropertyLeafletMap`
+  (ssr:false dynamic, OSM tiles, divIcon markers, keyboard select) + unmapped
+  panel with merge-safe manual lat/lng editor (`metadata.map_location`);
+  `PropertyCalendarMonthGrid` (Agenda on mobile / Month on desktop) reusing the
+  existing lease-event source. No new backend.
+
+New migration: hosted Neon/Render must reach `20260608_0037` (single head, chains
+off `20260602_0036`; verified offline). Render's start command runs
+`alembic upgrade head` so it applies on deploy. The seeded system templates render
+byte-identical to the coded defaults for fully-populated invites; optional empty
+fields can leave dangling labels — flagged in the comms slice report.
+
+Remaining provider-console work unchanged (SendGrid/Twilio/Xero/DocuSign env +
+webhooks). Pushed to `main`; Vercel deploys from GitHub (committed under the gmail
+author identity to avoid the Hobby-plan deploy block).
+
+## Cowork continuation - 2026-06-08 (Live UX review sweep)
 
 A signed-in live walkthrough of leasium.ai produced `docs/ux-review-2026-06-08.md`
 (17 findings); all 17 were implemented in one frontend-only sweep. Backend

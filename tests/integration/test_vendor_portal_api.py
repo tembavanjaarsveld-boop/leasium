@@ -221,6 +221,8 @@ def test_vendor_portal_preview_returns_only_contractor_safe_visible_work(
         {
             "body": "Please attend before trading opens.",
             "timestamp": "2026-06-01T03:00:00Z",
+            "author": "property_team",
+            "author_label": "Property team",
         }
     ]
     assert "Read-only vendor portal" in body["guardrails"][0]

@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push (5 slices):** Portfolio QA reviewed bulk-fix apply
+  (one transaction, per-record+batch audit) + Resolved/Outstanding completion
+  columns; vendor portal in-app two-way messaging (author-attributed, no provider
+  send); editable comms templates with non-destructive versioning + server
+  rendered-preview (preview === delivery) wired into Work notice/digest sends with
+  managed fallback (migration `20260608_0037`); real Leaflet map + month-grid
+  calendar on Properties (merge-safe manual coordinates); dark-mode hardening
+  (neutral-chip AA fix, surface audit, token sweep). All review-first; no provider
+  mutation added. Detail in `docs/next-chat-handover.md`.
 - [x] Multi-entity foundation with organisation, entity, property, tenancy unit, tenant, lease, and obligation registers.
 - [x] Entity-scoped roles, audit logging, dev auth, and Clerk adapter boundary.
 - [x] Leasium rebrand with basic logo mark, palette, API app name, and web metadata.

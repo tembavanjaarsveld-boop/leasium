@@ -143,6 +143,8 @@ def test_operator_can_share_work_order_to_vendor_portal_with_safe_projection(
         {
             "body": "Please attend before trading opens.",
             "timestamp": metadata["comments"][-1]["timestamp"],
+            "author": "property_team",
+            "author_label": "Property team",
         }
     ]
     forbidden_fragments = [
