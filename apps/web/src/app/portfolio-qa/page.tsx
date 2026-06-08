@@ -100,6 +100,17 @@ type QaCompletionItem = {
   tab: QaTab;
 };
 
+type GuidedStep = {
+  id: string;
+  label: string;
+  fixes: string;
+  remaining: number;
+  tab: QaTab;
+  // Terminal reference steps (source history) are read-only: they never
+  // count toward the "all clear" verdict and carry no actionable remaining.
+  terminal: boolean;
+};
+
 type EnrichmentCandidate = {
   id: string;
   kind: "Property" | "Tenant";
@@ -1276,6 +1287,73 @@ function buildEnrichmentCandidates({
         a.title.localeCompare(b.title),
     )
     .slice(0, 8);
+}
+
+// Frontend-only orchestration: map the same derived numbers the metric
+// cards/completion panel already use into an ordered, progress-aware step
+// list. Each step reuses an existing tab body for the actual fix — no new
+// mutation endpoints. The terminal source-history step is a read-only
+// reference (no mutation, never blocks the "all clear" verdict).
+function buildGuidedSteps({
+  tenantsNeedingContact,
+  propertiesNeedingBillingFix,
+  enrichmentCandidates,
+  readyPrepRows,
+  sources,
+}: {
+  tenantsNeedingContact: TenantRecord[];
+  propertiesNeedingBillingFix: PropertyRecord[];
+  enrichmentCandidates: EnrichmentCandidate[];
+  readyPrepRows: TenantPrepRow[];
+  sources: SourceRow[];
+}): GuidedStep[] {
+  return [
+    {
+      id: "tenant-contacts",
+      label: "Tenant contacts",
+      fixes:
+        "Clean tenant contact and billing emails so invites and invoices can reach them.",
+      remaining: tenantsNeedingContact.length,
+      tab: "contacts",
+      terminal: false,
+    },
+    {
+      id: "owner-billing",
+      label: "Owner and billing",
+      fixes:
+        "Patch the owner billing identity fields that block invoice approval and Xero sync.",
+      remaining: propertiesNeedingBillingFix.length,
+      tab: "issues",
+      terminal: false,
+    },
+    {
+      id: "enrichment-review",
+      label: "Enrichment review",
+      fixes:
+        "Review sourced public suggestions and apply only the ones you confirm.",
+      remaining: enrichmentCandidates.length,
+      tab: "issues",
+      terminal: false,
+    },
+    {
+      id: "onboarding",
+      label: "Onboarding prep",
+      fixes:
+        "Create invite links for ready leases; tenants still confirm via the account gate.",
+      remaining: readyPrepRows.length,
+      tab: "onboarding",
+      terminal: false,
+    },
+    {
+      id: "source-history",
+      label: "Source history",
+      fixes:
+        "Reference the spreadsheet, intake, and enrichment trail behind these fixes.",
+      remaining: sources.length,
+      tab: "sources",
+      terminal: true,
+    },
+  ];
 }
 
 function buildCompletionItems({
@@ -3013,6 +3091,170 @@ function EnrichmentCandidateCard({
   );
 }
 
+// Sequenced guided "fix queue" that walks the operator category-by-category
+// to a clean portfolio. Pure orchestration over the shipped tab bodies: every
+// fix happens in its existing surface, reached via onOpenTab. No mutations
+// fire from here.
+function GuidedFixQueue({
+  steps,
+  onOpenTab,
+}: {
+  steps: GuidedStep[];
+  onOpenTab: (tab: QaTab) => void;
+}) {
+  const actionable = steps.filter((step) => !step.terminal);
+  const clearCount = actionable.filter((step) => step.remaining === 0).length;
+  const allClear = clearCount === actionable.length;
+
+  const firstUnresolved = steps.findIndex(
+    (step) => !step.terminal && step.remaining > 0,
+  );
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Keep the highlighted step pointed at unresolved work as the derived
+  // counts change underneath us, without clobbering an explicit advance.
+  useEffect(() => {
+    const fallback = firstUnresolved >= 0 ? firstUnresolved : steps.length - 1;
+    setCurrentIndex((prev) => {
+      if (prev > steps.length - 1) {
+        return fallback;
+      }
+      const current = steps[prev];
+      if (current && !current.terminal && current.remaining > 0) {
+        return prev;
+      }
+      return fallback;
+    });
+  }, [firstUnresolved, steps]);
+
+  const currentStep = steps[currentIndex] ?? steps[steps.length - 1];
+
+  const advance = () => {
+    if (steps.length === 0) {
+      return;
+    }
+    // Prefer the next non-clear actionable category; fall back to the next
+    // index so the operator can still step onto the terminal reference.
+    for (let offset = 1; offset <= steps.length; offset += 1) {
+      const candidate = (currentIndex + offset) % steps.length;
+      const step = steps[candidate];
+      if (!step.terminal && step.remaining > 0) {
+        setCurrentIndex(candidate);
+        return;
+      }
+    }
+    setCurrentIndex((prev) => (prev + 1) % steps.length);
+  };
+
+  const countLabel = (step: GuidedStep) => {
+    if (step.terminal) {
+      return `${step.remaining} reference`;
+    }
+    return step.remaining === 0
+      ? `${step.remaining} done`
+      : `${step.remaining} remaining`;
+  };
+
+  const stepTone = (step: GuidedStep): StatusTone => {
+    if (step.terminal) {
+      return "neutral";
+    }
+    return step.remaining === 0 ? "success" : "warning";
+  };
+
+  return (
+    <SectionPanel
+      title="Guided fix queue"
+      description="Work the register clean category by category. Each step opens the existing fix surface — nothing here changes records on its own."
+      icon={<ClipboardList size={17} className="text-primary" />}
+      data-testid="guided-fix-queue"
+    >
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div
+            className="text-sm font-semibold text-foreground"
+            data-testid="guided-progress"
+          >
+            {clearCount} of {actionable.length} categories clear
+          </div>
+          {allClear ? (
+            <StatusBadge tone="success">All categories clear</StatusBadge>
+          ) : null}
+        </div>
+
+        {currentStep ? (
+          <div className="rounded-xl border border-border bg-muted/40 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={stepTone(currentStep)}>
+                {countLabel(currentStep)}
+              </StatusBadge>
+              <div className="text-sm font-semibold text-foreground">
+                {currentStep.label}
+              </div>
+            </div>
+            <p
+              className="mt-1 text-sm text-muted-foreground"
+              data-testid="guided-current-fixes"
+            >
+              {currentStep.fixes}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => onOpenTab(currentStep.tab)}
+              >
+                <ArrowRight size={15} />
+                Go to this fix
+              </Button>
+              <SecondaryButton type="button" onClick={advance}>
+                Next category
+              </SecondaryButton>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            icon={<CheckCircle2 size={18} />}
+            title="No guided categories"
+            description="The register has no tracked cleanup categories yet."
+          />
+        )}
+
+        <ol className="space-y-2">
+          {steps.map((step) => (
+            <li
+              key={step.id}
+              data-testid={`guided-step-${step.id}`}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div
+                  className="text-sm font-medium text-foreground"
+                  data-testid="guided-step-label"
+                >
+                  {step.label}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {step.fixes}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span data-testid="guided-step-count">
+                  <StatusBadge tone={stepTone(step)}>
+                    {countLabel(step)}
+                  </StatusBadge>
+                </span>
+                {!step.terminal && step.remaining === 0 ? (
+                  <StatusBadge tone="success">Done</StatusBadge>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </SectionPanel>
+  );
+}
+
 function PortfolioCompletionPanel({
   items,
   enrichmentCandidates,
@@ -3982,6 +4224,23 @@ function PortfolioQaWorkspace() {
       tenantsNeedingContact,
     ],
   );
+  const guidedSteps = useMemo(
+    () =>
+      buildGuidedSteps({
+        tenantsNeedingContact,
+        propertiesNeedingBillingFix,
+        enrichmentCandidates,
+        readyPrepRows,
+        sources,
+      }),
+    [
+      enrichmentCandidates,
+      propertiesNeedingBillingFix,
+      readyPrepRows,
+      sources,
+      tenantsNeedingContact,
+    ],
+  );
   const blockedFollowups = useMemo(
     () => buildBlockedFollowups({ issues, tenantPrep }),
     [issues, tenantPrep],
@@ -4452,6 +4711,7 @@ function PortfolioQaWorkspace() {
               bulkReviewGroups={bulkReviewGroups}
               onOpenTab={setActiveTab}
             />
+            <GuidedFixQueue steps={guidedSteps} onOpenTab={setActiveTab} />
             <BlockerTriagePanel
               groups={bulkReviewGroups}
               onOpenTab={setActiveTab}
