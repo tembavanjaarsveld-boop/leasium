@@ -1416,3 +1416,52 @@ test("maintenance completion review form stays hidden until the job is completed
     panel.getByRole("button", { name: "Record review" }),
   ).toHaveCount(0);
 });
+
+function activityPanel(page: import("@playwright/test").Page) {
+  return page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Activity" }) })
+    .first();
+}
+
+test("maintenance detail activity timeline shows mapped labels in reverse order with show-all expander", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+
+  // Uses the shared work-order-1 fixture, whose metadata.activity_history carries
+  // tenant_submitted -> updated -> comment_added (oldest -> newest).
+  await page.goto("/operations/maintenance/work-order-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Air conditioning fault" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  const panel = activityPanel(page);
+  await expect(panel).toBeVisible();
+
+  // Event keys map to friendly labels.
+  await expect(
+    panel.getByText("Comment added", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    panel.getByText("Tenant request submitted", { exact: true }).first(),
+  ).toBeVisible();
+
+  // A formatted timestamp accompanies the entries.
+  await expect(panel.getByText(/19 May 2026/).first()).toBeVisible();
+
+  // Newest-first ordering: the latest comment_added precedes the oldest
+  // tenant_submitted in the DOM.
+  const orderedTexts = await panel.locator("span.font-medium").allInnerTexts();
+  expect(orderedTexts.indexOf("Comment added")).toBeLessThan(
+    orderedTexts.indexOf("Tenant request submitted"),
+  );
+
+  // Three entries are at/under the visible cap, so no show-all expander appears.
+  await expect(
+    panel.getByRole("button", { name: /Show all \d+ activity entries/ }),
+  ).toHaveCount(0);
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

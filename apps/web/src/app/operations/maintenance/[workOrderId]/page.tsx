@@ -243,6 +243,8 @@ type VendorExposurePacket = {
 
 const EMPTY_CONTRACTORS: ContractorRecord[] = [];
 
+const ACTIVITY_TIMELINE_VISIBLE_CAP = 6;
+
 const MAINTENANCE_REVIEW_PACKET_GUARDRAIL =
   "Review-only packet: downloading or copying this file does not send email, SMS, portal messages, provider dispatch, invoice updates, Xero/Basiq writes, payment reconciliation, document uploads, or maintenance mutations.";
 
@@ -1536,7 +1538,7 @@ function activityRows(workOrder: MaintenanceWorkOrderRecord) {
             : typeof entry.at === "string"
               ? entry.at
               : workOrder.updated_at,
-        label: label(event),
+        label: activityEventLabel(event),
         meta: uniqueList([
           status ? label(status) : null,
           source ? label(source) : null,
@@ -1936,6 +1938,28 @@ function quoteDocumentRows(
     category: document.category,
     byteSize: document.byte_size,
   }));
+}
+
+const ACTIVITY_EVENT_LABELS: Record<string, string> = {
+  created: "Work order created",
+  updated: "Details updated",
+  status_changed: "Status changed",
+  tenant_submitted: "Tenant request submitted",
+  comment_added: "Comment added",
+  completion_review_recorded: "Completion review recorded",
+  contractor_email_attempted: "Contractor email attempted",
+  contractor_sms_attempted: "Contractor SMS attempted",
+  contractor_email_receipt: "Contractor email receipt",
+  contractor_sms_receipt: "Contractor SMS receipt",
+  provider_delivery_attempted: "Provider delivery attempted",
+  provider_delivery_receipt: "Provider delivery receipt",
+  vendor_portal_shared: "Vendor portal shared",
+  vendor_portal_hidden: "Vendor portal hidden",
+  assigned: "Contractor assigned",
+};
+
+function activityEventLabel(event: string) {
+  return ACTIVITY_EVENT_LABELS[event] ?? label(event);
 }
 
 function activityAudience({
@@ -3591,6 +3615,7 @@ function MaintenanceDetailRoute() {
   const [commentVisibility, setCommentVisibility] = useState<
     "internal" | "contractor" | "tenant"
   >("internal");
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const [activityAuditReceipt, setActivityAuditReceipt] = useState<
     string | null
   >(null);
@@ -3818,6 +3843,9 @@ function MaintenanceDetailRoute() {
     : [];
   const reopenHistory = workOrder ? reopenHistoryRows(workOrder) : [];
   const timeline = workOrder ? activityRows(workOrder) : [];
+  const visibleTimeline = showAllActivity
+    ? timeline
+    : timeline.slice(0, ACTIVITY_TIMELINE_VISIBLE_CAP);
   const forwardingDraftRows = workOrder
     ? maintenanceForwardingDraftRows({
         workOrder,
@@ -6450,7 +6478,7 @@ function MaintenanceDetailRoute() {
                     ) : null}
                   </form>
 
-                  {timeline.map((entry, index) => (
+                  {visibleTimeline.map((entry, index) => (
                     <div
                       key={`${entry.at}-${entry.label}-${index}`}
                       className="grid gap-1 rounded-lg border border-border bg-white px-3 py-3 text-sm"
@@ -6477,6 +6505,17 @@ function MaintenanceDetailRoute() {
                       </div>
                     </div>
                   ))}
+                  {timeline.length > ACTIVITY_TIMELINE_VISIBLE_CAP ? (
+                    <SecondaryButton
+                      type="button"
+                      className="w-fit"
+                      onClick={() => setShowAllActivity((current) => !current)}
+                    >
+                      {showAllActivity
+                        ? "Show fewer activity entries"
+                        : `Show all ${timeline.length} activity entries`}
+                    </SecondaryButton>
+                  ) : null}
                   {timeline.length === 0 ? (
                     <EmptyState
                       icon={<Activity size={18} />}
