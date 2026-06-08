@@ -1,5 +1,6 @@
 """Tenant onboarding link routes."""
 
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -692,12 +693,6 @@ def _find_onboarding_by_message_id(
                     return row
     return None
 
-
-def _assert_webhook_secret(request: Request) -> None:
-    secret = get_settings().communications_webhook_secret
-    if not secret:
-        return
-    webhook_auth.assert_webhook_secret(request, secret)
 
 
 def _assert_twilio_status_webhook_auth(
@@ -1706,6 +1701,18 @@ async def record_twilio_delivery_status(
 
     onboarding = _find_onboarding_by_message_id(session, "sms", message_sid)
     if onboarding is not None:
+        # Idempotency: Twilio retries the same MessageStatus on the same
+        # MessageSid. If the channel already reflects this exact raw event for
+        # this message, skip so the receipt history doesn't gain duplicate rows.
+        channels = (onboarding.delivery_data or {}).get("channels", {})
+        current = channels.get("sms", {}) if isinstance(channels, dict) else {}
+        already_recorded = (
+            isinstance(current, dict)
+            and current.get("provider_message_id") == message_sid
+            and current.get("last_event") == message_status
+        )
+        if already_recorded:
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
         _apply_delivery_receipt(onboarding, "sms", message_status, message_sid, payload)
         audit_log(
             session,
@@ -1728,8 +1735,18 @@ async def record_sendgrid_delivery_events(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    _assert_webhook_secret(request)
-    payload = await request.json()
+    settings = get_settings()
+    body = await request.body()
+    webhook_auth.assert_sendgrid_event_webhook_auth(
+        request,
+        body,
+        signing_key=settings.sendgrid_event_webhook_signing_key,
+        secret=settings.communications_webhook_secret,
+    )
+    try:
+        payload = json.loads(body) if body else []
+    except ValueError:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     events = payload if isinstance(payload, list) else [payload]
     for event in events:
         if not isinstance(event, dict):
@@ -1749,6 +1766,16 @@ async def record_sendgrid_delivery_events(
             onboarding = _find_onboarding_by_message_id(session, "email", message_id)
         if onboarding is None or onboarding.deleted_at is not None:
             continue
+        event_id = event.get("sg_event_id")
+        event_id = str(event_id) if event_id else None
+        delivery_data = onboarding.delivery_data or {}
+        processed_ids = delivery_data.get("processed_event_ids")
+        if not isinstance(processed_ids, list):
+            processed_ids = []
+        if webhook_auth.sendgrid_event_already_processed(processed_ids, event_id):
+            # Idempotent replay: SendGrid redelivered an event we already
+            # recorded. Skip so attempt counts and receipt history don't inflate.
+            continue
         _apply_delivery_receipt(
             onboarding,
             "email",
@@ -1756,6 +1783,13 @@ async def record_sendgrid_delivery_events(
             str(message_id) if message_id else None,
             event,
         )
+        if event_id:
+            onboarding.delivery_data = {
+                **(onboarding.delivery_data or {}),
+                "processed_event_ids": webhook_auth.record_processed_event_id(
+                    processed_ids, event_id
+                ),
+            }
         audit_log(
             session,
             actor="provider:sendgrid",

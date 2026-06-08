@@ -120,6 +120,12 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_environment: str = ""
     communications_webhook_secret: str = ""
+    # SendGrid Signed Event Webhook ECDSA public verification key (base64 DER,
+    # the value SendGrid shows under Mail Settings -> Event Webhooks ->
+    # Signature Verification). Empty by default: when unset the event webhooks
+    # fall back to the shared COMMUNICATIONS_WEBHOOK_SECRET. When set, inbound
+    # SendGrid events must carry a valid signature header or are rejected 403.
+    sendgrid_event_webhook_signing_key: str = ""
     communications_timeout_seconds: float = 10.0
     tenant_onboarding_email_enabled: bool = True
     tenant_onboarding_sms_enabled: bool = True

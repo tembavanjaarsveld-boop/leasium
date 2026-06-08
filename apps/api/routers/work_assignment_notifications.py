@@ -1,5 +1,6 @@
 """Provider receipt webhooks for assignment notifications."""
 
+import json
 from datetime import date, datetime
 from typing import Annotated, Any
 from urllib.parse import parse_qs
@@ -2316,6 +2317,18 @@ async def record_work_assignment_twilio_delivery_status(
     target = _find_target_by_sms_message_id(session, message_sid)
     if target is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+    # Idempotency: Twilio retries the same MessageStatus on the same MessageSid.
+    # If the SMS record already reflects this exact raw event for this message,
+    # skip so the receipt history doesn't gain duplicate rows.
+    assignment = _metadata_record(_metadata_record(_target_metadata(target)).get("work_assignment"))
+    sms_record = _metadata_record(
+        _metadata_record(_metadata_record(assignment.get("notification")).get("channels")).get("sms")
+    )
+    if (
+        sms_record.get("provider_message_id") == message_sid
+        and sms_record.get("last_event") == message_status
+    ):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     metadata = apply_work_assignment_sms_delivery_receipt(
         _target_metadata(target),
         raw_status=message_status,
@@ -2346,8 +2359,18 @@ async def record_work_assignment_sendgrid_delivery_events(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
 ) -> Response:
-    _assert_webhook_secret(request)
-    payload = await request.json()
+    settings = get_settings()
+    body = await request.body()
+    webhook_auth.assert_sendgrid_event_webhook_auth(
+        request,
+        body,
+        signing_key=settings.sendgrid_event_webhook_signing_key,
+        secret=settings.communications_webhook_secret,
+    )
+    try:
+        payload = json.loads(body) if body else []
+    except ValueError:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     events = payload if isinstance(payload, list) else [payload]
     for event in events:
         if not isinstance(event, dict):
@@ -2367,6 +2390,15 @@ async def record_work_assignment_sendgrid_delivery_events(
         target = _target_from_event(session, event, provider_message_id)
         if target is None:
             continue
+        event_id = event.get("sg_event_id")
+        event_id = str(event_id) if event_id else None
+        existing_metadata = _metadata_record(_target_metadata(target))
+        processed_ids = existing_metadata.get("processed_sendgrid_event_ids")
+        if not isinstance(processed_ids, list):
+            processed_ids = []
+        if webhook_auth.sendgrid_event_already_processed(processed_ids, event_id):
+            # Idempotent replay: this sg_event_id already updated the target.
+            continue
         metadata = apply_work_assignment_delivery_receipt(
             _target_metadata(target),
             raw_status=raw_status,
@@ -2375,6 +2407,13 @@ async def record_work_assignment_sendgrid_delivery_events(
         )
         if metadata is None:
             continue
+        if event_id:
+            metadata = {
+                **metadata,
+                "processed_sendgrid_event_ids": webhook_auth.record_processed_event_id(
+                    processed_ids, event_id
+                ),
+            }
         _set_target_metadata(target, metadata)
         audit_log(
             session,
