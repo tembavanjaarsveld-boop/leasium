@@ -89,6 +89,33 @@ class RegisterImportDryRunRead(BaseModel):
     summary: str
 
 
+class RegisterImportReviewSummary(BaseModel):
+    """Read-only projection bucketing plan rows for operator review.
+
+    Purely additive: derived from the stored plan's action items. It does not
+    change extraction, decisions, thresholds, or the Apply path.
+    """
+
+    total_action_items: int = 0
+    by_decision: dict[ImportDecision, int] = Field(default_factory=dict)
+    by_operation: dict[ImportAction, int] = Field(default_factory=dict)
+    by_confidence_band: dict[Literal["high", "medium", "low", "unknown"], int] = Field(
+        default_factory=dict
+    )
+    blocked_rows: int = 0
+    warning_rows: int = 0
+    ready_to_approve: int = 0
+    needs_attention: int = 0
+
+
+class RegisterImportPlanRead(RegisterImportDryRunRead):
+    """Stored review plan plus its additive review summary and apply status."""
+
+    review_summary: RegisterImportReviewSummary
+    applied: bool = False
+    applied_at: datetime | None = None
+
+
 class RegisterImportApplyRequest(BaseModel):
     entity_id: UUID
     filename: str

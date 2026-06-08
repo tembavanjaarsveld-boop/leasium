@@ -16,6 +16,7 @@ from stewart.domain.register_import import (
     RegisterImportError,
     apply_register_import_plan,
     build_register_import_dry_run,
+    summarize_register_import_plan,
 )
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
@@ -23,6 +24,7 @@ from apps.api.schemas.register_import import (
     RegisterImportApplyRead,
     RegisterImportApplyRequest,
     RegisterImportDryRunRead,
+    RegisterImportPlanRead,
 )
 
 router = APIRouter(prefix="/register-imports", tags=["register-imports"])
@@ -326,6 +328,40 @@ async def dry_run_register_import(
     session.commit()
     session.refresh(plan)
     return dry_run_read.model_copy(update={"plan_id": plan.id})
+
+
+@router.get("/{plan_id}", response_model=RegisterImportPlanRead)
+def read_register_import_plan(
+    plan_id: UUID,
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> RegisterImportPlanRead:
+    """Re-read a stored review plan with an additive review summary. No mutation."""
+
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    plan = session.scalar(
+        select(RegisterImportPlan).where(
+            RegisterImportPlan.id == plan_id,
+            RegisterImportPlan.entity_id == entity_id,
+            RegisterImportPlan.deleted_at.is_(None),
+        )
+    )
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Register import plan not found.",
+        )
+    plan_data = dict(plan.plan_data or {})
+    plan_data.setdefault("entity_id", str(plan.entity_id))
+    plan_data["plan_id"] = str(plan.id)
+    action_items = plan_data.get("action_items")
+    if not isinstance(action_items, list):
+        action_items = []
+    plan_data["review_summary"] = summarize_register_import_plan(action_items)
+    plan_data["applied"] = plan.applied_at is not None
+    plan_data["applied_at"] = plan.applied_at
+    return RegisterImportPlanRead.model_validate(plan_data)
 
 
 @router.post("/apply", response_model=RegisterImportApplyRead)

@@ -469,6 +469,89 @@ def test_register_import_dry_run_plans_workbook_without_mutation(
     assert plan.plan_data["action_items"][0]["id"]
 
 
+def test_register_import_get_plan_returns_review_summary_without_mutation(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    dry_run_response = client.post(
+        "/api/v1/register-imports/dry-run",
+        data={"entity_id": entity_id},
+        files={
+            "file": (
+                "portfolio.xlsx",
+                _workbook_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert dry_run_response.status_code == 200
+    dry_run = dry_run_response.json()
+    plan_id = dry_run["plan_id"]
+
+    property_count_before = len(
+        list(session.scalars(select(Property).where(Property.entity_id == UUID(entity_id))))
+    )
+
+    response = client.get(
+        f"/api/v1/register-imports/{plan_id}",
+        params={"entity_id": entity_id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plan_id"] == plan_id
+    assert body["entity_id"] == entity_id
+    assert body["applied"] is False
+    assert body["applied_at"] is None
+    # Review summary reflects the stored action items.
+    summary = body["review_summary"]
+    assert summary["total_action_items"] == len(dry_run["action_items"])
+    assert sum(summary["by_decision"].values()) == summary["total_action_items"]
+    assert sum(summary["by_operation"].values()) == summary["total_action_items"]
+    assert sum(summary["by_confidence_band"].values()) == summary["total_action_items"]
+    # Decision and operation buckets agree with the raw action items.
+    expected_decisions: dict[str, int] = {}
+    expected_operations: dict[str, int] = {}
+    expected_blocked = 0
+    for item in dry_run["action_items"]:
+        expected_decisions[item["default_decision"]] = (
+            expected_decisions.get(item["default_decision"], 0) + 1
+        )
+        expected_operations[item["operation"]] = (
+            expected_operations.get(item["operation"], 0) + 1
+        )
+        if item["blockers"]:
+            expected_blocked += 1
+    assert summary["by_decision"] == expected_decisions
+    assert summary["by_operation"] == expected_operations
+    assert summary["blocked_rows"] == expected_blocked
+    assert summary["ready_to_approve"] >= 1
+    assert summary["needs_attention"] >= summary["blocked_rows"]
+
+    # Regression: reading the plan performs no mutation and does not apply it.
+    assert len(
+        list(session.scalars(select(Property).where(Property.entity_id == UUID(entity_id))))
+    ) == property_count_before
+    plan = session.get(RegisterImportPlan, UUID(plan_id))
+    assert plan is not None
+    assert plan.applied_at is None
+    assert "apply_result" not in (plan.plan_data or {})
+
+
+def test_register_import_get_plan_unknown_id_returns_404(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    response = client.get(
+        "/api/v1/register-imports/00000000-0000-0000-0000-000000000000",
+        params={"entity_id": entity_id},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Register import plan not found."
+
+
 def test_register_import_apply_creates_approved_records_with_provenance(
     client: TestClient,
     session: Session,

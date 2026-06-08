@@ -1327,6 +1327,64 @@ def build_register_import_dry_run(
     }
 
 
+def _confidence_band(confidence: Any) -> str:
+    if not isinstance(confidence, (int, float)):
+        return "unknown"
+    if confidence >= 0.85:
+        return "high"
+    if confidence >= 0.6:
+        return "medium"
+    return "low"
+
+
+def summarize_register_import_plan(action_items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Read-only projection bucketing plan rows for operator review.
+
+    Purely additive: derived from a stored plan's action items. It does not
+    read or write the database, does not change extraction or decisions, and is
+    never on the Apply path.
+    """
+
+    by_decision: Counter[str] = Counter()
+    by_operation: Counter[str] = Counter()
+    by_confidence_band: Counter[str] = Counter()
+    blocked_rows = 0
+    warning_rows = 0
+    ready_to_approve = 0
+    needs_attention = 0
+
+    for item in action_items:
+        if not isinstance(item, dict):
+            continue
+        decision = str(item.get("default_decision") or "review")
+        operation = str(item.get("operation") or "review")
+        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+        blockers = item.get("blockers") or []
+        warnings = item.get("warnings") or []
+        by_decision[decision] += 1
+        by_operation[operation] += 1
+        by_confidence_band[_confidence_band(source.get("confidence"))] += 1
+        if blockers:
+            blocked_rows += 1
+        if warnings:
+            warning_rows += 1
+        if blockers or decision == "review":
+            needs_attention += 1
+        elif decision == "approve":
+            ready_to_approve += 1
+
+    return {
+        "total_action_items": len([item for item in action_items if isinstance(item, dict)]),
+        "by_decision": dict(by_decision),
+        "by_operation": dict(by_operation),
+        "by_confidence_band": dict(by_confidence_band),
+        "blocked_rows": blocked_rows,
+        "warning_rows": warning_rows,
+        "ready_to_approve": ready_to_approve,
+        "needs_attention": needs_attention,
+    }
+
+
 def _date_from_payload(value: Any) -> date | None:
     return _date_value(value)
 
