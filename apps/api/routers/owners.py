@@ -1768,6 +1768,20 @@ def review_owner_distribution(
         .order_by(OwnerDistribution.created_at.desc())
     ).first()
 
+    # Guard: a row marked disbursed (operator out-of-band payout marker) must
+    # never be silently reverted to "reviewed" by a re-review of the month.
+    # The review endpoint targets exactly one owner per call, so a 409 (mirroring
+    # the mark-disbursed contract) is clearer than a no-op 200 — the operator is
+    # explicitly trying to re-review a row whose disbursement is already recorded.
+    if existing is not None and existing.status == "disbursed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This distribution is already disbursed and cannot be "
+                "re-reviewed; reverting it would discard the disbursement marker."
+            ),
+        )
+
     now = utcnow()
     fee_pct = (
         Decimal(str(line.management_fee_pct))

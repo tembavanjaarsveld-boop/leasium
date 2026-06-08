@@ -2755,3 +2755,75 @@ def test_distribution_history_projects_disbursed_marker(
     assert record["disbursed_by_user_id"] is not None
     assert record["disbursed_at"] is not None
     assert record["disbursed_note"] == "EFT batch 09"
+
+
+def test_review_distribution_rejects_already_disbursed_row(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Re-reviewing a disbursed month is rejected 409, preserving the marker."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+    owner_identity = "Distribution Trust (Trustee: Dist Trustee Pty Ltd)"
+
+    mark = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True, "note": "EFT batch 11"},
+    )
+    assert mark.status_code == 200
+
+    # An explicit re-review of the same owner + month must NOT revert the row.
+    again = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert again.status_code == 409
+    assert "disbursed" in again.json()["detail"].lower()
+
+    session.expire_all()
+    stored = session.get(OwnerDistribution, row.id)
+    assert stored is not None
+    # Status and the disbursement marker survive the rejected re-review.
+    assert stored.status == "disbursed"
+    assert stored.distribution_metadata["disbursement"]["note"] == "EFT batch 11"
+    assert len(stored.distribution_metadata["audit_log"]) == 1
+
+
+def test_review_distribution_still_reviews_non_disbursed_row(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Normal draft/reviewed re-review is unaffected by the disbursed guard."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    owner_identity = "Distribution Trust (Trustee: Dist Trustee Pty Ltd)"
+
+    first = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert first.status_code == 200
+    again = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert again.status_code == 200
+
+    session.expire_all()
+    rows = list(
+        session.scalars(
+            select(OwnerDistribution).where(
+                OwnerDistribution.entity_id == UUID(scope["entity_id"]),
+                OwnerDistribution.month == "2026-04",
+            )
+        ).all()
+    )
+    assert len(rows) == 1
+    assert rows[0].status == "reviewed"
