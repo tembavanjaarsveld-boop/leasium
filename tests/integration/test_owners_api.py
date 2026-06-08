@@ -2,6 +2,7 @@
 
 import csv
 from datetime import date
+from decimal import Decimal
 from io import BytesIO, StringIO
 from typing import Any, TypedDict
 from uuid import UUID, uuid4
@@ -26,6 +27,7 @@ from stewart.core.models import (
     OperatingMode,
     Organisation,
     Owner,
+    OwnerDistribution,
     OwnerStatementDispatch,
     Property,
     PropertyOwner,
@@ -34,6 +36,7 @@ from stewart.core.models import (
 )
 from stewart.core.settings import get_settings
 from stewart.integrations.communications import DeliveryResult
+from stewart.integrations.payment_rails import configured_rail
 
 
 class _OwnerSeedScope(TypedDict):
@@ -1899,3 +1902,306 @@ def test_send_owner_statement_skips_when_provider_unconfigured(
     receipt = response.json()
     assert receipt["status"] == "skipped"
     assert "configured" in (receipt["error"] or "").lower()
+
+
+# --- Owner distributions + management-fee deduction ------------------------
+
+
+def _seeded_owner(session: Session, trust_name: str) -> Owner:
+    owner = session.scalar(select(Owner).where(Owner.trust_name == trust_name))
+    assert owner is not None
+    return owner
+
+
+def test_owner_management_fee_pct_persists_and_round_trips(
+    session: Session,
+) -> None:
+    """The management_fee_pct column persists and reads back as a Decimal."""
+
+    entity = _entity(session)
+    owner = Owner(
+        entity_id=entity.id,
+        legal_name="Fee Owner Pty Ltd",
+        management_fee_pct=Decimal("7.5"),
+    )
+    session.add(owner)
+    session.commit()
+
+    session.expire(owner)
+    refreshed = session.get(Owner, owner.id)
+    assert refreshed is not None
+    assert refreshed.management_fee_pct == Decimal("7.5")
+
+
+def test_create_owner_accepts_management_fee_pct(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    response = client.post(
+        "/api/v1/owners",
+        json={
+            "entity_id": str(entity.id),
+            "legal_name": "Created Fee Owner Pty Ltd",
+            "management_fee_pct": 8.25,
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["management_fee_pct"] == 8.25
+
+    owner = session.get(Owner, UUID(body["id"]))
+    assert owner is not None
+    assert owner.management_fee_pct == Decimal("8.25")
+
+
+def test_update_owner_rejects_management_fee_pct_out_of_range(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    owner = Owner(
+        entity_id=entity.id,
+        legal_name="Range Owner Pty Ltd",
+    )
+    session.add(owner)
+    session.commit()
+
+    response = client.patch(
+        f"/api/v1/owners/{owner.id}",
+        json={"management_fee_pct": 150},
+    )
+    assert response.status_code == 422
+
+
+def test_owner_distribution_row_persists(session: Session) -> None:
+    """An OwnerDistribution reviewed row persists its frozen snapshot."""
+
+    entity = _entity(session)
+    owner = Owner(
+        entity_id=entity.id,
+        legal_name="Row Owner Pty Ltd",
+        management_fee_pct=Decimal("7.5"),
+    )
+    session.add(owner)
+    session.flush()
+    row = OwnerDistribution(
+        entity_id=entity.id,
+        owner_id=owner.id,
+        owner_identity="Row Owner Pty Ltd",
+        owner_identity_key="row owner pty ltd",
+        month="2026-04",
+        status="reviewed",
+        rent_collected_cents=1_000_000,
+        management_fee_pct=Decimal("7.5"),
+        fee_ex_gst_cents=75_000,
+        fee_gst_cents=7_500,
+        fee_inc_gst_cents=82_500,
+        net_distribution_cents=917_500,
+        distribution_metadata={"entity_gst_registered": True},
+    )
+    session.add(row)
+    session.commit()
+
+    stored = session.get(OwnerDistribution, row.id)
+    assert stored is not None
+    assert stored.status == "reviewed"
+    assert stored.net_distribution_cents == 917_500
+    assert stored.management_fee_pct == Decimal("7.5")
+    assert stored.distribution_metadata["entity_gst_registered"] is True
+
+
+def _seed_distribution_scope(session: Session) -> _OwnerSeedScope:
+    scope = _seed_owner_with_invoices(
+        session,
+        trust_name="Distribution Trust",
+        trustee_name="Dist Trustee Pty Ltd",
+        billing_email="owner@example.com",
+        properties=[
+            ("Distribution Property", [(date(2026, 4, 10), 1_000_000, 1_000_000)])
+        ],
+    )
+    owner = _seeded_owner(session, "Distribution Trust")
+    owner.management_fee_pct = Decimal("7.5")
+    session.commit()
+    return scope
+
+
+def test_get_distributions_happy_path(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Managing-agent account computes the GST-inclusive fee + net distribution."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_gst_registered"] is True
+    assert len(body["lines"]) == 1
+    line = body["lines"][0]
+    assert line["rent_collected_cents"] == 1_000_000
+    assert line["management_fee_pct"] == 7.5
+    assert line["fee_ex_gst_cents"] == 75_000
+    assert line["fee_gst_cents"] == 7_500
+    assert line["fee_inc_gst_cents"] == 82_500
+    assert line["net_distribution_cents"] == 917_500
+    assert line["needs_attention"] is False
+    assert "not available" in body["guardrail"].lower()
+
+
+def test_get_distributions_denied_for_self_managed_owner(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Self-managed owner-operators do not see owner distributions."""
+
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 403
+    detail = response.json()["detail"].lower()
+    assert "managing-agent" in detail
+    assert "hybrid" in detail
+
+
+def test_get_distributions_allowed_for_hybrid(
+    client: TestClient,
+    session: Session,
+) -> None:
+    _set_operating_mode(session, OperatingMode.hybrid)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+    assert response.status_code == 200
+    assert len(response.json()["lines"]) == 1
+
+
+def test_review_distribution_requires_explicit_approval(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """No reviewed record is written without approve=true."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    distributions = client.get(
+        "/api/v1/owners/distributions",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = distributions["lines"][0]["owner_identity"]
+
+    response = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": False},
+    )
+    assert response.status_code == 400
+    assert "approval" in response.json()["detail"].lower()
+
+    rows = list(
+        session.scalars(
+            select(OwnerDistribution).where(
+                OwnerDistribution.entity_id == UUID(scope["entity_id"])
+            )
+        ).all()
+    )
+    assert rows == []
+
+
+def test_review_distribution_writes_reviewed_record_without_moving_money(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Reviewing freezes the snapshot but never calls the payment rail."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    distributions = client.get(
+        "/api/v1/owners/distributions",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = distributions["lines"][0]["owner_identity"]
+
+    def boom(settings_arg: Any) -> str | None:
+        raise AssertionError("review must not call the payment rail")
+
+    monkeypatch.setattr(
+        "stewart.integrations.payment_rails.configured_rail", boom
+    )
+
+    response = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert response.status_code == 200
+    # configured_rail still importable and untouched.
+    assert callable(configured_rail)
+
+    rows = list(
+        session.scalars(
+            select(OwnerDistribution).where(
+                OwnerDistribution.entity_id == UUID(scope["entity_id"])
+            )
+        ).all()
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.status == "reviewed"
+    assert row.rent_collected_cents == 1_000_000
+    assert row.fee_inc_gst_cents == 82_500
+    assert row.net_distribution_cents == 917_500
+    assert row.reviewed_by_user_id is not None
+    assert row.reviewed_at is not None
+
+
+def test_review_distribution_is_idempotent_for_same_owner_month(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Re-reviewing the same owner + month updates in place, not appends."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    distributions = client.get(
+        "/api/v1/owners/distributions",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    ).json()
+    owner_identity = distributions["lines"][0]["owner_identity"]
+
+    first = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert first.status_code == 200
+    again = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert again.status_code == 200
+
+    rows = list(
+        session.scalars(
+            select(OwnerDistribution).where(
+                OwnerDistribution.entity_id == UUID(scope["entity_id"]),
+                OwnerDistribution.month == "2026-04",
+            )
+        ).all()
+    )
+    assert len(rows) == 1

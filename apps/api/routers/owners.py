@@ -28,11 +28,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    Entity,
     InvoiceDraft,
     InvoiceDraftStatus,
     OperatingMode,
     Organisation,
     Owner,
+    OwnerDistribution,
     OwnerStatementDispatch,
     Property,
     PropertyOwner,
@@ -43,9 +45,13 @@ from stewart.integrations.communications import (
     OwnerStatementEmail,
     send_owner_statement_email,
 )
+from stewart.services.owner_distributions import compute_owner_distributions
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.owners import (
+    OwnerDistributionLine,
+    OwnerDistributionReviewRequest,
+    OwnerDistributionsRead,
     OwnerInvoiceEvidenceLine,
     OwnerPropertyLine,
     OwnerStatementDispatchListRead,
@@ -1271,3 +1277,216 @@ def send_owner_statement(
     session.commit()
     session.refresh(row)
     return _dispatch_receipt(row)
+
+
+_DISTRIBUTION_GUARDRAIL = (
+    "Owner distributions are review-only. Reviewing a distribution records the "
+    "computed snapshot but moves no money, posts nothing to Xero, and makes no "
+    "bank, payment-rail, or provider call. Payment execution is not available "
+    "in this version."
+)
+
+
+def _assert_distribution_mode(session: Session, user: CurrentUser) -> None:
+    organisation = session.scalar(
+        select(Organisation).where(Organisation.id == user.organisation_id)
+    )
+    operating_mode = (
+        organisation.operating_mode
+        if organisation is not None
+        else OperatingMode.self_managed_owner.value
+    )
+    if operating_mode not in {
+        OperatingMode.managing_agent.value,
+        OperatingMode.hybrid.value,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Owner distributions are available only for managing-agent or "
+                "hybrid accounts."
+            ),
+        )
+
+
+def _entity_gst_registered(entity_id: UUID, session: Session) -> bool:
+    entity = session.get(Entity, entity_id)
+    # The managing agent (entity) is the supplier of the management service, so
+    # GST on the fee follows the agent's registration. Default to registered to
+    # match the Entity model default.
+    return bool(entity.gst_registered) if entity is not None else True
+
+
+def _owners_by_id(entity_id: UUID, session: Session) -> dict[UUID, Owner]:
+    owners = session.scalars(
+        select(Owner).where(
+            Owner.entity_id == entity_id,
+            Owner.deleted_at.is_(None),
+        )
+    ).all()
+    return {owner.id: owner for owner in owners}
+
+
+def _build_distribution_lines(
+    entity_id: UUID,
+    session: Session,
+    month: str,
+) -> tuple[OwnerStatementsRead, list[OwnerDistributionLine], bool]:
+    statements = _build_owner_statements(entity_id, session, month)
+    owners_by_id = _owners_by_id(entity_id, session)
+    entity_gst_registered = _entity_gst_registered(entity_id, session)
+    lines = compute_owner_distributions(
+        statements, owners_by_id, entity_gst_registered
+    )
+    return statements, lines, entity_gst_registered
+
+
+@router.get("/distributions", response_model=OwnerDistributionsRead)
+def get_owner_distributions(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> OwnerDistributionsRead:
+    """Compute per-owner distributions for a month (read-only, no money moved)."""
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    _assert_distribution_mode(session, user)
+    statements, lines, entity_gst_registered = _build_distribution_lines(
+        entity_id, session, month
+    )
+    return OwnerDistributionsRead(
+        entity_id=entity_id,
+        month=statements.month,
+        entity_gst_registered=entity_gst_registered,
+        lines=lines,
+        guardrail=_DISTRIBUTION_GUARDRAIL,
+        generated_at=utcnow(),
+    )
+
+
+@router.post("/distributions/review", response_model=OwnerDistributionsRead)
+def review_owner_distribution(
+    entity_id: UUID,
+    payload: OwnerDistributionReviewRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> OwnerDistributionsRead:
+    """Freeze one owner's computed distribution as a reviewed record.
+
+    Review-first guardrail: ``approve`` must be true (the operator's explicit
+    per-owner approval). Reviewing records the computed snapshot with
+    ``status=reviewed`` and moves no money. A future
+    ``POST /owners/distributions/{id}/pay`` would call
+    ``configured_rail(settings)`` to disburse the net amount; that is
+    deliberately not built here.
+    """
+
+    assert_entity_role(session, user, entity_id, DISPATCH_ROLES)
+    _assert_distribution_mode(session, user)
+    if not payload.approve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Explicit per-owner approval (approve=true) is required to "
+                "record a reviewed distribution."
+            ),
+        )
+
+    statements, lines, entity_gst_registered = _build_distribution_lines(
+        entity_id, session, month
+    )
+    line = next(
+        (
+            item
+            for item in lines
+            if item.owner_identity.casefold() == payload.owner_identity.casefold()
+        ),
+        None,
+    )
+    if line is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner distribution not found for this month.",
+        )
+
+    owner_key = line.owner_identity.casefold()
+    existing = session.scalars(
+        select(OwnerDistribution)
+        .where(
+            OwnerDistribution.entity_id == entity_id,
+            OwnerDistribution.owner_identity_key == owner_key,
+            OwnerDistribution.month == statements.month,
+        )
+        .order_by(OwnerDistribution.created_at.desc())
+    ).first()
+
+    now = utcnow()
+    fee_pct = (
+        Decimal(str(line.management_fee_pct))
+        if line.management_fee_pct is not None
+        else None
+    )
+    if existing is None:
+        # NOTE: no rail / Xero / bank / provider call here — review only.
+        existing = OwnerDistribution(
+            entity_id=entity_id,
+            owner_id=line.owner_id,
+            owner_identity=line.owner_identity,
+            owner_identity_key=owner_key,
+            month=statements.month,
+            status="reviewed",
+            rent_collected_cents=line.rent_collected_cents,
+            management_fee_pct=fee_pct,
+            fee_ex_gst_cents=line.fee_ex_gst_cents,
+            fee_gst_cents=line.fee_gst_cents,
+            fee_inc_gst_cents=line.fee_inc_gst_cents,
+            net_distribution_cents=line.net_distribution_cents,
+            distribution_metadata={
+                "entity_gst_registered": entity_gst_registered,
+                "needs_attention": line.needs_attention,
+            },
+            created_by_user_id=user.id,
+            reviewed_by_user_id=user.id,
+            reviewed_at=now,
+        )
+        session.add(existing)
+    else:
+        # Idempotent re-review: refresh the frozen snapshot in place rather than
+        # appending a second reviewed row for the same owner + month.
+        existing.owner_id = line.owner_id
+        existing.owner_identity = line.owner_identity
+        existing.status = "reviewed"
+        existing.rent_collected_cents = line.rent_collected_cents
+        existing.management_fee_pct = fee_pct
+        existing.fee_ex_gst_cents = line.fee_ex_gst_cents
+        existing.fee_gst_cents = line.fee_gst_cents
+        existing.fee_inc_gst_cents = line.fee_inc_gst_cents
+        existing.net_distribution_cents = line.net_distribution_cents
+        existing.distribution_metadata = {
+            "entity_gst_registered": entity_gst_registered,
+            "needs_attention": line.needs_attention,
+        }
+        existing.reviewed_by_user_id = user.id
+        existing.reviewed_at = now
+    session.commit()
+
+    return OwnerDistributionsRead(
+        entity_id=entity_id,
+        month=statements.month,
+        entity_gst_registered=entity_gst_registered,
+        lines=lines,
+        guardrail=_DISTRIBUTION_GUARDRAIL,
+        generated_at=utcnow(),
+    )

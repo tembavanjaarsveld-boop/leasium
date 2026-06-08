@@ -3,6 +3,7 @@
 import builtins
 import enum
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -1451,6 +1452,72 @@ Index(
 )
 
 
+class OwnerDistribution(Base):
+    """Reviewed owner distribution: rent collected, management fee, net owed.
+
+    Mirrors ``OwnerStatementDispatch`` — owner distributions are derived on the
+    fly from owner statements (rent collected) plus the owner's
+    ``management_fee_pct``; this table only persists the *reviewed* snapshot an
+    operator has explicitly approved per owner + month. The record lifecycle is
+    ``draft`` (never persisted — computed only) → ``reviewed`` (frozen here).
+
+    Provider-mutation guardrail: a row is only ever created by the explicit
+    operator-approved review endpoint, never automatically, and writing one
+    moves no money. A future ``POST /owners/distributions/{id}/pay`` would call
+    ``configured_rail(settings)`` to disburse — that is deliberately not built.
+    """
+
+    __tablename__ = "owner_distribution"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    owner_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("owner.id")
+    )
+    owner_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_identity_key: Mapped[str] = mapped_column(Text, nullable=False)
+    month: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="reviewed")
+    rent_collected_cents: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    management_fee_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
+    fee_ex_gst_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fee_gst_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fee_inc_gst_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    net_distribution_cents: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    distribution_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "distribution_metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    entity: Mapped[Entity] = relationship()
+
+
+Index(
+    "owner_distribution_lookup_idx",
+    OwnerDistribution.entity_id,
+    OwnerDistribution.owner_identity_key,
+    OwnerDistribution.month,
+)
+
+
 class Contractor(Base):
     """Per-entity directory of maintenance contractors.
 
@@ -1526,6 +1593,10 @@ class Owner(Base):
     billing_email: Mapped[str | None] = mapped_column(Text)
     invoice_reference: Mapped[str | None] = mapped_column(Text)
     gst_registered: Mapped[bool | None] = mapped_column(Boolean)
+    # Management fee charged to a third-party owner client, as a percentage of
+    # rent collected (e.g. 7.5). Nullable: when unset, owner distributions flag
+    # the row as needing attention rather than assuming a zero fee.
+    management_fee_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
     xero_contact_id: Mapped[str | None] = mapped_column(Text)
     owner_metadata: Mapped[dict[str, Any]] = mapped_column(
         JsonbCompat, nullable=False, default=dict

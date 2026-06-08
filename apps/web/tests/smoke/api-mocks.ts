@@ -3118,6 +3118,41 @@ export async function mockLeasiumApi(
     };
   };
 
+  const ownerDistributions = (distributionEntityId: string, month: string) => {
+    const statements = ownerStatements(month);
+    const entityGstRegistered = true;
+    const feePct = 7.5;
+    const lines = statements.owners.map((owner, index) => {
+      const rentCollected = owner.paid_cents;
+      // First owner carries a configured fee; later owners have none so the
+      // "need attention" path is exercisable.
+      const hasFee = index === 0;
+      const feeExGst = hasFee ? Math.round((rentCollected * feePct) / 100) : 0;
+      const feeGst = hasFee && entityGstRegistered ? Math.round(feeExGst * 0.1) : 0;
+      const feeIncGst = feeExGst + feeGst;
+      return {
+        owner_id: hasFee ? "owner-distribution-1" : null,
+        owner_identity: owner.owner_identity,
+        rent_collected_cents: rentCollected,
+        management_fee_pct: hasFee ? feePct : null,
+        fee_ex_gst_cents: feeExGst,
+        fee_gst_cents: feeGst,
+        fee_inc_gst_cents: feeIncGst,
+        net_distribution_cents: Math.max(rentCollected - feeIncGst, 0),
+        needs_attention: !hasFee,
+      };
+    });
+    return {
+      entity_id: distributionEntityId,
+      month,
+      entity_gst_registered: entityGstRegistered,
+      lines,
+      guardrail:
+        "Owner distributions are review-only. Reviewing a distribution records the computed snapshot but moves no money. Payment execution is not available in this version.",
+      generated_at: "2026-05-25T00:00:00.000Z",
+    };
+  };
+
   const xeroExceptionItemBase = () => ({
     property_id: null,
     property_name: null,
@@ -9090,6 +9125,45 @@ export async function mockLeasiumApi(
         created_by_user_id: operatorId,
         created_at: "2026-05-25T01:00:00.000Z",
       });
+      return;
+    }
+
+    if (method === "GET" && path === "/owners/distributions") {
+      const reqMonth = url.searchParams.get("month") ?? "2026-05";
+      await fulfillJson(
+        route,
+        ownerDistributions(
+          url.searchParams.get("entity_id") ?? entityId,
+          reqMonth,
+        ),
+      );
+      return;
+    }
+
+    if (method === "POST" && path === "/owners/distributions/review") {
+      const payload = request.postDataJSON() as {
+        owner_identity?: string;
+        approve?: boolean;
+      };
+      const reqMonth = url.searchParams.get("month") ?? "2026-05";
+      if (payload.approve !== true) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "Explicit per-owner approval (approve=true) is required to record a reviewed distribution.",
+          },
+          400,
+        );
+        return;
+      }
+      await fulfillJson(
+        route,
+        ownerDistributions(
+          url.searchParams.get("entity_id") ?? entityId,
+          reqMonth,
+        ),
+      );
       return;
     }
 

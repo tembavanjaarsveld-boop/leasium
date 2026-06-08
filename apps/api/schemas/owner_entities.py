@@ -23,6 +23,9 @@ class OwnerBase(BaseModel):
     billing_email: str | None = None
     invoice_reference: str | None = None
     gst_registered: bool | None = None
+    # Management fee charged to this owner client, as a percentage of rent
+    # collected (e.g. 7.5). Backs the owner-distributions roll-up.
+    management_fee_pct: float | None = Field(default=None, ge=0, le=100)
     xero_contact_id: str | None = None
 
 
@@ -42,6 +45,7 @@ class OwnerUpdate(BaseModel):
     billing_email: str | None = None
     invoice_reference: str | None = None
     gst_registered: bool | None = None
+    management_fee_pct: float | None = Field(default=None, ge=0, le=100)
     xero_contact_id: str | None = None
 
 

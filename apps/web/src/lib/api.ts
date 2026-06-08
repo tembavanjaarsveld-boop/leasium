@@ -5789,6 +5789,58 @@ export function getOwnerStatementDispatch({
   );
 }
 
+// ---- Owner distributions --------------------------------------------------
+
+export type OwnerDistributionLineRecord = {
+  owner_id: string | null;
+  owner_identity: string;
+  rent_collected_cents: number;
+  management_fee_pct: number | null;
+  fee_ex_gst_cents: number;
+  fee_gst_cents: number;
+  fee_inc_gst_cents: number;
+  net_distribution_cents: number;
+  needs_attention: boolean;
+};
+
+export type OwnerDistributionsRecord = {
+  entity_id: string;
+  month: string;
+  entity_gst_registered: boolean;
+  lines: OwnerDistributionLineRecord[];
+  guardrail: string;
+  generated_at: string;
+};
+
+export function getOwnerDistributions(entityId: string, month?: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (month) {
+    params.set("month", month);
+  }
+  return request<OwnerDistributionsRecord>(
+    `/owners/distributions?${params.toString()}`,
+  );
+}
+
+export function reviewOwnerDistributions({
+  entityId,
+  ownerIdentity,
+  month,
+}: {
+  entityId: string;
+  ownerIdentity: string;
+  month: string;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId, month });
+  return request<OwnerDistributionsRecord>(
+    `/owners/distributions/review?${params.toString()}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ owner_identity: ownerIdentity, approve: true }),
+    },
+  );
+}
+
 // ---- Owner portal preview -------------------------------------------------
 
 export type OwnerPortalAuthRecord = {
@@ -6391,6 +6443,7 @@ export type OwnerRecord = {
   billing_email: string | null;
   invoice_reference: string | null;
   gst_registered: boolean | null;
+  management_fee_pct: number | null;
   xero_contact_id: string | null;
   created_at: string;
   updated_at: string;
@@ -6409,6 +6462,7 @@ export type OwnerCreatePayload = {
   billing_email?: string | null;
   invoice_reference?: string | null;
   gst_registered?: boolean | null;
+  management_fee_pct?: number | null;
   xero_contact_id?: string | null;
 };
 

@@ -117,3 +117,48 @@ class OwnerStatementDispatchListRead(BaseModel):
     receipts: list[OwnerStatementDispatchReceipt] = Field(default_factory=list)
     guardrail: str
     generated_at: datetime
+
+
+class OwnerDistributionLine(BaseModel):
+    """One owner's monthly distribution after a management-fee deduction.
+
+    ``rent_collected_cents`` is the owner's ``paid_cents`` from the statement
+    roll-up. The fee is ``rent_collected * management_fee_pct``; GST (10%) is
+    added only when the managing agent's entity is GST-registered. ``net`` is
+    rent collected minus the GST-inclusive fee, floored at zero.
+    ``needs_attention`` is true when no ``management_fee_pct`` is recorded for
+    the owner, so the operator reviews it before relying on the figures.
+    """
+
+    owner_id: UUID | None = None
+    owner_identity: str
+    rent_collected_cents: int
+    management_fee_pct: float | None = None
+    fee_ex_gst_cents: int
+    fee_gst_cents: int
+    fee_inc_gst_cents: int
+    net_distribution_cents: int
+    needs_attention: bool
+
+
+class OwnerDistributionsRead(BaseModel):
+    """Read response for ``GET /api/v1/owners/distributions``."""
+
+    entity_id: UUID
+    month: str
+    entity_gst_registered: bool
+    lines: list[OwnerDistributionLine] = Field(default_factory=list)
+    guardrail: str
+    generated_at: datetime
+
+
+class OwnerDistributionReviewRequest(BaseModel):
+    """Explicit per-line review approval for owner distributions.
+
+    Each line the operator wants frozen as a reviewed record must carry
+    ``approve=true``. No money moves: review only persists the computed
+    snapshot.
+    """
+
+    approve: bool = False
+    owner_identity: str

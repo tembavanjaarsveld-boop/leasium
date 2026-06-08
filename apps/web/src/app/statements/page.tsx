@@ -53,11 +53,14 @@ import {
   listInvoiceDrafts,
   downloadOwnerStatementPdf,
   downloadOwnerStatementPdfPack,
+  getOwnerDistributions,
   getOwnerStatementDispatch,
   getOwnerStatements,
   listEntities,
+  reviewOwnerDistributions,
   sendOwnerStatement,
   type InvoiceDraftRecord,
+  type OwnerDistributionLineRecord,
   type OwnerStatementDispatchReceipt,
   type OwnerStatementRecord,
   type OwnerStatementsRecord,
@@ -171,6 +174,14 @@ function formatMoney(cents: number, currency = "AUD"): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null) return "Not set";
+  return `${new Intl.NumberFormat("en-AU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  }).format(value)}%`;
 }
 
 function formatMonthLabel(month: string): string {
@@ -1297,6 +1308,7 @@ export default function StatementsPage() {
 function StatementsContent() {
   const { operatingMode } = useOperatingMode();
   const showOwnerDispatch = isManagingAgentOperatingMode(operatingMode);
+  const showDistributions = isManagingAgentOperatingMode(operatingMode);
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
     queryFn: listEntities,
@@ -1350,6 +1362,12 @@ function StatementsContent() {
     queryFn: () =>
       getOwnerStatementDispatch({ entityId: selectedEntityId, month }),
     enabled: Boolean(showOwnerDispatch && selectedEntityId && month),
+  });
+
+  const distributionsQuery = useQuery({
+    queryKey: ["owner-distributions", selectedEntityId, month],
+    queryFn: () => getOwnerDistributions(selectedEntityId, month),
+    enabled: Boolean(showDistributions && selectedEntityId && month),
   });
 
   const invoiceDraftsQuery = useQuery({
@@ -1561,6 +1579,19 @@ function StatementsContent() {
         ) : (
           <SelfManagedDispatchGuardrailPanel />
         )}
+
+        {showDistributions ? (
+          <OwnerDistributionsPanel
+            entityId={selectedEntityId}
+            month={month}
+            lines={distributionsQuery.data?.lines ?? []}
+            entityGstRegistered={
+              distributionsQuery.data?.entity_gst_registered ?? true
+            }
+            loading={distributionsQuery.isLoading}
+            error={distributionsQuery.error}
+          />
+        ) : null}
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric
@@ -2974,6 +3005,221 @@ function StatementExceptionsPanel({
                   </button>
                 );
               })}
+            </div>
+          </>
+        )}
+      </div>
+    </SectionPanel>
+  );
+}
+
+function OwnerDistributionsPanel({
+  entityId,
+  month,
+  lines,
+  entityGstRegistered,
+  loading,
+  error,
+}: {
+  entityId: string;
+  month: string;
+  lines: OwnerDistributionLineRecord[];
+  entityGstRegistered: boolean;
+  loading: boolean;
+  error: unknown;
+}) {
+  const queryClient = useQueryClient();
+  const [reviewedOwner, setReviewedOwner] = useState<string | null>(null);
+  const reviewMutation = useMutation({
+    mutationFn: (ownerIdentity: string) =>
+      reviewOwnerDistributions({ entityId, ownerIdentity, month }),
+    onSuccess: (_data, ownerIdentity) => {
+      setReviewedOwner(ownerIdentity);
+      queryClient.invalidateQueries({
+        queryKey: ["owner-distributions", entityId, month],
+      });
+    },
+  });
+  const pendingOwner = reviewMutation.isPending
+    ? reviewMutation.variables
+    : null;
+  const needsAttentionCount = lines.filter(
+    (line) => line.needs_attention,
+  ).length;
+  const totalNet = lines.reduce(
+    (total, line) => total + line.net_distribution_cents,
+    0,
+  );
+
+  return (
+    <SectionPanel
+      title="Owner distributions"
+      description="Rent collected less the management fee, with the net amount owed to each owner. Review-only: no payment is made."
+      icon={<Wallet size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={entityGstRegistered ? "primary" : "neutral"}>
+            {entityGstRegistered ? "GST registered" : "No GST"}
+          </StatusBadge>
+          <StatusBadge tone={needsAttentionCount > 0 ? "warning" : "success"}>
+            {needsAttentionCount > 0
+              ? `${needsAttentionCount} need attention`
+              : "Fees set"}
+          </StatusBadge>
+        </div>
+      }
+    >
+      <div className="grid gap-4 p-4">
+        <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+          <LockKeyhole size={14} className="mr-1 inline align-text-bottom" />
+          Payment execution is not available in this version. Marking a
+          distribution reviewed records the figures only — it never moves money,
+          posts to Xero, or calls a bank or payment rail.
+        </p>
+
+        {reviewMutation.error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(reviewMutation.error)}
+          </p>
+        ) : null}
+
+        {loading ? (
+          <SkeletonRows rows={3} />
+        ) : error ? (
+          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(error)}
+          </p>
+        ) : !lines.length ? (
+          <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+            Owner distributions appear once owners have rent collected for this
+            month.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone="neutral">
+                {lines.length} {lines.length === 1 ? "owner" : "owners"}
+              </StatusBadge>
+              <StatusBadge tone="success">
+                Net to owners {formatMoney(totalNet)}
+              </StatusBadge>
+              <StatusBadge tone="neutral">Month {month}</StatusBadge>
+            </div>
+
+            <div className="overflow-x-auto rounded-md border border-border bg-white">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm tabular-nums">
+                <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-semibold">
+                      Owner
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right font-semibold"
+                    >
+                      Rent collected
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right font-semibold"
+                    >
+                      Fee %
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right font-semibold"
+                    >
+                      Fee ex-GST
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right font-semibold"
+                    >
+                      GST
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right font-semibold"
+                    >
+                      Fee inc-GST
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-3 py-2 text-right font-semibold"
+                    >
+                      Net distribution
+                    </th>
+                    <th className="w-32 px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const isReviewed = reviewedOwner === line.owner_identity;
+                    return (
+                      <tr
+                        key={line.owner_identity}
+                        className="border-t border-border"
+                      >
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-foreground">
+                            {line.owner_identity}
+                          </div>
+                          {line.needs_attention ? (
+                            <div className="mt-1 inline-flex items-center gap-1 text-xs text-warning">
+                              <AlertTriangle size={12} />
+                              No management fee set
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatMoney(line.rent_collected_cents)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatPercent(line.management_fee_pct)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatMoney(line.fee_ex_gst_cents)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatMoney(line.fee_gst_cents)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatMoney(line.fee_inc_gst_cents)}
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold">
+                          {formatMoney(line.net_distribution_cents)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {isReviewed ? (
+                            <span className="inline-flex items-center gap-1 text-sm font-medium text-success">
+                              <CheckCircle2 size={15} />
+                              Reviewed
+                            </span>
+                          ) : (
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                reviewMutation.mutate(line.owner_identity)
+                              }
+                              disabled={reviewMutation.isPending}
+                            >
+                              {pendingOwner === line.owner_identity ? (
+                                <RefreshCw
+                                  size={15}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <ClipboardCheck size={15} />
+                              )}
+                              Mark reviewed
+                            </SecondaryButton>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </>
         )}
