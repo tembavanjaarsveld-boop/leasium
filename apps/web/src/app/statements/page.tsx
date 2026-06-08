@@ -55,6 +55,7 @@ import {
   downloadOwnerStatementPdfPack,
   downloadOwnerDistributionPdf,
   getOwnerDistributions,
+  getOwnerDistributionDispatchReview,
   getOwnerDistributionHistory,
   getOwnerStatementDispatch,
   getOwnerStatements,
@@ -62,6 +63,7 @@ import {
   reviewOwnerDistributions,
   sendOwnerStatement,
   type InvoiceDraftRecord,
+  type OwnerDistributionDispatchDraftRecord,
   type OwnerDistributionHistoryRecord,
   type OwnerDistributionLineRecord,
   type OwnerStatementDispatchReceipt,
@@ -3089,6 +3091,27 @@ function OwnerDistributionsPanel({
     enabled: Boolean(entityId),
   });
   const historyRecords = historyQuery.data?.records ?? [];
+  const dispatchReviewQuery = useQuery({
+    queryKey: ["owner-distribution-dispatch-review", entityId, month],
+    queryFn: () => getOwnerDistributionDispatchReview({ entityId, month }),
+    enabled: Boolean(entityId && month),
+  });
+  const dispatchDrafts = dispatchReviewQuery.data?.drafts ?? [];
+  const dispatchGuardrail = dispatchReviewQuery.data?.guardrail ?? "";
+  const readyDraftCount = dispatchDrafts.filter((draft) => draft.ready).length;
+  const [copiedDraftOwner, setCopiedDraftOwner] = useState<string | null>(null);
+  const copyDraft = async (
+    draft: OwnerDistributionDispatchDraftRecord,
+  ) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopiedDraftOwner(null);
+      return;
+    }
+    await navigator.clipboard.writeText(
+      `Subject: ${draft.subject}\n\n${draft.body}`,
+    );
+    setCopiedDraftOwner(draft.owner_identity);
+  };
   const pendingOwner = reviewMutation.isPending
     ? reviewMutation.variables
     : null;
@@ -3305,6 +3328,101 @@ function OwnerDistributionsPanel({
             </div>
           </>
         )}
+
+        <details className="rounded-md border border-border bg-muted/20">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-foreground">
+            <span className="inline-flex items-center gap-2">
+              <MailCheck size={15} className="text-primary" />
+              Dispatch review
+            </span>
+            <StatusBadge
+              tone={
+                dispatchDrafts.length === 0
+                  ? "neutral"
+                  : readyDraftCount === dispatchDrafts.length
+                    ? "success"
+                    : "warning"
+              }
+            >
+              {dispatchDrafts.length === 0
+                ? "No drafts"
+                : `${readyDraftCount}/${dispatchDrafts.length} ready`}
+            </StatusBadge>
+          </summary>
+          <div className="grid gap-3 border-t border-border p-3">
+            <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              <LockKeyhole size={14} className="mr-1 inline align-text-bottom" />
+              {dispatchGuardrail ||
+                "Review-only: these owner distribution drafts are never sent. There is no send action here — copy a draft to deliver it through your own channel after review."}
+            </p>
+            {dispatchReviewQuery.isLoading ? (
+              <SkeletonRows rows={2} />
+            ) : dispatchReviewQuery.error ? (
+              <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+                {friendlyError(dispatchReviewQuery.error)}
+              </p>
+            ) : dispatchDrafts.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+                Owner distribution drafts appear once owners have a net
+                distribution for this month.
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {dispatchDrafts.map((draft) => (
+                  <div
+                    key={draft.owner_identity}
+                    className="grid gap-2 rounded-md border border-border bg-white p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground">
+                          {draft.owner_identity}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {draft.recipient_name
+                            ? `${draft.recipient_name} · `
+                            : ""}
+                          {draft.recipient_email ?? "No billing email"}
+                        </div>
+                      </div>
+                      <StatusBadge tone={draft.ready ? "success" : "warning"}>
+                        {draft.ready
+                          ? "Ready"
+                          : (draft.blocked_reason ?? "Blocked")}
+                      </StatusBadge>
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/30 p-2 text-xs">
+                      <div className="font-semibold text-foreground">
+                        {draft.subject}
+                      </div>
+                      <p className="mt-1 whitespace-pre-line text-muted-foreground">
+                        {draft.body}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SecondaryButton
+                        type="button"
+                        onClick={() => copyDraft(draft)}
+                      >
+                        <Copy size={15} />
+                        Copy draft
+                      </SecondaryButton>
+                      {copiedDraftOwner === draft.owner_identity ? (
+                        <span className="text-xs font-medium text-success">
+                          Draft copied. No email sent.
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Review-only — no send action.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
 
         <details className="rounded-md border border-border bg-muted/20">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-foreground">

@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleSlash,
+  ClipboardCheck,
   Download,
   FileSpreadsheet,
   Loader2,
@@ -29,6 +30,7 @@ import {
   applyRegisterImportPlan,
   downloadRegisterImportTemplate,
   dryRunRegisterImport,
+  getRegisterImportPlan,
   listEntities,
   type RegisterImportActionItem,
   type RegisterImportApplyRecord,
@@ -152,6 +154,13 @@ function SpreadsheetImportWorkspace() {
     },
     onSuccess: setApplyResult,
   });
+
+  const planSummaryQuery = useQuery({
+    queryKey: ["register-import-plan", plan?.plan_id],
+    queryFn: () => getRegisterImportPlan(plan!.plan_id!),
+    enabled: Boolean(plan?.plan_id),
+  });
+  const reviewSummary = planSummaryQuery.data?.review_summary ?? null;
 
   const approvedCount = useMemo(
     () => Object.values(approvedIds).filter(Boolean).length,
@@ -296,6 +305,71 @@ function SpreadsheetImportWorkspace() {
             <div className="mt-1 text-sm font-medium">Approved actions</div>
           </div>
         </section>
+
+        {plan && reviewSummary ? (
+          <SectionPanel
+            title="Review summary"
+            description="A read-only roll-up of the staged plan. It does not change any decision or the Apply path."
+            icon={<ClipboardCheck size={17} className="text-primary" />}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone="success">
+                  {reviewSummary.ready_to_approve} ready to approve
+                </StatusBadge>
+                <StatusBadge
+                  tone={
+                    reviewSummary.needs_attention > 0 ? "warning" : "neutral"
+                  }
+                >
+                  {reviewSummary.needs_attention} need attention
+                </StatusBadge>
+              </div>
+            }
+          >
+            <div className="grid gap-3 p-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs uppercase text-muted-foreground">
+                  Action items
+                </div>
+                <div className="mt-1 font-semibold">
+                  {reviewSummary.total_action_items}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs uppercase text-muted-foreground">
+                  High confidence
+                </div>
+                <div className="mt-1 font-semibold">
+                  {reviewSummary.by_confidence_band.high ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs uppercase text-muted-foreground">
+                  Medium confidence
+                </div>
+                <div className="mt-1 font-semibold">
+                  {reviewSummary.by_confidence_band.medium ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs uppercase text-muted-foreground">
+                  Low confidence
+                </div>
+                <div className="mt-1 font-semibold">
+                  {reviewSummary.by_confidence_band.low ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <div className="text-xs uppercase text-muted-foreground">
+                  Blocked / warning rows
+                </div>
+                <div className="mt-1 font-semibold">
+                  {reviewSummary.blocked_rows} / {reviewSummary.warning_rows}
+                </div>
+              </div>
+            </div>
+          </SectionPanel>
+        ) : null}
 
         {dryRunMutation.error ? (
           <div className="rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">

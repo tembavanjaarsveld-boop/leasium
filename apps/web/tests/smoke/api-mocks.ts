@@ -3153,6 +3153,40 @@ export async function mockLeasiumApi(
     };
   };
 
+  const ownerDistributionDispatchReview = (
+    distributionEntityId: string,
+    month: string,
+  ) => {
+    const distributions = ownerDistributions(distributionEntityId, month);
+    const drafts = distributions.lines.map((line, index) => {
+      // First owner is ready (has billing email); a later owner is blocked on a
+      // missing recipient so both badge states are exercisable.
+      const ready = index === 0;
+      return {
+        owner_id: line.owner_id,
+        owner_identity: line.owner_identity,
+        recipient_name: ready ? line.owner_identity : null,
+        recipient_email: ready ? "owners@harbourlane.example" : null,
+        ready,
+        blocked_reason: ready ? null : "Add an owner billing email.",
+        subject: `Owner distribution for ${month} - ${line.owner_identity}`,
+        body: `Hi ${line.owner_identity}, your net distribution for ${month} is ready for review. This is a draft only; no payment has been made.`,
+        net_distribution_cents: line.net_distribution_cents,
+        fee_inc_gst_cents: line.fee_inc_gst_cents,
+        needs_attention: line.needs_attention,
+      };
+    });
+    return {
+      entity_id: distributionEntityId,
+      month,
+      entity_gst_registered: distributions.entity_gst_registered,
+      drafts,
+      guardrail:
+        "Owner distribution dispatch is review-only. No email is sent from this view; copy a draft to deliver it through your own channel after review.",
+      generated_at: "2026-05-25T00:00:00.000Z",
+    };
+  };
+
   const ownerDistributionHistory = (
     distributionEntityId: string,
     ownerId: string | null,
@@ -3883,6 +3917,22 @@ export async function mockLeasiumApi(
     totals: { properties: 1, tenancies: 1, leases: 1 },
     importable: true,
     summary: "3 staged register actions from portfolio-import.xlsx.",
+  });
+
+  const registerImportPlan = () => ({
+    ...registerImportDryRun(),
+    review_summary: {
+      total_action_items: 3,
+      by_decision: { approve: 1, review: 2, ignore: 0 },
+      by_operation: { create: 2, update: 1, match: 0, skip: 0, review: 0 },
+      by_confidence_band: { high: 1, medium: 1, low: 1, unknown: 0 },
+      blocked_rows: 1,
+      warning_rows: 1,
+      ready_to_approve: 1,
+      needs_attention: 2,
+    },
+    applied: false,
+    applied_at: null,
   });
 
   const insightsOverview = () => {
@@ -5291,6 +5341,15 @@ export async function mockLeasiumApi(
 
     if (method === "POST" && path === "/register-imports/dry-run") {
       await fulfillJson(route, registerImportDryRun());
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      /^\/register-imports\/[^/]+$/.test(path) &&
+      path !== "/register-imports/template"
+    ) {
+      await fulfillJson(route, registerImportPlan());
       return;
     }
 
@@ -9188,6 +9247,20 @@ export async function mockLeasiumApi(
         created_by_user_id: operatorId,
         created_at: "2026-05-25T01:00:00.000Z",
       });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/owners/distributions/dispatch-review"
+    ) {
+      await fulfillJson(
+        route,
+        ownerDistributionDispatchReview(
+          url.searchParams.get("entity_id") ?? entityId,
+          url.searchParams.get("month") ?? "2026-05",
+        ),
+      );
       return;
     }
 

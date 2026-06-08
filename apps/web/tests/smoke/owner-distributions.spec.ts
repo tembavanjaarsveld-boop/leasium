@@ -189,3 +189,64 @@ test("self-managed owner accounts do not see the distribution PDF action", async
     page.getByRole("button", { name: "Download distribution PDF" }),
   ).toHaveCount(0);
 });
+
+test("managing-agent accounts see the dispatch review drafts with ready and blocked badges, copy, and no send", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page
+    .context()
+    .grantPermissions(["clipboard-read", "clipboard-write"]);
+  const unsafeRequests = watchUnsafeRequests(page);
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner distributions" }),
+  ).toBeVisible();
+
+  const dispatch = page
+    .locator("summary")
+    .filter({ hasText: "Dispatch review" });
+  await expect(dispatch).toBeVisible();
+  await dispatch.click();
+
+  // The review-only, no-send guardrail is prominent.
+  await expect(
+    page.getByText("review-only", { exact: false }).first(),
+  ).toBeVisible();
+
+  // Drafts render with both a ready and a blocked recipient badge.
+  await expect(page.getByText("Owner distribution for 2026-05", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Ready").first()).toBeVisible();
+  await expect(page.getByText("Add an owner billing email.")).toBeVisible();
+
+  // A copy action exists; clicking it does not fire any send/dispatch route.
+  const copyButton = page.getByRole("button", { name: "Copy draft" }).first();
+  await expect(copyButton).toBeVisible();
+  await copyButton.click();
+
+  expect(unsafeRequests).toHaveLength(0);
+  // No send/dispatch button is wired in this review-only distribution surface
+  // (owner-statement send actions elsewhere on the page are a separate feature).
+  const dispatchPanel = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: "Dispatch review" }) });
+  await expect(
+    dispatchPanel.getByRole("button", { name: /send|dispatch/i }),
+  ).toHaveCount(0);
+});
+
+test("self-managed owner accounts do not see the dispatch review drafts", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Statement preview" }),
+  ).toBeVisible();
+
+  await expect(
+    page.getByText("Dispatch review", { exact: true }),
+  ).toHaveCount(0);
+});

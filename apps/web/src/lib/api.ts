@@ -1546,6 +1546,25 @@ export type RegisterImportDryRunRecord = {
   summary: string;
 };
 
+export type RegisterImportConfidenceBand = "high" | "medium" | "low" | "unknown";
+
+export type RegisterImportReviewSummary = {
+  total_action_items: number;
+  by_decision: Partial<Record<RegisterImportDecision, number>>;
+  by_operation: Partial<Record<RegisterImportOperation, number>>;
+  by_confidence_band: Partial<Record<RegisterImportConfidenceBand, number>>;
+  blocked_rows: number;
+  warning_rows: number;
+  ready_to_approve: number;
+  needs_attention: number;
+};
+
+export type RegisterImportPlanRecord = RegisterImportDryRunRecord & {
+  review_summary: RegisterImportReviewSummary;
+  applied: boolean;
+  applied_at: string | null;
+};
+
 export type RegisterImportApplyItemResult = {
   action_id: string;
   target: string;
@@ -5030,6 +5049,10 @@ export function downloadRegisterImportTemplate() {
   return requestBlob("/register-imports/template");
 }
 
+export function getRegisterImportPlan(planId: string) {
+  return request<RegisterImportPlanRecord>(`/register-imports/${planId}`);
+}
+
 export function applyRegisterImportPlan(payload: {
   entityId: string;
   filename: string;
@@ -5902,6 +5925,50 @@ export function getOwnerDistributionHistory({
   }
   return request<OwnerDistributionHistoryResponse>(
     `/owners/distributions/history?${params.toString()}`,
+  );
+}
+
+export type OwnerDistributionDispatchDraftRecord = {
+  owner_id: string | null;
+  owner_identity: string;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  ready: boolean;
+  blocked_reason: string | null;
+  subject: string;
+  body: string;
+  net_distribution_cents: number;
+  fee_inc_gst_cents: number;
+  needs_attention: boolean;
+};
+
+export type OwnerDistributionDispatchReviewRecord = {
+  entity_id: string;
+  month: string;
+  entity_gst_registered: boolean;
+  drafts: OwnerDistributionDispatchDraftRecord[];
+  guardrail: string;
+  generated_at: string;
+};
+
+export function getOwnerDistributionDispatchReview({
+  entityId,
+  month,
+  ownerId,
+}: {
+  entityId: string;
+  month?: string;
+  ownerId?: string;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (month) {
+    params.set("month", month);
+  }
+  if (ownerId) {
+    params.set("owner_id", ownerId);
+  }
+  return request<OwnerDistributionDispatchReviewRecord>(
+    `/owners/distributions/dispatch-review?${params.toString()}`,
   );
 }
 
