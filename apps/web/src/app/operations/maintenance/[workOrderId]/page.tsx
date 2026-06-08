@@ -17,6 +17,7 @@ import {
   Link2,
   Loader2,
   Mail,
+  MessagesSquare,
   PhoneCall,
   ReceiptText,
   RefreshCw,
@@ -2935,6 +2936,122 @@ function MaintenanceReviewPacketPanel({
   );
 }
 
+function ContractorMessagesCard({
+  workOrder,
+  contractors,
+  draft,
+  onDraftChange,
+  onSend,
+  pending,
+  error,
+}: {
+  workOrder: MaintenanceWorkOrderRecord;
+  contractors: ContractorRecord[];
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSend: () => void;
+  pending: boolean;
+  error: unknown;
+}) {
+  const messages = contractorComments(workOrder);
+  const isShared = vendorPortalVisible(workOrder);
+  const contractorLabel =
+    contractorLabelById(contractors, vendorPortalContractorId(workOrder)) ??
+    workOrder.contractor_name ??
+    "Contractor";
+  return (
+    <SectionPanel
+      title="Contractor messages"
+      icon={<MessagesSquare size={17} />}
+    >
+      <div className="grid gap-3 p-4 text-sm">
+        {isShared ? (
+          messages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No contractor messages yet.
+            </p>
+          ) : (
+            <div className="grid gap-2">
+              {messages.map((entry, index) => {
+                const fromContractor =
+                  metadataText(entry.actor)?.startsWith("vendor:") ?? false;
+                return (
+                  <div
+                    key={`${metadataText(entry.timestamp) ?? "message"}-${index}`}
+                    className={`grid gap-0.5 rounded-md border p-2.5 ${
+                      fromContractor
+                        ? "border-primary/20 bg-primary/5"
+                        : "border-border bg-muted/30"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-xs font-semibold text-foreground">
+                        {fromContractor ? contractorLabel : "You"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDateTime(metadataText(entry.timestamp))}
+                      </span>
+                    </div>
+                    <p className="text-sm leading-6">
+                      {metadataText(entry.body) ?? "-"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : null}
+        {isShared ? (
+          <form
+            className="grid gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!draft.trim()) {
+                return;
+              }
+              onSend();
+            }}
+          >
+            <label className="grid gap-1.5">
+              <span className="font-medium text-foreground">
+                Message to contractor
+              </span>
+              <textarea
+                value={draft}
+                onChange={(event) => onDraftChange(event.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                placeholder="e.g. Please confirm your attendance window."
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="submit" disabled={!draft.trim() || pending}>
+                {pending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Send size={16} />
+                )}
+                Send message
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                In-app only — no email or SMS is sent.
+              </span>
+            </div>
+            {error ? (
+              <p className="text-sm text-danger">{friendlyError(error)}</p>
+            ) : null}
+          </form>
+        ) : (
+          <p className="rounded-md border border-border bg-muted/30 p-2 text-xs leading-5 text-muted-foreground">
+            Share this work order to the vendor portal above to message the
+            contractor here.
+          </p>
+        )}
+      </div>
+    </SectionPanel>
+  );
+}
+
 function VendorExposurePacketPanel({
   workOrder,
   packet,
@@ -3454,6 +3571,7 @@ function MaintenanceDetailRoute() {
     useState("");
   const [vendorPortalTitleDraft, setVendorPortalTitleDraft] = useState("");
   const [vendorPortalCommentDraft, setVendorPortalCommentDraft] = useState("");
+  const [contractorMessageDraft, setContractorMessageDraft] = useState("");
   const lastVendorPortalSyncKey = useRef<string | null>(null);
 
   const workOrderQuery = useQuery({
@@ -4067,6 +4185,23 @@ function MaintenanceDetailRoute() {
     }
     commentMutation.mutate();
   };
+
+  const contractorMessageMutation = useMutation({
+    mutationFn: () =>
+      addMaintenanceWorkOrderComment(workOrderId, {
+        body: contractorMessageDraft,
+        visibility: "contractor",
+      }),
+    onSuccess: () => {
+      setContractorMessageDraft("");
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
 
   const invalidateVendorPortalPreview = (
     contractorId: string | null | undefined,
@@ -5121,6 +5256,16 @@ function MaintenanceDetailRoute() {
                   ) : null}
                 </form>
               </SectionPanel>
+
+              <ContractorMessagesCard
+                workOrder={workOrder}
+                contractors={contractors}
+                draft={contractorMessageDraft}
+                onDraftChange={setContractorMessageDraft}
+                onSend={() => contractorMessageMutation.mutate()}
+                pending={contractorMessageMutation.isPending}
+                error={contractorMessageMutation.error}
+              />
 
               <SectionPanel title="Invoice" icon={<ReceiptText size={17} />}>
                 <div className="grid gap-3 p-4 text-sm">

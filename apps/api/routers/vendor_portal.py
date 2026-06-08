@@ -67,6 +67,7 @@ from apps.api.schemas.vendor_portal import (
     VendorPortalRead,
     VendorPortalVendorRead,
     VendorPortalWorkOrderItemRead,
+    VendorPortalWorkOrderMessagesRead,
     VendorPortalWorkOrdersRead,
 )
 
@@ -112,6 +113,10 @@ VENDOR_PORTAL_INVITE_GUARDRAILS = [
         "Vendor portal invite created locally only: no contractor email or SMS is "
         "sent, no work is dispatched, and no provider history is mutated."
     )
+]
+
+VENDOR_PORTAL_MESSAGING_GUARDRAILS = [
+    "Messages stay in this portal; no email or SMS is sent.",
 ]
 
 VENDOR_PORTAL_INVITE_TTL_DAYS = 30
@@ -166,11 +171,15 @@ def _matches_contractor(contractor_id: UUID, metadata: dict[str, object]) -> boo
     return str(metadata.get(VENDOR_PORTAL_CONTRACTOR_ID_KEY) or "") == str(contractor_id)
 
 
-def _vendor_comments(metadata: dict[str, object]) -> list[VendorPortalCommentRead]:
+def _vendor_comments(
+    metadata: dict[str, object],
+    contractor: Contractor,
+) -> list[VendorPortalCommentRead]:
     comments = metadata.get(COMMENTS_KEY)
     if not isinstance(comments, list):
         return []
 
+    contractor_label = _vendor_display_name(contractor)
     safe_comments: list[VendorPortalCommentRead] = []
     for comment in comments:
         if not isinstance(comment, dict):
@@ -180,10 +189,14 @@ def _vendor_comments(metadata: dict[str, object]) -> list[VendorPortalCommentRea
         body = _metadata_text(comment.get("body"))
         if body is None:
             continue
+        actor = _metadata_text(comment.get("actor")) or ""
+        from_contractor = actor.startswith("vendor:")
         safe_comments.append(
             VendorPortalCommentRead(
                 body=body,
                 timestamp=_metadata_text(comment.get("timestamp")),
+                author="contractor" if from_contractor else "property_team",
+                author_label=contractor_label if from_contractor else "Property team",
             )
         )
     return safe_comments
@@ -247,7 +260,7 @@ def _vendor_work_orders(
                 contractor_assigned_at=row.contractor_assigned_at,
                 quote_amount_cents=row.quote_amount_cents,
                 photo_count=len(row.photo_document_ids),
-                comments=_vendor_comments(metadata),
+                comments=_vendor_comments(metadata, contractor),
             )
         )
 
@@ -978,8 +991,37 @@ def comment_vendor_portal_work_order(
     )
     account.last_seen_at = now
     session.commit()
+    # Future notify hook goes here (in-app only in v1; no SendGrid/Twilio call).
     session.refresh(contractor)
     return _vendor_account_read(contractor, session)
+
+
+@router.get(
+    "/account/work-orders/{work_order_id}/messages",
+    response_model=VendorPortalWorkOrderMessagesRead,
+)
+def get_vendor_portal_work_order_messages(
+    work_order_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> VendorPortalWorkOrderMessagesRead:
+    """Return the contractor-visible message thread for one shared work order."""
+
+    identity = _vendor_portal_identity(authorization, settings)
+    account = _active_vendor_portal_account(identity.provider_id, session)
+    contractor = _contractor_for_account(account, session)
+    work_order = _shared_work_order_for_account(account, work_order_id, session)
+    metadata = _metadata_dict(work_order.work_order_metadata)
+    account.last_seen_at = utcnow()
+    session.commit()
+    return VendorPortalWorkOrderMessagesRead(
+        work_order_id=work_order.id,
+        title=_vendor_portal_title(metadata),
+        messages=_vendor_comments(metadata, contractor),
+        guardrails=VENDOR_PORTAL_MESSAGING_GUARDRAILS,
+        generated_at=utcnow(),
+    )
 
 
 @router.post(

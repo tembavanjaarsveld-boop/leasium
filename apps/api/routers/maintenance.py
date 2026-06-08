@@ -1113,6 +1113,7 @@ def add_work_order_comment(
         target_id=work_order.id,
     )
     session.commit()
+    # Future notify hook goes here (in-app only in v1; no SendGrid/Twilio call).
     session.refresh(work_order)
     return work_order
 

@@ -2390,6 +2390,7 @@ type MockLeasiumApiOptions = {
   xeroDiagnosticsDraftReady?: boolean;
   basiqConsentReady?: boolean;
   vendorPortalPriorExposure?: boolean;
+  vendorPortalMessagingThread?: boolean;
   operationsComplianceDemo?: boolean;
 };
 
@@ -2444,6 +2445,40 @@ export async function mockLeasiumApi(
         ],
       },
       updated_at: priorExposureAt,
+    };
+  }
+  if (options.vendorPortalMessagingThread) {
+    const sharedAt = "2026-05-19T03:00:00.000Z";
+    const metadata = jsonRecord(maintenanceWorkOrders[0].metadata);
+    const existingComments = Array.isArray(metadata.comments)
+      ? metadata.comments
+      : [];
+    maintenanceWorkOrders[0] = {
+      ...maintenanceWorkOrders[0],
+      metadata: {
+        ...metadata,
+        vendor_portal_visible: true,
+        vendor_portal_contractor_id: "contractor-2",
+        vendor_portal_title: "Repair air conditioning",
+        vendor_portal_shared_at: sharedAt,
+        vendor_portal_shared_by_user_id: operatorId,
+        comments: [
+          ...existingComments,
+          {
+            timestamp: "2026-05-19T03:05:00.000Z",
+            actor: operatorId,
+            visibility: "contractor",
+            body: "Please confirm your attendance window for Friday.",
+          },
+          {
+            timestamp: "2026-05-19T04:10:00.000Z",
+            actor: "vendor:contractor-2",
+            visibility: "contractor",
+            body: "Confirmed — on site Friday from 8am.",
+          },
+        ],
+      },
+      updated_at: "2026-05-19T04:10:00.000Z",
     };
   }
   let xeroTenantId: string | null = null;
@@ -5666,6 +5701,79 @@ export async function mockLeasiumApi(
         contentType: "image/png",
         headers: corsHeaders,
         status: 200,
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/portfolio-qa/bulk-fixes/apply") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const issueClass =
+        payload.issue_class === "owner_billing"
+          ? "owner_billing"
+          : "tenant_contact";
+      const allowedFields =
+        issueClass === "owner_billing"
+          ? [
+              "owner_legal_name",
+              "owner_abn",
+              "trustee_name",
+              "trust_name",
+              "invoice_issuer_name",
+              "billing_contact_name",
+              "billing_email",
+              "ownership_split",
+            ]
+          : ["contact_name", "contact_email", "billing_email", "abn"];
+      const records = (
+        issueClass === "owner_billing" ? properties : tenants
+      ) as unknown as Array<Record<string, JsonBody>>;
+      const changes = Array.isArray(payload.changes) ? payload.changes : [];
+      const applied: JsonBody[] = [];
+      const skipped: JsonBody[] = [];
+      const appliedTargets = new Set<string>();
+      for (const raw of changes) {
+        const change = jsonRecord(raw);
+        const targetId =
+          typeof change.target_id === "string" ? change.target_id : "";
+        const fields = jsonRecord(change.fields);
+        const record = records.find((item) => item.id === targetId) ?? null;
+        for (const [field, rawValue] of Object.entries(fields)) {
+          const value =
+            typeof rawValue === "string" && rawValue.trim()
+              ? rawValue.trim()
+              : null;
+          const before = record?.[field] ?? null;
+          if (!allowedFields.includes(field)) {
+            skipped.push({
+              target_id: targetId,
+              field,
+              before,
+              after: value,
+              reason: "Field is not supported for portfolio QA bulk fixes.",
+            });
+            continue;
+          }
+          if (before === value) {
+            skipped.push({
+              target_id: targetId,
+              field,
+              before,
+              after: value,
+              reason: "Value is unchanged.",
+            });
+            continue;
+          }
+          if (record) {
+            record[field] = value;
+          }
+          applied.push({ target_id: targetId, field, before, after: value });
+          appliedTargets.add(targetId);
+        }
+      }
+      await fulfillJson(route, {
+        applied,
+        skipped,
+        summary: `Applied ${applied.length} field fix(es) across ${appliedTargets.size} record(s); skipped ${skipped.length}.`,
       });
       return;
     }

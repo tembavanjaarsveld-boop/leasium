@@ -5332,6 +5332,32 @@ export function applyPublicEnrichment(payload: {
   });
 }
 
+export type PortfolioQaBulkFixIssueClass = "tenant_contact" | "owner_billing";
+
+export type PortfolioQaBulkFixRowResult = {
+  target_id: string;
+  field: string;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+};
+
+export type PortfolioQaBulkFixApplyRecord = {
+  applied: PortfolioQaBulkFixRowResult[];
+  skipped: PortfolioQaBulkFixRowResult[];
+  summary: string;
+};
+
+export function applyPortfolioQaBulkFixes(payload: {
+  issue_class: PortfolioQaBulkFixIssueClass;
+  changes: Array<{ target_id: string; fields: Record<string, unknown> }>;
+}) {
+  return request<PortfolioQaBulkFixApplyRecord>("/portfolio-qa/bulk-fixes/apply", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function previewPropertyImages(payload: {
   property_id: string;
   requested_count?: number;
@@ -5889,6 +5915,8 @@ export type VendorPortalVendorRecord = {
 };
 
 export type VendorPortalCommentRecord = {
+  author: "contractor" | "property_team";
+  author_label: string | null;
   body: string;
   timestamp: string | null;
 };
@@ -6044,6 +6072,29 @@ export function commentVendorPortalWorkOrder(
     });
   }
   return request<VendorPortalRecord>(path, init);
+}
+
+export type VendorPortalWorkOrderMessagesRecord = {
+  work_order_id: string;
+  title: string;
+  messages: VendorPortalCommentRecord[];
+  guardrails: string[];
+  generated_at: string;
+};
+
+export function getVendorPortalWorkOrderMessages(
+  workOrderId: string,
+  authToken?: string | null,
+) {
+  const path = `/vendor-portal/account/work-orders/${encodeURIComponent(
+    workOrderId,
+  )}/messages`;
+  if (authToken) {
+    return publicRequest<VendorPortalWorkOrderMessagesRecord>(path, {
+      headers: vendorPortalBearerHeaders(authToken),
+    });
+  }
+  return request<VendorPortalWorkOrderMessagesRecord>(path);
 }
 
 export function uploadVendorPortalWorkOrderPhoto(

@@ -58,7 +58,18 @@ const BASE_ITEM = {
   quote_amount_cents: 125000,
   photo_count: 0,
   comments: [
-    { body: "Please attend before trading opens.", timestamp: "2026-06-01T03:00:00Z" },
+    {
+      author: "property_team",
+      author_label: "Property team",
+      body: "Please attend before trading opens.",
+      timestamp: "2026-06-01T03:00:00Z",
+    },
+    {
+      author: "contractor",
+      author_label: "Bright Spark Electrical",
+      body: "Confirmed — we can attend Friday from 7am.",
+      timestamp: "2026-06-01T05:00:00Z",
+    },
   ],
 };
 
@@ -77,7 +88,12 @@ const COMMENTED_RESPONSE = {
     status: "in_progress",
     comments: [
       ...BASE_ITEM.comments,
-      { body: "On my way, ETA 30 minutes.", timestamp: "2026-06-02T04:05:00Z" },
+      {
+        author: "contractor",
+        author_label: "Bright Spark Electrical",
+        body: "On my way, ETA 30 minutes.",
+        timestamp: "2026-06-02T04:05:00Z",
+      },
     ],
   }),
 };
@@ -89,8 +105,18 @@ const PHOTO_RESPONSE = {
     photo_count: 1,
     comments: [
       ...BASE_ITEM.comments,
-      { body: "On my way, ETA 30 minutes.", timestamp: "2026-06-02T04:05:00Z" },
-      { body: "Contractor added a job photo.", timestamp: "2026-06-02T04:06:00Z" },
+      {
+        author: "contractor",
+        author_label: "Bright Spark Electrical",
+        body: "On my way, ETA 30 minutes.",
+        timestamp: "2026-06-02T04:05:00Z",
+      },
+      {
+        author: "contractor",
+        author_label: "Bright Spark Electrical",
+        body: "Contractor added a job photo.",
+        timestamp: "2026-06-02T04:06:00Z",
+      },
     ],
   }),
 };
@@ -123,6 +149,72 @@ test("vendor account pages use fresh bearer tokens for claim and actions", async
   );
   expect(api).toContain("vendorPortalBearerHeaders");
   expect(api).toContain("publicRequestForm<VendorPortalRecord>");
+  expect(api).toContain("getVendorPortalWorkOrderMessages");
+  expect(api).toContain("VendorPortalWorkOrderMessagesRecord");
+});
+
+test("vendor job card shows a two-way message thread with author labels", async ({
+  page,
+}) => {
+  const unsafeRequests: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      path.startsWith("/api/v1/comms") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path.startsWith("/api/v1/payments") ||
+      path.startsWith("/api/v1/reconciliation") ||
+      path.includes("/contractor-delivery") ||
+      path.includes("assignment-notification")
+    ) {
+      unsafeRequests.push(`${request.method()} ${path}`);
+    }
+  });
+
+  await page.route("**/api/v1/vendor-portal/account/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "active",
+        contractor_id: "contractor-1",
+        vendor_name: "Bright Spark Electrical Pty Ltd",
+        email: "service@brightspark.example",
+        linked_at: "2026-06-01T00:00:00.000Z",
+        last_seen_at: "2026-06-01T00:00:00.000Z",
+        revoked_at: null,
+        recovery_hint:
+          "This contractor login can open the vendor portal without the original claim link.",
+      }),
+    });
+  });
+  await page.route("**/api/v1/vendor-portal/account/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(SESSION_RESPONSE),
+    });
+  });
+
+  await page.goto("/vendor-portal");
+
+  await expect(page.getByRole("heading", { name: "Your jobs" })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Property team", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Please attend before trading opens."),
+  ).toBeVisible();
+  await expect(page.getByText("You", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Confirmed — we can attend Friday from 7am."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Messages stay in this portal — no email or SMS is sent."),
+  ).toBeVisible();
+
+  expect(unsafeRequests).toEqual([]);
 });
 
 test("vendor account dashboard accepts, comments, and adds a photo", async ({

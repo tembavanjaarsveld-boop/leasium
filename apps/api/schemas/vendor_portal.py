@@ -39,6 +39,8 @@ class VendorPortalCommentRead(BaseModel):
 
     body: str
     timestamp: str | None = None
+    author: Literal["contractor", "property_team"] = "property_team"
+    author_label: str = "Property team"
 
 
 class VendorPortalWorkOrderItemRead(BaseModel):
@@ -80,6 +82,16 @@ class VendorPortalRead(BaseModel):
             items=[],
         )
     )
+    guardrails: list[str] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class VendorPortalWorkOrderMessagesRead(BaseModel):
+    """Message thread for one work order shared to the signed-in contractor."""
+
+    work_order_id: UUID
+    title: str
+    messages: list[VendorPortalCommentRead] = Field(default_factory=list)
     guardrails: list[str] = Field(default_factory=list)
     generated_at: datetime
 

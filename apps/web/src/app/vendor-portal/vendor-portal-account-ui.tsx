@@ -216,12 +216,26 @@ function WorkOrderActionCard({
       {item.comments.length > 0 ? (
         <div className="grid gap-2 rounded-lg border border-border bg-white p-3">
           {item.comments.map((entry) => (
-            <p
+            <div
               key={`${entry.timestamp ?? "comment"}-${entry.body}`}
-              className="text-sm leading-6 text-slate"
+              className={`grid gap-0.5 rounded-md border p-2.5 ${
+                entry.author === "contractor"
+                  ? "border-primary/20 bg-primary/5"
+                  : "border-border bg-muted/30"
+              }`}
             >
-              {entry.body}
-            </p>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="text-xs font-semibold text-foreground">
+                  {entry.author === "contractor"
+                    ? "You"
+                    : (entry.author_label ?? "Property team")}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {formatVendorPortalDateTime(entry.timestamp)}
+                </span>
+              </div>
+              <p className="text-sm leading-6 text-slate">{entry.body}</p>
+            </div>
           ))}
         </div>
       ) : null}
@@ -274,6 +288,9 @@ function WorkOrderActionCard({
             Post update
           </SecondaryButton>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Messages stay in this portal — no email or SMS is sent.
+        </p>
         {error ? <p className="text-sm text-danger">{error}</p> : null}
       </div>
     </article>
