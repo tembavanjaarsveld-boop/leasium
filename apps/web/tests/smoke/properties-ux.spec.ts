@@ -215,15 +215,13 @@ test("mobile properties map view keeps focus controls touch safe", async ({
   );
   await expect(page).toHaveURL(/view=map/);
 
-  await expect(page.getByText("Portfolio location plan")).toBeVisible();
-  await expect(
-    page.getByText(
-      "Address grouping for suburb clusters, vacancies, and expiry focus.",
-    ),
-  ).toBeVisible();
   await expect(page.getByText("Map planning")).toBeVisible();
   await expect(page.getByText("Regional focus")).toBeVisible();
   await expect(page.getByText("0/0")).toHaveCount(0);
+
+  // Unmapped properties fall back to an address-lookup list rather than the
+  // schematic pins of v1.
+  await expect(page.getByText("Unmapped properties")).toBeVisible();
 
   await expectTouchTarget(page.getByRole("tab", { name: "Map" }));
   await expectTouchTarget(
@@ -238,6 +236,12 @@ test("mobile properties map view keeps focus controls touch safe", async ({
   );
   await expectTouchTarget(
     page.getByRole("button", { name: /^Vacancy focus/ }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Google Maps" }).first(),
+  );
+  await expectTouchTarget(
+    page.getByRole("button", { name: /^Set location for/ }).first(),
   );
 });
 

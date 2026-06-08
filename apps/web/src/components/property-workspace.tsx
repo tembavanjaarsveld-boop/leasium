@@ -29,6 +29,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -138,6 +139,24 @@ import {
   propertyOwnershipTagDirectory,
   propertyUsesOwnerBilling,
 } from "@/lib/property-ownership";
+import { propertyMapLocation } from "@/lib/property-map";
+import type { PropertyMapMarker } from "@/components/properties/PropertyLeafletMap";
+import { PropertyMapUnmappedPanel } from "@/components/properties/PropertyMapUnmappedPanel";
+import { PropertyCalendarMonthGrid } from "@/components/properties/PropertyCalendarMonthGrid";
+
+// Real Leaflet canvas is client-only — Leaflet reads window/document at import
+// time, so it is loaded with ssr:false behind a sized skeleton.
+const PropertyLeafletMap = dynamic(
+  () => import("@/components/properties/PropertyLeafletMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid min-h-[420px] place-items-center rounded-md border border-border bg-muted/30 text-sm text-muted-foreground">
+        Loading map
+      </div>
+    ),
+  },
+);
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const PROPERTY_STORAGE_KEY = "leasium.property_id";
@@ -1300,17 +1319,6 @@ function propertyRegionLabel(property: PropertyRecord) {
     .join(" ");
 }
 
-function propertyMapPoint(property: PropertyRecord, index: number) {
-  const seed = `${property.name}-${property.street_address}-${property.suburb}-${property.postcode}`;
-  const total = seed.split("").reduce((sum, character, characterIndex) => {
-    return sum + character.charCodeAt(0) * (characterIndex + 1);
-  }, index * 97);
-  return {
-    left: 10 + (total % 76),
-    top: 12 + ((total >> 3) % 68),
-  };
-}
-
 type PropertyMapFocus = "all" | "lease_risk" | "vacancy";
 
 const propertyMapFocusOptions: Array<{
@@ -1502,13 +1510,6 @@ function propertyMapPlanningBrief({
     );
   }
   return lines.join("\n");
-}
-
-function propertyMapMarkerLabel(occupancy: PropertyOccupancy | undefined) {
-  if (!occupancy) {
-    return "No units";
-  }
-  return occupancyBadgeLabel(occupancy);
 }
 
 function leaseEventKindLabel(kind: LeaseEventRecord["kind"]) {
@@ -5801,6 +5802,7 @@ function Workspace({
                 />
               ) : propertyView === "map" ? (
                 <PropertyMapView
+                  entityId={selectedEntityId || null}
                   properties={displayedProperties}
                   occupancyByPropertyId={occupancyByPropertyId}
                   nextExpiryByPropertyId={nextExpiryByPropertyId}
@@ -7347,12 +7349,13 @@ function PropertyBoardView({
 }
 
 function PropertyMapView({
+  entityId,
   properties,
   occupancyByPropertyId,
   nextExpiryByPropertyId,
   selectedPropertyId,
   onSelect,
-}: PropertyBoardViewProps) {
+}: PropertyBoardViewProps & { entityId: string | null }) {
   const [mapFocus, setMapFocus] = useState<PropertyMapFocus>("all");
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const mapProperties = properties.filter((property) =>
@@ -7361,6 +7364,41 @@ function PropertyMapView({
       occupancy: occupancyByPropertyId.get(property.id),
       expiry: nextExpiryByPropertyId.get(property.id),
     }),
+  );
+  // Real coordinates split the focus-filtered set into pinned markers and an
+  // unmapped fallback list. Portfolio-wide counts ignore the focus filter so
+  // the header reads the true mapped/unmapped coverage.
+  const mappedFocusProperties = mapProperties.filter((property) =>
+    propertyMapLocation(property),
+  );
+  const unmappedFocusProperties = mapProperties.filter(
+    (property) => !propertyMapLocation(property),
+  );
+  const mappedCount = properties.filter((property) =>
+    propertyMapLocation(property),
+  ).length;
+  const unmappedCount = properties.length - mappedCount;
+  const mapMarkers: PropertyMapMarker[] = mappedFocusProperties.map(
+    (property) => {
+      const occupancy = occupancyByPropertyId.get(property.id);
+      const expiry = nextExpiryByPropertyId.get(property.id);
+      const isLeaseRisk = propertyMapFocusMatches({
+        focus: "lease_risk",
+        occupancy,
+        expiry,
+      });
+      const isVacancy = propertyMapFocusMatches({
+        focus: "vacancy",
+        occupancy,
+        expiry,
+      });
+      const tone: PropertyMapMarker["tone"] = isVacancy
+        ? "danger"
+        : isLeaseRisk
+          ? "warning"
+          : "primary";
+      return { property, tone };
+    },
   );
   const leaseRiskCount = properties.filter((property) =>
     propertyMapFocusMatches({
@@ -7415,7 +7453,10 @@ function PropertyMapView({
       <div className="grid gap-3 rounded-md border border-border bg-white p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="grid gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone="primary">{properties.length} mapped</StatusBadge>
+            <StatusBadge tone="primary">{mappedCount} mapped</StatusBadge>
+            <StatusBadge tone={unmappedCount ? "warning" : "success"}>
+              {unmappedCount} unmapped
+            </StatusBadge>
             <StatusBadge tone={leaseRiskCount ? "warning" : "neutral"}>
               {leaseRiskCount} lease risk
             </StatusBadge>
@@ -7463,50 +7504,26 @@ function PropertyMapView({
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="relative min-h-[420px] overflow-hidden rounded-md border border-border bg-muted/30">
-          <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(to_right,rgba(100,116,139,0.16)_1px,transparent_1px),linear-gradient(to_bottom,rgba(100,116,139,0.16)_1px,transparent_1px)] [background-size:42px_42px]" />
-          <div className="absolute inset-x-4 top-4 rounded-md border border-border bg-white/90 px-3 py-2 text-sm shadow-sm">
-            <div className="font-semibold">Portfolio location plan</div>
-            <div className="text-xs text-muted-foreground">
-              Address grouping for suburb clusters, vacancies, and expiry focus.
+        <div className="grid content-start gap-3">
+          {mappedFocusProperties.length ? (
+            <div className="min-h-[420px] overflow-hidden rounded-md border border-border">
+              <PropertyLeafletMap
+                markers={mapMarkers}
+                selectedPropertyId={selectedPropertyId}
+                onSelect={onSelect}
+              />
             </div>
-          </div>
-          {!mapProperties.length ? (
-            <div className="absolute inset-x-6 top-28 rounded-md border border-dashed border-border bg-white/90 px-4 py-6 text-center text-sm text-muted-foreground">
-              No properties match this map focus.
+          ) : (
+            <div className="grid min-h-[220px] place-items-center rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              {unmappedFocusProperties.length
+                ? "No mapped properties match this focus yet. Set a pin below to place them on the map."
+                : "No properties match this map focus."}
             </div>
-          ) : null}
-          {mapProperties.map((property, index) => {
-            const point = propertyMapPoint(property, index);
-            const occupancy = occupancyByPropertyId.get(property.id);
-            const expiry = nextExpiryByPropertyId.get(property.id);
-            const isSelected = property.id === selectedPropertyId;
-            const markerLabel = propertyMapMarkerLabel(occupancy);
-            return (
-              <button
-                key={property.id}
-                type="button"
-                onClick={() => onSelect(property.id)}
-                className={cn(
-                  "absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 shadow-sm transition hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                  isSelected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-white bg-foreground text-background",
-                )}
-                style={{ left: `${point.left}%`, top: `${point.top}%` }}
-                title={`${property.name} - ${propertyRegionLabel(property) || property.street_address} - ${markerLabel}`}
-              >
-                <MapPin size={18} />
-                {expiry ? (
-                  <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-warning ring-2 ring-white" />
-                ) : null}
-                <span className="sr-only">{property.name}</span>
-                <span className="absolute -bottom-5 whitespace-nowrap rounded-full border border-border bg-white px-1.5 py-0.5 text-leasium-micro font-semibold text-foreground shadow-sm">
-                  {markerLabel}
-                </span>
-              </button>
-            );
-          })}
+          )}
+          <PropertyMapUnmappedPanel
+            entityId={entityId}
+            properties={unmappedFocusProperties}
+          />
         </div>
         <div className="grid content-start gap-2">
           <div className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
@@ -7637,6 +7654,20 @@ function PropertyCalendarView({
     useState<CalendarHorizonFilter>("all");
   const [copyReceipt, setCopyReceipt] = useState<string | null>(null);
   const [taskReceipt, setTaskReceipt] = useState<string | null>(null);
+  // Agenda is the SSR / mobile default (keeps the dense review workflow on a
+  // narrow screen); desktop promotes to the month grid after mount so we never
+  // mismatch hydration.
+  const [calendarLayout, setCalendarLayout] = useState<"agenda" | "month">(
+    "agenda",
+  );
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches
+    ) {
+      setCalendarLayout("month");
+    }
+  }, []);
   const kindFilteredEvents = events.filter((event) =>
     eventKindFilter === "all" ? true : event.kind === eventKindFilter,
   );
@@ -7849,6 +7880,40 @@ function PropertyCalendarView({
         </div>
       </div>
 
+      <div
+        className="flex flex-wrap items-center gap-1 text-xs"
+        role="group"
+        aria-label="Calendar layout"
+      >
+        {(
+          [
+            { key: "agenda", label: "Agenda" },
+            { key: "month", label: "Month" },
+          ] as const
+        ).map((option) => {
+          const isActive = calendarLayout === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => setCalendarLayout(option.key)}
+              aria-pressed={isActive}
+              className={`inline-flex min-h-11 items-center gap-1 rounded-full border px-3 py-2 font-semibold transition ${
+                isActive
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-white text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {calendarLayout === "month" ? (
+        <PropertyCalendarMonthGrid events={filteredEvents} />
+      ) : (
+        <>
       <div className="grid gap-2 md:grid-cols-4">
         {workloadRows.map((row) => (
           <button
@@ -8048,6 +8113,8 @@ function PropertyCalendarView({
             </section>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   );
