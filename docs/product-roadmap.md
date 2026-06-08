@@ -8,6 +8,20 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 2 (3 slices):** Owner distributions +
+  management-fee deduction v1 — review-first computed disbursements (rent
+  collected − management fee inc-GST, AU 10% GST when the agent entity is
+  GST-registered), `management_fee_pct` on Owner, `owner_distribution` table
+  (migrations `20260608_0038`/`0039`), `GET/POST /owners/distributions[/review]`
+  gated to managing_agent/hybrid, gated Statements panel; NO money movement (a
+  future `/pay` hook is marked but unbuilt). Portfolio QA guided fix flows v1 —
+  a sequenced progress-tracked stepper over the shipped bulk-fix/enrichment/
+  onboarding/source-history capabilities (frontend-only, zero new endpoints,
+  shipped behaviour unchanged). Twilio status-callback + SendGrid event-webhook
+  hardening — real provider payload shapes, idempotent receipts (sg_event_id /
+  MessageSid dedupe), SendGrid signed-event-webhook ECDSA verify + Twilio
+  signature 403, guardrail test proving webhooks never send. Backend suite 546
+  passed. Detail in `docs/next-chat-handover.md`.
 - [x] **2026-06-08 agent push (5 slices):** Portfolio QA reviewed bulk-fix apply
   (one transaction, per-record+batch audit) + Resolved/Outstanding completion
   columns; vendor portal in-app two-way messaging (author-attributed, no provider

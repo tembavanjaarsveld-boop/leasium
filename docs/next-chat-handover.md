@@ -2,7 +2,54 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (24h agent push: 5 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 2: 3 slices - latest)
+
+Three more slices on `main`, parallel agents, verified on the Mac (ruff clean;
+backend **546 passed, 1 skipped**; eslint + tsc + focused smokes + production
+`next build` green). Provider guardrails intact — no Xero/SendGrid/Twilio/payment
+send added; distributions move no money; webhooks only record inbound receipts.
+
+- **Owner distributions + management-fee deduction v1.** `management_fee_pct`
+  (Numeric(5,3), nullable) on Owner; new `owner_distribution` table; migrations
+  `20260608_0038` (fee pct) + `20260608_0039` (table). Pure compute service
+  `stewart/services/owner_distributions.py`: net = max(rent_collected − fee
+  inc-GST, 0); fee_ex = round_half_up(rent × pct/100); GST = 10% of fee, only
+  when the agent Entity is GST-registered. `GET /owners/distributions` +
+  `POST /owners/distributions/review` (explicit per-line approve, writes a frozen
+  draft→reviewed record), both gated managing_agent/hybrid via
+  `_assert_distribution_mode`. Gated Statements panel (rent / fee% / fee ex-GST /
+  GST / fee inc-GST / net + Mark reviewed + "payment execution not available"
+  note). NO money movement; a future `POST /owners/distributions/{id}/pay`
+  hook is commented at the `configured_rail` chokepoint but unbuilt. Deferred:
+  payment execution, per-property fee overrides, owner-charged outgoings.
+  Note: the management-fee CRUD field landed in `owner_entities.py`
+  (the real Owner CRUD), not the derived-statements `owners.py`.
+- **Portfolio QA guided fix flows v1** (frontend-only). `buildGuidedSteps` +
+  `GuidedFixQueue` on `/portfolio-qa`: a progress-tracked stepper
+  (tenant contacts → owner/billing → enrichment → onboarding prep → source-history
+  reference) over the already-shipped bulk-fix/enrichment/batch-onboarding
+  endpoints. Zero new endpoints; regression-locked so shipped apply/enrichment/
+  account-first behaviour is unchanged.
+- **Twilio + SendGrid webhook hardening v1.** SendGrid event-webhook now does
+  real ECDSA signed-event verification (new optional
+  `SENDGRID_EVENT_WEBHOOK_SIGNING_KEY`, falls back to the existing shared
+  secret) + `sg_event_id` idempotency; Twilio status callback dedupes on
+  MessageSid + captures ErrorCode; bad signature → 403. No schema change
+  (idempotency state in existing JSONB). New `tests/integration/test_provider_webhooks.py`
+  incl. a guardrail proving the inbound path never makes an external call.
+  **Remaining console clicks (you):** SendGrid → Event Webhook URL =
+  `/api/v1/{tenant-onboarding,work-assignments}/webhooks/sendgrid-events`, select
+  Processed/Dropped/Deferred/Bounced/Delivered, enable Signed Event Webhook and
+  paste its key as `SENDGRID_EVENT_WEBHOOK_SIGNING_KEY` on Render. Twilio →
+  messaging-service/number status callback = the matching `.../webhooks/twilio-status`
+  endpoint; ensure `TWILIO_AUTH_TOKEN` + `PUBLIC_API_URL` set so signature validates.
+
+Hosted Neon/Render must now reach `20260608_0039` (chain: 0037 → 0038 → 0039,
+single head). Payments AU-rails adapter still parked pending the provider pick
+(Monoova / Zai / Stripe AU). Owner-portal disbursement/trust-accounting gate is
+the natural follow-on now that distributions exist.
+
+## Cowork continuation - 2026-06-08 (24h agent push: 5 slices)
 
 A parallel-agent build session shipped five slices on `main`, each committed
 separately, all verified on Temba's Mac (ruff + pytest backend; eslint + tsc +
