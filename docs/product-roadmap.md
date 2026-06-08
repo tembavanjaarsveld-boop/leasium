@@ -8,6 +8,11 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 5 (3 slices):** Insights compliance frontend
+  (register completion/evidence roll-up pills + per-row evidence badge); owner
+  distribution dispatch-review draft (backend, review-only, no send); Smart Intake
+  review-plan summary + plan GET (read-only counts by decision/operation/confidence,
+  Apply path untouched). All review-first, no provider send, no migration.
 - [x] **2026-06-08 agent push waves 3-4 (5 slices):** Owner distribution history +
   CSV export; compliance check completion now operator-approved (422 without
   `operator_approved`); owner distribution review-only PDF; compliance evidence +

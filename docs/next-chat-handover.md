@@ -2,7 +2,27 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push waves 3-4: 5 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 5: 3 slices - latest)
+
+Three more on `main`, verified (backend **562 passed, 1 skipped**; eslint + tsc +
+insights smoke + production build green). Review-first; no send, no money movement,
+no migration.
+
+- **Insights compliance frontend.** insights/page.tsx compliance section now shows
+  roll-up pills (tracked checks / approved evidence / recently completed) and, on
+  register-tracked rows, an evidence StatusBadge + "Last completed {date} by {who}".
+  Consumes the wave-4 snapshot fields; additive display only.
+- **Owner distribution dispatch-review draft (backend).** `GET /owners/distributions/
+  dispatch-review` — per-owner recipient readiness (owner billing email) +
+  owner-facing subject/body draft + no-send guardrail, mirroring statement
+  dispatch-review. Gated, sends/persists nothing, future-send hook marked. Frontend
+  wiring is the natural next step.
+- **Smart Intake review-plan summary.** `GET /register-imports/{plan_id}` returns the
+  stored plan + a computed review_summary (counts by decision/operation/confidence
+  band, blocked/warning rows, ready-to-approve, needs-attention) + apply status. Pure
+  read — extraction, thresholds, and the Apply path are untouched.
+
+## Cowork continuation - 2026-06-08 (agent push waves 3-4: 5 slices)
 
 Two more parallel waves on `main`, verified on the Mac (ruff clean; backend
 **551 passed, 1 skipped**; eslint + tsc + focused smokes + production build green).
