@@ -17,7 +17,7 @@ import calendar
 import re
 import textwrap
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from io import BytesIO
 from typing import Annotated, Any
@@ -54,6 +54,7 @@ from apps.api.schemas.owners import (
     OwnerDistributionHistoryRead,
     OwnerDistributionHistoryRecord,
     OwnerDistributionLine,
+    OwnerDistributionMarkDisbursedRequest,
     OwnerDistributionReviewRequest,
     OwnerDistributionsRead,
     OwnerInvoiceEvidenceLine,
@@ -1607,9 +1608,40 @@ def get_owner_distribution_dispatch_review(
     )
 
 
+def _disbursement_marker(row: OwnerDistribution) -> dict[str, Any]:
+    """Read the operator-entered disbursement marker from metadata.
+
+    No dedicated disbursed_by/at columns exist on OwnerDistribution, so the
+    mark-disbursed endpoint persists the marker under
+    ``distribution_metadata["disbursement"]`` to avoid a migration.
+    """
+
+    metadata: dict[str, Any] = row.distribution_metadata or {}
+    return _metadata_record(metadata.get("disbursement"))
+
+
+def _parse_metadata_datetime(value: object) -> datetime | None:
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_metadata_uuid(value: object) -> UUID | None:
+    if isinstance(value, str) and value.strip():
+        try:
+            return UUID(value)
+        except ValueError:
+            return None
+    return None
+
+
 def _distribution_history_record(
     row: OwnerDistribution,
 ) -> OwnerDistributionHistoryRecord:
+    disbursement = _disbursement_marker(row)
     return OwnerDistributionHistoryRecord(
         id=row.id,
         owner_id=row.owner_id,
@@ -1628,6 +1660,9 @@ def _distribution_history_record(
         net_distribution_cents=row.net_distribution_cents,
         reviewed_by_user_id=row.reviewed_by_user_id,
         reviewed_at=row.reviewed_at,
+        disbursed_by_user_id=_parse_metadata_uuid(disbursement.get("disbursed_by_user_id")),
+        disbursed_at=_parse_metadata_datetime(disbursement.get("disbursed_at")),
+        disbursed_note=_metadata_text(disbursement, "note"),
         created_at=row.created_at,
     )
 
@@ -1775,10 +1810,19 @@ def review_owner_distribution(
         existing.fee_gst_cents = line.fee_gst_cents
         existing.fee_inc_gst_cents = line.fee_inc_gst_cents
         existing.net_distribution_cents = line.net_distribution_cents
-        existing.distribution_metadata = {
+        # Preserve any operator-entered disbursement marker / audit log so a
+        # re-review of the snapshot does not silently wipe out-of-band payout
+        # history recorded via mark-disbursed.
+        preserved_metadata = existing.distribution_metadata or {}
+        refreshed_metadata: dict[str, Any] = {
             "entity_gst_registered": entity_gst_registered,
             "needs_attention": line.needs_attention,
         }
+        if "disbursement" in preserved_metadata:
+            refreshed_metadata["disbursement"] = preserved_metadata["disbursement"]
+        if "audit_log" in preserved_metadata:
+            refreshed_metadata["audit_log"] = preserved_metadata["audit_log"]
+        existing.distribution_metadata = refreshed_metadata
         existing.reviewed_by_user_id = user.id
         existing.reviewed_at = now
     session.commit()
@@ -1791,3 +1835,84 @@ def review_owner_distribution(
         guardrail=_DISTRIBUTION_GUARDRAIL,
         generated_at=utcnow(),
     )
+
+
+@router.post(
+    "/distributions/{distribution_id}/mark-disbursed",
+    response_model=OwnerDistributionHistoryRecord,
+)
+def mark_owner_distribution_disbursed(
+    entity_id: UUID,
+    distribution_id: UUID,
+    payload: OwnerDistributionMarkDisbursedRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> OwnerDistributionHistoryRecord:
+    """Record that the operator paid an owner OUT OF BAND for a reviewed line.
+
+    Operator-entered status marker ONLY. This performs NO payment and makes NO
+    bank, payment-rail, Xero, or provider call — it records that the operator
+    disbursed the net amount to the owner outside Leasium (e.g. via their own
+    bank). It flips a ``reviewed`` row to ``disbursed`` and stores
+    ``disbursed_by_user_id`` / ``disbursed_at`` (+ an optional note) under
+    ``distribution_metadata["disbursement"]`` (no dedicated columns, so no
+    migration), and appends an entry to ``distribution_metadata["audit_log"]``.
+
+    Review-first guardrail: ``approve`` must be true (the operator's explicit
+    confirmation). The row must currently be ``reviewed`` — a non-reviewed row
+    is rejected 409, a missing/foreign row 404.
+    """
+
+    assert_entity_role(session, user, entity_id, DISPATCH_ROLES)
+    _assert_distribution_mode(session, user)
+    if not payload.approve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Explicit confirmation (approve=true) is required to mark a "
+                "distribution disbursed."
+            ),
+        )
+
+    row = session.get(OwnerDistribution, distribution_id)
+    if row is None or row.entity_id != entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Owner distribution not found.",
+        )
+    if row.status != "reviewed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Only a reviewed distribution can be marked disbursed; this row "
+                f"is '{row.status}'."
+            ),
+        )
+
+    now = utcnow()
+    note = payload.note.strip() if payload.note and payload.note.strip() else None
+    # NOTE: operator-entered marker only — no rail / bank / Xero / provider call.
+    metadata = dict(row.distribution_metadata or {})
+    metadata["disbursement"] = {
+        "disbursed_by_user_id": str(user.id),
+        "disbursed_at": now.isoformat(),
+        "note": note,
+    }
+    audit_log = list(metadata.get("audit_log") or [])
+    audit_log.append(
+        {
+            "action": "marked_disbursed",
+            "by_user_id": str(user.id),
+            "at": now.isoformat(),
+            "from_status": "reviewed",
+            "to_status": "disbursed",
+            "note": note,
+        }
+    )
+    metadata["audit_log"] = audit_log
+    row.distribution_metadata = metadata
+    row.status = "disbursed"
+    session.commit()
+    session.refresh(row)
+
+    return _distribution_history_record(row)

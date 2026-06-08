@@ -2529,3 +2529,229 @@ def test_distribution_dispatch_review_sends_nothing_and_persists_nothing(
         ).all()
     )
     assert rows == []
+
+
+# --- Owner distribution operator-marked disbursed status -------------------
+
+
+def _reviewed_distribution_row(
+    client: TestClient,
+    session: Session,
+    scope: _OwnerSeedScope,
+    *,
+    month: str = "2026-04",
+) -> OwnerDistribution:
+    """Review the seeded distribution and return its persisted row."""
+
+    owner_identity = "Distribution Trust (Trustee: Dist Trustee Pty Ltd)"
+    _review_distribution(client, scope["entity_id"], owner_identity, month)
+    row = session.scalar(
+        select(OwnerDistribution).where(
+            OwnerDistribution.entity_id == UUID(scope["entity_id"]),
+            OwnerDistribution.month == month,
+        )
+    )
+    assert row is not None
+    return row
+
+
+def test_mark_disbursed_transitions_reviewed_row_to_disbursed(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A reviewed row flips to disbursed with by/at marker + audit entry."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+    assert row.status == "reviewed"
+
+    response = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True, "note": "Paid via bank transfer ref ABC123"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(row.id)
+    assert body["status"] == "disbursed"
+    assert body["disbursed_by_user_id"] is not None
+    assert body["disbursed_at"] is not None
+    assert body["disbursed_note"] == "Paid via bank transfer ref ABC123"
+
+    session.expire_all()
+    stored = session.get(OwnerDistribution, row.id)
+    assert stored is not None
+    assert stored.status == "disbursed"
+    disbursement = stored.distribution_metadata["disbursement"]
+    assert disbursement["disbursed_by_user_id"] == body["disbursed_by_user_id"]
+    assert disbursement["note"] == "Paid via bank transfer ref ABC123"
+    audit_log = stored.distribution_metadata["audit_log"]
+    assert len(audit_log) == 1
+    assert audit_log[0]["action"] == "marked_disbursed"
+    assert audit_log[0]["from_status"] == "reviewed"
+    assert audit_log[0]["to_status"] == "disbursed"
+    # The pre-existing review metadata is preserved alongside the new marker.
+    assert stored.distribution_metadata["entity_gst_registered"] is True
+
+
+def test_mark_disbursed_requires_explicit_approval(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """approve must be true; without it the row stays reviewed."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+
+    response = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": False},
+    )
+    assert response.status_code == 400
+    assert "confirmation" in response.json()["detail"].lower()
+
+    session.expire_all()
+    stored = session.get(OwnerDistribution, row.id)
+    assert stored is not None
+    assert stored.status == "reviewed"
+    assert "disbursement" not in (stored.distribution_metadata or {})
+
+
+def test_mark_disbursed_rejects_already_disbursed_row(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A row that is not 'reviewed' (e.g. already disbursed) is rejected 409."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+
+    first = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True},
+    )
+    assert first.status_code == 200
+
+    again = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True},
+    )
+    assert again.status_code == 409
+    assert "reviewed" in again.json()["detail"].lower()
+
+    session.expire_all()
+    stored = session.get(OwnerDistribution, row.id)
+    assert stored is not None
+    # Still a single audit entry — the rejected re-mark wrote nothing.
+    assert len(stored.distribution_metadata["audit_log"]) == 1
+
+
+def test_mark_disbursed_rejects_nonexistent_row(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """An unknown distribution id is rejected 404."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+
+    response = client.post(
+        f"/api/v1/owners/distributions/{uuid4()}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True},
+    )
+    assert response.status_code == 404
+
+
+def test_mark_disbursed_denied_for_self_managed_owner(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Self-managed owner-operators cannot mark distributions disbursed."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    response = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True},
+    )
+    assert response.status_code == 403
+    detail = response.json()["detail"].lower()
+    assert "managing-agent" in detail
+    assert "hybrid" in detail
+
+    session.expire_all()
+    stored = session.get(OwnerDistribution, row.id)
+    assert stored is not None
+    assert stored.status == "reviewed"
+
+
+def test_mark_disbursed_moves_no_money_and_calls_no_provider(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Marking disbursed fires no email/SMS/Xero/payment-rail call."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+
+    import apps.api.routers.owners as owners_router
+
+    def _fail(*_args: Any, **_kwargs: Any) -> None:  # pragma: no cover - guard
+        raise AssertionError(
+            "mark-disbursed is an operator marker — no provider/rail call."
+        )
+
+    monkeypatch.setattr(owners_router, "send_owner_statement_email", _fail)
+    monkeypatch.setattr(owners_router, "configured_rail", _fail, raising=False)
+
+    response = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "disbursed"
+    # configured_rail remains importable and untouched.
+    assert callable(configured_rail)
+
+
+def test_distribution_history_projects_disbursed_marker(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The history read surfaces the operator-entered disbursed marker."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    row = _reviewed_distribution_row(client, session, scope)
+
+    mark = client.post(
+        f"/api/v1/owners/distributions/{row.id}/mark-disbursed",
+        params={"entity_id": scope["entity_id"]},
+        json={"approve": True, "note": "EFT batch 09"},
+    )
+    assert mark.status_code == 200
+
+    history = client.get(
+        "/api/v1/owners/distributions/history",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert history.status_code == 200
+    record = history.json()["records"][0]
+    assert record["status"] == "disbursed"
+    assert record["disbursed_by_user_id"] is not None
+    assert record["disbursed_at"] is not None
+    assert record["disbursed_note"] == "EFT batch 09"

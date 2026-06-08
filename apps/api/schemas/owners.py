@@ -164,6 +164,20 @@ class OwnerDistributionReviewRequest(BaseModel):
     owner_identity: str
 
 
+class OwnerDistributionMarkDisbursedRequest(BaseModel):
+    """Explicit operator confirmation that an owner was paid out of band.
+
+    ``approve`` must be true — it is the operator's explicit per-distribution
+    confirmation that the net amount was disbursed to the owner outside
+    Leasium. Marking moves no money and makes no provider/bank/rail call; it
+    only records an operator-entered status marker. ``note`` is an optional
+    free-text reference (e.g. a bank payment reference) stored for audit.
+    """
+
+    approve: bool = False
+    note: str | None = None
+
+
 class OwnerDistributionHistoryRecord(BaseModel):
     """One persisted (reviewed) owner-distribution snapshot."""
 
@@ -180,6 +194,12 @@ class OwnerDistributionHistoryRecord(BaseModel):
     net_distribution_cents: int
     reviewed_by_user_id: UUID | None = None
     reviewed_at: datetime | None = None
+    # Operator-entered disbursement marker (no money moved). Stored in
+    # distribution_metadata since no dedicated columns exist; projected here so
+    # the frontend can show that the operator recorded a payout out of band.
+    disbursed_by_user_id: UUID | None = None
+    disbursed_at: datetime | None = None
+    disbursed_note: str | None = None
     created_at: datetime
 
 
