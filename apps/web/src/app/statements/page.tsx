@@ -53,6 +53,7 @@ import {
   listInvoiceDrafts,
   downloadOwnerStatementPdf,
   downloadOwnerStatementPdfPack,
+  downloadOwnerDistributionPdf,
   getOwnerDistributions,
   getOwnerDistributionHistory,
   getOwnerStatementDispatch,
@@ -3098,6 +3099,21 @@ function OwnerDistributionsPanel({
     (total, line) => total + line.net_distribution_cents,
     0,
   );
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfReceipt, setPdfReceipt] = useState<string | null>(null);
+  const downloadPdf = async () => {
+    setPdfLoading(true);
+    setPdfReceipt(null);
+    try {
+      const blob = await downloadOwnerDistributionPdf({ entityId, month });
+      saveBlob(blob, `owner-distributions-${month}.pdf`);
+      setPdfReceipt("Distribution PDF prepared. No payment made.");
+    } catch (error) {
+      setPdfReceipt(friendlyError(error));
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   return (
     <SectionPanel
@@ -3114,6 +3130,18 @@ function OwnerDistributionsPanel({
               ? `${needsAttentionCount} need attention`
               : "Fees set"}
           </StatusBadge>
+          <SecondaryButton
+            type="button"
+            onClick={downloadPdf}
+            disabled={pdfLoading || lines.length === 0}
+          >
+            {pdfLoading ? (
+              <RefreshCw size={15} className="animate-spin" />
+            ) : (
+              <Download size={15} />
+            )}
+            Download distribution PDF
+          </SecondaryButton>
         </div>
       }
     >
@@ -3128,6 +3156,12 @@ function OwnerDistributionsPanel({
         {reviewMutation.error ? (
           <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {friendlyError(reviewMutation.error)}
+          </p>
+        ) : null}
+
+        {pdfReceipt ? (
+          <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+            {pdfReceipt}
           </p>
         ) : null}
 

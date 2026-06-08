@@ -15,6 +15,22 @@ function watchDistributionReviewRequests(page: Page) {
   return requests;
 }
 
+// Distribution PDF export is review-only: it must never hit a send/dispatch/pay
+// route. Record any request that would move money or message an owner.
+function watchUnsafeRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (
+      /\/owners\/(statements\/send|distributions\/[^/?]+\/pay)/.test(url) ||
+      url.includes("/dispatch/send")
+    ) {
+      requests.push(url);
+    }
+  });
+  return requests;
+}
+
 test("managing-agent accounts see the owner distributions panel with a GST breakdown", async ({
   page,
 }) => {
@@ -121,5 +137,55 @@ test("self-managed owner accounts do not see distribution history", async ({
 
   await expect(
     page.getByText("Distribution history", { exact: true }),
+  ).toHaveCount(0);
+});
+
+test("managing-agent accounts can download a review-only distribution PDF without any send", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  const unsafeRequests = watchUnsafeRequests(page);
+  const pdfRequests: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "GET" &&
+      request.url().includes("/api/v1/owners/distributions/pdf")
+    ) {
+      pdfRequests.push(request.url());
+    }
+  });
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Owner distributions" }),
+  ).toBeVisible();
+
+  const downloadButton = page.getByRole("button", {
+    name: "Download distribution PDF",
+  });
+  await expect(downloadButton).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await downloadButton.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("owner-distributions-2026-05.pdf");
+
+  // The export only fetches the PDF and never fires a send/dispatch/pay route.
+  expect(pdfRequests).toHaveLength(1);
+  expect(unsafeRequests).toHaveLength(0);
+});
+
+test("self-managed owner accounts do not see the distribution PDF action", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Statement preview" }),
+  ).toBeVisible();
+
+  await expect(
+    page.getByRole("button", { name: "Download distribution PDF" }),
   ).toHaveCount(0);
 });

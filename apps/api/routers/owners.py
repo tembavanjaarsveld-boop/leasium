@@ -725,6 +725,12 @@ def _statement_pdf_bytes(
         ]
     )
 
+    return _render_pdf_lines(lines)
+
+
+def _render_pdf_lines(lines: list[str]) -> bytes:
+    """Render text lines into a minimal multi-page PDF (no provider dependency)."""
+
     wrapped_lines = _wrap_pdf_lines(lines)
     page_chunks = [
         wrapped_lines[index : index + PDF_LINES_PER_PAGE]
@@ -1341,6 +1347,110 @@ def _build_distribution_lines(
         statements, owners_by_id, entity_gst_registered
     )
     return statements, lines, entity_gst_registered
+
+
+def _format_pct(value: float | None) -> str:
+    if value is None:
+        return "Not set"
+    return f"{value:g}%"
+
+
+def _distribution_pdf_bytes(
+    month: str,
+    entity_gst_registered: bool,
+    lines: list[OwnerDistributionLine],
+) -> bytes:
+    """Render a review-only distribution summary PDF (no provider dependency).
+
+    Mirrors ``_statement_pdf_bytes`` line/PDF infra. One row per owner with the
+    management-fee breakdown and net distribution, plus totals and the period.
+    """
+
+    total_rent = sum(line.rent_collected_cents for line in lines)
+    total_fee_ex_gst = sum(line.fee_ex_gst_cents for line in lines)
+    total_gst = sum(line.fee_gst_cents for line in lines)
+    total_fee_inc_gst = sum(line.fee_inc_gst_cents for line in lines)
+    total_net = sum(line.net_distribution_cents for line in lines)
+    needs_attention = sum(1 for line in lines if line.needs_attention)
+
+    pdf_lines = [
+        "LEASIUM OWNER DISTRIBUTIONS",
+        "Review-only export. No payment made.",
+        "",
+        f"Month: {month}",
+        f"GST: {'Registered' if entity_gst_registered else 'Not registered'}",
+        f"Owners: {len(lines)}",
+        f"Need attention: {needs_attention}",
+        "",
+        "Distribution breakdown",
+        "Owner | Rent collected | Fee % | Fee ex-GST | GST | Fee inc-GST | Net distribution",
+    ]
+    for line in lines:
+        pdf_lines.append(
+            f"{line.owner_identity} | "
+            f"{_format_money(line.rent_collected_cents)} | "
+            f"{_format_pct(line.management_fee_pct)} | "
+            f"{_format_money(line.fee_ex_gst_cents)} | "
+            f"{_format_money(line.fee_gst_cents)} | "
+            f"{_format_money(line.fee_inc_gst_cents)} | "
+            f"{_format_money(line.net_distribution_cents)}"
+            + (" | NEEDS ATTENTION (no fee set)" if line.needs_attention else "")
+        )
+    pdf_lines.extend(
+        [
+            "",
+            "Totals",
+            f"Rent collected: {_format_money(total_rent)}",
+            f"Fee ex-GST: {_format_money(total_fee_ex_gst)}",
+            f"GST: {_format_money(total_gst)}",
+            f"Fee inc-GST: {_format_money(total_fee_inc_gst)}",
+            f"Net to owners: {_format_money(total_net)}",
+            "",
+            (
+                "Review only. This PDF moves no money, posts nothing to Xero, and "
+                "makes no bank, payment-rail, or provider call. Payment execution "
+                "is not available in this version."
+            ),
+        ]
+    )
+    return _render_pdf_lines(pdf_lines)
+
+
+def _distribution_pdf_filename(month: str) -> str:
+    return f"owner-distributions-{month}.pdf"
+
+
+@router.get("/distributions/pdf")
+def get_owner_distribution_pdf(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    month: Annotated[
+        str,
+        Query(
+            description="Month in YYYY-MM format. Defaults to the previous calendar month.",
+        ),
+    ] = "",
+) -> Response:
+    """Return a review-only PDF of the month's owner distribution summary.
+
+    Managing-agent / hybrid only. Generates the document for operator review or
+    download — it sends no email, posts nothing to Xero, and moves no money.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    _assert_distribution_mode(session, user)
+    statements, lines, entity_gst_registered = _build_distribution_lines(
+        entity_id, session, month
+    )
+    filename = _distribution_pdf_filename(statements.month)
+    return Response(
+        content=_distribution_pdf_bytes(
+            statements.month, entity_gst_registered, lines
+        ),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/distributions", response_model=OwnerDistributionsRead)

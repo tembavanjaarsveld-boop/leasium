@@ -9192,6 +9192,20 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/owners/distributions/pdf") {
+      await route.fulfill({
+        headers: {
+          ...corsHeaders,
+          "content-type": "application/pdf",
+          "content-disposition": `attachment; filename="owner-distributions-${
+            url.searchParams.get("month") ?? "2026-05"
+          }.pdf"`,
+        },
+        body: Buffer.from("%PDF-1.4\nowner distributions review-only\n%%EOF"),
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/owners/distributions") {
       const reqMonth = url.searchParams.get("month") ?? "2026-05";
       await fulfillJson(

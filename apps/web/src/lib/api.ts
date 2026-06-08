@@ -5823,6 +5823,17 @@ export function getOwnerDistributions(entityId: string, month?: string) {
   );
 }
 
+export function downloadOwnerDistributionPdf({
+  entityId,
+  month,
+}: {
+  entityId: string;
+  month: string;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId, month });
+  return requestBlob(`/owners/distributions/pdf?${params.toString()}`);
+}
+
 export function reviewOwnerDistributions({
   entityId,
   ownerIdentity,

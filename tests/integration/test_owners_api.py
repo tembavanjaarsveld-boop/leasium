@@ -2089,6 +2089,90 @@ def test_get_distributions_allowed_for_hybrid(
     assert len(response.json()["lines"]) == 1
 
 
+def test_distribution_pdf_returns_document_for_managing_agent(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Managing-agent accounts get a review-only distribution summary PDF."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions/pdf",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="owner-distributions-2026-04.pdf"'
+    )
+    assert response.content.startswith(b"%PDF-1.4")
+    text = "\n".join(
+        page.extract_text() or ""
+        for page in PdfReader(BytesIO(response.content)).pages
+    )
+    assert "OWNER DISTRIBUTIONS" in text
+    assert "Distribution Trust" in text
+    # Net of rent 1,000,000c @ 7.5% inc-GST = 917,500c, formatted as dollars.
+    assert "$9,175" in text  # net distribution
+    assert "Net to owners" in text
+    assert "no payment" in text.lower() or "no money" in text.lower()
+
+
+def test_distribution_pdf_denied_for_self_managed_owner(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Self-managed owner-operators cannot export the distribution PDF."""
+
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions/pdf",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+
+    assert response.status_code == 403
+    detail = response.json()["detail"].lower()
+    assert "managing-agent" in detail
+    assert "hybrid" in detail
+
+
+def test_distribution_pdf_sends_no_provider_call(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Generating the distribution PDF fires no email/SMS/Xero/payment call."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+
+    import apps.api.routers.owners as owners_router
+
+    def _fail(*_args: Any, **_kwargs: Any) -> None:  # pragma: no cover - guard
+        raise AssertionError("No provider send may occur for a PDF export.")
+
+    # Any owner-statement email path is review-first and must not be invoked by
+    # the distribution PDF export.
+    monkeypatch.setattr(owners_router, "send_owner_statement_email", _fail)
+    monkeypatch.setattr(owners_router, "configured_rail", _fail, raising=False)
+
+    response = client.get(
+        "/api/v1/owners/distributions/pdf",
+        params={"entity_id": scope["entity_id"], "month": "2026-04"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    # No reviewed-distribution row was written by a read-only export.
+    rows = session.scalars(select(OwnerDistribution)).all()
+    assert rows == []
+
+
 def test_review_distribution_requires_explicit_approval(
     client: TestClient,
     session: Session,
