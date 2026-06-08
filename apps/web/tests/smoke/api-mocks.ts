@@ -3153,6 +3153,58 @@ export async function mockLeasiumApi(
     };
   };
 
+  const ownerDistributionHistory = (
+    distributionEntityId: string,
+    ownerId: string | null,
+    month: string | null,
+  ) => {
+    const records = [
+      {
+        id: "owner-distribution-history-1",
+        owner_id: "owner-distribution-1",
+        owner_identity: "Harbour Lane Trust",
+        month: "2026-05",
+        status: "reviewed",
+        rent_collected_cents: 1_000_000,
+        management_fee_pct: 7.5,
+        fee_ex_gst_cents: 75_000,
+        fee_gst_cents: 7_500,
+        fee_inc_gst_cents: 82_500,
+        net_distribution_cents: 917_500,
+        reviewed_by_user_id: operatorId,
+        reviewed_at: "2026-06-01T02:00:00.000Z",
+        created_at: "2026-06-01T02:00:00.000Z",
+      },
+      {
+        id: "owner-distribution-history-2",
+        owner_id: "owner-distribution-1",
+        owner_identity: "Harbour Lane Trust",
+        month: "2026-04",
+        status: "reviewed",
+        rent_collected_cents: 800_000,
+        management_fee_pct: 7.5,
+        fee_ex_gst_cents: 60_000,
+        fee_gst_cents: 6_000,
+        fee_inc_gst_cents: 66_000,
+        net_distribution_cents: 734_000,
+        reviewed_by_user_id: operatorId,
+        reviewed_at: "2026-05-01T02:00:00.000Z",
+        created_at: "2026-05-01T02:00:00.000Z",
+      },
+    ].filter(
+      (record) =>
+        (ownerId === null || record.owner_id === ownerId) &&
+        (month === null || record.month === month),
+    );
+    return {
+      entity_id: distributionEntityId,
+      records,
+      guardrail:
+        "Owner distributions are review-only. Reviewing a distribution records the computed snapshot but moves no money. Payment execution is not available in this version.",
+      generated_at: "2026-06-01T02:00:00.000Z",
+    };
+  };
+
   const xeroExceptionItemBase = () => ({
     property_id: null,
     property_name: null,
@@ -9125,6 +9177,18 @@ export async function mockLeasiumApi(
         created_by_user_id: operatorId,
         created_at: "2026-05-25T01:00:00.000Z",
       });
+      return;
+    }
+
+    if (method === "GET" && path === "/owners/distributions/history") {
+      await fulfillJson(
+        route,
+        ownerDistributionHistory(
+          url.searchParams.get("entity_id") ?? entityId,
+          url.searchParams.get("owner_id"),
+          url.searchParams.get("month"),
+        ),
+      );
       return;
     }
 

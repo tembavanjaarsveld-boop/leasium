@@ -902,6 +902,12 @@ def _portal_read(
     month: str,
     auth: OwnerPortalAuthRead,
 ) -> OwnerPortalRead:
+    # Gate requirement: the portal currently exposes only read-only statement
+    # roll-ups (invoiced/paid/outstanding), documents, maintenance, lease, and
+    # compliance — no disbursement, distribution, or trust-accounting surface.
+    # If/when those land here, they must stay behind the same
+    # managing_agent|hybrid gate (_assert_owner_portal_operating_mode) so a
+    # self_managed_owner account can never reach a disbursement/trust surface.
     properties = _linked_properties(owner, session)
     property_ids = {row.property_id for row in properties}
     owner_statements = _build_owner_statements(owner.entity_id, session, month)

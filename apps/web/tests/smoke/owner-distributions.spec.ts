@@ -83,3 +83,43 @@ test("marking a distribution reviewed calls the endpoint and reflects reviewed s
   await expect(page.getByText("Reviewed").first()).toBeVisible();
   expect(reviewRequests).toHaveLength(1);
 });
+
+test("managing-agent accounts see distribution history with a CSV export action", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.goto("/statements?month=2026-05");
+
+  const history = page.getByText("Distribution history", { exact: true });
+  await expect(history).toBeVisible();
+  await history.click();
+
+  // Reviewed history rows render from the mocked history endpoint.
+  await expect(page.getByText("Harbour Lane Trust").first()).toBeVisible();
+
+  const exportButton = page.getByRole("button", {
+    name: "Export history CSV",
+  });
+  await expect(exportButton).toBeVisible();
+
+  // The export wires through the browser download path.
+  const downloadPromise = page.waitForEvent("download");
+  await exportButton.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("owner-distributions-2026-05.csv");
+});
+
+test("self-managed owner accounts do not see distribution history", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Statement preview" }),
+  ).toBeVisible();
+
+  await expect(
+    page.getByText("Distribution history", { exact: true }),
+  ).toHaveCount(0);
+});

@@ -1664,6 +1664,7 @@ export type ComplianceCheckRecord = {
 };
 
 export type ComplianceCheckCompletePayload = {
+  operator_approved?: boolean;
   source_document_id?: string | null;
   completed_at?: string | null;
   next_due_date?: string | null;
@@ -5838,6 +5839,51 @@ export function reviewOwnerDistributions({
       method: "POST",
       body: JSON.stringify({ owner_identity: ownerIdentity, approve: true }),
     },
+  );
+}
+
+export type OwnerDistributionHistoryRecord = {
+  id: string;
+  owner_id: string | null;
+  owner_identity: string;
+  month: string;
+  status: string;
+  rent_collected_cents: number;
+  management_fee_pct: number | null;
+  fee_ex_gst_cents: number;
+  fee_gst_cents: number;
+  fee_inc_gst_cents: number;
+  net_distribution_cents: number;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
+export type OwnerDistributionHistoryResponse = {
+  entity_id: string;
+  records: OwnerDistributionHistoryRecord[];
+  guardrail: string;
+  generated_at: string;
+};
+
+export function getOwnerDistributionHistory({
+  entityId,
+  month,
+  ownerId,
+}: {
+  entityId: string;
+  month?: string;
+  ownerId?: string;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  if (month) {
+    params.set("month", month);
+  }
+  if (ownerId) {
+    params.set("owner_id", ownerId);
+  }
+  return request<OwnerDistributionHistoryResponse>(
+    `/owners/distributions/history?${params.toString()}`,
   );
 }
 

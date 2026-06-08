@@ -2205,3 +2205,119 @@ def test_review_distribution_is_idempotent_for_same_owner_month(
         ).all()
     )
     assert len(rows) == 1
+
+
+def _review_distribution(
+    client: TestClient,
+    entity_id: str,
+    owner_identity: str,
+    month: str,
+) -> None:
+    response = client.post(
+        "/api/v1/owners/distributions/review",
+        params={"entity_id": entity_id, "month": month},
+        json={"owner_identity": owner_identity, "approve": True},
+    )
+    assert response.status_code == 200
+
+
+def test_distribution_history_returns_reviewed_records_newest_first(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The history endpoint returns persisted reviewed rows, newest first."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    owner = _seeded_owner(session, "Distribution Trust")
+    owner_identity = "Distribution Trust (Trustee: Dist Trustee Pty Ltd)"
+
+    # Two reviewed months for the same owner; the later month must come first.
+    _review_distribution(client, scope["entity_id"], owner_identity, "2026-03")
+    _review_distribution(client, scope["entity_id"], owner_identity, "2026-04")
+
+    response = client.get(
+        "/api/v1/owners/distributions/history",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "not available" in body["guardrail"].lower()
+    records = body["records"]
+    assert len(records) == 2
+    # Newest created_at first — 2026-04 was reviewed after 2026-03.
+    assert records[0]["month"] == "2026-04"
+    assert records[1]["month"] == "2026-03"
+    assert records[0]["status"] == "reviewed"
+    assert records[0]["owner_id"] == str(owner.id)
+    assert records[0]["net_distribution_cents"] == 917_500
+    assert records[0]["reviewed_at"] is not None
+
+
+def test_distribution_history_filters_by_owner_and_month(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """owner_id and month filters narrow the persisted history rows."""
+
+    _set_operating_mode(session, OperatingMode.managing_agent)
+    scope = _seed_distribution_scope(session)
+    owner_a = _seeded_owner(session, "Distribution Trust")
+    owner_a_identity = "Distribution Trust (Trustee: Dist Trustee Pty Ltd)"
+
+    other = _seed_owner_with_invoices(
+        session,
+        trust_name="History Trust B",
+        trustee_name="History Trustee B Pty Ltd",
+        billing_email="owner-b@example.com",
+        properties=[
+            ("History Property B", [(date(2026, 4, 12), 400_000, 400_000)])
+        ],
+    )
+    assert other["entity_id"] == scope["entity_id"]
+    owner_b = _seeded_owner(session, "History Trust B")
+    owner_b.management_fee_pct = Decimal("5")
+    session.commit()
+    owner_b_identity = "History Trust B (Trustee: History Trustee B Pty Ltd)"
+
+    _review_distribution(client, scope["entity_id"], owner_a_identity, "2026-03")
+    _review_distribution(client, scope["entity_id"], owner_a_identity, "2026-04")
+    _review_distribution(client, scope["entity_id"], owner_b_identity, "2026-04")
+
+    by_owner = client.get(
+        "/api/v1/owners/distributions/history",
+        params={"entity_id": scope["entity_id"], "owner_id": str(owner_a.id)},
+    ).json()["records"]
+    assert {record["month"] for record in by_owner} == {"2026-03", "2026-04"}
+    assert all(record["owner_id"] == str(owner_a.id) for record in by_owner)
+
+    by_owner_month = client.get(
+        "/api/v1/owners/distributions/history",
+        params={
+            "entity_id": scope["entity_id"],
+            "owner_id": str(owner_b.id),
+            "month": "2026-04",
+        },
+    ).json()["records"]
+    assert len(by_owner_month) == 1
+    assert by_owner_month[0]["owner_id"] == str(owner_b.id)
+    assert by_owner_month[0]["month"] == "2026-04"
+
+
+def test_distribution_history_denied_for_self_managed_owner(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Self-managed owner-operators cannot reach the distribution history."""
+
+    _set_operating_mode(session, OperatingMode.self_managed_owner)
+    scope = _seed_distribution_scope(session)
+
+    response = client.get(
+        "/api/v1/owners/distributions/history",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert response.status_code == 403
+    detail = response.json()["detail"].lower()
+    assert "managing-agent" in detail
+    assert "hybrid" in detail

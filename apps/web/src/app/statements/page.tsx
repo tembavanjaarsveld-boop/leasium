@@ -54,12 +54,14 @@ import {
   downloadOwnerStatementPdf,
   downloadOwnerStatementPdfPack,
   getOwnerDistributions,
+  getOwnerDistributionHistory,
   getOwnerStatementDispatch,
   getOwnerStatements,
   listEntities,
   reviewOwnerDistributions,
   sendOwnerStatement,
   type InvoiceDraftRecord,
+  type OwnerDistributionHistoryRecord,
   type OwnerDistributionLineRecord,
   type OwnerStatementDispatchReceipt,
   type OwnerStatementRecord,
@@ -413,6 +415,43 @@ function ownerInvoiceEvidenceCsv(
           .map(csvCell)
           .join(","),
       ),
+    ),
+  ].join("\n");
+}
+
+function ownerDistributionHistoryCsv(
+  records: OwnerDistributionHistoryRecord[],
+) {
+  return [
+    [
+      "Month",
+      "Owner",
+      "Status",
+      "Rent collected",
+      "Fee %",
+      "Fee ex-GST",
+      "GST",
+      "Fee inc-GST",
+      "Net distribution",
+      "Reviewed",
+    ]
+      .map(csvCell)
+      .join(","),
+    ...records.map((record) =>
+      [
+        record.month,
+        record.owner_identity,
+        invoiceEvidenceStatusLabel(record.status),
+        formatMoney(record.rent_collected_cents),
+        formatPercent(record.management_fee_pct),
+        formatMoney(record.fee_ex_gst_cents),
+        formatMoney(record.fee_gst_cents),
+        formatMoney(record.fee_inc_gst_cents),
+        formatMoney(record.net_distribution_cents),
+        record.reviewed_at ? formatDateTime(record.reviewed_at) : "",
+      ]
+        .map(csvCell)
+        .join(","),
     ),
   ].join("\n");
 }
@@ -3038,8 +3077,17 @@ function OwnerDistributionsPanel({
       queryClient.invalidateQueries({
         queryKey: ["owner-distributions", entityId, month],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["owner-distribution-history", entityId],
+      });
     },
   });
+  const historyQuery = useQuery({
+    queryKey: ["owner-distribution-history", entityId],
+    queryFn: () => getOwnerDistributionHistory({ entityId }),
+    enabled: Boolean(entityId),
+  });
+  const historyRecords = historyQuery.data?.records ?? [];
   const pendingOwner = reviewMutation.isPending
     ? reviewMutation.variables
     : null;
@@ -3223,6 +3271,100 @@ function OwnerDistributionsPanel({
             </div>
           </>
         )}
+
+        <details className="rounded-md border border-border bg-muted/20">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-foreground">
+            <span className="inline-flex items-center gap-2">
+              <ListChecks size={15} className="text-primary" />
+              Distribution history
+            </span>
+            <StatusBadge tone="neutral">
+              {historyRecords.length}{" "}
+              {historyRecords.length === 1 ? "record" : "records"}
+            </StatusBadge>
+          </summary>
+          <div className="grid gap-3 border-t border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Reviewed distribution snapshots for this entity, newest first.
+                Review-only: no payment is made.
+              </p>
+              <SecondaryButton
+                type="button"
+                onClick={() =>
+                  saveBlob(
+                    new Blob([ownerDistributionHistoryCsv(historyRecords)], {
+                      type: "text/csv;charset=utf-8",
+                    }),
+                    `owner-distributions-${month}.csv`,
+                  )
+                }
+                disabled={historyQuery.isLoading || historyRecords.length === 0}
+              >
+                <Download size={15} />
+                Export history CSV
+              </SecondaryButton>
+            </div>
+            {historyQuery.isLoading ? (
+              <SkeletonRows rows={2} />
+            ) : historyRecords.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+                Reviewed distributions appear here once an owner distribution is
+                marked reviewed.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-md border border-border bg-white">
+                <table className="w-full min-w-[640px] border-collapse text-left text-sm tabular-nums">
+                  <thead className="bg-muted text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 font-semibold">
+                        Month
+                      </th>
+                      <th scope="col" className="px-3 py-2 font-semibold">
+                        Owner
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-2 text-right font-semibold"
+                      >
+                        Net
+                      </th>
+                      <th scope="col" className="px-3 py-2 font-semibold">
+                        Status
+                      </th>
+                      <th scope="col" className="px-3 py-2 font-semibold">
+                        Reviewed
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRecords.map((record) => (
+                      <tr key={record.id} className="border-t border-border">
+                        <td className="px-3 py-3">{record.month}</td>
+                        <td className="px-3 py-3 font-medium text-foreground">
+                          {record.owner_identity}
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold">
+                          {formatMoney(record.net_distribution_cents)}
+                        </td>
+                        <td className="px-3 py-3">
+                          <StatusBadge tone="success">
+                            {invoiceEvidenceStatusLabel(record.status)}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-3 py-3 text-muted-foreground">
+                          {record.reviewed_at
+                            ? formatDateTime(record.reviewed_at)
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </details>
       </div>
     </SectionPanel>
   );

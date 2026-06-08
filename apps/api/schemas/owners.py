@@ -162,3 +162,31 @@ class OwnerDistributionReviewRequest(BaseModel):
 
     approve: bool = False
     owner_identity: str
+
+
+class OwnerDistributionHistoryRecord(BaseModel):
+    """One persisted (reviewed) owner-distribution snapshot."""
+
+    id: UUID
+    owner_id: UUID | None = None
+    owner_identity: str
+    month: str
+    status: str
+    rent_collected_cents: int
+    management_fee_pct: float | None = None
+    fee_ex_gst_cents: int
+    fee_gst_cents: int
+    fee_inc_gst_cents: int
+    net_distribution_cents: int
+    reviewed_by_user_id: UUID | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+
+
+class OwnerDistributionHistoryRead(BaseModel):
+    """Read response for ``GET /api/v1/owners/distributions/history``."""
+
+    entity_id: UUID
+    records: list[OwnerDistributionHistoryRecord] = Field(default_factory=list)
+    guardrail: str
+    generated_at: datetime

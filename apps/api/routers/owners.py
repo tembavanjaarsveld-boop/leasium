@@ -49,6 +49,8 @@ from stewart.services.owner_distributions import compute_owner_distributions
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.owners import (
+    OwnerDistributionHistoryRead,
+    OwnerDistributionHistoryRecord,
     OwnerDistributionLine,
     OwnerDistributionReviewRequest,
     OwnerDistributionsRead,
@@ -1365,6 +1367,70 @@ def get_owner_distributions(
         month=statements.month,
         entity_gst_registered=entity_gst_registered,
         lines=lines,
+        guardrail=_DISTRIBUTION_GUARDRAIL,
+        generated_at=utcnow(),
+    )
+
+
+def _distribution_history_record(
+    row: OwnerDistribution,
+) -> OwnerDistributionHistoryRecord:
+    return OwnerDistributionHistoryRecord(
+        id=row.id,
+        owner_id=row.owner_id,
+        owner_identity=row.owner_identity,
+        month=row.month,
+        status=row.status,
+        rent_collected_cents=row.rent_collected_cents,
+        management_fee_pct=(
+            float(row.management_fee_pct)
+            if row.management_fee_pct is not None
+            else None
+        ),
+        fee_ex_gst_cents=row.fee_ex_gst_cents,
+        fee_gst_cents=row.fee_gst_cents,
+        fee_inc_gst_cents=row.fee_inc_gst_cents,
+        net_distribution_cents=row.net_distribution_cents,
+        reviewed_by_user_id=row.reviewed_by_user_id,
+        reviewed_at=row.reviewed_at,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/distributions/history", response_model=OwnerDistributionHistoryRead)
+def list_owner_distribution_history(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    owner_id: Annotated[
+        UUID | None,
+        Query(description="Filter to one owner's reviewed distributions."),
+    ] = None,
+    month: Annotated[
+        str,
+        Query(description="Filter to a single YYYY-MM month."),
+    ] = "",
+) -> OwnerDistributionHistoryRead:
+    """Return persisted (reviewed) owner-distribution records, newest first."""
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    _assert_distribution_mode(session, user)
+    query = select(OwnerDistribution).where(
+        OwnerDistribution.entity_id == entity_id
+    )
+    if owner_id is not None:
+        query = query.where(OwnerDistribution.owner_id == owner_id)
+    if month:
+        _, _, canonical_month = _parse_month(month)
+        query = query.where(OwnerDistribution.month == canonical_month)
+    rows = list(
+        session.scalars(
+            query.order_by(OwnerDistribution.created_at.desc())
+        ).all()
+    )
+    return OwnerDistributionHistoryRead(
+        entity_id=entity_id,
+        records=[_distribution_history_record(row) for row in rows],
         guardrail=_DISTRIBUTION_GUARDRAIL,
         generated_at=utcnow(),
     )
