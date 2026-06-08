@@ -2259,3 +2259,179 @@ def test_maintenance_classify_no_matching_contractor_returns_null_suggestion(
     assert classification["category"] == "hvac"
     assert classification["suggested_contractor_id"] is None
     assert classification["suggested_contractor_name"] is None
+
+
+def _create_completed_work_order(client: TestClient, context: dict[str, str]) -> str:
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "Completed roof repair",
+            "description": "Contractor patched the leaking flashing.",
+            "priority": "normal",
+            "status": "completed",
+            "completed_at": "2026-05-22T03:00:00Z",
+            "contractor_name": "Rapid Roofing",
+            "notes": "Closed after contractor attended.",
+        },
+    )
+    assert create_response.status_code == 201
+    return str(create_response.json()["id"])
+
+
+def test_maintenance_completion_review_records_owner_review(
+    client: TestClient,
+    session: Session,
+) -> None:
+    context = _lease_context(client, session)
+    work_order_id = _create_completed_work_order(client, context)
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/completion-review",
+        json={
+            "party": "owner",
+            "outcome": "confirmed",
+            "notes": "Owner inspected and is satisfied with the repair.",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    reviews = body["metadata"]["completion_reviews"]
+    assert len(reviews) == 1
+    assert reviews[0]["party"] == "owner"
+    assert reviews[0]["outcome"] == "confirmed"
+    assert reviews[0]["notes"] == "Owner inspected and is satisfied with the repair."
+    assert reviews[0]["reviewed_by"] == f"user:{get_settings().dev_user_email}"
+    assert reviews[0]["reviewed_at"]
+    # Projected onto the read schema for the frontend (later wave).
+    assert body["completion_reviews"][0]["party"] == "owner"
+    assert body["completion_reviews"][0]["outcome"] == "confirmed"
+
+    history = body["metadata"]["activity_history"]
+    assert history[-1]["event"] == "completion_review_recorded"
+    assert history[-1]["summary"] == ("Recorded owner completion review: confirmed.")
+
+    audit_rows = session.scalars(
+        select(AuditAction).where(AuditAction.target_table == "maintenance_work_order")
+    ).all()
+    assert audit_rows[-1].action == "update"
+    assert audit_rows[-1].tool_name == "maintenance.completion_review.record"
+
+
+def test_maintenance_completion_review_records_tenant_confirmation(
+    client: TestClient,
+    session: Session,
+) -> None:
+    context = _lease_context(client, session)
+    work_order_id = _create_completed_work_order(client, context)
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/completion-review",
+        json={
+            "party": "tenant",
+            "outcome": "follow_up_requested",
+            "notes": "Tenant says a small drip remains near the window.",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    reviews = body["completion_reviews"]
+    assert len(reviews) == 1
+    assert reviews[0]["party"] == "tenant"
+    assert reviews[0]["outcome"] == "follow_up_requested"
+    history = body["metadata"]["activity_history"]
+    assert history[-1]["event"] == "completion_review_recorded"
+    assert history[-1]["summary"] == ("Recorded tenant completion review: requested follow-up.")
+
+
+def test_maintenance_completion_review_rejects_not_completed_work_order(
+    client: TestClient,
+    session: Session,
+) -> None:
+    context = _lease_context(client, session)
+    create_response = client.post(
+        "/api/v1/maintenance/work-orders",
+        json={
+            "entity_id": context["entity_id"],
+            "lease_id": context["lease_id"],
+            "title": "In-progress repair",
+            "priority": "normal",
+            "status": "in_progress",
+        },
+    )
+    assert create_response.status_code == 201
+    work_order_id = create_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/completion-review",
+        json={"party": "owner", "outcome": "confirmed"},
+    )
+    assert response.status_code == 409
+    assert "completed work orders" in response.json()["detail"]
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    assert "completion_reviews" not in (work_order.work_order_metadata or {})
+
+
+def test_maintenance_completion_review_requires_entity_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    context = _lease_context(client, session)
+    work_order_id = _create_completed_work_order(client, context)
+
+    entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert entity is not None
+    other_entity = Entity(organisation_id=entity.organisation_id, name="No Role Maintenance Entity")
+    session.add(other_entity)
+    session.commit()
+
+    work_order = session.get(MaintenanceWorkOrder, UUID(work_order_id))
+    assert work_order is not None
+    work_order.entity_id = other_entity.id
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/completion-review",
+        json={"party": "owner", "outcome": "confirmed"},
+    )
+    assert response.status_code == 403
+
+
+def test_maintenance_completion_review_fires_no_provider_call(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Recording a completion review must never open an outbound provider call.
+
+    Review-first: the operator records what they heard from the owner/tenant;
+    the owner/tenant are not contacted. We assert at the httpx boundary that no
+    external SendGrid/Twilio/Xero call is made. The Starlette TestClient is
+    itself built on httpx.Client, so testserver traffic is allowed and only
+    absolute external URLs fail the test.
+    """
+    import httpx
+
+    context = _lease_context(client, session)
+    work_order_id = _create_completed_work_order(client, context)
+
+    original_request = httpx.Client.request
+
+    def _guarded_request(self, method, url, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        target = str(url)
+        if target.startswith(("http://", "https://")) and "testserver" not in target:
+            raise AssertionError(
+                f"Completion review attempted an outbound HTTP call to {target}."
+            )
+        return original_request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "request", _guarded_request)
+
+    response = client.post(
+        f"/api/v1/maintenance/work-orders/{work_order_id}/completion-review",
+        json={"party": "owner", "outcome": "confirmed", "notes": "All good."},
+    )
+    assert response.status_code == 200
+    assert response.json()["completion_reviews"][0]["outcome"] == "confirmed"

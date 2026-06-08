@@ -45,6 +45,7 @@ from stewart.integrations.communications import (
 from apps.api import webhook_auth
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.maintenance import (
+    MaintenanceCompletionReviewCreate,
     MaintenanceWorkOrderCommentCreate,
     MaintenanceWorkOrderContractorEmailSend,
     MaintenanceWorkOrderContractorSmsSend,
@@ -69,6 +70,7 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 
 ACTIVITY_HISTORY_KEY = "activity_history"
 COMMENTS_KEY = "comments"
+COMPLETION_REVIEWS_KEY = "completion_reviews"
 CONTRACTOR_DELIVERY_KEY = "contractor_delivery"
 VENDOR_PORTAL_VISIBLE_KEY = "vendor_portal_visible"
 VENDOR_PORTAL_CONTRACTOR_ID_KEY = "vendor_portal_contractor_id"
@@ -212,6 +214,45 @@ def _append_comment(
             "event": "comment_added",
             "summary": body.strip(),
         },
+    )
+
+
+def _append_completion_review(
+    metadata: dict[str, Any] | None,
+    *,
+    actor: str,
+    party: str,
+    outcome: str,
+    notes: str | None,
+) -> dict[str, Any]:
+    """Append an operator-recorded owner/tenant completion review.
+
+    Records review only — owner/tenant are not contacted here (review-first;
+    no SendGrid/Twilio). Adds a ``completion_reviews`` entry plus an
+    activity-history event so the work-order timeline reflects the review.
+    """
+    next_metadata = dict(metadata or {})
+    existing = next_metadata.get(COMPLETION_REVIEWS_KEY)
+    reviews = list(existing) if isinstance(existing, list) else []
+    reviewed_at = utcnow().isoformat()
+    review = {
+        "party": party,
+        "outcome": outcome,
+        "notes": notes.strip() if notes and notes.strip() else None,
+        "reviewed_by": actor,
+        "reviewed_at": reviewed_at,
+    }
+    reviews.append(review)
+    next_metadata[COMPLETION_REVIEWS_KEY] = reviews
+    outcome_label = "confirmed" if outcome == "confirmed" else "requested follow-up"
+    return _append_activity_history(
+        next_metadata,
+        _activity_entry(
+            actor=actor,
+            source="operator_api",
+            event="completion_review_recorded",
+            summary=f"Recorded {party} completion review: {outcome_label}.",
+        ),
     )
 
 
@@ -1114,6 +1155,60 @@ def add_work_order_comment(
     )
     session.commit()
     # Future notify hook goes here (in-app only in v1; no SendGrid/Twilio call).
+    session.refresh(work_order)
+    return work_order
+
+
+@router.post("/{work_order_id}/completion-review", response_model=MaintenanceWorkOrderRead)
+def record_work_order_completion_review(
+    work_order_id: UUID,
+    payload: MaintenanceCompletionReviewCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MaintenanceWorkOrder:
+    """Operator records an owner/tenant review of a completed work order.
+
+    Review-first: this stores what the operator heard from the owner or tenant
+    (confirmed or follow-up requested). It does NOT email or SMS the owner or
+    tenant — a future notify hook would attach where noted below.
+    """
+    work_order = _work_order_for_user(work_order_id, user, session, WRITE_ROLES)
+    if work_order.status != MaintenanceWorkOrderStatus.completed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Completion review is only available on completed work orders.",
+        )
+    work_order.work_order_metadata = _append_completion_review(
+        work_order.work_order_metadata,
+        actor=user.actor,
+        party=payload.party,
+        outcome=payload.outcome,
+        notes=payload.notes,
+    )
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=work_order.entity_id,
+        action="update",
+        target_table="maintenance_work_order",
+        target_id=work_order.id,
+        tool_name="maintenance.completion_review.record",
+        tool_input={
+            "maintenance_work_order_id": str(work_order.id),
+            "party": payload.party,
+            "outcome": payload.outcome,
+        },
+        tool_output_summary=(
+            "Recorded operator-entered owner/tenant completion review; no owner, "
+            "tenant, contractor, provider, billing, payment, or reconciliation "
+            "action ran."
+        ),
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    # Future owner/tenant notify hook goes here (review-only in v1; no SendGrid/Twilio call).
     session.refresh(work_order)
     return work_order
 

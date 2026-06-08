@@ -232,6 +232,41 @@ def _maintenance_channel_receipts_from_metadata(
     return receipts
 
 
+class MaintenanceCompletionReviewRead(BaseModel):
+    party: str | None
+    outcome: str | None
+    notes: str | None
+    reviewed_by: str | None
+    reviewed_at: str | None
+
+
+def _completion_reviews_from_metadata(
+    metadata: dict[str, Any] | None,
+) -> list[MaintenanceCompletionReviewRead]:
+    """Project the operator-recorded owner/tenant completion reviews.
+
+    Reads the ``completion_reviews`` list the maintenance router appends to
+    ``work_order_metadata``. Returns an empty list when none recorded yet.
+    """
+    raw = _record(metadata).get("completion_reviews")
+    if not isinstance(raw, list):
+        return []
+    reviews: list[MaintenanceCompletionReviewRead] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        reviews.append(
+            MaintenanceCompletionReviewRead(
+                party=_text(entry.get("party")),
+                outcome=_text(entry.get("outcome")),
+                notes=_text(entry.get("notes")),
+                reviewed_by=_text(entry.get("reviewed_by")),
+                reviewed_at=_text(entry.get("reviewed_at")),
+            )
+        )
+    return reviews
+
+
 class MaintenanceWorkOrderCreate(BaseModel):
     entity_id: UUID
     title: str
@@ -306,6 +341,23 @@ class MaintenanceWorkOrderCommentCreate(BaseModel):
     visibility: MaintenanceCommentVisibility = "internal"
 
 
+MaintenanceCompletionReviewParty = Literal["owner", "tenant"]
+MaintenanceCompletionReviewOutcome = Literal["confirmed", "follow_up_requested"]
+
+
+class MaintenanceCompletionReviewCreate(BaseModel):
+    """Operator-recorded owner/tenant review of a completed work order.
+
+    Records what the operator heard from the owner or tenant after a work
+    order was completed. It does not contact the owner or tenant — see the
+    router endpoint for the future-notify hook attachment point.
+    """
+
+    party: MaintenanceCompletionReviewParty
+    outcome: MaintenanceCompletionReviewOutcome
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class MaintenanceWorkOrderVendorPortalShare(BaseModel):
     contractor_id: UUID
     title: str = Field(min_length=1, max_length=160)
@@ -372,3 +424,8 @@ class MaintenanceWorkOrderRead(ApiModel):
             contractor_email=self.contractor_email,
             contractor_phone=self.contractor_phone,
         )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def completion_reviews(self) -> list[MaintenanceCompletionReviewRead]:
+        return _completion_reviews_from_metadata(self.metadata)
