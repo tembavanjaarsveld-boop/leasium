@@ -69,9 +69,12 @@ import {
   listInvoiceDrafts,
   listProperties,
   listTenants,
+  type MaintenanceCompletionReviewOutcome,
+  type MaintenanceCompletionReviewParty,
   type MaintenanceWorkOrderPayload,
   type MaintenanceWorkOrderRecord,
   prepareInvoiceDraftDelivery,
+  recordMaintenanceCompletionReview,
   type PropertyRecord,
   sendMaintenanceWorkOrderContractorEmail,
   sendMaintenanceWorkOrderContractorSms,
@@ -295,6 +298,28 @@ function label(value: string | null | undefined) {
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function completionReviewOutcomeTone(
+  outcome: string | null | undefined,
+): StatusTone {
+  if (outcome === "confirmed") {
+    return "success";
+  }
+  if (outcome === "follow_up_requested") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function completionReviewOutcomeLabel(outcome: string | null | undefined) {
+  if (outcome === "confirmed") {
+    return "Confirmed";
+  }
+  if (outcome === "follow_up_requested") {
+    return "Follow-up requested";
+  }
+  return label(outcome);
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -3554,6 +3579,11 @@ function MaintenanceDetailRoute() {
     completionCommunicationCopyReceipt,
     setCompletionCommunicationCopyReceipt,
   ] = useState<Partial<Record<CompletionReviewAudience, string>>>({});
+  const [partyReviewParty, setPartyReviewParty] =
+    useState<MaintenanceCompletionReviewParty>("owner");
+  const [partyReviewOutcome, setPartyReviewOutcome] =
+    useState<MaintenanceCompletionReviewOutcome>("confirmed");
+  const [partyReviewNotes, setPartyReviewNotes] = useState("");
   const [forwardingDraftCopyReceipt, setForwardingDraftCopyReceipt] = useState<
     Partial<Record<ForwardingDraftTarget, string>>
   >({});
@@ -4541,6 +4571,29 @@ function MaintenanceDetailRoute() {
         ...current,
         [audience]: "",
       }));
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-work-order", workOrderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-maintenance", entityId],
+      });
+    },
+  });
+
+  const partyCompletionReviewMutation = useMutation({
+    mutationFn: () => {
+      if (!workOrder) {
+        throw new Error("Work order is still loading.");
+      }
+      const notes = partyReviewNotes.trim();
+      return recordMaintenanceCompletionReview(workOrder.id, {
+        party: partyReviewParty,
+        outcome: partyReviewOutcome,
+        notes: notes || null,
+      });
+    },
+    onSuccess: () => {
+      setPartyReviewNotes("");
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
@@ -6014,6 +6067,153 @@ function MaintenanceDetailRoute() {
                 </div>
               </SectionPanel>
             ) : null}
+
+            <SectionPanel
+              title="Completion review"
+              description="Record what the owner or tenant said after the job was completed. Internal only — this does not notify the owner or tenant."
+              icon={<ClipboardCheck size={17} />}
+              actions={
+                <StatusBadge tone="neutral">
+                  {workOrder.completion_reviews.length}{" "}
+                  {workOrder.completion_reviews.length === 1
+                    ? "review"
+                    : "reviews"}
+                </StatusBadge>
+              }
+            >
+              <div className="grid gap-4 p-4 text-sm">
+                {workOrder.status === "completed" ? (
+                  <form
+                    className="grid content-start gap-3 rounded-md border border-border bg-muted/30 p-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      partyCompletionReviewMutation.mutate();
+                    }}
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Party">
+                        <Select
+                          aria-label="Review party"
+                          value={partyReviewParty}
+                          onChange={(event) =>
+                            setPartyReviewParty(
+                              event.target
+                                .value as MaintenanceCompletionReviewParty,
+                            )
+                          }
+                        >
+                          <option value="owner">Owner</option>
+                          <option value="tenant">Tenant</option>
+                        </Select>
+                      </Field>
+                      <Field label="Outcome">
+                        <Select
+                          aria-label="Review outcome"
+                          value={partyReviewOutcome}
+                          onChange={(event) =>
+                            setPartyReviewOutcome(
+                              event.target
+                                .value as MaintenanceCompletionReviewOutcome,
+                            )
+                          }
+                        >
+                          <option value="confirmed">Confirmed</option>
+                          <option value="follow_up_requested">
+                            Follow-up requested
+                          </option>
+                        </Select>
+                      </Field>
+                    </div>
+                    <label className="grid gap-1.5">
+                      <span className="font-medium text-foreground">
+                        Notes
+                      </span>
+                      <textarea
+                        aria-label="Review notes"
+                        value={partyReviewNotes}
+                        onChange={(event) =>
+                          setPartyReviewNotes(event.target.value)
+                        }
+                        rows={2}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                        placeholder="What the owner or tenant said about the completed job."
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="submit"
+                        className="min-h-11"
+                        disabled={partyCompletionReviewMutation.isPending}
+                      >
+                        {partyCompletionReviewMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <ClipboardCheck size={16} />
+                        )}
+                        Record review
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Internal record only; the owner and tenant are not
+                        notified.
+                      </span>
+                    </div>
+                    {partyCompletionReviewMutation.error ? (
+                      <p className="text-sm text-danger">
+                        {friendlyError(partyCompletionReviewMutation.error)}
+                      </p>
+                    ) : null}
+                  </form>
+                ) : (
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    Completion review is available once the work order is
+                    marked complete.
+                  </div>
+                )}
+                {workOrder.completion_reviews.length ? (
+                  <div className="grid gap-2">
+                    {[...workOrder.completion_reviews]
+                      .sort(
+                        (a, b) =>
+                          new Date(b.reviewed_at ?? "").getTime() -
+                          new Date(a.reviewed_at ?? "").getTime(),
+                      )
+                      .map((review, index) => (
+                        <div
+                          key={`${review.reviewed_at ?? "review"}-${index}`}
+                          className="grid gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-foreground">
+                              {label(review.party)}
+                            </span>
+                            <StatusBadge
+                              tone={completionReviewOutcomeTone(
+                                review.outcome,
+                              )}
+                            >
+                              {completionReviewOutcomeLabel(review.outcome)}
+                            </StatusBadge>
+                          </div>
+                          <div className="text-muted-foreground">
+                            {review.reviewed_by ?? "Operator"} ·{" "}
+                            {formatDateTime(review.reviewed_at)}
+                          </div>
+                          {review.notes ? (
+                            <div className="whitespace-pre-line text-muted-foreground">
+                              {review.notes}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No completion reviews yet"
+                    description="Record owner or tenant feedback after the job is completed."
+                  />
+                )}
+              </div>
+            </SectionPanel>
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
               <SectionPanel

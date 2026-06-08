@@ -686,6 +686,60 @@ const initialMaintenanceWorkOrders = [
         },
       },
     ],
+    completion_reviews: [],
+  },
+  {
+    id: "work-order-completed",
+    entity_id: entityId,
+    property_id: propertyId,
+    tenancy_unit_id: unitId,
+    tenant_id: tenantId,
+    lease_id: leaseId,
+    title: "Replace hot water system",
+    description: "Failed hot water unit replaced under warranty.",
+    status: "completed",
+    priority: "high",
+    requested_at: "2026-05-10T01:00:00.000Z",
+    contractor_name: "Cool Air Services",
+    contractor_email: "service@coolair.example",
+    contractor_phone: "07 3000 1111",
+    contractor_assigned_at: "2026-05-10T02:00:00.000Z",
+    approval_required: false,
+    approval_status: "not_required",
+    approval_limit_cents: null,
+    quote_amount_cents: 120000,
+    approved_by_user_id: null,
+    approved_at: null,
+    approval_notes: null,
+    source_document_id: null,
+    invoice_draft_id: null,
+    invoice_reference: null,
+    invoice_amount_cents: null,
+    source_reference: "Tenant email",
+    due_date: "2026-05-12",
+    completed_at: "2026-05-12T04:00:00.000Z",
+    notes: "Completed and signed off.",
+    document_ids: [],
+    photo_document_ids: [],
+    metadata: {
+      comments: [],
+      completion_reviews: [],
+      activity_history: [
+        {
+          timestamp: "2026-05-12T04:00:00.000Z",
+          actor: "operator-1",
+          source: "operator_api",
+          event: "completed",
+          summary: "Marked work order complete.",
+          status: "completed",
+        },
+      ],
+    },
+    created_at: "2026-05-10T01:00:00.000Z",
+    updated_at: "2026-05-12T04:00:00.000Z",
+    deleted_at: null,
+    channel_receipts: [],
+    completion_reviews: [],
   },
 ];
 let maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
@@ -7311,6 +7365,66 @@ export async function mockLeasiumApi(
         workOrder ?? { detail: "Maintenance work order not found." },
         workOrder ? 200 : 404,
       );
+      return;
+    }
+
+    const completionReviewMatch = path.match(
+      /^\/maintenance\/work-orders\/([^/]+)\/completion-review$/,
+    );
+    if (method === "POST" && completionReviewMatch) {
+      const workOrder = maintenanceWorkOrders.find(
+        (item) => item.id === completionReviewMatch[1],
+      );
+      if (!workOrder) {
+        await fulfillJson(
+          route,
+          { detail: "Maintenance work order not found." },
+          404,
+        );
+        return;
+      }
+      if (workOrder.status !== "completed") {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "Completion review is only available on completed work orders.",
+          },
+          409,
+        );
+        return;
+      }
+      const payload = request.postDataJSON() as {
+        party?: string;
+        outcome?: string;
+        notes?: string | null;
+      };
+      const timestamp = "2026-05-13T01:00:00.000Z";
+      const review = {
+        party: payload.party ?? null,
+        outcome: payload.outcome ?? null,
+        notes: payload.notes?.trim() ? payload.notes.trim() : null,
+        reviewed_by: operatorId,
+        reviewed_at: timestamp,
+      };
+      const existingReviews = Array.isArray(workOrder.completion_reviews)
+        ? workOrder.completion_reviews
+        : [];
+      const existingMetadata = jsonRecord(workOrder.metadata);
+      const existingMetadataReviews = Array.isArray(
+        existingMetadata.completion_reviews,
+      )
+        ? existingMetadata.completion_reviews
+        : [];
+      Object.assign(workOrder, {
+        completion_reviews: [...existingReviews, review],
+        metadata: {
+          ...existingMetadata,
+          completion_reviews: [...existingMetadataReviews, review],
+        },
+        updated_at: timestamp,
+      });
+      await fulfillJson(route, workOrder);
       return;
     }
 

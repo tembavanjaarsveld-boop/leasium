@@ -1255,3 +1255,104 @@ test("maintenance detail hides stale work-order data after a not-found refresh",
   ).toHaveCount(0);
   await expect(page.getByText("Edit work-order details")).toHaveCount(0);
 });
+
+function completionReviewPanel(page: import("@playwright/test").Page) {
+  return page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Completion review" }) })
+    .first();
+}
+
+test("maintenance completion review records owner feedback without provider or comms calls", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+
+  const forbiddenSendPaths: string[] = [];
+  const forbiddenSendPathPattern = /email|sms|sendgrid|twilio/i;
+  const forbiddenPathPatterns = [
+    "/comms",
+    "/providers",
+    "/provider-dispatch",
+    "/provider-history",
+    "/dispatch",
+    "/xero",
+    "/basiq",
+    "/payment",
+    "/reconciliation",
+    "/invoice",
+  ];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/api/v1", "");
+    if (
+      request.method() !== "GET" &&
+      (forbiddenSendPathPattern.test(path) ||
+        forbiddenPathPatterns.some((pattern) => path.startsWith(pattern)))
+    ) {
+      forbiddenSendPaths.push(`${request.method()} ${path}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/operations/maintenance/work-order-completed");
+
+  const panel = completionReviewPanel(page);
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  await expect(
+    panel.getByText("Internal only", { exact: false }).first(),
+  ).toBeVisible();
+  await expect(panel.getByText("No completion reviews yet")).toBeVisible();
+
+  await panel.getByLabel("Review party").selectOption("owner");
+  await panel.getByLabel("Review outcome").selectOption("confirmed");
+  await panel
+    .getByLabel("Review notes")
+    .fill("Owner happy with the replacement unit.");
+
+  const submit = panel.getByRole("button", { name: "Record review" });
+  await expectTouchTarget(submit);
+
+  const reviewRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().includes("/work-order-completed/completion-review"),
+  );
+  await submit.click();
+  expect((await reviewRequest).postDataJSON()).toMatchObject({
+    party: "owner",
+    outcome: "confirmed",
+    notes: "Owner happy with the replacement unit.",
+  });
+
+  await expect(
+    panel.getByText("Owner happy with the replacement unit."),
+  ).toBeVisible();
+  // The recorded review renders an outcome badge (a span), not the hidden
+  // <option> of the same text in the form's select.
+  await expect(
+    panel.locator('span:has-text("Confirmed")').first(),
+  ).toBeVisible();
+  await expect(panel.getByText("No completion reviews yet")).toHaveCount(0);
+
+  expect(forbiddenSendPaths).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("maintenance completion review form stays hidden until the job is completed", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page);
+  await page.goto("/operations/maintenance/work-order-1");
+
+  const panel = completionReviewPanel(page);
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  await expect(
+    panel.getByText(
+      "Completion review is available once the work order is marked complete.",
+    ),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "Record review" }),
+  ).toHaveCount(0);
+});

@@ -1278,6 +1278,27 @@ export type MaintenanceWorkOrderRecord = {
   updated_at: string;
   deleted_at: string | null;
   channel_receipts: WorkAssignmentNoticeChannelReceiptRecord[];
+  completion_reviews: MaintenanceCompletionReviewRecord[];
+};
+
+export type MaintenanceCompletionReviewParty = "owner" | "tenant";
+
+export type MaintenanceCompletionReviewOutcome =
+  | "confirmed"
+  | "follow_up_requested";
+
+export type MaintenanceCompletionReviewRecord = {
+  party: string | null;
+  outcome: string | null;
+  notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+};
+
+export type MaintenanceCompletionReviewPayload = {
+  party: MaintenanceCompletionReviewParty;
+  outcome: MaintenanceCompletionReviewOutcome;
+  notes?: string | null;
 };
 
 export type MaintenanceWorkOrderPayload = {
@@ -4257,6 +4278,19 @@ export function updateMaintenanceWorkOrder(
     `/maintenance/work-orders/${workOrderId}`,
     {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function recordMaintenanceCompletionReview(
+  workOrderId: string,
+  payload: MaintenanceCompletionReviewPayload,
+) {
+  return request<MaintenanceWorkOrderRecord>(
+    `/maintenance/work-orders/${workOrderId}/completion-review`,
+    {
+      method: "POST",
       body: JSON.stringify(payload),
     },
   );
