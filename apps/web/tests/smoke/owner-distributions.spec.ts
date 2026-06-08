@@ -21,9 +21,16 @@ function watchUnsafeRequests(page: Page) {
   const requests: string[] = [];
   page.on("request", (request) => {
     const url = request.url();
+    const method = request.method();
+    const isMutation = method === "POST" || method === "PUT" || method === "PATCH";
     if (
       /\/owners\/(statements\/send|distributions\/[^/?]+\/pay)/.test(url) ||
-      url.includes("/dispatch/send")
+      url.includes("/dispatch/send") ||
+      // Any write to a payment / bank / Xero / reconciliation rail is unsafe
+      // for this review-only surface. mark-disbursed is an audit-only status
+      // marker (not a pay/bank/xero/rail route) so it is intentionally allowed.
+      (isMutation &&
+        /\/(payments?|bank|xero|reconcil|rails?)\b/i.test(url))
     ) {
       requests.push(url);
     }
@@ -248,5 +255,99 @@ test("self-managed owner accounts do not see the dispatch review drafts", async 
 
   await expect(
     page.getByText("Dispatch review", { exact: true }),
+  ).toHaveCount(0);
+});
+
+function watchDisburseRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      /\/owners\/distributions\/[^/?]+\/mark-disbursed/.test(request.url())
+    ) {
+      requests.push(request.url());
+    }
+  });
+  return requests;
+}
+
+test("managing-agent accounts see distribution history status badges", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await page.goto("/statements?month=2026-05");
+
+  const history = page.getByText("Distribution history", { exact: true });
+  await expect(history).toBeVisible();
+  await history.click();
+
+  const historyPanel = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: "Distribution history" }) });
+
+  // Both the reviewed and the already-disbursed fixture rows render badges.
+  await expect(
+    historyPanel.getByText("Reviewed", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    historyPanel.getByText("Disbursed", { exact: true }).first(),
+  ).toBeVisible();
+  // The disbursed row shows a quiet "Disbursed {date} by {who}" line.
+  await expect(
+    historyPanel.getByText("Disbursed 3 May 2026", { exact: false }),
+  ).toBeVisible();
+});
+
+test("marking a reviewed distribution disbursed calls the endpoint and reflects disbursed without any payment route", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  const disburseRequests = watchDisburseRequests(page);
+  const unsafeRequests = watchUnsafeRequests(page);
+  // The confirm dialog gates the action; auto-accept it for the happy path.
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("/statements?month=2026-05");
+
+  const history = page.getByText("Distribution history", { exact: true });
+  await expect(history).toBeVisible();
+  await history.click();
+
+  const historyPanel = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: "Distribution history" }) });
+
+  // Only the reviewed fixture row offers a mark-disbursed action.
+  const disburseButton = historyPanel.getByRole("button", {
+    name: "Mark disbursed",
+  });
+  await expect(disburseButton).toHaveCount(1);
+  // Touch-target floor.
+  await expect(disburseButton).toHaveClass(/min-h-11/);
+  await disburseButton.click();
+
+  // The reviewed row flips to disbursed; the action disappears for it.
+  await expect(disburseButton).toHaveCount(0);
+  await expect(
+    historyPanel.getByText("Disbursed", { exact: true }),
+  ).toHaveCount(2);
+
+  expect(disburseRequests).toHaveLength(1);
+  // Audit-only marker: no payment / bank / Xero / rail route was hit.
+  expect(unsafeRequests).toHaveLength(0);
+});
+
+test("self-managed owner accounts do not see the distribution history mark-disbursed action", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+  await page.goto("/statements?month=2026-05");
+
+  await expect(
+    page.getByRole("heading", { name: "Statement preview" }),
+  ).toBeVisible();
+
+  // The whole distributions panel (and therefore the action) is gated off.
+  await expect(
+    page.getByRole("button", { name: "Mark disbursed" }),
   ).toHaveCount(0);
 });

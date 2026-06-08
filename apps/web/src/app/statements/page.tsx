@@ -60,6 +60,7 @@ import {
   getOwnerStatementDispatch,
   getOwnerStatements,
   listEntities,
+  markOwnerDistributionDisbursed,
   reviewOwnerDistributions,
   sendOwnerStatement,
   type InvoiceDraftRecord,
@@ -457,6 +458,12 @@ function ownerDistributionHistoryCsv(
         .join(","),
     ),
   ].join("\n");
+}
+
+function distributionHistoryStatusTone(status: string) {
+  if (status === "disbursed") return "success" as const;
+  if (status === "reviewed") return "primary" as const;
+  return "neutral" as const;
 }
 
 function financeSignoffStatus({
@@ -3091,6 +3098,18 @@ function OwnerDistributionsPanel({
     enabled: Boolean(entityId),
   });
   const historyRecords = historyQuery.data?.records ?? [];
+  const disburseMutation = useMutation({
+    mutationFn: (distributionId: string) =>
+      markOwnerDistributionDisbursed({ distributionId, entityId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["owner-distribution-history", entityId],
+      });
+    },
+  });
+  const pendingDisbursementId = disburseMutation.isPending
+    ? disburseMutation.variables
+    : null;
   const dispatchReviewQuery = useQuery({
     queryKey: ["owner-distribution-dispatch-review", entityId, month],
     queryFn: () => getOwnerDistributionDispatchReview({ entityId, month }),
@@ -3439,7 +3458,9 @@ function OwnerDistributionsPanel({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground">
                 Reviewed distribution snapshots for this entity, newest first.
-                Review-only: no payment is made.
+                Marking a reviewed row disbursed records an out-of-band payment
+                for audit — it moves no money and makes no bank, payment, or
+                Xero call.
               </p>
               <SecondaryButton
                 type="button"
@@ -3457,6 +3478,11 @@ function OwnerDistributionsPanel({
                 Export history CSV
               </SecondaryButton>
             </div>
+            {disburseMutation.error ? (
+              <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+                {friendlyError(disburseMutation.error)}
+              </p>
+            ) : null}
             {historyQuery.isLoading ? (
               <SkeletonRows rows={2} />
             ) : historyRecords.length === 0 ? (
@@ -3487,6 +3513,7 @@ function OwnerDistributionsPanel({
                       <th scope="col" className="px-3 py-2 font-semibold">
                         Reviewed
                       </th>
+                      <th className="px-3 py-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -3500,14 +3527,58 @@ function OwnerDistributionsPanel({
                           {formatMoney(record.net_distribution_cents)}
                         </td>
                         <td className="px-3 py-3">
-                          <StatusBadge tone="success">
+                          <StatusBadge
+                            tone={distributionHistoryStatusTone(record.status)}
+                          >
                             {invoiceEvidenceStatusLabel(record.status)}
                           </StatusBadge>
+                          {record.status === "disbursed" &&
+                          record.disbursed_at ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Disbursed {formatDateTime(record.disbursed_at)}
+                              {record.disbursed_by_user_id
+                                ? ` by ${record.disbursed_by_user_id}`
+                                : ""}
+                              {record.disbursed_note
+                                ? ` — ${record.disbursed_note}`
+                                : ""}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-3 py-3 text-muted-foreground">
                           {record.reviewed_at
                             ? formatDateTime(record.reviewed_at)
                             : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {record.status === "reviewed" ? (
+                            <SecondaryButton
+                              type="button"
+                              className="min-h-11"
+                              onClick={() => {
+                                if (
+                                  typeof window !== "undefined" &&
+                                  !window.confirm(
+                                    "Record that this owner was paid out of band? This marks the distribution disbursed for audit only — it moves no money and makes no bank, payment, or Xero call.",
+                                  )
+                                ) {
+                                  return;
+                                }
+                                disburseMutation.mutate(record.id);
+                              }}
+                              disabled={disburseMutation.isPending}
+                            >
+                              {pendingDisbursementId === record.id ? (
+                                <RefreshCw
+                                  size={15}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <Wallet size={15} />
+                              )}
+                              Mark disbursed
+                            </SecondaryButton>
+                          ) : null}
                         </td>
                       </tr>
                     ))}

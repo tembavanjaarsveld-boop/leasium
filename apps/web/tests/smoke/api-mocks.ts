@@ -3248,45 +3248,55 @@ export async function mockLeasiumApi(
     };
   };
 
+  // Stateful so the POST /owners/distributions/{id}/mark-disbursed handler can
+  // flip a reviewed row to disbursed and have the next history GET reflect it.
+  const ownerDistributionHistoryRecords = [
+    {
+      id: "owner-distribution-history-1",
+      owner_id: "owner-distribution-1",
+      owner_identity: "Harbour Lane Trust",
+      month: "2026-05",
+      status: "reviewed",
+      rent_collected_cents: 1_000_000,
+      management_fee_pct: 7.5,
+      fee_ex_gst_cents: 75_000,
+      fee_gst_cents: 7_500,
+      fee_inc_gst_cents: 82_500,
+      net_distribution_cents: 917_500,
+      reviewed_by_user_id: operatorId,
+      reviewed_at: "2026-06-01T02:00:00.000Z",
+      disbursed_by_user_id: null as string | null,
+      disbursed_at: null as string | null,
+      disbursed_note: null as string | null,
+      created_at: "2026-06-01T02:00:00.000Z",
+    },
+    {
+      id: "owner-distribution-history-2",
+      owner_id: "owner-distribution-1",
+      owner_identity: "Harbour Lane Trust",
+      month: "2026-04",
+      status: "disbursed",
+      rent_collected_cents: 800_000,
+      management_fee_pct: 7.5,
+      fee_ex_gst_cents: 60_000,
+      fee_gst_cents: 6_000,
+      fee_inc_gst_cents: 66_000,
+      net_distribution_cents: 734_000,
+      reviewed_by_user_id: operatorId,
+      reviewed_at: "2026-05-01T02:00:00.000Z",
+      disbursed_by_user_id: operatorId,
+      disbursed_at: "2026-05-03T02:00:00.000Z",
+      disbursed_note: "Paid via owner bank transfer",
+      created_at: "2026-05-01T02:00:00.000Z",
+    },
+  ];
+
   const ownerDistributionHistory = (
     distributionEntityId: string,
     ownerId: string | null,
     month: string | null,
   ) => {
-    const records = [
-      {
-        id: "owner-distribution-history-1",
-        owner_id: "owner-distribution-1",
-        owner_identity: "Harbour Lane Trust",
-        month: "2026-05",
-        status: "reviewed",
-        rent_collected_cents: 1_000_000,
-        management_fee_pct: 7.5,
-        fee_ex_gst_cents: 75_000,
-        fee_gst_cents: 7_500,
-        fee_inc_gst_cents: 82_500,
-        net_distribution_cents: 917_500,
-        reviewed_by_user_id: operatorId,
-        reviewed_at: "2026-06-01T02:00:00.000Z",
-        created_at: "2026-06-01T02:00:00.000Z",
-      },
-      {
-        id: "owner-distribution-history-2",
-        owner_id: "owner-distribution-1",
-        owner_identity: "Harbour Lane Trust",
-        month: "2026-04",
-        status: "reviewed",
-        rent_collected_cents: 800_000,
-        management_fee_pct: 7.5,
-        fee_ex_gst_cents: 60_000,
-        fee_gst_cents: 6_000,
-        fee_inc_gst_cents: 66_000,
-        net_distribution_cents: 734_000,
-        reviewed_by_user_id: operatorId,
-        reviewed_at: "2026-05-01T02:00:00.000Z",
-        created_at: "2026-05-01T02:00:00.000Z",
-      },
-    ].filter(
+    const records = ownerDistributionHistoryRecords.filter(
       (record) =>
         (ownerId === null || record.owner_id === ownerId) &&
         (month === null || record.month === month),
@@ -9472,6 +9482,51 @@ export async function mockLeasiumApi(
           reqMonth,
         ),
       );
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      /^\/owners\/distributions\/[^/]+\/mark-disbursed$/.test(path)
+    ) {
+      const distributionId = path.split("/")[3];
+      const payload = request.postDataJSON() as {
+        approve?: boolean;
+        note?: string;
+      };
+      const record = ownerDistributionHistoryRecords.find(
+        (item) => item.id === distributionId,
+      );
+      if (!record) {
+        await fulfillJson(route, { detail: "Owner distribution not found." }, 404);
+        return;
+      }
+      if (payload.approve !== true) {
+        await fulfillJson(
+          route,
+          {
+            detail:
+              "Explicit confirmation (approve=true) is required to mark a distribution disbursed.",
+          },
+          400,
+        );
+        return;
+      }
+      if (record.status !== "reviewed") {
+        await fulfillJson(
+          route,
+          {
+            detail: `Only a reviewed distribution can be marked disbursed; this row is '${record.status}'.`,
+          },
+          409,
+        );
+        return;
+      }
+      record.status = "disbursed";
+      record.disbursed_by_user_id = operatorId;
+      record.disbursed_at = "2026-06-09T02:00:00.000Z";
+      record.disbursed_note = payload.note ?? null;
+      await fulfillJson(route, record);
       return;
     }
 

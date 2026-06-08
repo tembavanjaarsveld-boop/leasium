@@ -5959,6 +5959,9 @@ export type OwnerDistributionHistoryRecord = {
   net_distribution_cents: number;
   reviewed_by_user_id: string | null;
   reviewed_at: string | null;
+  disbursed_by_user_id: string | null;
+  disbursed_at: string | null;
+  disbursed_note: string | null;
   created_at: string;
 };
 
@@ -5987,6 +5990,29 @@ export function getOwnerDistributionHistory({
   }
   return request<OwnerDistributionHistoryResponse>(
     `/owners/distributions/history?${params.toString()}`,
+  );
+}
+
+export function markOwnerDistributionDisbursed({
+  distributionId,
+  entityId,
+  note,
+}: {
+  distributionId: string;
+  entityId: string;
+  note?: string;
+}) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  const body: { approve: true; note?: string } = { approve: true };
+  if (note) {
+    body.note = note;
+  }
+  return request<OwnerDistributionHistoryRecord>(
+    `/owners/distributions/${distributionId}/mark-disbursed?${params.toString()}`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   );
 }
 
