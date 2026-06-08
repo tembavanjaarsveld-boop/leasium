@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
-from stewart.core.models import AppUser
+from stewart.core.models import AppUser, BrandedCommunicationTemplate
 from stewart.core.settings import Settings
 from stewart.integrations.communications import (
     DeliveryResult,
@@ -21,6 +23,41 @@ from apps.api.deps import CurrentUser
 
 WORK_ASSIGNMENT_KEY = "work_assignment"
 PROVIDER_SUCCESS_STATUSES = {"queued", "sent", "delivered", "opened"}
+
+_TEMPLATE_VERSION_PATTERN = re.compile(r"^v(\d+)$")
+
+
+def _template_version_rank(version: str) -> int:
+    match = _TEMPLATE_VERSION_PATTERN.match(version.strip())
+    return int(match.group(1)) if match is not None else 0
+
+
+def resolve_branded_template(
+    session: Session | None,
+    entity_id: UUID,
+    key: str,
+    channel: str,
+) -> BrandedCommunicationTemplate | None:
+    """Return the active highest-version branded template row, or None.
+
+    Resolution only affects how a message renders; approval flags, skip logic,
+    and provider guardrails on the send paths are unchanged.
+    """
+
+    if session is None:
+        return None
+    rows = session.scalars(
+        select(BrandedCommunicationTemplate).where(
+            BrandedCommunicationTemplate.entity_id == entity_id,
+            BrandedCommunicationTemplate.key == key,
+            BrandedCommunicationTemplate.channel == channel,
+            BrandedCommunicationTemplate.is_active.is_(True),
+            BrandedCommunicationTemplate.deleted_at.is_(None),
+        )
+    ).all()
+    if not rows:
+        return None
+    return max(rows, key=lambda row: (_template_version_rank(row.version), row.updated_at))
 
 
 def _metadata_record(value: Any) -> dict[str, Any]:
@@ -182,6 +219,11 @@ def work_assignment_email_invite(
         )
 
     normalised_due_date = due_date.date() if isinstance(due_date, datetime) else due_date
+    template_key = _template_key(settings, assignment, session)
+    template_version = _template_version(settings, assignment, session)
+    custom_template = resolve_branded_template(session, entity_id, template_key, "email")
+    if custom_template is not None:
+        template_version = custom_template.version
     return WorkAssignmentEmail(
         target_id=target_id,
         target_type=target_type,
@@ -194,8 +236,14 @@ def work_assignment_email_invite(
         assignee_email=recipient,
         assigned_by_name=_metadata_text(assignment.get("assigned_by_name")),
         work_url=work_url,
-        template_key=_template_key(settings, assignment, session),
-        template_version=_template_version(settings, assignment, session),
+        template_key=template_key,
+        template_version=template_version,
+        custom_subject_template=(
+            custom_template.subject_template if custom_template is not None else None
+        ),
+        custom_body_template=(
+            custom_template.body_template if custom_template is not None else None
+        ),
     )
 
 
@@ -222,6 +270,11 @@ def work_assignment_sms_invite(
 
     normalised_due_date = due_date.date() if isinstance(due_date, datetime) else due_date
     app_user = assigned_work_assignment_user(metadata, session)
+    template_key = _template_key(settings, assignment, session)
+    template_version = _template_version(settings, assignment, session)
+    custom_template = resolve_branded_template(session, entity_id, template_key, "sms")
+    if custom_template is not None:
+        template_version = custom_template.version
     return WorkAssignmentSms(
         target_id=target_id,
         target_type=target_type,
@@ -234,8 +287,14 @@ def work_assignment_sms_invite(
         assignee_phone=work_assignment_sms_recipient(app_user),
         assigned_by_name=_metadata_text(assignment.get("assigned_by_name")),
         work_url=work_url,
-        template_key=_template_key(settings, assignment, session),
-        template_version=_template_version(settings, assignment, session),
+        template_key=template_key,
+        template_version=template_version,
+        custom_subject_template=(
+            custom_template.subject_template if custom_template is not None else None
+        ),
+        custom_body_template=(
+            custom_template.body_template if custom_template is not None else None
+        ),
     )
 
 

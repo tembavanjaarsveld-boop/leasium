@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
@@ -179,6 +180,8 @@ class WorkAssignmentEmail:
     work_url: str | None
     template_key: str
     template_version: str
+    custom_subject_template: str | None = None
+    custom_body_template: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,6 +201,8 @@ class WorkAssignmentSms:
     work_url: str | None
     template_key: str
     template_version: str
+    custom_subject_template: str | None = None
+    custom_body_template: str | None = None
 
 
 @dataclass(frozen=True)
@@ -232,6 +237,8 @@ class WorkAssignmentDigestEmail:
     items: list[WorkAssignmentDigestEmailItem]
     template_key: str
     template_version: str
+    custom_subject_template: str | None = None
+    custom_body_template: str | None = None
 
 
 @dataclass(frozen=True)
@@ -309,6 +316,197 @@ def _date_label(value: date | datetime | None) -> str:
     return value.strftime("%d %b %Y")
 
 
+TEMPLATE_TOKEN_PATTERN = re.compile(r"\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}")
+
+
+def render_template_string(template: str, context: dict[str, str]) -> str:
+    """Render ``{{token}}`` placeholders, leaving unknown tokens verbatim."""
+
+    def _substitute(match: re.Match[str]) -> str:
+        return context.get(match.group(1), match.group(0))
+
+    return TEMPLATE_TOKEN_PATTERN.sub(_substitute, template)
+
+
+def _text_as_html(text: str) -> str:
+    """Escape rendered plain text and preserve line breaks for the HTML part."""
+
+    body = "<br>".join(escape(line) for line in text.splitlines())
+    return (
+        '<div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">'
+        f"<p>{body}</p>"
+        "</div>"
+    )
+
+
+def work_assignment_email_context(invite: WorkAssignmentEmail) -> dict[str, str]:
+    """Template tokens available to custom Work assignment notice emails."""
+
+    return {
+        "assignee_name": invite.assignee_name or "",
+        "assignee_email": invite.assignee_email or "",
+        "assigned_by_name": invite.assigned_by_name or "",
+        "work_kind": invite.work_kind,
+        "title": invite.title,
+        "description": invite.description or "",
+        "due_date": _date_label(invite.due_date),
+        "work_url": invite.work_url or "",
+    }
+
+
+def work_assignment_sms_context(invite: WorkAssignmentSms) -> dict[str, str]:
+    """Template tokens available to custom Work assignment notice SMS."""
+
+    return {
+        "assignee_name": invite.assignee_name or "",
+        "assignee_phone": invite.assignee_phone or "",
+        "assigned_by_name": invite.assigned_by_name or "",
+        "work_kind": invite.work_kind,
+        "title": invite.title,
+        "description": invite.description or "",
+        "due_date": _date_label(invite.due_date),
+        "work_url": invite.work_url or "",
+    }
+
+
+def _work_assignment_digest_items_block(invite: WorkAssignmentDigestEmail) -> str:
+    lines: list[str] = []
+    for item in invite.items[:10]:
+        follow_up = " - follow-up due" if item.follow_up_due else ""
+        lines.extend(
+            [
+                f"- {item.title}{follow_up}",
+                f"  Type: {item.work_kind}",
+                f"  Due: {_date_label(item.due_date)}",
+                f"  Status: {item.status}",
+            ]
+        )
+        if item.work_url:
+            lines.append(f"  Open: {item.work_url}")
+    return "\n".join(lines)
+
+
+def work_assignment_digest_context(invite: WorkAssignmentDigestEmail) -> dict[str, str]:
+    """Template tokens available to custom Work digest emails."""
+
+    return {
+        "assignee_name": invite.assignee_name,
+        "cadence": invite.cadence,
+        "cadence_label": invite.cadence.capitalize(),
+        "item_count": str(invite.item_count),
+        "follow_up_due_count": str(invite.follow_up_due_count),
+        "ready_count": str(invite.ready_count),
+        "attention_count": str(invite.attention_count),
+        "in_flight_count": str(invite.in_flight_count),
+        "done_count": str(invite.done_count),
+        "items_block": _work_assignment_digest_items_block(invite),
+    }
+
+
+# System default branded templates seeded per entity (EMAIL channel, v1).
+# These are tokenized equivalents of the in-code renderers above; editing or
+# seeding templates never sends a message. Shared by the Alembic data seed
+# (20260608_0037) and the API/test seed helper in
+# apps/api/routers/branded_templates.py.
+SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
+    {
+        "key": "work_assignment_notification",
+        "channel": "email",
+        "provider": "sendgrid",
+        "name": "Standard assignment notice",
+        "subject_template": "Leasium work assigned: {{title}}",
+        "body_template": (
+            "Hi {{assignee_name}},\n"
+            "\n"
+            "{{work_kind}} has been assigned to you in Leasium.\n"
+            "\n"
+            "Work: {{title}}\n"
+            "Due: {{due_date}}\n"
+            "Assigned by: {{assigned_by_name}}\n"
+            "Details: {{description}}\n"
+            "Open work: {{work_url}}\n"
+            "\n"
+            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "\n"
+            "Leasium"
+        ),
+        "notes": "System default; editing templates does not send any message.",
+    },
+    {
+        "key": "work_assignment_follow_up",
+        "channel": "email",
+        "provider": "sendgrid",
+        "name": "Follow-up assignment notice",
+        "subject_template": "Leasium work follow-up needed: {{title}}",
+        "body_template": (
+            "Hi {{assignee_name}},\n"
+            "\n"
+            "A follow-up is due on {{work_kind}} work assigned to you in Leasium.\n"
+            "\n"
+            "Work: {{title}}\n"
+            "Due: {{due_date}}\n"
+            "Assigned by: {{assigned_by_name}}\n"
+            "Details: {{description}}\n"
+            "Open work: {{work_url}}\n"
+            "\n"
+            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "\n"
+            "Leasium"
+        ),
+        "notes": "System default; editing templates does not send any message.",
+    },
+    {
+        "key": "work_assignment_digest",
+        "channel": "email",
+        "provider": "sendgrid",
+        "name": "Standard work digest",
+        "subject_template": "Leasium {{cadence_label}} Work digest: {{item_count}} items",
+        "body_template": (
+            "Hi {{assignee_name}},\n"
+            "\n"
+            "Your {{cadence}} Leasium Work digest is ready.\n"
+            "\n"
+            "Open items: {{item_count}}\n"
+            "Follow-ups due: {{follow_up_due_count}}\n"
+            "Attention: {{attention_count}}\n"
+            "Ready notices: {{ready_count}}\n"
+            "\n"
+            "{{items_block}}\n"
+            "\n"
+            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "\n"
+            "Leasium"
+        ),
+        "notes": "System default; editing templates does not send any message.",
+    },
+    {
+        "key": "work_assignment_digest_owner_review",
+        "channel": "email",
+        "provider": "sendgrid",
+        "name": "Owner review digest",
+        "subject_template": "Leasium owner review digest: {{item_count}} items",
+        "body_template": (
+            "Hi {{assignee_name}},\n"
+            "\n"
+            "Your {{cadence}} Leasium owner review digest is ready. It highlights\n"
+            "owner-facing review items, approvals, blockers, and overdue follow-ups.\n"
+            "\n"
+            "Open items: {{item_count}}\n"
+            "Follow-ups due: {{follow_up_due_count}}\n"
+            "Attention: {{attention_count}}\n"
+            "Ready notices: {{ready_count}}\n"
+            "\n"
+            "{{items_block}}\n"
+            "\n"
+            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "\n"
+            "Leasium"
+        ),
+        "notes": "System default; editing templates does not send any message.",
+    },
+]
+
+
 def _email_subject(invite: TenantOnboardingInvite) -> str:
     if invite.template_key == "tenant_lease_pack":
         return f"Your lease pack is ready for {invite.property_name}"
@@ -320,10 +518,20 @@ def _operator_invite_subject(invite: OperatorInviteEmail) -> str:
 
 
 def _work_assignment_subject(invite: WorkAssignmentEmail) -> str:
+    if invite.custom_subject_template is not None:
+        return render_template_string(
+            invite.custom_subject_template,
+            work_assignment_email_context(invite),
+        )
     return f"Leasium work assigned: {invite.title}"
 
 
 def _work_assignment_digest_subject(invite: WorkAssignmentDigestEmail) -> str:
+    if invite.custom_subject_template is not None:
+        return render_template_string(
+            invite.custom_subject_template,
+            work_assignment_digest_context(invite),
+        )
     cadence = invite.cadence.capitalize()
     return f"Leasium {cadence} Work digest: {invite.item_count} items"
 
@@ -531,6 +739,11 @@ def _operator_invite_html(invite: OperatorInviteEmail) -> str:
 
 
 def _work_assignment_text(invite: WorkAssignmentEmail) -> str:
+    if invite.custom_body_template is not None:
+        return render_template_string(
+            invite.custom_body_template,
+            work_assignment_email_context(invite),
+        )
     greeting = f"Hi {invite.assignee_name}," if invite.assignee_name else "Hi,"
     work_url = f"\nOpen work: {invite.work_url}" if invite.work_url else ""
     assigned_by = (
@@ -559,6 +772,11 @@ def _work_assignment_text(invite: WorkAssignmentEmail) -> str:
 
 
 def _work_assignment_sms_body(invite: WorkAssignmentSms) -> str:
+    if invite.custom_body_template is not None:
+        return render_template_string(
+            invite.custom_body_template,
+            work_assignment_sms_context(invite),
+        )
     due = _date_label(invite.due_date)
     work_url = f" {invite.work_url}" if invite.work_url else ""
     return (
@@ -569,6 +787,8 @@ def _work_assignment_sms_body(invite: WorkAssignmentSms) -> str:
 
 
 def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
+    if invite.custom_body_template is not None:
+        return _text_as_html(_work_assignment_text(invite))
     greeting = f"Hi {escape(invite.assignee_name)}," if invite.assignee_name else "Hi,"
     work_url = (
         f'<p><a href="{escape(invite.work_url)}">Open assigned work</a></p>'
@@ -604,6 +824,11 @@ def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
 
 
 def _work_assignment_digest_text(invite: WorkAssignmentDigestEmail) -> str:
+    if invite.custom_body_template is not None:
+        return render_template_string(
+            invite.custom_body_template,
+            work_assignment_digest_context(invite),
+        )
     greeting = f"Hi {invite.assignee_name}," if invite.assignee_name else "Hi,"
     lines = [
         greeting,
@@ -616,18 +841,9 @@ def _work_assignment_digest_text(invite: WorkAssignmentDigestEmail) -> str:
         f"Ready notices: {invite.ready_count}",
         "",
     ]
-    for item in invite.items[:10]:
-        follow_up = " - follow-up due" if item.follow_up_due else ""
-        lines.extend(
-            [
-                f"- {item.title}{follow_up}",
-                f"  Type: {item.work_kind}",
-                f"  Due: {_date_label(item.due_date)}",
-                f"  Status: {item.status}",
-            ]
-        )
-        if item.work_url:
-            lines.append(f"  Open: {item.work_url}")
+    items_block = _work_assignment_digest_items_block(invite)
+    if items_block:
+        lines.append(items_block)
     lines.extend(
         [
             "",
@@ -640,6 +856,8 @@ def _work_assignment_digest_text(invite: WorkAssignmentDigestEmail) -> str:
 
 
 def _work_assignment_digest_html(invite: WorkAssignmentDigestEmail) -> str:
+    if invite.custom_body_template is not None:
+        return _text_as_html(_work_assignment_digest_text(invite))
     greeting = f"Hi {escape(invite.assignee_name)}," if invite.assignee_name else "Hi,"
     item_rows = []
     for item in invite.items[:10]:

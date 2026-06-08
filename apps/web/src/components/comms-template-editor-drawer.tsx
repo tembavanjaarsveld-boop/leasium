@@ -1,6 +1,6 @@
 "use client";
 
-import { Power, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Eye, Power, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { DetailDrawer } from "@/components/detail-drawer";
@@ -16,7 +16,10 @@ import {
   ApiError,
   type BrandedCommunicationTemplateCreatePayload,
   type BrandedCommunicationTemplateRecord,
+  type BrandedCommunicationTemplateRenderPreviewRecord,
   type BrandedCommunicationTemplateUpdatePayload,
+  type BrandedCommunicationTemplateVersionCreatePayload,
+  renderBrandedCommunicationTemplatePreview,
 } from "@/lib/api";
 import { cn, friendlyError } from "@/lib/utils";
 
@@ -59,6 +62,11 @@ export type CommsTemplateEditorAction =
       payload: BrandedCommunicationTemplateUpdatePayload;
     }
   | {
+      type: "save_version";
+      templateId: string;
+      payload: BrandedCommunicationTemplateVersionCreatePayload;
+    }
+  | {
       type: "delete";
       templateId: string;
     };
@@ -67,6 +75,7 @@ export function CommsTemplateEditorDrawer({
   open,
   mode,
   template,
+  templateHistory,
   entityId,
   onClose,
   onSaved,
@@ -74,6 +83,7 @@ export function CommsTemplateEditorDrawer({
   open: boolean;
   mode: "create" | "edit";
   template: BrandedCommunicationTemplateRecord | null;
+  templateHistory: BrandedCommunicationTemplateRecord[];
   entityId: string | null;
   onClose: () => void;
   onSaved: (action: CommsTemplateEditorAction) => Promise<void>;
@@ -93,11 +103,18 @@ export function CommsTemplateEditorDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [renderedPreview, setRenderedPreview] =
+    useState<BrandedCommunicationTemplateRenderPreviewRecord | null>(null);
+  const [isRendering, setIsRendering] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setErrorMessage(null);
     setConfirmDelete(false);
+    setRenderedPreview(null);
+    setIsRendering(false);
+    setRenderError(null);
     if (mode === "edit" && template) {
       setKey(template.key);
       setVersion(template.version);
@@ -143,6 +160,15 @@ export function CommsTemplateEditorDrawer({
     actionLabel: renderTemplateSample(actionLabel),
     actionUrl: renderTemplateSample(actionUrlTemplate),
   };
+  const previewEntityId = entityId ?? template?.entity_id ?? null;
+  const renderDisabled =
+    isRendering || !previewEntityId || !key.trim() || !bodyTemplate.trim();
+  const versionHistory =
+    mode === "edit"
+      ? [...templateHistory].sort(
+          (a, b) => versionNumber(b.version) - versionNumber(a.version),
+        )
+      : [];
 
   async function runAction(action: CommsTemplateEditorAction) {
     setIsSubmitting(true);
@@ -194,6 +220,28 @@ export function CommsTemplateEditorDrawer({
     }
 
     if (!template) return;
+    const contentChanged =
+      name.trim() !== template.name ||
+      nullableText(subjectTemplate) !== template.subject_template ||
+      bodyTemplate !== template.body_template ||
+      nullableText(actionLabel) !== template.action_label ||
+      nullableText(actionUrlTemplate) !== template.action_url_template ||
+      nullableText(notes) !== template.notes;
+    if (contentChanged) {
+      void runAction({
+        type: "save_version",
+        templateId: template.id,
+        payload: {
+          name: name.trim(),
+          subject_template: nullableText(subjectTemplate),
+          body_template: bodyTemplate,
+          action_label: nullableText(actionLabel),
+          action_url_template: nullableText(actionUrlTemplate),
+          notes: nullableText(notes),
+        },
+      });
+      return;
+    }
     void runAction({
       type: "update",
       templateId: template.id,
@@ -208,6 +256,28 @@ export function CommsTemplateEditorDrawer({
         metadata: template.metadata,
       },
     });
+  }
+
+  async function loadRenderedPreview() {
+    if (!previewEntityId || !key.trim() || !bodyTemplate.trim()) return;
+    setIsRendering(true);
+    setRenderError(null);
+    try {
+      const preview = await renderBrandedCommunicationTemplatePreview({
+        entity_id: previewEntityId,
+        key: key.trim(),
+        channel,
+        subject_template: nullableText(subjectTemplate),
+        body_template: bodyTemplate,
+      });
+      setRenderedPreview(preview);
+    } catch (error) {
+      setRenderError(
+        error instanceof ApiError ? error.message : friendlyError(error),
+      );
+    } finally {
+      setIsRendering(false);
+    }
   }
 
   function toggleActive() {
@@ -371,6 +441,66 @@ export function CommsTemplateEditorDrawer({
             </div>
           ) : null}
         </section>
+        <section
+          aria-label="Rendered preview"
+          className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3"
+          role="region"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
+              Rendered preview
+            </p>
+            <StatusBadge tone="neutral">Review only</StatusBadge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                void loadRenderedPreview();
+              }}
+              disabled={renderDisabled}
+            >
+              <Eye size={15} />
+              {isRendering
+                ? "Rendering…"
+                : renderedPreview
+                  ? "Refresh rendered preview"
+                  : "Render with sample data"}
+            </SecondaryButton>
+            <p className="text-xs text-muted-foreground">
+              Server-rendered with fictional sample data; the instant sample
+              preview above stays available while you edit.
+            </p>
+          </div>
+          {renderError ? (
+            <p
+              role="alert"
+              className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+            >
+              {renderError}
+            </p>
+          ) : null}
+          {renderedPreview ? (
+            <>
+              {renderedPreview.subject ? (
+                <div className="grid gap-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Subject
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {renderedPreview.subject}
+                  </p>
+                </div>
+              ) : null}
+              <div className="grid gap-1">
+                <p className="text-xs font-medium text-muted-foreground">Body</p>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                  {renderedPreview.body}
+                </p>
+              </div>
+            </>
+          ) : null}
+        </section>
         <Field label="Notes">
           <textarea
             value={notes}
@@ -387,6 +517,43 @@ export function CommsTemplateEditorDrawer({
           <span>Active template</span>
         </label>
 
+        {versionHistory.length > 0 ? (
+          <details className="rounded-xl border border-border bg-muted/10">
+            <summary className="min-h-11 cursor-pointer px-3 py-2.5 text-sm font-medium text-foreground">
+              Version history ({versionHistory.length})
+            </summary>
+            <ul
+              aria-label="Template versions"
+              className="divide-y divide-border border-t border-border"
+            >
+              {versionHistory.map((row) => (
+                <li
+                  key={row.id}
+                  aria-label={`Version ${row.version}`}
+                  className="grid gap-1.5 px-3 py-2.5"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {row.version}
+                    </span>
+                    <StatusBadge tone={row.is_active ? "success" : "neutral"}>
+                      {row.is_active ? "Active" : "Inactive"}
+                    </StatusBadge>
+                    <span className="text-xs text-muted-foreground">
+                      Updated {formatVersionDate(row.updated_at)}
+                    </span>
+                  </div>
+                  {row.id !== template?.id ? (
+                    <p className="whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                      {row.body_template}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+
         {errorMessage ? (
           <p
             role="alert"
@@ -400,6 +567,12 @@ export function CommsTemplateEditorDrawer({
           <p className="text-xs leading-5 text-muted-foreground">
             {FOOTER_NOTE}
           </p>
+          {mode === "edit" ? (
+            <p className="text-xs text-muted-foreground">
+              Saving content changes stores the next version and keeps prior
+              versions readable in version history.
+            </p>
+          ) : null}
           {template?.is_system ? (
             <p className="text-xs text-muted-foreground">
               System templates cannot be deleted; deactivate instead.
@@ -461,4 +634,15 @@ function renderTemplateSample(value: string) {
     const sample = SAMPLE_TEMPLATE_VALUES[token];
     return sample ?? match;
   });
+}
+
+function versionNumber(version: string) {
+  const match = /^v(\d+)$/.exec(version.trim());
+  return match ? Number(match[1]) : 0;
+}
+
+function formatVersionDate(value: string) {
+  return new Intl.DateTimeFormat("en-AU", { dateStyle: "medium" }).format(
+    new Date(value),
+  );
 }

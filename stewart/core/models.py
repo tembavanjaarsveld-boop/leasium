@@ -1272,6 +1272,9 @@ class BrandedCommunicationTemplate(Base):
     created_by_user_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("app_user.id")
     )
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )

@@ -1,12 +1,27 @@
-"""Branded communication template read-only API tests."""
+"""Branded communication template API tests (reads, CRUD, versioning, preview)."""
 
-from uuid import UUID
+from datetime import date
+from uuid import UUID, uuid4
 
+from apps.api.routers.branded_templates import seed_system_branded_templates
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from stewart.core.db import utcnow
-from stewart.core.models import BrandedCommunicationTemplate, Entity
+from stewart.core.models import (
+    AuditAction,
+    BrandedCommunicationTemplate,
+    Entity,
+    UserEntityRole,
+    UserRole,
+)
+from stewart.core.settings import get_settings
+from stewart.integrations.communications import (
+    WorkAssignmentEmail,
+    render_template_string,
+    render_work_assignment_email_preview,
+    work_assignment_email_context,
+)
 
 
 def _entity_id(session: Session) -> str:
@@ -250,3 +265,287 @@ def test_branded_template_writes_require_entity_access(
     foreign = _seed_template(session, entity_id=other.id, key="invoice_delivery")
     patch = client.patch(f"{BASE}/{foreign.id}", json={"name": "nope"})
     assert patch.status_code == 403
+
+
+SYSTEM_SEED_KEYS = {
+    "work_assignment_notification",
+    "work_assignment_follow_up",
+    "work_assignment_digest",
+    "work_assignment_digest_owner_review",
+}
+
+
+def test_seeded_system_templates_exist_for_demo_entity(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id_str = _entity_id(session)
+    entity_id = UUID(entity_id_str)
+
+    created = seed_system_branded_templates(session, entity_id)
+    session.commit()
+    assert {template.key for template in created} == SYSTEM_SEED_KEYS
+
+    # Insert-if-missing: a second run seeds nothing.
+    assert seed_system_branded_templates(session, entity_id) == []
+    session.commit()
+
+    response = client.get(BASE, params={"entity_id": entity_id_str})
+    assert response.status_code == 200
+    seeded = [row for row in response.json() if row["key"] in SYSTEM_SEED_KEYS]
+    assert {row["key"] for row in seeded} == SYSTEM_SEED_KEYS
+    for row in seeded:
+        assert row["version"] == "v1"
+        assert row["channel"] == "email"
+        assert row["provider"] == "sendgrid"
+        assert row["is_system"] is True
+        assert row["is_active"] is True
+        assert "{{" in row["body_template"]
+
+
+def test_seeded_notice_template_renders_identical_to_managed_default(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    seed_system_branded_templates(session, entity_id)
+    session.commit()
+
+    seeded = session.scalar(
+        select(BrandedCommunicationTemplate).where(
+            BrandedCommunicationTemplate.entity_id == entity_id,
+            BrandedCommunicationTemplate.key == "work_assignment_notification",
+            BrandedCommunicationTemplate.version == "v1",
+        )
+    )
+    assert seeded is not None
+    assert seeded.subject_template is not None
+
+    invite = WorkAssignmentEmail(
+        target_id=uuid4(),
+        target_type="maintenance_work_order",
+        entity_id=entity_id,
+        work_kind="Maintenance",
+        title="Replace shopfront lock",
+        description="Rear lock is sticking.",
+        due_date=date(2026, 6, 12),
+        assignee_name="Avery Operator",
+        assignee_email="avery.operator@example.com",
+        assigned_by_name="Temba van Jaarsveld",
+        work_url="https://leasium.ai/operations/maintenance/test",
+        template_key="work_assignment_notification",
+        template_version="v1",
+    )
+    managed = render_work_assignment_email_preview(invite)
+    context = work_assignment_email_context(invite)
+
+    assert render_template_string(seeded.subject_template, context) == managed.subject
+    assert render_template_string(seeded.body_template, context) == managed.body_text
+
+
+def test_save_version_creates_new_active_version_and_deactivates_prior(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    created = client.post(BASE, json=_create_payload(entity_id)).json()
+
+    response = client.post(
+        f"{BASE}/{created['id']}/versions",
+        json={"body_template": "Updated body copy for v2.", "notes": "Second pass."},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["version"] == "v2"
+    assert body["key"] == created["key"]
+    assert body["is_active"] is True
+    assert body["is_system"] is False
+    assert body["body_template"] == "Updated body copy for v2."
+    assert body["notes"] == "Second pass."
+    # Omitted fields inherit the source row.
+    assert body["subject_template"] == created["subject_template"]
+    assert body["name"] == created["name"]
+    assert body["created_by_user_id"]
+    assert body["updated_by_user_id"]
+
+    prior = client.get(f"{BASE}/{created['id']}").json()
+    assert prior["is_active"] is False
+    assert prior["deleted_at"] is None
+    assert prior["updated_by_user_id"]
+
+    active = client.get(BASE, params={"entity_id": entity_id}).json()
+    active_versions = [row["version"] for row in active if row["key"] == created["key"]]
+    assert active_versions == ["v2"]
+
+    audit = session.scalar(
+        select(AuditAction).where(AuditAction.tool_name == "branded_template.save_version")
+    )
+    assert audit is not None
+    assert "does not send any message" in (audit.tool_output_summary or "")
+
+
+def test_save_version_preserves_full_history_via_include_inactive(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    created = client.post(BASE, json=_create_payload(entity_id)).json()
+
+    second = client.post(
+        f"{BASE}/{created['id']}/versions",
+        json={"body_template": "Body copy v2."},
+    )
+    assert second.status_code == 201, second.text
+    third = client.post(
+        f"{BASE}/{second.json()['id']}/versions",
+        json={"body_template": "Body copy v3."},
+    )
+    assert third.status_code == 201, third.text
+    assert third.json()["version"] == "v3"
+
+    history = client.get(
+        BASE,
+        params={"entity_id": entity_id, "include_inactive": True},
+    ).json()
+    versions = sorted(row["version"] for row in history if row["key"] == created["key"])
+    assert versions == ["v1", "v2", "v3"]
+
+    active = client.get(BASE, params={"entity_id": entity_id}).json()
+    active_versions = [row["version"] for row in active if row["key"] == created["key"]]
+    assert active_versions == ["v3"]
+
+
+def test_save_version_on_system_template_creates_operator_row_and_keeps_system_row(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    system = _seed_template(session, entity_id=entity_id, is_system=True)
+
+    response = client.post(
+        f"{BASE}/{system.id}/versions",
+        json={"body_template": "Operator-edited body."},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["version"] == "v2"
+    assert body["is_system"] is False
+    assert body["is_active"] is True
+
+    session.refresh(system)
+    assert system.is_system is True
+    assert system.is_active is False
+    assert system.deleted_at is None
+
+
+def test_save_version_requires_entity_write_role(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert entity is not None
+    settings = get_settings()
+    viewer_entity = Entity(
+        organisation_id=entity.organisation_id, name="Viewer Only Pty Ltd"
+    )
+    session.add(viewer_entity)
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=settings.dev_user_id,
+            entity_id=viewer_entity.id,
+            role=UserRole.viewer,
+        )
+    )
+    session.commit()
+    template = _seed_template(
+        session, entity_id=viewer_entity.id, key="invoice_delivery", is_system=False
+    )
+
+    response = client.post(
+        f"{BASE}/{template.id}/versions",
+        json={"body_template": "Viewer should not be able to save versions."},
+    )
+
+    assert response.status_code == 403
+
+
+def test_render_preview_returns_sample_rendered_subject_body(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    response = client.post(
+        f"{BASE}/render-preview",
+        json={
+            "entity_id": entity_id,
+            "key": "work_assignment_notification",
+            "channel": "email",
+            "subject_template": "Notice: {{title}}",
+            "body_template": (
+                "Hi {{assignee_name}}, due {{due_date}}. {{unknown_token}} stays."
+            ),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["subject"] == "Notice: Replace shopfront lock"
+    assert body["body"] == "Hi Avery Operator, due 12 Jun 2026. {{unknown_token}} stays."
+    assert body["guardrails"][0].startswith("Render preview is review-only")
+
+
+def test_render_preview_is_review_only_persists_nothing(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    template_count_before = session.scalar(
+        select(func.count()).select_from(BrandedCommunicationTemplate)
+    )
+    audit_count_before = session.scalar(select(func.count()).select_from(AuditAction))
+
+    response = client.post(
+        f"{BASE}/render-preview",
+        json={
+            "entity_id": entity_id,
+            "key": "work_assignment_digest",
+            "channel": "email",
+            "body_template": "Hi {{assignee_name}},\n\n{{items_block}}",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert "Replace shopfront lock" in response.json()["body"]
+    template_count_after = session.scalar(
+        select(func.count()).select_from(BrandedCommunicationTemplate)
+    )
+    audit_count_after = session.scalar(select(func.count()).select_from(AuditAction))
+    assert template_count_after == template_count_before
+    assert audit_count_after == audit_count_before
+
+
+def test_render_preview_requires_entity_read_role(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert entity is not None
+    other = Entity(organisation_id=entity.organisation_id, name="No Read Access Pty Ltd")
+    session.add(other)
+    session.commit()
+
+    response = client.post(
+        f"{BASE}/render-preview",
+        json={
+            "entity_id": str(other.id),
+            "key": "work_assignment_notification",
+            "channel": "email",
+            "body_template": "Hi {{assignee_name}}.",
+        },
+    )
+
+    assert response.status_code == 403

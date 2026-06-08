@@ -68,6 +68,7 @@ import {
   type CommsKind,
   type CommsSeverity,
   createBrandedCommunicationTemplate,
+  createBrandedCommunicationTemplateVersion,
   deleteBrandedCommunicationTemplate,
   dismissCommsCandidate,
   dispatchCommsDraft,
@@ -765,6 +766,16 @@ function CommsContent() {
       storeTemplateCatalogRecord(record);
     },
   });
+  const saveTemplateVersionMutation = useMutation({
+    mutationFn: ({
+      templateId,
+      payload,
+    }: Extract<CommsTemplateEditorAction, { type: "save_version" }>) =>
+      createBrandedCommunicationTemplateVersion(templateId, payload),
+    onSuccess: (record) => {
+      storeTemplateCatalogRecord(record);
+    },
+  });
   const deleteTemplateMutation = useMutation({
     mutationFn: ({
       templateId,
@@ -783,6 +794,10 @@ function CommsContent() {
     }
     if (action.type === "update") {
       await updateTemplateMutation.mutateAsync(action);
+      return;
+    }
+    if (action.type === "save_version") {
+      await saveTemplateVersionMutation.mutateAsync(action);
       return;
     }
     await deleteTemplateMutation.mutateAsync(action);
@@ -878,6 +893,13 @@ function CommsContent() {
       ),
     [storedTemplates],
   );
+  const templateEditorHistory = useMemo(() => {
+    const editingKey = templateEditorState?.template?.key;
+    if (!editingKey) return [];
+    return storedTemplates.filter(
+      (template) => template.key === editingKey && !template.deleted_at,
+    );
+  }, [storedTemplates, templateEditorState]);
   const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
   const [reviewCsvCopyReceipt, setReviewCsvCopyReceipt] = useState<string | null>(
     null,
@@ -1200,6 +1222,7 @@ function CommsContent() {
         open={Boolean(templateEditorState)}
         mode={templateEditorState?.mode ?? "create"}
         template={templateEditorState?.template ?? null}
+        templateHistory={templateEditorHistory}
         entityId={selectedEntityId || null}
         onClose={() => setTemplateEditorState(null)}
         onSaved={handleTemplateEditorSaved}

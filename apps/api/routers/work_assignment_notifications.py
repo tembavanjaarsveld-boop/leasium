@@ -73,6 +73,7 @@ from apps.api.work_assignments import (
     assignment_notification_sms_message_matches,
     record_work_assignment_delivery,
     record_work_assignment_sms_delivery,
+    resolve_branded_template,
     work_assignment_email_invite,
     work_assignment_email_preference_enabled,
     work_assignment_email_preference_skipped_result,
@@ -1117,7 +1118,13 @@ def _digest_email_invite(
     *,
     entity_id: UUID,
     generated_at: datetime,
+    session: Session | None = None,
 ) -> WorkAssignmentDigestEmail:
+    template_key = _digest_template_key(member)
+    template_version = _digest_template_version(member)
+    custom_template = resolve_branded_template(session, entity_id, template_key, "email")
+    if custom_template is not None:
+        template_version = custom_template.version
     return WorkAssignmentDigestEmail(
         entity_id=entity_id,
         assignee_user_id=digest.assignee_user_id,
@@ -1143,8 +1150,14 @@ def _digest_email_invite(
             )
             for item in digest.items
         ],
-        template_key=_digest_template_key(member),
-        template_version=_digest_template_version(member),
+        template_key=template_key,
+        template_version=template_version,
+        custom_subject_template=(
+            custom_template.subject_template if custom_template is not None else None
+        ),
+        custom_body_template=(
+            custom_template.body_template if custom_template is not None else None
+        ),
     )
 
 
@@ -1156,6 +1169,7 @@ def _record_digest_receipt(
     generated_at: datetime,
     payload: WorkAssignmentDigestRun,
     delivery_result: DeliveryResult | None = None,
+    session: Session | None = None,
 ) -> dict[str, Any]:
     preferences = _metadata_record(member.notification_preferences)
     raw_history = preferences.get("work_assignment_digest_history")
@@ -1183,6 +1197,7 @@ def _record_digest_receipt(
                 member,
                 entity_id=entity_id,
                 generated_at=generated_at,
+                session=session,
             )
         )
     )
@@ -1759,6 +1774,7 @@ def _generate_work_assignment_digest(
                         member,
                         entity_id=payload.entity_id,
                         generated_at=generated_at,
+                        session=session,
                     ),
                     settings,
                 )
@@ -1781,6 +1797,7 @@ def _generate_work_assignment_digest(
             generated_at=generated_at,
             payload=payload,
             delivery_result=delivery_result,
+            session=session,
         )
         digest.delivery_trigger = _metadata_text(receipt.get("delivery_trigger"))
         digest.recovery_of_generated_at = _metadata_datetime(

@@ -118,6 +118,7 @@ export type BrandedCommunicationTemplateRecord = {
   is_active: boolean;
   is_system: boolean;
   created_by_user_id: string | null;
+  updated_by_user_id: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -149,6 +150,32 @@ export type BrandedCommunicationTemplateUpdatePayload = {
   notes?: string | null;
   is_active?: boolean | null;
   metadata?: Record<string, unknown> | null;
+};
+
+export type BrandedCommunicationTemplateVersionCreatePayload = {
+  name?: string | null;
+  subject_template?: string | null;
+  body_template?: string | null;
+  action_label?: string | null;
+  action_url_template?: string | null;
+  notes?: string | null;
+};
+
+export type BrandedCommunicationTemplateRenderPreviewPayload = {
+  entity_id: string;
+  key: string;
+  channel: BrandedCommunicationTemplateRecord["channel"];
+  subject_template?: string | null;
+  body_template: string;
+};
+
+export type BrandedCommunicationTemplateRenderPreviewRecord = {
+  entity_id: string;
+  key: string;
+  channel: BrandedCommunicationTemplateRecord["channel"];
+  subject: string | null;
+  body: string;
+  guardrails: string[];
 };
 
 export type WorkAssignmentDigestItemRecord = {
@@ -4406,6 +4433,31 @@ export function deleteBrandedCommunicationTemplate(templateId: string) {
     `/branded-communication-templates/${templateId}`,
     {
       method: "DELETE",
+    },
+  );
+}
+
+export function createBrandedCommunicationTemplateVersion(
+  templateId: string,
+  payload: BrandedCommunicationTemplateVersionCreatePayload,
+) {
+  return request<BrandedCommunicationTemplateRecord>(
+    `/branded-communication-templates/${templateId}/versions`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function renderBrandedCommunicationTemplatePreview(
+  payload: BrandedCommunicationTemplateRenderPreviewPayload,
+) {
+  return request<BrandedCommunicationTemplateRenderPreviewRecord>(
+    "/branded-communication-templates/render-preview",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
     },
   );
 }

@@ -16,6 +16,11 @@ from stewart.integrations.communications import (
     WorkAssignmentDigestEmail,
     WorkAssignmentDigestEmailItem,
     WorkAssignmentEmail,
+    WorkAssignmentSms,
+    render_template_string,
+    render_work_assignment_digest_email_preview,
+    render_work_assignment_email_preview,
+    render_work_assignment_sms_preview,
     send_contractor_work_order_email,
     send_contractor_work_order_sms,
     send_operator_invite_email,
@@ -350,3 +355,194 @@ def test_work_assignment_digest_sendgrid_categories_and_args(
     assert custom_args["work_assignment_digest_assignee_user_id"] == str(assignee_id)
     assert custom_args["work_assignment_digest_cadence"] == "daily"
     assert custom_args["work_assignment_digest_generated_at"] == generated_at.isoformat()
+
+
+def _work_assignment_email_invite(**overrides: object) -> WorkAssignmentEmail:
+    base: dict[str, object] = {
+        "target_id": uuid4(),
+        "target_type": "maintenance_work_order",
+        "entity_id": uuid4(),
+        "work_kind": "Maintenance",
+        "title": "Replace shopfront lock",
+        "description": "Rear lock is sticking.",
+        "due_date": date(2026, 5, 28),
+        "assignee_name": "Temba van Jaarsveld",
+        "assignee_email": "temba@example.com",
+        "assigned_by_name": "Owner Operator",
+        "work_url": "https://leasium.ai/operations/maintenance/test",
+        "template_key": "work_assignment_notification",
+        "template_version": "v1",
+    }
+    base.update(overrides)
+    return WorkAssignmentEmail(**base)  # type: ignore[arg-type]
+
+
+def _work_assignment_sms_invite(**overrides: object) -> WorkAssignmentSms:
+    base: dict[str, object] = {
+        "target_id": uuid4(),
+        "target_type": "maintenance_work_order",
+        "entity_id": uuid4(),
+        "work_kind": "Maintenance",
+        "title": "Replace shopfront lock",
+        "description": "Rear lock is sticking.",
+        "due_date": date(2026, 5, 28),
+        "assignee_name": "Temba van Jaarsveld",
+        "assignee_phone": "+61400111222",
+        "assigned_by_name": "Owner Operator",
+        "work_url": "https://leasium.ai/operations/maintenance/test",
+        "template_key": "work_assignment_notification",
+        "template_version": "v1",
+    }
+    base.update(overrides)
+    return WorkAssignmentSms(**base)  # type: ignore[arg-type]
+
+
+def _work_assignment_digest_invite(**overrides: object) -> WorkAssignmentDigestEmail:
+    base: dict[str, object] = {
+        "entity_id": uuid4(),
+        "assignee_user_id": uuid4(),
+        "assignee_name": "Temba van Jaarsveld",
+        "assignee_email": "temba@example.com",
+        "cadence": "daily",
+        "generated_at": datetime(2026, 5, 21, 8, 0, tzinfo=UTC),
+        "item_count": 1,
+        "follow_up_due_count": 1,
+        "ready_count": 1,
+        "attention_count": 0,
+        "in_flight_count": 0,
+        "done_count": 0,
+        "items": [
+            WorkAssignmentDigestEmailItem(
+                title="Replace shopfront lock",
+                work_kind="Maintenance",
+                due_date=date(2026, 5, 28),
+                status="requested",
+                priority="urgent",
+                follow_up_due=True,
+                work_url="https://leasium.ai/operations/maintenance/test",
+            )
+        ],
+        "template_key": "work_assignment_digest",
+        "template_version": "v1",
+    }
+    base.update(overrides)
+    return WorkAssignmentDigestEmail(**base)  # type: ignore[arg-type]
+
+
+def test_render_template_string_substitutes_known_tokens_and_preserves_unknown() -> None:
+    rendered = render_template_string(
+        "Hi {{assignee_name}}, {{ title }} is due {{due_date}}. Keep {{unknown_token}}.",
+        {
+            "assignee_name": "Avery",
+            "title": "Lock fix",
+            "due_date": "12 Jun 2026",
+        },
+    )
+
+    assert rendered == "Hi Avery, Lock fix is due 12 Jun 2026. Keep {{unknown_token}}."
+
+
+def test_work_assignment_email_preview_uses_custom_subject_and_body_templates() -> None:
+    invite = _work_assignment_email_invite(
+        template_version="v2",
+        custom_subject_template="Custom: {{title}} for {{assignee_name}}",
+        custom_body_template=(
+            "Hello {{assignee_name}}, please review {{title}} by {{due_date}}."
+        ),
+    )
+
+    preview = render_work_assignment_email_preview(invite)
+
+    assert preview.subject == "Custom: Replace shopfront lock for Temba van Jaarsveld"
+    assert preview.body_text == (
+        "Hello Temba van Jaarsveld, please review Replace shopfront lock by 28 May 2026."
+    )
+    assert preview.template_version == "v2"
+
+
+def test_work_assignment_sms_preview_uses_custom_body_template() -> None:
+    invite = _work_assignment_sms_invite(
+        template_version="v2",
+        custom_body_template="Leasium: {{title}} due {{due_date}} {{work_url}}",
+    )
+
+    preview = render_work_assignment_sms_preview(invite)
+
+    assert preview.body_text == (
+        "Leasium: Replace shopfront lock due 28 May 2026 "
+        "https://leasium.ai/operations/maintenance/test"
+    )
+    assert preview.template_version == "v2"
+
+
+def test_digest_preview_renders_items_block_token() -> None:
+    invite = _work_assignment_digest_invite(
+        template_version="v2",
+        custom_body_template="Hi {{assignee_name}},\n\n{{items_block}}\n\nLeasium",
+    )
+
+    preview = render_work_assignment_digest_email_preview(invite)
+
+    assert preview.body_text == (
+        "Hi Temba van Jaarsveld,\n"
+        "\n"
+        "- Replace shopfront lock - follow-up due\n"
+        "  Type: Maintenance\n"
+        "  Due: 28 May 2026\n"
+        "  Status: requested\n"
+        "  Open: https://leasium.ai/operations/maintenance/test\n"
+        "\n"
+        "Leasium"
+    )
+    assert preview.template_version == "v2"
+
+
+def test_previews_unchanged_when_no_custom_template() -> None:
+    email_preview = render_work_assignment_email_preview(_work_assignment_email_invite())
+    assert email_preview.subject == "Leasium work assigned: Replace shopfront lock"
+    assert email_preview.body_text == (
+        "Hi Temba van Jaarsveld,\n"
+        "\n"
+        "Maintenance has been assigned to you in Leasium.\n"
+        "\n"
+        "Work: Replace shopfront lock\n"
+        "Due: 28 May 2026\n"
+        "Assigned by: Owner Operator\n"
+        "Details: Rear lock is sticking.\n"
+        "Open work: https://leasium.ai/operations/maintenance/test\n"
+        "\n"
+        "Please open Leasium to review the work, update status, or reassign if needed.\n"
+        "\n"
+        "Leasium"
+    )
+
+    sms_preview = render_work_assignment_sms_preview(_work_assignment_sms_invite())
+    assert sms_preview.body_text == (
+        "Leasium: Maintenance assigned to Temba van Jaarsveld: Replace shopfront lock. "
+        "Due: 28 May 2026. https://leasium.ai/operations/maintenance/test"
+    )
+
+    digest_preview = render_work_assignment_digest_email_preview(
+        _work_assignment_digest_invite()
+    )
+    assert digest_preview.subject == "Leasium Daily Work digest: 1 items"
+    assert digest_preview.body_text == (
+        "Hi Temba van Jaarsveld,\n"
+        "\n"
+        "Your daily Leasium Work digest is ready.\n"
+        "\n"
+        "Open items: 1\n"
+        "Follow-ups due: 1\n"
+        "Attention: 0\n"
+        "Ready notices: 1\n"
+        "\n"
+        "- Replace shopfront lock - follow-up due\n"
+        "  Type: Maintenance\n"
+        "  Due: 28 May 2026\n"
+        "  Status: requested\n"
+        "  Open: https://leasium.ai/operations/maintenance/test\n"
+        "\n"
+        "Please open Leasium to review the work, update status, or reassign if needed.\n"
+        "\n"
+        "Leasium"
+    )

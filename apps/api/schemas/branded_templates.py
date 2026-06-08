@@ -27,6 +27,7 @@ class BrandedTemplateRead(ApiModel):
     is_active: bool
     is_system: bool
     created_by_user_id: UUID | None
+    updated_by_user_id: UUID | None
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None
@@ -62,3 +63,31 @@ class BrandedTemplateUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=2_000)
     is_active: bool | None = None
     metadata: dict[str, Any] | None = None
+
+
+class BrandedTemplateVersionCreate(BaseModel):
+    """Snapshot edits as the next version; omitted fields inherit the source row."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    subject_template: str | None = Field(default=None, max_length=400)
+    body_template: str | None = Field(default=None, min_length=1, max_length=20_000)
+    action_label: str | None = Field(default=None, max_length=120)
+    action_url_template: str | None = Field(default=None, max_length=600)
+    notes: str | None = Field(default=None, max_length=2_000)
+
+
+class BrandedTemplateRenderPreview(BaseModel):
+    entity_id: UUID
+    key: str = Field(min_length=1, max_length=120)
+    channel: BrandedTemplateChannel
+    subject_template: str | None = Field(default=None, max_length=400)
+    body_template: str = Field(min_length=1, max_length=20_000)
+
+
+class BrandedTemplateRenderPreviewRead(ApiModel):
+    entity_id: UUID
+    key: str
+    channel: BrandedTemplateChannel
+    subject: str | None
+    body: str
+    guardrails: list[str] = Field(default_factory=list)

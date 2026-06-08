@@ -16,7 +16,9 @@ async function watchForbiddenTemplateEditorCalls(page: Page) {
     const allowedTemplateMutation =
       method !== "GET" &&
       (path === "/branded-communication-templates" ||
-        /^\/branded-communication-templates\/[^/]+$/.test(path));
+        path === "/branded-communication-templates/render-preview" ||
+        /^\/branded-communication-templates\/[^/]+$/.test(path) ||
+        /^\/branded-communication-templates\/[^/]+\/versions$/.test(path));
     const isForbiddenSendPath =
       /email|sms|sendgrid|twilio|dispatch|dismiss|notification-center|invoice/i.test(
         path,
@@ -99,7 +101,9 @@ test("creates an operator template without touching send paths", async ({
   expect(forbiddenApiCalls).toEqual([]);
 });
 
-test("edits an operator template subject and body", async ({ page }) => {
+test("edits an operator template subject and body as a new version", async ({
+  page,
+}) => {
   const forbiddenApiCalls = await watchForbiddenTemplateEditorCalls(page);
 
   await page.goto("/comms");
@@ -119,15 +123,15 @@ test("edits an operator template subject and body", async ({ page }) => {
     .getByLabel("Body")
     .fill("Thanks {{tenant_name}}, your updated invoice is ready.");
 
-  const patchRequestPromise = page.waitForRequest(
+  const versionRequestPromise = page.waitForRequest(
     (request) =>
-      request.method() === "PATCH" &&
+      request.method() === "POST" &&
       requestPath(request.url()) ===
-        "/branded-communication-templates/branded-template-1",
+        "/branded-communication-templates/branded-template-1/versions",
   );
   await drawer.getByRole("button", { name: "Save template" }).click();
-  const patchRequest = await patchRequestPromise;
-  expect(patchRequest.postDataJSON()).toMatchObject({
+  const versionRequest = await versionRequestPromise;
+  expect(versionRequest.postDataJSON()).toMatchObject({
     subject_template: "Updated invoice {{invoice_number}}",
     body_template: "Thanks {{tenant_name}}, your updated invoice is ready.",
   });

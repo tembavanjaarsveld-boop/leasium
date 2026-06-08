@@ -98,6 +98,7 @@ const initialProperties = [
     xero_contact_id: "xero-owner-1",
     xero_tracking_category: "Queen Street",
     metadata: {
+      map_location: { lat: -27.4698, lng: 153.0251 },
       property_media: {
         primary_image: {
           title: "Queen Street Retail Centre frontage",
@@ -209,7 +210,7 @@ const initialProperties = [
     owner_gst_registered: true,
     xero_contact_id: "xero-owner-1",
     xero_tracking_category: "Queen Street Warehouse",
-    metadata: {},
+    metadata: { external_ref: "QSW-2019" },
   },
   {
     id: otherOwnerPropertyId,
@@ -902,6 +903,7 @@ const initialBrandedCommunicationTemplates = [
     is_active: true,
     is_system: false,
     created_by_user_id: operatorId,
+    updated_by_user_id: null as string | null,
     created_at: "2026-05-22T00:00:00.000Z",
     updated_at: "2026-05-22T00:00:00.000Z",
     deleted_at: null,
@@ -924,12 +926,36 @@ const initialBrandedCommunicationTemplates = [
     is_active: true,
     is_system: true,
     created_by_user_id: null,
+    updated_by_user_id: null as string | null,
     created_at: "2026-05-22T00:10:00.000Z",
     updated_at: "2026-05-22T00:10:00.000Z",
     deleted_at: null,
     metadata: {},
   },
 ];
+
+const brandedTemplateRenderPreviewSampleValues: Record<string, string> = {
+  assignee_name: "Avery Operator",
+  contractor_name: "Sample Contractor Pty Ltd",
+  due_date: "12 Jun 2026",
+  entity_name: "Acme Holdings Pty Ltd",
+  invoice_number: "INV-7300",
+  invoice_url: "https://leasium.ai/sample/invoices/INV-7300",
+  owner_name: "SKJ Property Pty Ltd",
+  property_name: "Harbour Lane",
+  tenant_name: "Sample Tenant Pty Ltd",
+  title: "Replace shopfront lock",
+  work_title: "Replace shopfront lock",
+  work_url: "https://leasium.ai/operations/maintenance/sample",
+};
+
+function renderBrandedTemplateSample(value: string) {
+  return value.replace(
+    /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g,
+    (match, token: string) =>
+      brandedTemplateRenderPreviewSampleValues[token] ?? match,
+  );
+}
 
 function tenantPortalDocumentsByCategory(category: string) {
   return tenantPortalDocuments.filter(
@@ -4336,6 +4362,16 @@ export async function mockLeasiumApi(
   };
 
   await page.route("https://images.example/**", async (route) => {
+    await route.fulfill({
+      body: tinyPropertyImagePng,
+      contentType: "image/png",
+      status: 200,
+    });
+  });
+
+  // Keep the Leaflet map deterministic and offline: OSM tile requests resolve
+  // to a tiny local PNG instead of hitting the public tile servers.
+  await page.route("https://*.tile.openstreetmap.org/**", async (route) => {
     await route.fulfill({
       body: tinyPropertyImagePng,
       contentType: "image/png",
@@ -8374,10 +8410,122 @@ export async function mockLeasiumApi(
         is_active: payload.is_active !== false,
         is_system: false,
         created_by_user_id: operatorId,
+        updated_by_user_id: operatorId,
         created_at: "2026-05-22T00:20:00.000Z",
         updated_at: "2026-05-22T00:20:00.000Z",
         deleted_at: null,
         metadata: jsonRecord(payload.metadata),
+      } as (typeof brandedCommunicationTemplates)[number];
+      brandedCommunicationTemplates.push(created);
+      await fulfillJson(route, created, 201);
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/branded-communication-templates/render-preview"
+    ) {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      await fulfillJson(route, {
+        entity_id: String(payload.entity_id ?? entityId),
+        key: String(payload.key ?? ""),
+        channel:
+          payload.channel === "sms" || payload.channel === "in_app"
+            ? payload.channel
+            : "email",
+        subject:
+          typeof payload.subject_template === "string"
+            ? renderBrandedTemplateSample(payload.subject_template)
+            : null,
+        body: renderBrandedTemplateSample(String(payload.body_template ?? "")),
+        guardrails: [
+          "Render preview is review-only; it saves nothing and never sends any message.",
+          "Sample data is fictional and only used to substitute template tokens.",
+        ],
+      });
+      return;
+    }
+
+    const brandedTemplateVersionsMatch = path.match(
+      /^\/branded-communication-templates\/([^/]+)\/versions$/,
+    );
+    if (method === "POST" && brandedTemplateVersionsMatch) {
+      const source = brandedCommunicationTemplates.find(
+        (template) => template.id === brandedTemplateVersionsMatch[1],
+      );
+      if (!source || source.deleted_at) {
+        await fulfillJson(route, { detail: "Template not found." }, 404);
+        return;
+      }
+
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      let highestVersion = 0;
+      for (const template of brandedCommunicationTemplates) {
+        if (
+          template.entity_id !== source.entity_id ||
+          template.key !== source.key ||
+          template.deleted_at
+        ) {
+          continue;
+        }
+        const versionMatch = /^v(\d+)$/.exec(template.version.trim());
+        if (versionMatch) {
+          highestVersion = Math.max(highestVersion, Number(versionMatch[1]));
+        }
+      }
+      for (const template of brandedCommunicationTemplates) {
+        if (
+          template.entity_id === source.entity_id &&
+          template.key === source.key &&
+          template.is_active &&
+          !template.deleted_at
+        ) {
+          template.is_active = false;
+          template.updated_by_user_id = operatorId;
+          template.updated_at = "2026-05-22T00:35:00.000Z";
+        }
+      }
+      const hasPayloadKey = (key: string) =>
+        Object.prototype.hasOwnProperty.call(payload, key);
+      const created = {
+        ...source,
+        id: `branded-template-${brandedCommunicationTemplates.length + 1}`,
+        version: `v${highestVersion + 1}`,
+        name:
+          typeof payload.name === "string" && payload.name
+            ? payload.name
+            : source.name,
+        subject_template: hasPayloadKey("subject_template")
+          ? typeof payload.subject_template === "string"
+            ? payload.subject_template
+            : null
+          : source.subject_template,
+        body_template:
+          typeof payload.body_template === "string" && payload.body_template
+            ? payload.body_template
+            : source.body_template,
+        action_label: hasPayloadKey("action_label")
+          ? typeof payload.action_label === "string"
+            ? payload.action_label
+            : null
+          : source.action_label,
+        action_url_template: hasPayloadKey("action_url_template")
+          ? typeof payload.action_url_template === "string"
+            ? payload.action_url_template
+            : null
+          : source.action_url_template,
+        notes: hasPayloadKey("notes")
+          ? typeof payload.notes === "string"
+            ? payload.notes
+            : null
+          : source.notes,
+        is_active: true,
+        is_system: false,
+        created_by_user_id: operatorId,
+        updated_by_user_id: operatorId,
+        created_at: "2026-05-22T00:35:00.000Z",
+        updated_at: "2026-05-22T00:35:00.000Z",
+        deleted_at: null,
       } as (typeof brandedCommunicationTemplates)[number];
       brandedCommunicationTemplates.push(created);
       await fulfillJson(route, created, 201);
@@ -8462,6 +8610,7 @@ export async function mockLeasiumApi(
         metadata: hasPayloadKey("metadata")
           ? jsonRecord(payload.metadata)
           : template.metadata,
+        updated_by_user_id: operatorId,
         updated_at: "2026-05-22T00:25:00.000Z",
       } as (typeof brandedCommunicationTemplates)[number];
       brandedCommunicationTemplates.splice(templateIndex, 1, updated);
@@ -8492,6 +8641,7 @@ export async function mockLeasiumApi(
       const deleted = {
         ...template,
         is_active: false,
+        updated_by_user_id: operatorId,
         updated_at: "2026-05-22T00:30:00.000Z",
         deleted_at: "2026-05-22T00:30:00.000Z",
       } as (typeof brandedCommunicationTemplates)[number];
