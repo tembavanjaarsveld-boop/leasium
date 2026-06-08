@@ -2,7 +2,29 @@
 
 Last updated: 2026-06-08
 
-## Cowork continuation - 2026-06-08 (agent push wave 5: 3 slices - latest)
+## Cowork continuation - 2026-06-08 (agent push wave 6: 2 slices - latest)
+
+Two more on `main`, verified (backend **567 passed, 1 skipped**; eslint + tsc +
+owner-distributions/spreadsheet smokes + production build green). Review-first;
+no send, no money movement, no migration.
+
+- **Wired the two wave-5 review endpoints into their UIs.** Statements gains a
+  gated "Dispatch review" disclosure in the distributions panel (recipient
+  readiness ready/blocked badge, draft subject/body, copy-to-clipboard, prominent
+  no-send guardrail). The Smart Intake spreadsheet review page
+  (`apps/web/src/app/intake/spreadsheet/page.tsx` — the primary review surface)
+  gains a review-summary strip (ready-to-approve vs needs-attention, confidence
+  bands, blocked/warning counts) from `GET /register-imports/{plan_id}`. Both
+  additive; Apply flow untouched.
+- **Maintenance owner/tenant completion-review.** `POST /maintenance/work-orders/
+  {id}/completion-review` records an operator-entered owner/tenant review
+  (party, outcome confirmed|follow_up_requested, notes) on a completed work order
+  → `work_order_metadata.completion_reviews[]` + activity_history + audit; 409 if
+  not completed; WRITE_ROLES gated; no owner/tenant notification (future notify
+  hook marked); `completion_reviews` projected on the read schema for a later
+  frontend wave. No migration (reuses JSONB).
+
+## Cowork continuation - 2026-06-08 (agent push wave 5: 3 slices)
 
 Three more on `main`, verified (backend **562 passed, 1 skipped**; eslint + tsc +
 insights smoke + production build green). Review-first; no send, no money movement,

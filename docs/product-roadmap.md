@@ -8,6 +8,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-08 agent push wave 6 (2 slices):** Wired distribution
+  dispatch-review + Smart Intake review-summary into their UIs (Statements,
+  spreadsheet review page); maintenance owner/tenant completion-review path
+  (operator-recorded, no notification). Review-first, no send, no migration.
 - [x] **2026-06-08 agent push wave 5 (3 slices):** Insights compliance frontend
   (register completion/evidence roll-up pills + per-row evidence badge); owner
   distribution dispatch-review draft (backend, review-only, no send); Smart Intake
