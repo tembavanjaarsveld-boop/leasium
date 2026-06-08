@@ -543,6 +543,15 @@ function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
           <div className="font-semibold">{item.title}</div>
           <StatusBadge tone={complianceTone(item)}>{item.chip}</StatusBadge>
           <StatusBadge tone="neutral">{labelStatus(item.category)}</StatusBadge>
+          {item.register_check_id ? (
+            <StatusBadge
+              tone={item.operator_approved_evidence ? "success" : "warning"}
+            >
+              {item.operator_approved_evidence
+                ? "Evidence on file"
+                : "Evidence missing"}
+            </StatusBadge>
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {context.length ? context.join(" · ") : "Portfolio-level obligation"}
@@ -557,6 +566,12 @@ function ComplianceRiskRow({ item }: { item: ComplianceRiskItemRecord }) {
             <span>{labelStatus(item.inspection_type)}</span>
           ) : null}
         </div>
+        {item.register_check_id && item.last_completed_at ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Last completed {formatDate(item.last_completed_at)}
+            {item.last_completed_by ? ` by ${item.last_completed_by}` : ""}
+          </p>
+        ) : null}
       </div>
       <div className="text-xs font-semibold text-muted-foreground">
         {formatDate(item.due_date)}
@@ -1579,6 +1594,18 @@ function InsightsWorkspace() {
                   <CountPill
                     label="Delegated owners"
                     value={complianceSnapshot?.delegated_owner_count ?? 0}
+                  />
+                  <CountPill
+                    label="Tracked checks"
+                    value={complianceSnapshot?.tracked_check_count ?? 0}
+                  />
+                  <CountPill
+                    label="Approved evidence"
+                    value={complianceSnapshot?.operator_approved_evidence_count ?? 0}
+                  />
+                  <CountPill
+                    label="Recently completed"
+                    value={complianceSnapshot?.recently_completed_count ?? 0}
                   />
                   <div className="rounded-2xl border border-border bg-white p-4 text-sm">
                     <div className="font-semibold">Categories</div>

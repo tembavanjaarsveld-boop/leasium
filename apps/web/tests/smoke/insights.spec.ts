@@ -99,6 +99,24 @@ test("insights exports review packet CSV from loaded overview data", async ({
   });
   await expect(fireSafetyRow).toBeVisible();
   await expect(fireSafetyRow.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+
+  // Register completion roll-up chips render near the existing compliance counts.
+  const complianceSection = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Compliance & Inspections" }),
+    })
+    .first();
+  await expect(complianceSection.getByText("Tracked checks")).toBeVisible();
+  await expect(complianceSection.getByText("Approved evidence")).toBeVisible();
+  await expect(complianceSection.getByText("Recently completed")).toBeVisible();
+
+  // A row with operator-approved evidence shows the badge + last-completed line.
+  await expect(fireSafetyRow.getByText("Evidence on file")).toBeVisible();
+  await expect(
+    fireSafetyRow.getByText(/Last completed .* by ops@example\.test/),
+  ).toBeVisible();
+
   await expect(
     page.getByRole("heading", { name: "Maintenance Aging" }),
   ).toBeVisible();

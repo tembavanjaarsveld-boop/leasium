@@ -2439,6 +2439,10 @@ export type ComplianceRiskItemRecord = {
   latest_evidence_at: string | null;
   latest_evidence_actor: string | null;
   inspection_type: string | null;
+  register_check_id: string | null;
+  last_completed_at: string | null;
+  last_completed_by: string | null;
+  operator_approved_evidence: boolean;
   rank: number;
 };
 
@@ -2451,6 +2455,9 @@ export type ComplianceSnapshotRecord = {
   delegated_owner_count: number;
   fire_safety_count: number;
   inspection_report_count: number;
+  tracked_check_count: number;
+  operator_approved_evidence_count: number;
+  recently_completed_count: number;
   category_counts: Record<string, number>;
   status_counts: Record<string, number>;
   next_items: ComplianceRiskItemRecord[];
