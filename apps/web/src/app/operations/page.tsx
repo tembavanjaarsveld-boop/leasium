@@ -1342,6 +1342,43 @@ function complianceEvidenceStatusLabel(check: ComplianceCheckRecord) {
   return complianceHasEvidence(check) ? "Evidence on file" : "Evidence missing";
 }
 
+function complianceCertificateExpiryTone(
+  check: ComplianceCheckRecord,
+): StatusTone {
+  if (check.certificate_expiry_status === "expired") {
+    return "danger";
+  }
+  if (check.certificate_expiry_status === "due_soon") {
+    return "warning";
+  }
+  return "success";
+}
+
+function complianceCertificateExpiryLabel(
+  check: ComplianceCheckRecord,
+): string | null {
+  const days = check.days_until_certificate_expiry;
+  switch (check.certificate_expiry_status) {
+    case "expired": {
+      if (days == null) {
+        return "Certificate expired";
+      }
+      const overdue = Math.abs(days);
+      return `Certificate expired ${overdue} ${overdue === 1 ? "day" : "days"} ago`;
+    }
+    case "due_soon": {
+      if (days == null) {
+        return "Certificate due soon";
+      }
+      return `Certificate due in ${days} ${days === 1 ? "day" : "days"}`;
+    }
+    case "ok":
+      return "Certificate valid";
+    default:
+      return null;
+  }
+}
+
 function complianceEvidencePacketCsv({
   check,
   properties,
@@ -4413,6 +4450,13 @@ function OperationsWorkspace() {
                                 >
                                   {complianceEvidenceStatusLabel(check)}
                                 </StatusBadge>
+                                {check.certificate_expiry_status !== "none" ? (
+                                  <StatusBadge
+                                    tone={complianceCertificateExpiryTone(check)}
+                                  >
+                                    {complianceCertificateExpiryLabel(check)}
+                                  </StatusBadge>
+                                ) : null}
                                 <span className="text-xs font-medium text-muted-foreground">
                                   {sentenceLabel(check.kind)}
                                 </span>

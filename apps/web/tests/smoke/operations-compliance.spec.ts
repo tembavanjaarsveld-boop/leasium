@@ -102,6 +102,26 @@ test("operations compliance tab surfaces recurring checks and exports a local re
     panel.locator('a[href="/operations/maintenance/inspection-work-order-1"]'),
   ).toBeVisible();
 
+  // Read-only certificate-expiry badges driven by the backend projection.
+  const dueSoonRow = page.getByTestId(
+    "compliance-check-compliance-check-fire-1",
+  );
+  await expect(
+    dueSoonRow.getByText("Certificate due in 21 days"),
+  ).toBeVisible();
+  const expiredRow = page.getByTestId(
+    "compliance-check-compliance-check-lift-1",
+  );
+  await expect(
+    expiredRow.getByText("Certificate expired 5 days ago"),
+  ).toBeVisible();
+  // The bank check carries no certificate, so no expiry badge is shown.
+  await expect(
+    page
+      .getByTestId("compliance-check-compliance-check-bank-1")
+      .getByText(/^Certificate /),
+  ).toHaveCount(0);
+
   const copyButton = panel.getByRole("button", {
     name: "Copy compliance CSV",
   });
@@ -581,6 +601,8 @@ test("operations compliance tab surfaces operator-approved completion history an
       last_checked_at: "2025-05-10T00:00:00.000Z",
       next_due_date: overdueFireDueDate,
       certificate_expires_on: "2026-06-30",
+      certificate_expiry_status: "due_soon",
+      days_until_certificate_expiry: 21,
       owner_role: "ops",
       notes: "QFES statement needs certificate evidence before rollover.",
       metadata: {
@@ -644,6 +666,8 @@ test("operations compliance tab surfaces operator-approved completion history an
       last_checked_at: "2025-12-01T00:00:00.000Z",
       next_due_date: "2026-06-01",
       certificate_expires_on: null,
+      certificate_expiry_status: "none",
+      days_until_certificate_expiry: null,
       owner_role: "property_manager",
       notes: "Review tenant guarantee before the expiry window.",
       metadata: {

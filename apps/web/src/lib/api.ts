@@ -1710,6 +1710,8 @@ export type ComplianceCheckRecord = {
   last_checked_at: string | null;
   next_due_date: string;
   certificate_expires_on: string | null;
+  certificate_expiry_status: "expired" | "due_soon" | "ok" | "none";
+  days_until_certificate_expiry: number | null;
   owner_role: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
