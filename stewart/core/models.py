@@ -83,6 +83,14 @@ class OperatingMode(enum.StrEnum):
     hybrid = "hybrid"
 
 
+class EntityType(enum.StrEnum):
+    trust = "trust"
+    company = "company"
+    smsf = "smsf"
+    individual = "individual"
+    partnership = "partnership"
+
+
 class OperatorInviteStatus(enum.StrEnum):
     not_sent = "not_sent"
     sent = "sent"
@@ -329,6 +337,14 @@ class Entity(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     abn: Mapped[str | None] = mapped_column(Text)
     gst_registered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Legal structure of this entity (trust/company/smsf/individual/partnership).
+    # Nullable: existing rows are left unset rather than guessing a legal type.
+    entity_type: Mapped[str | None] = mapped_column(Text)
+    # Flags the one entity that *manages* the portfolio (e.g. SKJ Property Pty Ltd)
+    # versus the owning entities. Nullable today; in Structure A the managing
+    # entity is account identity only and holds no separate Xero. Reserved for the
+    # managing-agent GTM phase (Structure B inter-entity fee flows).
+    is_managing_entity: Mapped[bool | None] = mapped_column(Boolean)
     xero_tenant_id: Mapped[str | None] = mapped_column(Text)
     xero_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     xero_last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

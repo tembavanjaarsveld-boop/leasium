@@ -26,6 +26,54 @@ def _entity_id(session: Session) -> str:
     return str(entity.id)
 
 
+def test_entity_type_and_managing_flag_round_trip(
+    client: TestClient,
+    session: Session,
+) -> None:
+    seed = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seed is not None
+    organisation_id = str(seed.organisation_id)
+
+    create_response = client.post(
+        "/api/v1/entities",
+        json={
+            "organisation_id": organisation_id,
+            "name": "Northlakes Property Trust",
+            "abn": "22 333 444 555",
+            "entity_type": "trust",
+        },
+    )
+    assert create_response.status_code == 201
+    body = create_response.json()
+    entity_id = body["id"]
+    assert body["entity_type"] == "trust"
+    assert body["is_managing_entity"] is None
+
+    update_response = client.patch(
+        f"/api/v1/entities/{entity_id}",
+        json={"entity_type": "smsf", "is_managing_entity": True},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["entity_type"] == "smsf"
+    assert updated["is_managing_entity"] is True
+
+    list_response = client.get("/api/v1/entities")
+    assert list_response.status_code == 200
+    listed = {row["id"]: row for row in list_response.json()}
+    assert listed[entity_id]["entity_type"] == "smsf"
+
+    invalid_response = client.post(
+        "/api/v1/entities",
+        json={
+            "organisation_id": organisation_id,
+            "name": "Bad Type Co",
+            "entity_type": "not_a_real_type",
+        },
+    )
+    assert invalid_response.status_code == 422
+
+
 def test_property_crud_writes_audit_and_filters_soft_deleted(
     client: TestClient,
     session: Session,

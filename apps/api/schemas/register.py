@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import AliasChoices, BaseModel, Field
 from stewart.core.models import (
     BillingDraftStatus,
+    EntityType,
     GstTreatment,
     InvoiceDraftStatus,
     LeaseStatus,
@@ -46,6 +47,8 @@ class EntityCreate(BaseModel):
     name: str
     abn: str | None = None
     gst_registered: bool = True
+    entity_type: EntityType | None = None
+    is_managing_entity: bool | None = None
     notes: str | None = None
 
 
@@ -53,6 +56,8 @@ class EntityUpdate(BaseModel):
     name: str | None = None
     abn: str | None = None
     gst_registered: bool | None = None
+    entity_type: EntityType | None = None
+    is_managing_entity: bool | None = None
     notes: str | None = None
 
 
@@ -62,6 +67,8 @@ class EntityRead(ApiModel):
     name: str
     abn: str | None
     gst_registered: bool
+    entity_type: EntityType | None
+    is_managing_entity: bool | None
     xero_tenant_id: str | None
     xero_connected_at: datetime | None
     xero_last_sync_at: datetime | None
