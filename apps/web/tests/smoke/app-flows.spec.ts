@@ -5610,6 +5610,11 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     has: page.getByRole("heading", { name: "Xero invoice posting preview" }),
   });
   await expect(page.getByText("Xero invoice posting preview")).toBeVisible();
+  await expect(
+    xeroInvoicePostingPreviewPanel.getByText(
+      /Posts to .* Xero — Demo Xero Org/,
+    ),
+  ).toBeVisible();
   await expect(page.getByText("1 ready").first()).toBeVisible();
   await expect(page.getByText("0 blocked").first()).toBeVisible();
   await expect(

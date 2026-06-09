@@ -7503,6 +7503,16 @@ function SettingsWorkspace() {
                     </div>
                   }
                 >
+                  <p className="mx-4 mt-4 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+                    <PlugZap size={15} className="shrink-0 text-primary" />
+                    <span>
+                      Posts to <strong>{selectedEntityName}</strong>&rsquo;s Xero
+                      {xeroInvoicePostingPreview.tenant_name
+                        ? ` — ${xeroInvoicePostingPreview.tenant_name}`
+                        : ""}
+                      . Each entity posts only to its own Xero organisation.
+                    </span>
+                  </p>
                   <div className="grid gap-3 p-4 md:grid-cols-4">
                     <div className="rounded-md border border-border bg-muted/25 p-3">
                       <div className="text-xs uppercase text-muted-foreground">
