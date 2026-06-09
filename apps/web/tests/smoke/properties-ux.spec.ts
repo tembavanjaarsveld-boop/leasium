@@ -29,6 +29,18 @@ test("properties action=new opens the new-property drawer", async ({ page }) => 
   await expect(
     page.getByRole("button", { name: "Close property editor" }).last(),
   ).toBeVisible();
+
+  // Pick-or-create entity: choosing "Create new entity" reveals inline fields
+  // so a property and its (new) entity are set up in the same step.
+  const entitySelect = page.locator("select").filter({
+    has: page.getByRole("option", { name: "+ Create new entity…" }),
+  });
+  await entitySelect.selectOption({ label: "+ Create new entity…" });
+  await expect(page.getByText("New entity name")).toBeVisible();
+  await expect(
+    page.getByPlaceholder("e.g. GRHQ Unit Trust"),
+  ).toBeVisible();
+
   await expect(page).not.toHaveURL(/action=new/);
 });
 

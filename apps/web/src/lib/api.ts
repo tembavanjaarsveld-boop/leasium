@@ -3184,6 +3184,23 @@ export function listEntities() {
   return request<Entity[]>("/entities");
 }
 
+export type EntityCreatePayload = {
+  organisation_id: string;
+  name: string;
+  abn?: string | null;
+  gst_registered?: boolean;
+  entity_type?: EntityType | null;
+  is_managing_entity?: boolean | null;
+  notes?: string | null;
+};
+
+export function createEntity(payload: EntityCreatePayload) {
+  return request<Entity>("/entities", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type EntityXeroStatusValue =
   | "connected"
   | "token_expired"

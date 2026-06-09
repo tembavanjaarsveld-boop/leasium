@@ -227,6 +227,26 @@ This is a review-first, two-step migration:
   mapping. No provider calls. This mutates production property/financial data, so
   it stays behind explicit operator approval (CLAUDE.md §2.1 spirit).
 
+## Onboarding — where new users start (decided 2026-06-09)
+
+"Add a property" vs "add an entity" should never be a fork users face. The
+property's entity is a **pick-or-create field inside the Add Property form**:
+choose an existing entity, or type a new trust/company name (with a type) and it
+is created on submit, in the same step. The first property a brand-new account
+creates also creates its first entity. SHIPPED in the property workspace
+(pick-or-create entity on New property; creates the entity then the property,
+then follows the property to its entity). A dedicated first-run "Get started"
+wizard (create entity → property → connect Xero) is a later option for net-new
+accounts; the inline pick-or-create covers the common case now.
+
+## Simpler entities view (shipped 2026-06-09)
+
+Settings → Organisation now leads with a scannable "Your entities & properties"
+list (row per entity: name, type chip, managing marker, property count, Xero
+status; expand → its properties). The dense owners CRUD is demoted into an
+"Owner & trust records" disclosure. Replaces the long owners dump that was the
+default view.
+
 ## Status — shipped 2026-06-09 (prototype mode, UI Remba-pending)
 
 Tickets 1–7 landed and were verified (backend ruff + pytest on SQLite; frontend

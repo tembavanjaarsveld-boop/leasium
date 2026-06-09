@@ -75,12 +75,15 @@ import {
   createDocumentIntake,
   createLeaseEventFollowUps,
   createObligation,
+  createEntity,
   createLease,
   createLeaseIntake,
   createTenancyUnit,
   createProperty,
   createTenant,
   createTenantOnboarding,
+  entityTypeLabel,
+  type EntityType,
   deleteLease,
   deleteTenancyUnit,
   downloadDocumentBlob,
@@ -2559,6 +2562,15 @@ function Workspace({
     resolver: zodResolver(propertySchema),
     defaultValues: defaultPropertyFormValues,
   });
+  // Entity pick-or-create for the New property flow: a property is created under
+  // an existing entity, or a new entity (trust/company) is created in the same
+  // step. Kept as local state (not in the zod schema) to avoid reworking the
+  // validated property form.
+  const NEW_ENTITY_VALUE = "__new_entity__";
+  const [createEntityChoice, setCreateEntityChoice] = useState<string>("");
+  const [newEntityName, setNewEntityName] = useState("");
+  const [newEntityType, setNewEntityType] = useState<EntityType | "">("");
+  const organisationId = entitiesQuery.data?.[0]?.organisation_id;
   const ownershipStructure = form.watch("ownership_structure");
   const showOwnershipFields = ownershipStructure !== "current_entity";
 
@@ -2690,9 +2702,29 @@ function Workspace({
   ]);
 
   const mutation = useMutation({
-    mutationFn: (values: PropertyFormValues) => {
+    mutationFn: async (values: PropertyFormValues) => {
+      let targetEntityId = selectedEntityId;
+      if (!editing) {
+        if (createEntityChoice === NEW_ENTITY_VALUE) {
+          const trimmedName = newEntityName.trim();
+          if (!trimmedName) {
+            throw new Error("Enter a name for the new entity.");
+          }
+          if (!organisationId) {
+            throw new Error("No organisation context to create an entity.");
+          }
+          const created = await createEntity({
+            organisation_id: organisationId,
+            name: trimmedName,
+            entity_type: newEntityType || null,
+          });
+          targetEntityId = created.id;
+        } else if (createEntityChoice) {
+          targetEntityId = createEntityChoice;
+        }
+      }
       const payload = {
-        entity_id: selectedEntityId,
+        entity_id: targetEntityId,
         name: values.name,
         street_address: values.street_address,
         suburb: values.suburb || null,
@@ -2728,6 +2760,15 @@ function Workspace({
       queryClient.invalidateQueries({
         queryKey: ["properties", selectedEntityId],
       });
+      // A new entity may have been created and the property may now live under
+      // a different entity than the one in the global picker — refresh the
+      // entity lists and follow the property to its entity.
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["entities-xero-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["ownership-split-plan"] });
+      if (property.entity_id && property.entity_id !== selectedEntityId) {
+        setSelectedEntityId(property.entity_id);
+      }
       setSelectedPropertyId(property.id);
       setEditing(null);
       setPropertyEditorOpen(false);
@@ -3205,6 +3246,9 @@ function Workspace({
     setEditing(null);
     setBillingProfileOpen(false);
     form.reset(defaultPropertyFormValues);
+    setCreateEntityChoice(selectedEntityId);
+    setNewEntityName("");
+    setNewEntityType("");
     setPropertyEditorOpen(true);
   }
 
@@ -6830,6 +6874,69 @@ function Workspace({
                   mutation.mutate(values),
                 )}
               >
+                {!editing ? (
+                  <Field label="Entity (owner / trust)">
+                    <Select
+                      value={createEntityChoice}
+                      onChange={(event) =>
+                        setCreateEntityChoice(event.target.value)
+                      }
+                    >
+                      {(entitiesQuery.data ?? []).map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.name}
+                        </option>
+                      ))}
+                      {organisationId ? (
+                        <option value={NEW_ENTITY_VALUE}>
+                          + Create new entity…
+                        </option>
+                      ) : null}
+                    </Select>
+                  </Field>
+                ) : null}
+                {!editing && createEntityChoice === NEW_ENTITY_VALUE ? (
+                  <div className="grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                    <Field label="New entity name">
+                      <Input
+                        placeholder="e.g. GRHQ Unit Trust"
+                        value={newEntityName}
+                        onChange={(event) =>
+                          setNewEntityName(event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="Entity type">
+                      <Select
+                        value={newEntityType}
+                        onChange={(event) =>
+                          setNewEntityType(
+                            event.target.value as EntityType | "",
+                          )
+                        }
+                      >
+                        <option value="">Type not set</option>
+                        {(
+                          [
+                            "trust",
+                            "company",
+                            "smsf",
+                            "individual",
+                            "partnership",
+                          ] as EntityType[]
+                        ).map((type) => (
+                          <option key={type} value={type}>
+                            {entityTypeLabel(type)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <p className="text-xs text-muted-foreground">
+                      Creates a new entity and adds this property under it.
+                      Connect its Xero later from Settings → Connect.
+                    </p>
+                  </div>
+                ) : null}
                 <Field label="Name" error={form.formState.errors.name?.message}>
                   <Input {...form.register("name")} />
                 </Field>
