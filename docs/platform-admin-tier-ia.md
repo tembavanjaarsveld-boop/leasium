@@ -247,15 +247,28 @@ removal of the client Settings Integrations panel are design-facing and
 **Remba-pending by default** per the current `docs/design-governance.md` stance
 (logged there). Provider guardrail unchanged (`CLAUDE.md` §2.1).
 
-**Shipped 2026-06-09 (Waves 1–4, prototype mode, not yet committed/pushed at time
-of writing).** Wave 1 defaults taken: separate platform-admin email
-(`platform-admin@leasium.ai`) and an idempotent seed script (the public bootstrap
-stays closed once the reserved org exists — verified, not ripped out). Suspension
-modelled as `Organisation.suspended_at` (NULL = active), with `is_active` derived
-in the API; a suspended org's operators are rejected at the Clerk auth resolver.
-Provisioning intentionally does **not** set `operating_mode` (new clients default
-to `self_managed_owner`, changeable in their own Settings) — adding an
-operating-mode picker at provision time is an easy follow-up if wanted.
+**Shipped to production 2026-06-09 (Waves 1–4, prototype mode).** Commits
+`c2e11ea` (tier) + `edaa3df` (seed `operating_mode` fix) + `082bfdd` (`/me`
+`is_platform_admin` fix) on `main`; Render API + Vercel frontend deployed;
+migration `20260609_0041` applied to Neon; seed run once. Suspension modelled as
+`Organisation.suspended_at` (NULL = active), with `is_active` derived in the API; a
+suspended org's operators are rejected at the Clerk auth resolver. Provisioning
+intentionally does **not** set `operating_mode` (new clients default to
+`self_managed_owner`, changeable in their own Settings) — a provision-time picker
+is an easy follow-up.
+
+**Admin-login decision (resolved live).** The separate `platform-admin@leasium.ai`
+identity had no Clerk account/mailbox, so the existing **`temba@skjcapital.com`**
+operator account was granted `is_platform_admin=true` directly in prod. The seeded
+`platform-admin@leasium.ai` row is inert (no Clerk login). Confirmed `/admin`
+renders for the flagged login end-to-end.
+
+**Two integration gaps caught post-deploy (both fixed):** (1) the seed relied on a
+model-only `operating_mode` server_default the prod column lacked → NOT NULL
+violation; (2) `/me` never emitted `is_platform_admin` (the frontend gate reads it)
+because the schema/builders didn't carry it — smoke passed only because the mock
+supplied it. Lesson: when a frontend consumes a new response field, assert the
+*real* endpoint emits it, not just the smoke mock.
 
 Verification:
 

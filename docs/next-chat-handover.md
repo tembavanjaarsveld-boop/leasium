@@ -5,8 +5,10 @@ Last updated: 2026-06-09
 ## Cowork continuation - 2026-06-09 (platform-admin tier, Waves 1–4 — latest)
 
 Built via two parallel agents (disjoint backend/frontend write sets), reconciled
-and verified by the orchestrator. **Not yet committed/pushed at time of writing —
-awaiting Temba's go.** Review-first; provider guardrail intact.
+and verified by the orchestrator. **Shipped to production** — commits `c2e11ea`
+(tier) + `edaa3df` (seed fix) + `082bfdd` (`/me` flag fix) on `main`; Render API
++ Vercel frontend both deployed; migration `20260609_0041` applied to Neon and the
+seed run. Review-first; provider guardrail intact.
 
 A new **platform-admin tier** above the client orgs (decision +
 build plan: `docs/platform-admin-tier-ia.md`). The integrations the client saw in
@@ -35,26 +37,43 @@ and manages clients, and removes the surface from client Settings.
   methods/types added. Design-facing → prototype/Remba follow-up logged in
   `docs/design-governance.md`.
 
-Decisions taken on the open Wave-1 questions: separate platform-admin email; seed
-script (public bootstrap retired in effect); `operating_mode` not set at provision
-(defaults `self_managed_owner`).
+Two post-deploy fixes were needed and shipped:
 
-Verification: backend `ruff` clean + `pytest` **607 passed, 1 skipped** (Postgres-
-only migration test; run up/down on next Neon/Mac pass); single Alembic head
-`20260609_0041`. Frontend `eslint` + `tsc` clean; Playwright smoke green
-(`platform-admin.spec` 3 + `settings.spec` 7). Files touched (no git yet):
-`stewart/core/{models,auth,settings}.py`, `apps/api/deps.py`, `apps/api/main.py`,
-`apps/api/routers/{system,platform}.py`, `apps/api/schemas/platform.py`,
-`scripts/seed_platform_admin.py`, `migrations/versions/20260609_0041_*.py`,
-`tests/integration/test_platform_admin_api.py`, `.env.example`;
-`apps/web/src/app/admin/page.tsx`, `apps/web/src/components/{integrations-health-card,app-shell}.tsx`,
-`apps/web/src/lib/{api.ts,use-platform-admin.ts}`, `apps/web/src/app/settings/page.tsx`,
-`apps/web/tests/smoke/{platform-admin.spec.ts,settings.spec.ts,api-mocks.ts}`.
+- **`edaa3df` — seed `operating_mode`.** The reserved-org INSERT relied on a
+  model-level `server_default` the production `organisation.operating_mode` column
+  doesn't carry, so the first seed hit a NOT NULL violation (transaction rolled
+  back, no partial row). The seed now sets `operating_mode=self_managed_owner`
+  explicitly; re-ran clean.
+- **`082bfdd` — expose `is_platform_admin` on `/me` + `/workspace`.** The frontend
+  gate/nav read `current_user.is_platform_admin` from `GET /me`, but
+  `SecurityCurrentUserRead` never carried the field and the builders never set it,
+  so the real API returned it absent → `false` (smoke passed only because the
+  *mock* injected it). Added the field + populated it in both
+  `get_security_workspace` and the `/me` profile, with regression tests. **Lesson:
+  smoke mocks can mask a real backend response gap — when a frontend reads a new
+  field, assert the real endpoint emits it, not just the mock.**
 
-Deploy notes: run migration `20260609_0041` on Neon/Render; set
-`DEV_IS_PLATFORM_ADMIN`/`PLATFORM_*` (see `.env.example`) and run
-`scripts/seed_platform_admin.py` once to mint the reserved org + admin. No Vercel
-env change needed.
+Admin-login decision (resolved live): the separate `platform-admin@leasium.ai`
+identity had no Clerk account/mailbox ("Couldn't find your account" at sign-in),
+so **`temba@skjcapital.com`'s existing operator account (org …100) was granted
+`is_platform_admin=true`** directly in prod via the Render shell. The seeded
+`platform-admin@leasium.ai` row (org …900) still exists but is inert (no Clerk
+login). Temba reaches `/admin` by signing in normally — verified end-to-end live.
+`operating_mode` is still not set at provision (defaults `self_managed_owner`); a
+provision-time picker remains an easy follow-up.
+
+Verification: backend `ruff` clean + `pytest` **607 passed, 1 skipped** at tier
+commit (Postgres-only migration test), then `/me` regression tests added (17 pass
+in the platform-admin suite). Frontend `eslint` + `tsc` clean; Playwright smoke
+green (`platform-admin.spec` 3 + `settings.spec` 7). Single Alembic head
+`20260609_0041`, confirmed applied on Neon via `alembic current` on the live
+instance. `/admin` confirmed rendering for the flagged login in production.
+
+Deploy state: **done.** Migration `0041` applied to Neon (auto via Render start
+command), seed run once. `DEV_IS_PLATFORM_ADMIN`/`PLATFORM_*` defaults in
+`.env.example` are fine; no Vercel env change. To onboard a *new* deployment:
+run the seed once, then either flag an existing operator's `is_platform_admin` or
+sign up the reserved email in Clerk.
 
 ## Cowork continuation - 2026-06-08 (agent push wave 11: 2 slices - latest)
 
