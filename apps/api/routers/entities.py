@@ -9,7 +9,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Entity, Property, UserEntityRole, UserRole, XeroConnection
+from stewart.core.models import (
+    Entity,
+    Lease,
+    Property,
+    TenancyUnit,
+    UserEntityRole,
+    UserRole,
+    XeroConnection,
+)
 
 from apps.api.deps import CurrentUser, get_current_user, get_session
 from apps.api.schemas.register import (
@@ -19,6 +27,9 @@ from apps.api.schemas.register import (
     EntityXeroOverviewRead,
     EntityXeroOverviewSummary,
     EntityXeroStatusRead,
+    OwnershipSplitGroupRead,
+    OwnershipSplitPlanRead,
+    OwnershipSplitPropertyRead,
 )
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -31,6 +42,43 @@ def _as_aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def _normalise_owner_label(value: str) -> str:
+    return " ".join(value.lower().replace("&", "and").split())
+
+
+def _chain_head(value: str) -> str:
+    """The property's owning entity is the head of an ownership chain.
+
+    Ownership chains are stored with ``->`` separators (e.g.
+    "SMSF -> SJI No 1 (sublet) -> ..."). Per the SKJ rule, the property is
+    owned/invoiced by the head entity; the tail segments are sublease
+    arrangements, not owners.
+    """
+    return value.split("->")[0].strip()
+
+
+def _property_owning_label(prop: Property) -> str | None:
+    """Derive the single owning-entity label for a property from owner fields.
+
+    Mirrors the priority used by the frontend owner-chip helper
+    (apps/web/src/lib/property-ownership.ts) but collapses to one head owner.
+    """
+    metadata = prop.property_metadata or {}
+    candidates: list[str | None] = [
+        prop.owner_legal_name,
+        metadata.get("owning_entity_legal") if isinstance(metadata, dict) else None,
+        prop.trust_name,
+        metadata.get("owning_entity") if isinstance(metadata, dict) else None,
+        prop.invoice_issuer_name,
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            head = _chain_head(candidate)
+            if head:
+                return head
+    return None
 
 
 @router.get("", response_model=list[EntityRead])
@@ -157,6 +205,99 @@ def entities_xero_overview(
     return EntityXeroOverviewRead(
         summary=EntityXeroOverviewSummary(total=len(entities), **counts),
         entities=rows,
+    )
+
+
+@router.get("/ownership-split-plan", response_model=OwnershipSplitPlanRead)
+def entities_ownership_split_plan(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> OwnershipSplitPlanRead:
+    """Dry-run: group properties by their owning entity derived from owner labels.
+
+    Read-only preview of how the single-entity portfolio would split into one
+    entity per owning trust (so each can hold its own Xero). Creates and moves
+    nothing — the reviewed apply is a separate, explicit step.
+    """
+    entities = list(
+        session.scalars(
+            select(Entity)
+            .join(UserEntityRole, UserEntityRole.entity_id == Entity.id)
+            .where(
+                Entity.organisation_id == user.organisation_id,
+                UserEntityRole.user_id == user.id,
+                Entity.deleted_at.is_(None),
+            )
+        )
+    )
+    entity_ids = [entity.id for entity in entities]
+    properties = (
+        list(
+            session.scalars(
+                select(Property)
+                .where(Property.entity_id.in_(entity_ids), Property.deleted_at.is_(None))
+                .order_by(Property.name)
+            )
+        )
+        if entity_ids
+        else []
+    )
+
+    property_ids = [prop.id for prop in properties]
+    unit_counts: dict[UUID, int] = {}
+    lease_counts: dict[UUID, int] = {}
+    if property_ids:
+        for property_id, count in session.execute(
+            select(TenancyUnit.property_id, func.count(TenancyUnit.id))
+            .where(TenancyUnit.property_id.in_(property_ids), TenancyUnit.deleted_at.is_(None))
+            .group_by(TenancyUnit.property_id)
+        ):
+            unit_counts[property_id] = count
+        for property_id, count in session.execute(
+            select(TenancyUnit.property_id, func.count(Lease.id))
+            .join(Lease, Lease.tenancy_unit_id == TenancyUnit.id)
+            .where(TenancyUnit.property_id.in_(property_ids), Lease.deleted_at.is_(None))
+            .group_by(TenancyUnit.property_id)
+        ):
+            lease_counts[property_id] = count
+
+    proposed_name_by_key: dict[str, str] = {}
+    props_by_key: dict[str, list[OwnershipSplitPropertyRead]] = {}
+    units_by_key: dict[str, int] = {}
+    leases_by_key: dict[str, int] = {}
+    unresolved = 0
+    for prop in properties:
+        label = _property_owning_label(prop)
+        if label is None:
+            unresolved += 1
+            continue
+        key = _normalise_owner_label(label)
+        address = ", ".join(
+            part for part in [prop.street_address, prop.suburb, prop.state] if part
+        )
+        proposed_name_by_key.setdefault(key, label)
+        props_by_key.setdefault(key, []).append(
+            OwnershipSplitPropertyRead(id=prop.id, name=prop.name, address=address)
+        )
+        units_by_key[key] = units_by_key.get(key, 0) + unit_counts.get(prop.id, 0)
+        leases_by_key[key] = leases_by_key.get(key, 0) + lease_counts.get(prop.id, 0)
+
+    group_reads = [
+        OwnershipSplitGroupRead(
+            proposed_name=proposed_name_by_key[key],
+            normalized_key=key,
+            property_count=len(props_by_key[key]),
+            unit_count=units_by_key[key],
+            lease_count=leases_by_key[key],
+            properties=props_by_key[key],
+        )
+        for key in sorted(proposed_name_by_key, key=lambda k: proposed_name_by_key[k])
+    ]
+    return OwnershipSplitPlanRead(
+        source_entity_count=len(entities),
+        proposed_entity_count=len(group_reads),
+        unresolved_property_count=unresolved,
+        groups=group_reads,
     )
 
 

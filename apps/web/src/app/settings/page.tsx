@@ -86,6 +86,7 @@ import {
   getXeroStatus,
   entityTypeLabel,
   getEntitiesXeroOverview,
+  getOwnershipSplitPlan,
   listBrandedCommunicationTemplates,
   listEntities,
   listProperties,
@@ -2468,6 +2469,11 @@ function SettingsWorkspace() {
     queryFn: getEntitiesXeroOverview,
     enabled: activeTab === "connect",
   });
+  const ownershipSplitPlanQuery = useQuery({
+    queryKey: ["ownership-split-plan"],
+    queryFn: getOwnershipSplitPlan,
+    enabled: activeTab === "organisation",
+  });
 
   const xeroDiagnosticsQuery = useQuery({
     queryKey: ["xero-connection-diagnostics", selectedEntityId],
@@ -2976,6 +2982,7 @@ function SettingsWorkspace() {
   const selectedEntityRoleMembers = securityQuery.data?.members ?? [];
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
   const selectedEntityTypeLabel = entityTypeLabel(selectedEntity?.entity_type);
+  const ownershipSplitPlan = ownershipSplitPlanQuery.data;
   const workEmailEnabledCount = selectedEntityRoleMembers.filter(
     workAssignmentEmailEnabled,
   ).length;
@@ -4909,6 +4916,63 @@ function SettingsWorkspace() {
                   </p>
                 )}
               </section>
+            ) : null}
+
+            {ownershipSplitPlan &&
+            ownershipSplitPlan.proposed_entity_count >
+              ownershipSplitPlan.source_entity_count ? (
+              <SectionPanel
+                title="Split into trust entities (preview)"
+                description="Your properties name more owning trusts than you have entities. Each trust needs its own entity to hold its own Xero. This is a read-only preview derived from property ownership labels — nothing is created or moved yet."
+                icon={<Building2 size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge tone="primary">
+                      {ownershipSplitPlan.proposed_entity_count} trusts found
+                    </StatusBadge>
+                    {ownershipSplitPlan.unresolved_property_count > 0 ? (
+                      <StatusBadge tone="warning">
+                        {ownershipSplitPlan.unresolved_property_count} without an
+                        owner label
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                }
+              >
+                <div className="overflow-x-auto p-4">
+                  <table className="w-full min-w-[560px] border-collapse text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold uppercase text-muted-foreground">
+                        <th className="px-3 py-2">Proposed entity (trust)</th>
+                        <th className="px-3 py-2">Properties</th>
+                        <th className="px-3 py-2">Units</th>
+                        <th className="px-3 py-2">Leases</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ownershipSplitPlan.groups.map((group) => (
+                        <tr
+                          key={group.normalized_key}
+                          className="border-t border-border"
+                        >
+                          <td className="px-3 py-2 font-medium text-foreground">
+                            {group.proposed_name}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {group.property_count}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {group.unit_count}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {group.lease_count}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionPanel>
             ) : null}
 
             <SectionPanel

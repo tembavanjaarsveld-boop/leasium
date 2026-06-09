@@ -197,6 +197,36 @@ pytest on Temba's Mac (sandbox can't), frontend eslint/tsc/smoke in the sandbox.
 Tickets 1–7 are the active scope and serve SKJ (Structure A) fully. Ticket 8 is
 parked until the managing-agent phase.
 
+## Migrating SKJ's single entity into per-trust entities
+
+SKJ's portfolio was imported under **one** Entity ("SKJ Property Pty Ltd"); the
+owning trusts exist only as **ownership labels** on each property
+(`owner_legal_name` / `trust_name` / `metadata.owning_entity*`), surfaced as the
+owner chips on the Properties list. Xero connects per Entity, so with one Entity
+there is nowhere for each trust's own Xero org to attach — which is why the hub
+and rollup stay hidden (gated on >1 entity).
+
+To realise per-trust Xero, each owning trust must become its **own Entity**, with
+its properties (and their units/leases/tenants/obligations) reassigned from the
+single SKJ entity. SKJ Property Pty Ltd then stays as the **managing entity**.
+
+Rule (confirmed 2026-06-09): **one owning entity per property = the head/legal
+owner**; ownership chains (`A -> B (sublet) -> C`) collapse to the head — sublets
+are leases the property-entity invoices, not owners.
+
+This is a review-first, two-step migration:
+
+- **Step 1 — dry-run plan (SHIPPED).** GET /entities/ownership-split-plan groups
+  the org's properties by derived head-owner label and returns proposed entities
+  with property/unit/lease counts (read-only, no mutation). Surfaced as a
+  "Split into trust entities (preview)" panel in Settings → Organisation when the
+  portfolio names more trusts than it has entities.
+- **Step 2 — reviewed apply (NEXT, not built).** Operator reviews/edits the
+  grouping, then an explicit apply creates the Entities and reassigns each
+  property + its units/leases/tenants/obligations, with an audit + reversible
+  mapping. No provider calls. This mutates production property/financial data, so
+  it stays behind explicit operator approval (CLAUDE.md §2.1 spirit).
+
 ## Status — shipped 2026-06-09 (prototype mode, UI Remba-pending)
 
 Tickets 1–7 landed and were verified (backend ruff + pytest on SQLite; frontend

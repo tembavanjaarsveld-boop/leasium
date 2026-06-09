@@ -579,6 +579,16 @@ test("settings can switch operating mode without orphaning self-managed owner re
   await expect(operatingModeSelect).toHaveValue("self_managed_owner");
   await expect(page.getByText("Your entities & trusts")).toBeVisible();
   await expect(page.getByText("No owners yet.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Split into trust entities (preview)" }),
+  ).toBeVisible();
+  await expect(page.getByText("2 trusts found")).toBeVisible();
+  const splitPanel = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Split into trust entities (preview)",
+    }),
+  });
+  await expect(splitPanel.getByText("GRHQ Pty Ltd")).toBeVisible();
 
   await operatingModeSelect.selectOption("hybrid");
 

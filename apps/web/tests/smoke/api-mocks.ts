@@ -5488,6 +5488,38 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/entities/ownership-split-plan") {
+      await fulfillJson(route, {
+        source_entity_count: 1,
+        proposed_entity_count: 2,
+        unresolved_property_count: 1,
+        groups: [
+          {
+            proposed_name: "GRHQ Pty Ltd",
+            normalized_key: "grhq pty ltd",
+            property_count: 2,
+            unit_count: 3,
+            lease_count: 2,
+            properties: [
+              { id: "prop-grhq-1", name: "Leitchs B4", address: "B4 Leitchs Rd, Brendale QLD" },
+              { id: "prop-grhq-2", name: "Leitchs B6 U4", address: "U4 B6 Leitchs Rd, Brendale QLD" },
+            ],
+          },
+          {
+            proposed_name: "SJI No 1 Pty Ltd",
+            normalized_key: "sji no 1 pty ltd",
+            property_count: 1,
+            unit_count: 1,
+            lease_count: 1,
+            properties: [
+              { id: "prop-sji-1", name: "Leitchs U1B3", address: "U1 B3 Leitchs Rd, Brendale QLD" },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/insights/overview") {
       await fulfillJson(route, insightsOverview());
       return;

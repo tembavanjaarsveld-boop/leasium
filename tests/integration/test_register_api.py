@@ -149,6 +149,47 @@ def test_entities_xero_overview_reports_status_and_counts(
     assert summary["token_expired"] >= 1
 
 
+def test_entities_ownership_split_plan_groups_by_head_owner(
+    client: TestClient,
+    session: Session,
+) -> None:
+    seed = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seed is not None
+    entity_id = str(seed.id)
+
+    def _make_property(name: str, owner_legal_name: str | None, **extra: object) -> None:
+        payload = {
+            "entity_id": entity_id,
+            "name": name,
+            "street_address": f"{name} Road",
+            "suburb": "Brendale",
+            "state": "QLD",
+            "property_type": "commercial_office",
+        }
+        if owner_legal_name is not None:
+            payload["owner_legal_name"] = owner_legal_name
+        payload.update(extra)
+        response = client.post("/api/v1/properties", json=payload)
+        assert response.status_code == 201
+
+    # Two properties owned by the same head trust; a chain whose head is that
+    # same trust; one owned by a different trust; one with no owner label.
+    _make_property("Leitchs B4", "GRHQ Pty Ltd")
+    _make_property("Leitchs B6 U4", "GRHQ Pty Ltd -> SJI No 1 (sublet) -> Gorilla Removals")
+    _make_property("Leitchs U1B3", "SJI No 1 Pty Ltd")
+    _make_property("Leitchs U3B3", None)
+
+    response = client.get("/api/v1/entities/ownership-split-plan")
+    assert response.status_code == 200
+    body = response.json()
+
+    groups = {group["proposed_name"]: group for group in body["groups"]}
+    assert groups["GRHQ Pty Ltd"]["property_count"] == 2
+    assert groups["SJI No 1 Pty Ltd"]["property_count"] == 1
+    assert body["unresolved_property_count"] == 1
+    assert body["proposed_entity_count"] == 2
+
+
 def test_property_crud_writes_audit_and_filters_soft_deleted(
     client: TestClient,
     session: Session,

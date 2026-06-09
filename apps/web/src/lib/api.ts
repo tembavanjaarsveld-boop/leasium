@@ -3250,6 +3250,32 @@ export function getPortfolioRollup() {
   return request<PortfolioRollupRecord>("/insights/portfolio-rollup");
 }
 
+export type OwnershipSplitProperty = {
+  id: string;
+  name: string;
+  address: string;
+};
+
+export type OwnershipSplitGroup = {
+  proposed_name: string;
+  normalized_key: string;
+  property_count: number;
+  unit_count: number;
+  lease_count: number;
+  properties: OwnershipSplitProperty[];
+};
+
+export type OwnershipSplitPlanRecord = {
+  source_entity_count: number;
+  proposed_entity_count: number;
+  unresolved_property_count: number;
+  groups: OwnershipSplitGroup[];
+};
+
+export function getOwnershipSplitPlan() {
+  return request<OwnershipSplitPlanRecord>("/entities/ownership-split-plan");
+}
+
 export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }

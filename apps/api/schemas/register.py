@@ -105,6 +105,28 @@ class EntityXeroOverviewRead(ApiModel):
     entities: list[EntityXeroStatusRead]
 
 
+class OwnershipSplitPropertyRead(ApiModel):
+    id: UUID
+    name: str
+    address: str
+
+
+class OwnershipSplitGroupRead(ApiModel):
+    proposed_name: str
+    normalized_key: str
+    property_count: int
+    unit_count: int
+    lease_count: int
+    properties: list[OwnershipSplitPropertyRead]
+
+
+class OwnershipSplitPlanRead(ApiModel):
+    source_entity_count: int
+    proposed_entity_count: int
+    unresolved_property_count: int
+    groups: list[OwnershipSplitGroupRead]
+
+
 class PropertyCreate(BaseModel):
     entity_id: UUID
     name: str
