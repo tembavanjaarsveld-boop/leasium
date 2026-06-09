@@ -27,6 +27,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -55,14 +56,18 @@ import {
   listInsightsSnapshots,
   LiveExceptionRecord,
   MaintenanceAgingItemRecord,
+  PortfolioRollupRecord,
   revokeInsightsSnapshot,
   entityTypeLabel,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
 import { cn, friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 const INSIGHTS_TABS = [
   { id: "overview", label: "Overview", description: "Exceptions & billing risk" },
@@ -1001,6 +1006,210 @@ function SnapshotHistoryRow({
   );
 }
 
+// Cross-entity "All entities" view. Insights' per-entity panels (overview
+// charts, billing/owner detail, shareable snapshot generation) are computed one
+// entity at a time, so all-mode does NOT merge them — it surfaces the existing
+// cross-entity portfolio rollup (already-correct per-entity + org totals) as the
+// main content and notes which panels return when a single entity is selected.
+function AllEntitiesInsights({
+  rollup,
+  loading,
+  error,
+  onRetry,
+  entityNameById,
+}: {
+  rollup: PortfolioRollupRecord | undefined;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  entityNameById: Map<string, string>;
+}) {
+  if (loading && !rollup) {
+    return (
+      <SectionPanel
+        title="Checking portfolio rollup"
+        description="Preparing occupancy and obligation health across every entity."
+        icon={<Loader2 size={17} className="animate-spin text-primary" />}
+        actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
+        className="border-primary/20 bg-primary/5"
+      >
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          {["Entities", "Properties", "Occupancy", "Overdue"].map((label) => (
+            <div
+              key={label}
+              className="rounded-2xl border border-border bg-white p-4 text-sm text-muted-foreground"
+            >
+              <div className="h-6 w-16 rounded bg-muted" />
+              <div className="mt-3 font-semibold text-foreground">{label}</div>
+              <div className="mt-2 h-4 w-full rounded bg-muted" />
+            </div>
+          ))}
+        </div>
+      </SectionPanel>
+    );
+  }
+
+  if (error && !rollup) {
+    return (
+      <SectionPanel>
+        <EmptyState
+          icon={<AlertTriangle size={18} />}
+          title="Portfolio rollup could not load"
+          description={friendlyError(error)}
+          action={
+            <SecondaryButton type="button" onClick={onRetry}>
+              <RefreshCw size={15} />
+              Retry
+            </SecondaryButton>
+          }
+        />
+      </SectionPanel>
+    );
+  }
+
+  if (!rollup) {
+    return null;
+  }
+
+  const { totals } = rollup;
+  // Prefer the rollup's own entity rows; entityNameById backfills a display
+  // name should a row arrive without one.
+  const knownEntities = rollup.entities.length;
+
+  return (
+    <>
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Entities"
+          value={totals.entity_count}
+          detail={`${knownEntities} ${plural(knownEntities, "entity", "entities")} in this rollup.`}
+          tone="primary"
+          icon={<Building2 size={18} />}
+        />
+        <MetricCard
+          label="Properties"
+          value={totals.property_count}
+          detail={`${totals.unit_count} ${plural(totals.unit_count, "unit")}, ${totals.vacant_unit_count} vacant.`}
+          tone="neutral"
+          icon={<TableProperties size={18} />}
+        />
+        <MetricCard
+          label="Occupancy"
+          value={
+            totals.occupancy_pct === null ? "—" : `${totals.occupancy_pct}%`
+          }
+          detail={`${totals.active_lease_count} active ${plural(totals.active_lease_count, "lease")}.`}
+          tone={totals.vacant_unit_count ? "warning" : "success"}
+          icon={<UserRound size={18} />}
+        />
+        <MetricCard
+          label="Overdue obligations"
+          value={totals.overdue_obligation_count}
+          detail={`${totals.due_soon_obligation_count} due soon across the portfolio.`}
+          tone={totals.overdue_obligation_count ? "danger" : "success"}
+          icon={<AlertTriangle size={18} />}
+        />
+      </section>
+
+      <SectionPanel
+        title="Portfolio rollup"
+        description="Occupancy and obligation health across every entity. Books stay separate per entity; this is the single portfolio view over them."
+        icon={<Building2 size={17} className="text-primary" />}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge tone="neutral">
+              {totals.entity_count} entities
+            </StatusBadge>
+            <StatusBadge tone="primary">
+              {totals.property_count} properties
+            </StatusBadge>
+            {totals.occupancy_pct !== null ? (
+              <StatusBadge tone="success">
+                {totals.occupancy_pct}% occupied
+              </StatusBadge>
+            ) : null}
+            {totals.overdue_obligation_count > 0 ? (
+              <StatusBadge tone="danger">
+                {totals.overdue_obligation_count} overdue
+              </StatusBadge>
+            ) : null}
+          </div>
+        }
+      >
+        <div className="overflow-x-auto p-4">
+          <table className="w-full min-w-[680px] border-collapse text-sm">
+            <thead>
+              <tr className="text-left text-xs font-semibold uppercase text-muted-foreground">
+                <th className="px-3 py-2">Entity</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Properties</th>
+                <th className="px-3 py-2">Occupancy</th>
+                <th className="px-3 py-2">Overdue</th>
+                <th className="px-3 py-2">Due soon</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rollup.entities.map((row) => (
+                <tr key={row.id} className="border-t border-border">
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    {row.name || entityNameById.get(row.id) || "Unknown entity"}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {entityTypeLabel(row.entity_type)}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {row.property_count}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {row.occupancy_pct === null
+                      ? "—"
+                      : `${row.occupancy_pct}% (${row.active_lease_count}/${row.unit_count})`}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.overdue_obligation_count > 0 ? (
+                      <StatusBadge tone="danger">
+                        {row.overdue_obligation_count}
+                      </StatusBadge>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {row.due_soon_obligation_count}
+                  </td>
+                </tr>
+              ))}
+              {rollup.entities.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <EmptyState
+                      icon={<Building2 size={18} />}
+                      title="No entities in rollup"
+                      description="Entity occupancy and obligation health will appear here."
+                    />
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionPanel>
+
+      <SectionPanel
+        title="Per-entity detail"
+        description="The live exceptions, billing risk, arrears, invoice, compliance, maintenance, owner/entity, and shareable-snapshot panels are computed per entity."
+        icon={<Gauge size={17} className="text-primary" />}
+      >
+        <div className="p-4 text-sm text-muted-foreground">
+          Select a single entity to see its overview charts, money and operations
+          detail, owner/entity snapshot, and to generate or revoke a shareable
+          snapshot. These views are shown when a single entity is selected.
+        </div>
+      </SectionPanel>
+    </>
+  );
+}
+
 function InsightsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
@@ -1022,6 +1231,8 @@ function InsightsWorkspace() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
+    // The All-entities sentinel is a valid restore target even though it is not
+    // a real entity id, so the cross-entity view survives navigation/reload.
     if (stored) {
       setSelectedEntityId(stored);
     }
@@ -1061,14 +1272,30 @@ function InsightsWorkspace() {
       }
       return;
     }
-    if (!selectedEntityId || !entities.some((entity) => entity.id === selectedEntityId)) {
+    // The All-entities sentinel is a valid selection even though it is not a
+    // real entity id, so leave it in place when restoring the cross-entity view.
+    if (
+      !selectedEntityId ||
+      (!isAllEntities(selectedEntityId) &&
+        !entities.some((entity) => entity.id === selectedEntityId))
+    ) {
       const firstEntityId = entities[0].id;
       setSelectedEntityId(firstEntityId);
       window.localStorage.setItem(ENTITY_STORAGE_KEY, firstEntityId);
     }
   }, [entities, entitiesQuery.isSuccess, selectedEntityId]);
 
-  const selectedEntity = entities.find((entity) => entity.id === selectedEntityId);
+  // All-entities mode: every entity-scoped query uses scopedEntityId (empty in
+  // all-mode, so those queries stay disabled) and the page surfaces the
+  // cross-entity portfolio rollup instead.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () => new Map(entities.map((entity) => [entity.id, entity.name])),
+    [entities],
+  );
+
+  const selectedEntity = entities.find((entity) => entity.id === scopedEntityId);
   const activeEntityId = selectedEntity?.id ?? "";
 
   const overviewQuery = useQuery({
@@ -1086,7 +1313,9 @@ function InsightsWorkspace() {
   const portfolioRollupQuery = useQuery({
     queryKey: ["insights-portfolio-rollup"],
     queryFn: getPortfolioRollup,
-    enabled: activeTab === "portfolio",
+    // In all-entities mode the rollup is the page's main content; in single
+    // mode it is only shown on the Portfolio tab.
+    enabled: allMode || activeTab === "portfolio",
   });
   const portfolioRollup = portfolioRollupQuery.data;
 
@@ -1225,33 +1454,28 @@ function InsightsWorkspace() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          value={activeEntityId}
-          onChange={(event) => {
-            setSelectedEntityId(event.target.value);
-            if (event.target.value) {
-              window.localStorage.setItem(ENTITY_STORAGE_KEY, event.target.value);
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
+          value={selectedEntityId}
+          onChange={(next) => {
+            setSelectedEntityId(next);
+            if (next) {
+              window.localStorage.setItem(ENTITY_STORAGE_KEY, next);
             }
           }}
-          aria-label="Entity"
-          disabled={!entities.length}
-        >
-          <option value="">Select entity</option>
-          {entities.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
           title="Insights"
           description={
-            overview
-              ? `${overview.entity.name} live portfolio, exception, billing, and owner/entity view.`
-              : "Live portfolio, exception, billing, and owner/entity view."
+            allMode
+              ? "Portfolio-wide rollup across every entity. Per-entity overview, billing, and owner detail show when a single entity is selected."
+              : overview
+                ? `${overview.entity.name} live portfolio, exception, billing, and owner/entity view.`
+                : "Live portfolio, exception, billing, and owner/entity view."
           }
           actions={
             <div className="flex flex-wrap items-center gap-2">
@@ -1271,20 +1495,35 @@ function InsightsWorkspace() {
               </Link>
               <SecondaryButton
                 type="button"
-                onClick={() => void overviewQuery.refetch()}
-                disabled={!activeEntityId || isOverviewFetching}
+                onClick={() =>
+                  void (allMode
+                    ? portfolioRollupQuery.refetch()
+                    : overviewQuery.refetch())
+                }
+                disabled={
+                  allMode
+                    ? portfolioRollupQuery.isFetching
+                    : !activeEntityId || isOverviewFetching
+                }
               >
-                {isOverviewFetching ? (
+                {(allMode ? portfolioRollupQuery.isFetching : isOverviewFetching) ? (
                   <Loader2 size={15} className="animate-spin" />
                 ) : (
                   <RefreshCw size={15} />
                 )}
-                {isOverviewFetching ? "Refreshing…" : "Refresh"}
+                {(allMode ? portfolioRollupQuery.isFetching : isOverviewFetching)
+                  ? "Refreshing…"
+                  : "Refresh"}
               </SecondaryButton>
               <SecondaryButton
                 type="button"
                 onClick={() => void copyReviewPacket()}
                 disabled={!overview}
+                title={
+                  allMode
+                    ? "Select a single entity to copy its review packet"
+                    : undefined
+                }
               >
                 <Copy size={15} />
                 Copy review packet
@@ -1293,6 +1532,11 @@ function InsightsWorkspace() {
                 type="button"
                 onClick={downloadReviewCsv}
                 disabled={!overview}
+                title={
+                  allMode
+                    ? "Select a single entity to download its review CSV"
+                    : undefined
+                }
               >
                 <Download size={15} />
                 Download review CSV
@@ -1331,7 +1575,7 @@ function InsightsWorkspace() {
           </SectionPanel>
         ) : null}
 
-        {!activeEntityId ? (
+        {!activeEntityId && !allMode ? (
           <SectionPanel>
             <EmptyState
               icon={<Building2 size={18} />}
@@ -1341,7 +1585,17 @@ function InsightsWorkspace() {
           </SectionPanel>
         ) : null}
 
-        {isOverviewLoading ? (
+        {allMode ? (
+          <AllEntitiesInsights
+            rollup={portfolioRollup}
+            loading={portfolioRollupQuery.isLoading}
+            error={portfolioRollupQuery.error}
+            onRetry={() => void portfolioRollupQuery.refetch()}
+            entityNameById={entityNameById}
+          />
+        ) : null}
+
+        {!allMode && isOverviewLoading ? (
           <SectionPanel
             title="Checking live insights"
             description="Preparing the latest portfolio, exception, billing, and owner/entity view."

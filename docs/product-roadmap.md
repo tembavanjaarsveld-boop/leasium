@@ -8,6 +8,19 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 "All entities" rollup pages (Dashboard/Insights/Billing-readiness):**
+  Dashboard command center fans out its queries in all-mode, concatenates the
+  ranked actions (entity-attributed) and sums the metric counts; non-additive
+  single-entity panels (trend, lease events, compliance) show a "single entity"
+  note; the Smart-Intake mode stays single-entity. Insights uses the existing
+  cross-entity `getPortfolioRollup` for all-mode (org totals + per-entity table)
+  and notes that per-entity detail panels need a single entity. Billing-readiness
+  merges rent-roll/billing-draft/invoice-draft/maintenance lists (entity-tagged),
+  sums readiness counts, scopes the Xero connection + month-end handoff to single
+  entity with a note, and gates every dispatch/draft/reconciliation action.
+  Frontend-only, no mutation. This completes the cross-entity rollout across all
+  workspace surfaces (Settings/Money/Statements intentionally single-entity).
+  Pending Remba review.
 - [~] **2026-06-10 "All entities" composite pages + single-entity guards:** Comms,
   Notifications, and Portfolio-QA now support all-mode by fanning out their
   composite payloads per entity, concatenating the list/queue/notice/receipt

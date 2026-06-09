@@ -23,6 +23,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
@@ -30,7 +31,6 @@ import {
   PageHeader,
   SecondaryButton,
   SectionPanel,
-  Select,
   StatusBadge,
   type StatusTone,
 } from "@/components/ui";
@@ -64,12 +64,17 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
+import {
   isManagingAgentOperatingMode,
   useOperatingMode,
 } from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
 
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_RENT_ROWS: RentRollRow[] = [];
 const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
 const EMPTY_MAINTENANCE_WORK_ORDERS: MaintenanceWorkOrderRecord[] = [];
@@ -1760,7 +1765,12 @@ function BillingReadinessWorkspace() {
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
-    const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
+    // The All-entities sentinel is a valid restore target even though it is not
+    // a real entity id, so the cross-entity view survives navigation/reload.
+    const next =
+      stored && (isAllEntities(stored) || accessibleIds.has(stored))
+        ? stored
+        : firstEntity;
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
@@ -1772,32 +1782,74 @@ function BillingReadinessWorkspace() {
     }
   }, [selectedEntityId]);
 
+  // All-entities mode: entity-scoped queries use scopedEntityId (empty in
+  // all-mode, so they stay disabled) and the page reads merged fan-out results.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const rentRollQuery = useQuery({
-    queryKey: ["billing-readiness-rent-roll", selectedEntityId, asOf],
-    queryFn: () => listRentRoll({ entity_id: selectedEntityId, as_of: asOf }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["billing-readiness-rent-roll", scopedEntityId, asOf],
+    queryFn: () => listRentRoll({ entity_id: scopedEntityId, as_of: asOf }),
+    enabled: Boolean(scopedEntityId),
   });
 
   const billingDraftsQuery = useQuery({
-    queryKey: ["billing-readiness-drafts", selectedEntityId],
-    queryFn: () => listBillingDrafts({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["billing-readiness-drafts", scopedEntityId],
+    queryFn: () => listBillingDrafts({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
 
   const invoiceDraftsQuery = useQuery({
-    queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
-    queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["billing-readiness-invoice-drafts", scopedEntityId],
+    queryFn: () => listInvoiceDrafts({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
   const xeroStatusQuery = useQuery({
-    queryKey: ["billing-readiness-xero-status", selectedEntityId],
-    queryFn: () => getXeroStatus(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["billing-readiness-xero-status", scopedEntityId],
+    queryFn: () => getXeroStatus(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const maintenanceQuery = useQuery({
-    queryKey: ["billing-readiness-maintenance", selectedEntityId],
-    queryFn: () => listMaintenanceWorkOrders({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["billing-readiness-maintenance", scopedEntityId],
+    queryFn: () => listMaintenanceWorkOrders({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
+  });
+
+  // Fan out the LIST-shaped queries across every entity in all-mode. Each
+  // per-entity query shares the cache key shape with the single-entity query
+  // above so cache hits carry over. getXeroStatus is per-entity provider
+  // connection state (not mergeable) and is intentionally NOT fanned out; it is
+  // scoped off in all-mode and the delivery section shows a single-entity note.
+  const rentRollFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["billing-readiness-rent-roll-all", asOf],
+    queryFn: (entityId) => listRentRoll({ entity_id: entityId, as_of: asOf }),
+  });
+  const billingDraftsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["billing-readiness-drafts"],
+    queryFn: (entityId) => listBillingDrafts({ entity_id: entityId }),
+  });
+  const invoiceDraftsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["billing-readiness-invoice-drafts"],
+    queryFn: (entityId) => listInvoiceDrafts({ entity_id: entityId }),
+  });
+  const maintenanceFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["billing-readiness-maintenance"],
+    queryFn: (entityId) => listMaintenanceWorkOrders({ entity_id: entityId }),
   });
   const entitiesLoading =
     !entitiesQuery.data &&
@@ -1805,18 +1857,21 @@ function BillingReadinessWorkspace() {
   const entitySelectionLoading =
     entitiesLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
-  const rentRollLoading =
-    Boolean(selectedEntityId) &&
-    !rentRollQuery.data &&
-    (rentRollQuery.isLoading || rentRollQuery.isFetching);
-  const billingDraftsLoading =
-    Boolean(selectedEntityId) &&
-    !billingDraftsQuery.data &&
-    (billingDraftsQuery.isLoading || billingDraftsQuery.isFetching);
-  const invoiceDraftsLoading =
-    Boolean(selectedEntityId) &&
-    !invoiceDraftsQuery.data &&
-    (invoiceDraftsQuery.isLoading || invoiceDraftsQuery.isFetching);
+  const rentRollLoading = allMode
+    ? rentRollFanOut.isLoading
+    : Boolean(selectedEntityId) &&
+      !rentRollQuery.data &&
+      (rentRollQuery.isLoading || rentRollQuery.isFetching);
+  const billingDraftsLoading = allMode
+    ? billingDraftsFanOut.isLoading
+    : Boolean(selectedEntityId) &&
+      !billingDraftsQuery.data &&
+      (billingDraftsQuery.isLoading || billingDraftsQuery.isFetching);
+  const invoiceDraftsLoading = allMode
+    ? invoiceDraftsFanOut.isLoading
+    : Boolean(selectedEntityId) &&
+      !invoiceDraftsQuery.data &&
+      (invoiceDraftsQuery.isLoading || invoiceDraftsQuery.isFetching);
   const billingReadinessLoading =
     entitySelectionLoading ||
     rentRollLoading ||
@@ -1824,16 +1879,24 @@ function BillingReadinessWorkspace() {
     invoiceDraftsLoading;
   const billingReadinessRefreshing =
     Boolean(selectedEntityId) &&
-    (rentRollQuery.isFetching ||
-      billingDraftsQuery.isFetching ||
-      invoiceDraftsQuery.isFetching ||
-      xeroStatusQuery.isFetching) &&
+    (allMode
+      ? rentRollFanOut.isFetching ||
+        billingDraftsFanOut.isFetching ||
+        invoiceDraftsFanOut.isFetching
+      : rentRollQuery.isFetching ||
+        billingDraftsQuery.isFetching ||
+        invoiceDraftsQuery.isFetching ||
+        xeroStatusQuery.isFetching) &&
     !billingReadinessLoading;
-  const billingReadinessError =
-    entitiesQuery.error ??
-    rentRollQuery.error ??
-    billingDraftsQuery.error ??
-    invoiceDraftsQuery.error;
+  const billingReadinessError = allMode
+    ? (entitiesQuery.error ??
+      rentRollFanOut.error ??
+      billingDraftsFanOut.error ??
+      invoiceDraftsFanOut.error)
+    : (entitiesQuery.error ??
+      rentRollQuery.error ??
+      billingDraftsQuery.error ??
+      invoiceDraftsQuery.error);
 
   const updateDraftMutation = useMutation({
     mutationFn: ({
@@ -1950,7 +2013,13 @@ function BillingReadinessWorkspace() {
     (entity) => entity.id === selectedEntityId,
   );
 
-  const rentRows = rentRollQuery.data ?? EMPTY_RENT_ROWS;
+  // Merged views the UI reads regardless of single- vs all-entity mode. Every
+  // downstream computation (counts, blocker groups, invoice/delivery tables)
+  // feeds off these, so aggregation happens once here.
+  const rentRows = useMemo(
+    () => (allMode ? rentRollFanOut.data : (rentRollQuery.data ?? EMPTY_RENT_ROWS)),
+    [allMode, rentRollFanOut.data, rentRollQuery.data],
+  );
   const blockerRows = useMemo(
     () => rentRows.flatMap((row) => blockerItems(row)),
     [rentRows],
@@ -1979,7 +2048,10 @@ function BillingReadinessWorkspace() {
     () => rentRows.filter((row) => blockerItems(row).length > 0),
     [rentRows],
   );
-  const billingDrafts = billingDraftsQuery.data ?? [];
+  const billingDrafts = useMemo(
+    () => (allMode ? billingDraftsFanOut.data : (billingDraftsQuery.data ?? [])),
+    [allMode, billingDraftsFanOut.data, billingDraftsQuery.data],
+  );
 
   const counts = useMemo(() => {
     const xero = rentRows.reduce(
@@ -2005,11 +2077,25 @@ function BillingReadinessWorkspace() {
       ready: Math.max(rentRows.length - rowsWithBlockers.length, 0),
     };
   }, [rentRows, rowsWithBlockers.length]);
-  const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  const invoiceDrafts = useMemo(
+    () =>
+      allMode
+        ? invoiceDraftsFanOut.data
+        : (invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS),
+    [allMode, invoiceDraftsFanOut.data, invoiceDraftsQuery.data],
+  );
+  // Per-entity provider connection state: never merged. In all-mode the query is
+  // disabled (scopedEntityId is empty) so this stays null and the delivery
+  // section renders a single-entity note instead of a fabricated merged status.
   const xeroAccountingFreshness =
     xeroStatusQuery.data?.accounting_freshness ?? null;
-  const maintenanceWorkOrders =
-    maintenanceQuery.data ?? EMPTY_MAINTENANCE_WORK_ORDERS;
+  const maintenanceWorkOrders = useMemo(
+    () =>
+      allMode
+        ? maintenanceFanOut.data
+        : (maintenanceQuery.data ?? EMPTY_MAINTENANCE_WORK_ORDERS),
+    [allMode, maintenanceFanOut.data, maintenanceQuery.data],
+  );
   const maintenanceByInvoiceDraftId = useMemo(() => {
     const rows = new Map<string, MaintenanceWorkOrderRecord>();
     for (const workOrder of maintenanceWorkOrders) {
@@ -2039,14 +2125,17 @@ function BillingReadinessWorkspace() {
     () => statementMonthForDrafts(approvedInvoiceDrafts, asOf),
     [approvedInvoiceDrafts, asOf],
   );
+  // Statement packs are a single-entity construct (one entity's owner/entity
+  // statements for a month). In all-mode this is scoped off and the
+  // month-end checklist/handoff panels are replaced with a single-entity note.
   const ownerStatementsQuery = useQuery({
     queryKey: [
       "billing-readiness-owner-statements",
-      selectedEntityId,
+      scopedEntityId,
       statementMonth,
     ],
-    queryFn: () => getOwnerStatements(selectedEntityId, statementMonth),
-    enabled: Boolean(selectedEntityId && statementMonth),
+    queryFn: () => getOwnerStatements(scopedEntityId, statementMonth),
+    enabled: Boolean(scopedEntityId && statementMonth),
   });
   const filteredApprovedInvoiceDrafts = useMemo(
     () =>
@@ -2124,29 +2213,23 @@ function BillingReadinessWorkspace() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="">
-            {entitiesLoading ? "Checking entities" : "Select entity"}
-          </option>
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
           title="Billing Readiness"
           description={
-            selectedEntity
-              ? `Review invoice, Xero, and GST blockers for ${selectedEntity.name}.`
-              : "Select an entity to review invoice, Xero, and GST blockers."
+            allMode
+              ? "Reviewing invoice, Xero, and GST blockers across every entity."
+              : selectedEntity
+                ? `Review invoice, Xero, and GST blockers for ${selectedEntity.name}.`
+                : "Select an entity to review invoice, Xero, and GST blockers."
           }
           actions={
             <>
@@ -2160,20 +2243,31 @@ function BillingReadinessWorkspace() {
               <SecondaryButton
                 type="button"
                 onClick={() => {
-                  rentRollQuery.refetch();
-                  billingDraftsQuery.refetch();
-                  invoiceDraftsQuery.refetch();
-                  xeroStatusQuery.refetch();
-                  maintenanceQuery.refetch();
-                  ownerStatementsQuery.refetch();
+                  if (allMode) {
+                    rentRollFanOut.refetch();
+                    billingDraftsFanOut.refetch();
+                    invoiceDraftsFanOut.refetch();
+                    maintenanceFanOut.refetch();
+                  } else {
+                    rentRollQuery.refetch();
+                    billingDraftsQuery.refetch();
+                    invoiceDraftsQuery.refetch();
+                    xeroStatusQuery.refetch();
+                    maintenanceQuery.refetch();
+                    ownerStatementsQuery.refetch();
+                  }
                 }}
                 disabled={
                   !selectedEntityId ||
-                  rentRollQuery.isFetching ||
-                  billingDraftsQuery.isFetching ||
-                  invoiceDraftsQuery.isFetching ||
-                  xeroStatusQuery.isFetching ||
-                  ownerStatementsQuery.isFetching
+                  (allMode
+                    ? rentRollFanOut.isFetching ||
+                      billingDraftsFanOut.isFetching ||
+                      invoiceDraftsFanOut.isFetching
+                    : rentRollQuery.isFetching ||
+                      billingDraftsQuery.isFetching ||
+                      invoiceDraftsQuery.isFetching ||
+                      xeroStatusQuery.isFetching ||
+                      ownerStatementsQuery.isFetching)
                 }
               >
                 {billingReadinessRefreshing ? (
@@ -2204,7 +2298,11 @@ function BillingReadinessWorkspace() {
               type="button"
               onClick={() => {
                 entitiesQuery.refetch();
-                if (selectedEntityId) {
+                if (allMode) {
+                  rentRollFanOut.refetch();
+                  billingDraftsFanOut.refetch();
+                  invoiceDraftsFanOut.refetch();
+                } else if (selectedEntityId) {
                   rentRollQuery.refetch();
                   billingDraftsQuery.refetch();
                   invoiceDraftsQuery.refetch();
@@ -2489,6 +2587,12 @@ function BillingReadinessWorkspace() {
                             <h3 className="font-semibold text-foreground">
                               {draft.title}
                             </h3>
+                            {allMode ? (
+                              <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(draft.entity_id) ??
+                                  "Unknown entity"}
+                              </div>
+                            ) : null}
                             <p className="mt-1 text-xs text-muted-foreground">
                               Due {formatDate(draft.due_date)}
                             </p>
@@ -2556,8 +2660,12 @@ function BillingReadinessWorkspace() {
                                 status: "approved",
                               })
                             }
-                            disabled={!canApprove || isUpdating}
-                            title="Marks this draft approved for later billing steps. No invoice is posted or synced."
+                            disabled={!canApprove || isUpdating || allMode}
+                            title={
+                              allMode
+                                ? "Select a single entity to approve a billing draft"
+                                : "Marks this draft approved for later billing steps. No invoice is posted or synced."
+                            }
                           >
                             {isUpdating ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -2575,8 +2683,12 @@ function BillingReadinessWorkspace() {
                                 status: "void",
                               })
                             }
-                            disabled={!canVoid || isUpdating}
-                            title="Voids this draft only. No invoice is posted or synced."
+                            disabled={!canVoid || isUpdating || allMode}
+                            title={
+                              allMode
+                                ? "Select a single entity to void a billing draft"
+                                : "Voids this draft only. No invoice is posted or synced."
+                            }
                           >
                             {isUpdating ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -2598,8 +2710,12 @@ function BillingReadinessWorkspace() {
                               onClick={() =>
                                 createInvoiceDraftMutation.mutate(draft.id)
                               }
-                              disabled={isCreatingInvoice}
-                              title="Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                              disabled={isCreatingInvoice || allMode}
+                              title={
+                                allMode
+                                  ? "Select a single entity to create an invoice draft"
+                                  : "Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                              }
                             >
                               {isCreatingInvoice ? (
                                 <Loader2 size={14} className="animate-spin" />
@@ -2661,6 +2777,12 @@ function BillingReadinessWorkspace() {
                           >
                             <td className="min-w-72 px-3 py-3">
                               <div className="font-medium">{draft.title}</div>
+                              {allMode ? (
+                                <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {entityNameById.get(draft.entity_id) ??
+                                    "Unknown entity"}
+                                </div>
+                              ) : null}
                               <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                                 {draft.notes ??
                                   "Draft prepared from source review. No invoice has been posted."}
@@ -2721,8 +2843,12 @@ function BillingReadinessWorkspace() {
                                       status: "approved",
                                     })
                                   }
-                                  disabled={!canApprove || isUpdating}
-                                  title="Marks this draft approved for later billing steps. No invoice is posted or synced."
+                                  disabled={!canApprove || isUpdating || allMode}
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to approve a billing draft"
+                                      : "Marks this draft approved for later billing steps. No invoice is posted or synced."
+                                  }
                                 >
                                   {isUpdating ? (
                                     <Loader2
@@ -2743,8 +2869,12 @@ function BillingReadinessWorkspace() {
                                       status: "void",
                                     })
                                   }
-                                  disabled={!canVoid || isUpdating}
-                                  title="Voids this draft only. No invoice is posted or synced."
+                                  disabled={!canVoid || isUpdating || allMode}
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to void a billing draft"
+                                      : "Voids this draft only. No invoice is posted or synced."
+                                  }
                                 >
                                   {isUpdating ? (
                                     <Loader2
@@ -2773,8 +2903,12 @@ function BillingReadinessWorkspace() {
                                         draft.id,
                                       )
                                     }
-                                    disabled={isCreatingInvoice}
-                                    title="Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                                    disabled={isCreatingInvoice || allMode}
+                                    title={
+                                      allMode
+                                        ? "Select a single entity to create an invoice draft"
+                                        : "Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
+                                    }
                                   >
                                     {isCreatingInvoice ? (
                                       <Loader2
@@ -2892,6 +3026,12 @@ function BillingReadinessWorkspace() {
                               {draft.invoice_number ??
                                 `Invoice ${shortId(draft.id)}`}
                             </h3>
+                            {allMode ? (
+                              <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(draft.entity_id) ??
+                                  "Unknown entity"}
+                              </div>
+                            ) : null}
                             <p className="mt-1 text-xs text-muted-foreground">
                               {draft.title}
                             </p>
@@ -3002,8 +3142,12 @@ function BillingReadinessWorkspace() {
                             onClick={() =>
                               prepareInvoiceDraftMutation.mutate(draft.id)
                             }
-                            disabled={!canPrepare || isPreparing}
-                            title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
+                            disabled={!canPrepare || isPreparing || allMode}
+                            title={
+                              allMode
+                                ? "Select a single entity to prepare invoice delivery"
+                                : "Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
+                            }
                           >
                             {isPreparing ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3044,8 +3188,12 @@ function BillingReadinessWorkspace() {
                                 status: "approved",
                               })
                             }
-                            disabled={!canApprove || isUpdatingInvoice}
-                            title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                            disabled={!canApprove || isUpdatingInvoice || allMode}
+                            title={
+                              allMode
+                                ? "Select a single entity to approve an invoice draft"
+                                : "Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                            }
                           >
                             {isUpdatingInvoice ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3063,8 +3211,12 @@ function BillingReadinessWorkspace() {
                                 status: "void",
                               })
                             }
-                            disabled={!canVoid || isUpdatingInvoice}
-                            title="Voids this internal invoice draft only."
+                            disabled={!canVoid || isUpdatingInvoice || allMode}
+                            title={
+                              allMode
+                                ? "Select a single entity to void an invoice draft"
+                                : "Voids this internal invoice draft only."
+                            }
                           >
                             {isUpdatingInvoice ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3159,6 +3311,12 @@ function BillingReadinessWorkspace() {
                                 {draft.invoice_number ??
                                   `Invoice ${shortId(draft.id)}`}
                               </div>
+                              {allMode ? (
+                                <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {entityNameById.get(draft.entity_id) ??
+                                    "Unknown entity"}
+                                </div>
+                              ) : null}
                               <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                                 {draft.title}
                               </div>
@@ -3323,8 +3481,12 @@ function BillingReadinessWorkspace() {
                                   onClick={() =>
                                     prepareInvoiceDraftMutation.mutate(draft.id)
                                   }
-                                  disabled={!canPrepare || isPreparing}
-                                  title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
+                                  disabled={!canPrepare || isPreparing || allMode}
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to prepare invoice delivery"
+                                      : "Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
+                                  }
                                 >
                                   {isPreparing ? (
                                     <Loader2
@@ -3369,8 +3531,14 @@ function BillingReadinessWorkspace() {
                                       status: "approved",
                                     })
                                   }
-                                  disabled={!canApprove || isUpdatingInvoice}
-                                  title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                                  disabled={
+                                    !canApprove || isUpdatingInvoice || allMode
+                                  }
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to approve an invoice draft"
+                                      : "Approves the internal invoice draft only. No tenant email or Xero sync is run."
+                                  }
                                 >
                                   {isUpdatingInvoice ? (
                                     <Loader2
@@ -3391,8 +3559,14 @@ function BillingReadinessWorkspace() {
                                       status: "void",
                                     })
                                   }
-                                  disabled={!canVoid || isUpdatingInvoice}
-                                  title="Voids this internal invoice draft only."
+                                  disabled={
+                                    !canVoid || isUpdatingInvoice || allMode
+                                  }
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to void an invoice draft"
+                                      : "Voids this internal invoice draft only."
+                                  }
                                 >
                                   {isUpdatingInvoice ? (
                                     <Loader2
@@ -3488,26 +3662,38 @@ function BillingReadinessWorkspace() {
                     })}
                   </div>
                 </div>
-                {xeroAccountingFreshness ? (
+                {allMode ? (
+                  <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                    Xero connection, accounting freshness, and the month-end
+                    statement handoff are shown when a single entity is
+                    selected. Approved invoices below aggregate across every
+                    entity for review.
+                  </div>
+                ) : null}
+                {!allMode && xeroAccountingFreshness ? (
                   <AccountingFreshnessStrip
                     freshness={xeroAccountingFreshness}
                     xeroHref={`/settings?tab=xero&entity_id=${selectedEntityId}`}
                   />
-                ) : xeroStatusQuery.isLoading ? (
+                ) : !allMode && xeroStatusQuery.isLoading ? (
                   <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
                     Checking accounting freshness.
                   </div>
                 ) : null}
-                {xeroStatusQuery.error ? (
+                {!allMode && xeroStatusQuery.error ? (
                   <div className="border-b border-warning/20 bg-warning-soft px-4 py-3 text-sm text-warning">
                     Accounting freshness snapshot is unavailable. Billing rows
                     still show local invoice delivery and payment state.
                   </div>
                 ) : null}
-                {!invoiceDraftsLoading && !xeroStatusQuery.isLoading ? (
+                {!allMode &&
+                !invoiceDraftsLoading &&
+                !xeroStatusQuery.isLoading ? (
                   <MonthEndChecklistStrip items={monthEndChecklistItems} />
                 ) : null}
-                {!invoiceDraftsLoading && !xeroStatusQuery.isLoading ? (
+                {!allMode &&
+                !invoiceDraftsLoading &&
+                !xeroStatusQuery.isLoading ? (
                   <MonthEndHandoffPanel handoff={monthEndHandoff} />
                 ) : null}
                 <div className="grid gap-3 p-3 md:hidden">
@@ -3583,6 +3769,12 @@ function BillingReadinessWorkspace() {
                               {draft.invoice_number ??
                                 `Invoice ${shortId(draft.id)}`}
                             </h3>
+                            {allMode ? (
+                              <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(draft.entity_id) ??
+                                  "Unknown entity"}
+                              </div>
+                            ) : null}
                             <p className="mt-1 text-xs text-muted-foreground">
                               {draft.title}
                             </p>
@@ -3795,9 +3987,15 @@ function BillingReadinessWorkspace() {
                               dispatchInvoiceProvidersMutation.mutate(draft.id)
                             }
                             disabled={
-                              !canDispatchProviders || isDispatchingProviders
+                              !canDispatchProviders ||
+                              isDispatchingProviders ||
+                              allMode
                             }
-                            title="Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
+                            title={
+                              allMode
+                                ? "Select a single entity to dispatch providers"
+                                : "Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
+                            }
                           >
                             {isDispatchingProviders ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3814,8 +4012,14 @@ function BillingReadinessWorkspace() {
                             onClick={() =>
                               sendInvoiceDeliveryEmailMutation.mutate(draft.id)
                             }
-                            disabled={!canRecordDelivery || isSendingEmail}
-                            title="Sends the approved invoice email through the configured provider. No Xero sync is run."
+                            disabled={
+                              !canRecordDelivery || isSendingEmail || allMode
+                            }
+                            title={
+                              allMode
+                                ? "Select a single entity to send the invoice email"
+                                : "Sends the approved invoice email through the configured provider. No Xero sync is run."
+                            }
                           >
                             {isSendingEmail ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3830,8 +4034,14 @@ function BillingReadinessWorkspace() {
                             onClick={() =>
                               recordInvoiceDeliveryMutation.mutate(draft.id)
                             }
-                            disabled={!canRecordDelivery || isRecordingDelivery}
-                            title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
+                            disabled={
+                              !canRecordDelivery || isRecordingDelivery || allMode
+                            }
+                            title={
+                              allMode
+                                ? "Select a single entity to record delivery"
+                                : "Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
+                            }
                           >
                             {isRecordingDelivery ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3849,8 +4059,12 @@ function BillingReadinessWorkspace() {
                                 paymentStatus: "paid",
                               })
                             }
-                            disabled={!canMarkPaid || isUpdatingPayment}
-                            title="Marks the approved internal invoice as paid in Leasium only."
+                            disabled={!canMarkPaid || isUpdatingPayment || allMode}
+                            title={
+                              allMode
+                                ? "Select a single entity to mark paid"
+                                : "Marks the approved internal invoice as paid in Leasium only."
+                            }
                           >
                             {isUpdatingPayment ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3974,6 +4188,12 @@ function BillingReadinessWorkspace() {
                                 {draft.invoice_number ??
                                   `Invoice ${shortId(draft.id)}`}
                               </div>
+                              {allMode ? (
+                                <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {entityNameById.get(draft.entity_id) ??
+                                    "Unknown entity"}
+                                </div>
+                              ) : null}
                               <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                                 {draft.title}
                               </div>
@@ -4331,9 +4551,14 @@ function BillingReadinessWorkspace() {
                                   }
                                   disabled={
                                     !canDispatchProviders ||
-                                    isDispatchingProviders
+                                    isDispatchingProviders ||
+                                    allMode
                                   }
-                                  title="Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to dispatch providers"
+                                      : "Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
+                                  }
                                 >
                                   {isDispatchingProviders ? (
                                     <Loader2
@@ -4356,9 +4581,15 @@ function BillingReadinessWorkspace() {
                                     )
                                   }
                                   disabled={
-                                    !canRecordDelivery || isSendingEmail
+                                    !canRecordDelivery ||
+                                    isSendingEmail ||
+                                    allMode
                                   }
-                                  title="Sends the approved invoice email through the configured provider. No Xero sync is run."
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to send the invoice email"
+                                      : "Sends the approved invoice email through the configured provider. No Xero sync is run."
+                                  }
                                 >
                                   {isSendingEmail ? (
                                     <Loader2
@@ -4379,9 +4610,15 @@ function BillingReadinessWorkspace() {
                                     )
                                   }
                                   disabled={
-                                    !canRecordDelivery || isRecordingDelivery
+                                    !canRecordDelivery ||
+                                    isRecordingDelivery ||
+                                    allMode
                                   }
-                                  title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to record delivery"
+                                      : "Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
+                                  }
                                 >
                                   {isRecordingDelivery ? (
                                     <Loader2
@@ -4402,8 +4639,14 @@ function BillingReadinessWorkspace() {
                                       paymentStatus: "paid",
                                     })
                                   }
-                                  disabled={!canMarkPaid || isUpdatingPayment}
-                                  title="Marks the approved internal invoice as paid in Leasium only."
+                                  disabled={
+                                    !canMarkPaid || isUpdatingPayment || allMode
+                                  }
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to mark paid"
+                                      : "Marks the approved internal invoice as paid in Leasium only."
+                                  }
                                 >
                                   {isUpdatingPayment ? (
                                     <Loader2
@@ -4482,6 +4725,13 @@ function BillingReadinessWorkspace() {
                             <h3 className="font-semibold text-foreground">
                               {row.unit_label}
                             </h3>
+                            {allMode ? (
+                              <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(row.entity_id) ??
+                                  row.entity_name ??
+                                  "Unknown entity"}
+                              </div>
+                            ) : null}
                             <p className="mt-1 text-xs text-muted-foreground">
                               {row.property_name}
                             </p>
@@ -4577,6 +4827,13 @@ function BillingReadinessWorkspace() {
                               <div className="font-medium">
                                 {row.unit_label}
                               </div>
+                              {allMode ? (
+                                <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {entityNameById.get(row.entity_id) ??
+                                    row.entity_name ??
+                                    "Unknown entity"}
+                                </div>
+                              ) : null}
                               <div className="text-xs text-muted-foreground">
                                 {row.property_name}
                               </div>
@@ -4674,6 +4931,13 @@ function BillingReadinessWorkspace() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-medium">{group.title}</div>
+                            {allMode ? (
+                              <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(group.row.entity_id) ??
+                                  group.row.entity_name ??
+                                  "Unknown entity"}
+                              </div>
+                            ) : null}
                             <div className="mt-1 text-sm text-muted-foreground">
                               {group.subtitle}
                             </div>

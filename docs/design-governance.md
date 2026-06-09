@@ -19,8 +19,13 @@ the live app and the Codex design source of truth:
   that doc remains the token source of record — update both together.
 - **02 Components** — sidebar (7-hub nav), top bar, buttons, status chips,
   metric card, tab bar, property table row.
-- **03 Screens** — Dashboard, Properties, Work (Operations), Smart Intake at
-  1440×900, built from the components.
+- **03 Screens** — Dashboard, Properties, Work (Operations), Smart Intake,
+  Settings (Work notifications + Ownership tags + Organisation profile), and
+  Notifications (notice center, channel readiness, digest history) at
+  1440×900, built from the components. Operator mobile (sub-md shell from
+  the 2026-06-01 slice: hamburger top bar + 5-item bottom nav) is captured
+  as Dashboard · Mobile and Work · Mobile at 390×844, with bottom-nav and
+  mobile top-bar components on 02 Components.
 
 Workflow: new design-facing slices get a frame in this file first (duplicate
 the nearest screen, modify, then implement). Figma frame review can stand in
@@ -60,6 +65,19 @@ back-filled when first touched by a design-facing slice.
   unchanged. Verified by eslint + tsc + Playwright smoke (platform-admin + settings
   specs green). Pending prototype/Remba review of the `/admin` console density and
   the Settings panel removal. Decision: [platform-admin-tier-ia.md](platform-admin-tier-ia.md).
+- **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
+  the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
+  spans every workspace surface. List pages (Properties, Tenants, People, Operations,
+  Contractors, Inbox) merge records across entities with per-row entity labels;
+  composite pages (Comms, Notifications, Portfolio-QA) concat their list/queue/notice
+  parts + sum counts; rollup pages (Dashboard command center, Insights via
+  portfolio-rollup, Billing-readiness) aggregate ranked actions/totals and note the
+  per-entity-only panels. Every provider/write action is gated to a single entity in
+  all-mode. Settings, Money, Statements, and Spreadsheet intake stay single-entity by
+  design (per-entity config / provider connections / per-owner financial docs / single
+  import target) and ignore a persisted sentinel. Remba should review all-mode row
+  density, the per-row entity-label treatment, and the "select a single entity" notes
+  once the rollout settles.
 - **"All entities" shared picker + People/Tenants (2026-06-10, prototype mode, no Remba gate):**
   a shared `EntityPicker` (dropdown + always-visible "All entities" toggle) now backs
   the Tenants page and the People hub (Tenants + Vendors). In all-mode the lists merge

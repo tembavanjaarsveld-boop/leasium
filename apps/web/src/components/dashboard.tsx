@@ -25,6 +25,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { ActivityFeedPanel } from "@/components/dashboard/ActivityFeedPanel";
 import { AskLeasiumPanel } from "@/components/dashboard/AskLeasiumPanel";
 import { CompliancePanel } from "@/components/dashboard/CompliancePanel";
@@ -42,6 +43,13 @@ import { UpcomingLeaseEventsPanel } from "@/components/dashboard/UpcomingLeaseEv
 import { RegisterImportPanel } from "@/app/intake/register-import-panel";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_STORAGE_KEY,
+  ENTITY_CHANGED_EVENT,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { friendlyError } from "@/lib/utils";
 import {
   EvidenceSourceTrail,
@@ -92,8 +100,6 @@ import {
   TenantOnboardingRecord,
 } from "@/lib/api";
 
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
-const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
 type ReviewItemAction = "approve" | "edit" | "ignore";
 type ReviewApplyTarget = {
@@ -115,9 +121,12 @@ function initialSelectedEntityId(mode: "dashboard" | "intake") {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
   const requestedEntityId = mode === "intake" ? params.get("entity_id") : null;
-  return (
-    requestedEntityId ?? window.localStorage.getItem(ENTITY_STORAGE_KEY) ?? ""
-  );
+  const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY) ?? "";
+  // Intake is a single-entity document-review flow: never seed it from the
+  // all-entities sentinel. Dashboard mode treats the sentinel as a valid value.
+  const resolvedStored =
+    mode === "intake" && isAllEntities(stored) ? "" : stored;
+  return requestedEntityId ?? resolvedStored;
 }
 type LeaseAutoMatchField = {
   field: string;
@@ -2747,13 +2756,23 @@ export function Dashboard({
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
+    // The All-entities sentinel is a valid restore target in dashboard mode only
+    // (it survives navigation/reload there); intake stays single-entity.
+    const storedIsRestorable = Boolean(
+      stored &&
+        ((!isIntakeWorkspace && isAllEntities(stored)) ||
+          accessibleIds.has(stored)),
+    );
     const next =
       requestedEntityId && accessibleIds.has(requestedEntityId)
         ? requestedEntityId
-        : stored && accessibleIds.has(stored)
-          ? stored
+        : storedIsRestorable
+          ? (stored as string)
           : firstEntity;
-    if (next && (!selectedEntityId || !accessibleIds.has(selectedEntityId))) {
+    const selectionValid =
+      (!isIntakeWorkspace && isAllEntities(selectedEntityId)) ||
+      accessibleIds.has(selectedEntityId);
+    if (next && (!selectedEntityId || !selectionValid)) {
       setSelectedEntityId(next);
     }
   }, [entitiesQuery.data, isIntakeWorkspace, selectedEntityId]);
@@ -2778,51 +2797,94 @@ export function Dashboard({
     );
   }, [isIntakeWorkspace]);
 
+  // Cross-entity "All entities" view (dashboard command-center mode only).
+  // The intake document-review flow stays strictly single-entity. In all-mode
+  // every entity-scoped query uses scopedEntityId (empty, so it stays disabled)
+  // and the command center reads merged fan-out results across all entities.
+  const allMode = isAllEntities(selectedEntityId) && !isIntakeWorkspace;
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const dashboardOverviewQuery = useQuery<DashboardOverviewRecord>({
-    queryKey: ["dashboard-overview", selectedEntityId, asOf],
-    queryFn: () => getDashboardOverview(selectedEntityId, asOf || undefined),
-    enabled: !demoMode && Boolean(selectedEntityId),
+    queryKey: ["dashboard-overview", scopedEntityId, asOf],
+    queryFn: () => getDashboardOverview(scopedEntityId, asOf || undefined),
+    enabled: !demoMode && Boolean(scopedEntityId),
   });
   const dashboardOverview = demoMode
     ? null
     : (dashboardOverviewQuery.data ?? null);
   const propertiesQuery = useQuery({
-    queryKey: ["dashboard-properties", selectedEntityId],
-    queryFn: () => listProperties(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["dashboard-properties", scopedEntityId],
+    queryFn: () => listProperties(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const tenantsQuery = useQuery({
-    queryKey: ["dashboard-tenants", selectedEntityId],
-    queryFn: () => listTenants(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["dashboard-tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const obligationsQuery = useQuery({
-    queryKey: ["dashboard-obligations", selectedEntityId],
-    queryFn: () => listObligations({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["dashboard-obligations", scopedEntityId],
+    queryFn: () => listObligations({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
   const rentRollQuery = useQuery({
-    queryKey: ["dashboard-rent-roll", selectedEntityId, asOf],
-    queryFn: () => listRentRoll({ entity_id: selectedEntityId, as_of: asOf }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["dashboard-rent-roll", scopedEntityId, asOf],
+    queryFn: () => listRentRoll({ entity_id: scopedEntityId, as_of: asOf }),
+    enabled: Boolean(scopedEntityId),
   });
   const insightsOverviewQuery = useQuery<InsightsOverviewRecord>({
-    queryKey: ["dashboard-insights-overview", selectedEntityId, asOf],
-    queryFn: () => getInsightsOverview(selectedEntityId, asOf || undefined),
+    queryKey: ["dashboard-insights-overview", scopedEntityId, asOf],
+    queryFn: () => getInsightsOverview(scopedEntityId, asOf || undefined),
     // Feeds UpcomingLeaseEventsPanel + CompliancePanel, both hidden in intake.
-    enabled: !isIntakeWorkspace && Boolean(selectedEntityId),
+    enabled: !isIntakeWorkspace && Boolean(scopedEntityId),
   });
   const onboardingQuery = useQuery({
-    queryKey: ["dashboard-onboarding", selectedEntityId],
-    queryFn: () => listTenantOnboardings(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["dashboard-onboarding", scopedEntityId],
+    queryFn: () => listTenantOnboardings(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const documentIntakesQuery = useQuery({
-    queryKey: ["dashboard-document-intakes", selectedEntityId],
-    queryFn: () => listDocumentIntakes(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["dashboard-document-intakes", scopedEntityId],
+    queryFn: () => listDocumentIntakes(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
     refetchInterval: (query) =>
       query.state.data?.some(intakeIsActive) ? 2500 : false,
+  });
+
+  // Per-entity fan-out for the all-entities command center. These share the
+  // single-entity cache shape (same keyPrefix) and only run when allMode is on.
+  // The command center re-builds from these merged lists; not-safely-additive
+  // panels (overview-derived events/compliance, demo mode) are scoped off below.
+  const obligationsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode && !demoMode,
+    keyPrefix: ["dashboard-obligations"],
+    queryFn: (entityId) => listObligations({ entity_id: entityId }),
+  });
+  const rentRollFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode && !demoMode,
+    keyPrefix: ["dashboard-rent-roll", asOf],
+    queryFn: (entityId) => listRentRoll({ entity_id: entityId, as_of: asOf }),
+  });
+  const onboardingFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode && !demoMode,
+    keyPrefix: ["dashboard-onboarding"],
+    queryFn: listTenantOnboardings,
+  });
+  const documentIntakesFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode && !demoMode,
+    keyPrefix: ["dashboard-document-intakes"],
+    queryFn: listDocumentIntakes,
   });
   const reviewTenancyUnitsQuery = useQuery({
     queryKey: ["dashboard-review-tenancy-units", reviewApplyTarget.propertyId],
@@ -3036,27 +3098,35 @@ export function Dashboard({
   const obligationsLoading =
     entitySelectionLoading ||
     (!demoMode &&
-      Boolean(selectedEntityId) &&
-      !obligationsQuery.data &&
-      (obligationsQuery.isLoading || obligationsQuery.isFetching));
+      (allMode
+        ? obligationsFanOut.isLoading
+        : Boolean(selectedEntityId) &&
+          !obligationsQuery.data &&
+          (obligationsQuery.isLoading || obligationsQuery.isFetching)));
   const rentRollLoading =
     entitySelectionLoading ||
     (!demoMode &&
-      Boolean(selectedEntityId) &&
-      !rentRollQuery.data &&
-      (rentRollQuery.isLoading || rentRollQuery.isFetching));
+      (allMode
+        ? rentRollFanOut.isLoading
+        : Boolean(selectedEntityId) &&
+          !rentRollQuery.data &&
+          (rentRollQuery.isLoading || rentRollQuery.isFetching)));
   const onboardingLoading =
     entitySelectionLoading ||
     (!demoMode &&
-      Boolean(selectedEntityId) &&
-      !onboardingQuery.data &&
-      (onboardingQuery.isLoading || onboardingQuery.isFetching));
+      (allMode
+        ? onboardingFanOut.isLoading
+        : Boolean(selectedEntityId) &&
+          !onboardingQuery.data &&
+          (onboardingQuery.isLoading || onboardingQuery.isFetching)));
   const documentIntakesLoading =
     entitySelectionLoading ||
     (!demoMode &&
-      Boolean(selectedEntityId) &&
-      !documentIntakesQuery.data &&
-      (documentIntakesQuery.isLoading || documentIntakesQuery.isFetching));
+      (allMode
+        ? documentIntakesFanOut.isLoading
+        : Boolean(selectedEntityId) &&
+          !documentIntakesQuery.data &&
+          (documentIntakesQuery.isLoading || documentIntakesQuery.isFetching)));
   const dashboardDataQueries = [
     propertiesQuery,
     tenantsQuery,
@@ -3065,51 +3135,87 @@ export function Dashboard({
     onboardingQuery,
     documentIntakesQuery,
   ];
+  const dashboardFanOuts = [
+    obligationsFanOut,
+    rentRollFanOut,
+    onboardingFanOut,
+    documentIntakesFanOut,
+  ];
   const dashboardLoading =
     !demoMode &&
     !dashboardOverview &&
     (entitySelectionLoading ||
-      (Boolean(selectedEntityId) &&
-        dashboardDataQueries.some(
-          (query) => !query.data && (query.isLoading || query.isFetching),
-        )));
+      (allMode
+        ? dashboardFanOuts.some((fanOut) => fanOut.isLoading)
+        : Boolean(selectedEntityId) &&
+          dashboardDataQueries.some(
+            (query) => !query.data && (query.isLoading || query.isFetching),
+          )));
   const dashboardRefreshing =
     !demoMode &&
-    Boolean(selectedEntityId) &&
-    (dashboardOverviewQuery.isFetching ||
-      dashboardDataQueries.some(
-        (query) => query.isFetching && !query.isLoading,
-      ));
+    (allMode
+      ? dashboardFanOuts.some((fanOut) => fanOut.isFetching)
+      : Boolean(selectedEntityId) &&
+        (dashboardOverviewQuery.isFetching ||
+          dashboardDataQueries.some(
+            (query) => query.isFetching && !query.isLoading,
+          )));
   const dashboardError =
     !demoMode &&
-    (entitiesQuery.error ??
-      propertiesQuery.error ??
-      tenantsQuery.error ??
-      obligationsQuery.error ??
-      rentRollQuery.error ??
-      onboardingQuery.error ??
-      documentIntakesQuery.error);
+    (allMode
+      ? (entitiesQuery.error ??
+        obligationsFanOut.error ??
+        rentRollFanOut.error ??
+        onboardingFanOut.error ??
+        documentIntakesFanOut.error)
+      : (entitiesQuery.error ??
+        propertiesQuery.error ??
+        tenantsQuery.error ??
+        obligationsQuery.error ??
+        rentRollQuery.error ??
+        onboardingQuery.error ??
+        documentIntakesQuery.error));
   const displayObligations = useMemo(
-    () => (demoMode ? demoObligationRows : (obligationsQuery.data ?? [])),
-    [demoMode, demoObligationRows, obligationsQuery.data],
+    () =>
+      demoMode
+        ? demoObligationRows
+        : allMode
+          ? obligationsFanOut.data
+          : (obligationsQuery.data ?? []),
+    [allMode, demoMode, demoObligationRows, obligationsFanOut.data, obligationsQuery.data],
   );
   const displayRentRoll = useMemo(
-    () => (demoMode ? demoRentRows : (rentRollQuery.data ?? [])),
-    [demoMode, demoRentRows, rentRollQuery.data],
+    () =>
+      demoMode
+        ? demoRentRows
+        : allMode
+          ? rentRollFanOut.data
+          : (rentRollQuery.data ?? []),
+    [allMode, demoMode, demoRentRows, rentRollFanOut.data, rentRollQuery.data],
   );
   const obligationsTrend = useMemo<DashboardMetricTrend | null>(
     () =>
+      // Trend is a single-entity computed series; in all-mode it is not safely
+      // additive, so it is suppressed (the card simply shows no trend chip).
       computeOpenObligationTrend({
-        records: demoMode ? null : (obligationsQuery.data ?? null),
+        records:
+          demoMode || allMode ? null : (obligationsQuery.data ?? null),
       }),
-    [demoMode, obligationsQuery.data],
+    [allMode, demoMode, obligationsQuery.data],
   );
 
   const displayOnboardings = useMemo(
-    () => (demoMode ? demoOnboardingRows : (onboardingQuery.data ?? [])),
-    [demoMode, demoOnboardingRows, onboardingQuery.data],
+    () =>
+      demoMode
+        ? demoOnboardingRows
+        : allMode
+          ? onboardingFanOut.data
+          : (onboardingQuery.data ?? []),
+    [allMode, demoMode, demoOnboardingRows, onboardingFanOut.data, onboardingQuery.data],
   );
-  const liveDocumentIntakes = documentIntakesQuery.data ?? [];
+  const liveDocumentIntakes = allMode
+    ? documentIntakesFanOut.data
+    : (documentIntakesQuery.data ?? []);
   const documentIntakes = demoMode
     ? [demoDocumentIntake, ...liveDocumentIntakes]
     : liveDocumentIntakes;
@@ -3186,12 +3292,23 @@ export function Dashboard({
   const urgentOnboardingFollowUps = activeOnboardings
     .filter((item) => dueRank(item.due_date) <= 7)
     .sort((a, b) => dueRank(a.due_date) - dueRank(b.due_date));
+  // In all-mode each merged command-center row references a top record that
+  // belongs to one entity; tag the row's metadata line (the `area` field, which
+  // renders as muted uppercase-adjacent text) with that owning entity so the
+  // operator can see which entity the action is for.
+  function commandCenterArea(area: string, entityId: string | null) {
+    if (!allMode || !entityId) {
+      return area;
+    }
+    const name = entityNameById.get(entityId);
+    return name ? `${area} · ${name.toUpperCase()}` : area;
+  }
   const commandCenterItems: CommandCenterItem[] = [];
   const topSmartReview = smartReviewIntakes[0];
   if (topSmartReview) {
     commandCenterItems.push({
       id: "smart-intake-review",
-      area: "Smart Intake",
+      area: commandCenterArea("Smart Intake", topSmartReview.entity_id),
       title: `${smartReviewIntakes.length} Smart Intake ${
         smartReviewIntakes.length === 1 ? "review" : "reviews"
       } waiting`,
@@ -3213,7 +3330,7 @@ export function Dashboard({
   if (topFailedIntake) {
     commandCenterItems.push({
       id: "smart-intake-failed",
-      area: "Smart Intake",
+      area: commandCenterArea("Smart Intake", topFailedIntake.entity_id),
       title: `${failedIntakes.length} document ${
         failedIntakes.length === 1 ? "read" : "reads"
       } failed`,
@@ -3239,7 +3356,7 @@ export function Dashboard({
       : "";
     commandCenterItems.push({
       id: "billing-readiness",
-      area: "Billing",
+      area: commandCenterArea("Billing", topBillingIssue.row.entity_id),
       title: `${rankedBillingIssues.length} billing ${
         rankedBillingIssues.length === 1 ? "blocker" : "blockers"
       } before invoices`,
@@ -3260,7 +3377,7 @@ export function Dashboard({
   if (topSubmittedOnboarding) {
     commandCenterItems.push({
       id: "submitted-onboarding",
-      area: "Onboarding",
+      area: commandCenterArea("Onboarding", topSubmittedOnboarding.entity_id),
       title: `${rankedSubmittedOnboardings.length} submitted onboarding ${
         rankedSubmittedOnboardings.length === 1 ? "item" : "items"
       } need review`,
@@ -3283,7 +3400,7 @@ export function Dashboard({
       : "";
     commandCenterItems.push({
       id: "urgent-operations",
-      area: "Operations",
+      area: commandCenterArea("Operations", topUrgentObligation.entity_id),
       title: `${urgentObligations.length} urgent ${
         urgentObligations.length === 1 ? "date" : "dates"
       } or task${urgentObligations.length === 1 ? "" : "s"}`,
@@ -3304,7 +3421,7 @@ export function Dashboard({
   if (topOnboardingFollowUp) {
     commandCenterItems.push({
       id: "onboarding-follow-up",
-      area: "Onboarding",
+      area: commandCenterArea("Onboarding", topOnboardingFollowUp.entity_id),
       title: `${urgentOnboardingFollowUps.length} tenant onboarding follow-up${
         urgentOnboardingFollowUps.length === 1 ? "" : "s"
       } due`,
@@ -3456,6 +3573,7 @@ export function Dashboard({
   };
   const commandCenterDetailsReady =
     demoMode ||
+    allMode ||
     Boolean(
       documentIntakesQuery.data &&
       rentRollQuery.data &&
@@ -3479,7 +3597,7 @@ export function Dashboard({
       obligationsLoading);
   const operationsMetricLoading = obligationsLoading && !dashboardOverview;
   const operationsMetricCount =
-    demoMode || obligationsQuery.data
+    demoMode || allMode || obligationsQuery.data
       ? urgentObligations.length
       : overviewOperationsCount;
   const operationsMetricChip = operationsMetricCount ? "Act now" : "Clear";
@@ -3491,7 +3609,7 @@ export function Dashboard({
       : "No urgent dates need action.");
   const billingMetricLoading = rentRollLoading && !dashboardOverview;
   const billingMetricCount =
-    demoMode || rentRollQuery.data
+    demoMode || allMode || rentRollQuery.data
       ? billingIssues.length
       : overviewBillingBlockerCount;
   const billingMetricNextAction =
@@ -3501,11 +3619,11 @@ export function Dashboard({
       : "Invoice run is ready from current data.");
   const reviewMetricLoading = documentIntakesLoading && !dashboardOverview;
   const reviewMetricCount =
-    demoMode || documentIntakesQuery.data
+    demoMode || allMode || documentIntakesQuery.data
       ? needsReviewCount
       : overviewDocumentNeedsReviewCount;
   const failedIntakeMetricCount =
-    demoMode || documentIntakesQuery.data
+    demoMode || allMode || documentIntakesQuery.data
       ? failedIntakeCount
       : overviewDocumentFailedCount;
 
@@ -3514,6 +3632,22 @@ export function Dashboard({
       return;
     }
     documentIntakeMutation.mutate(file);
+  }
+
+  // Refresh routes through fan-outs in all-mode (single-entity queries are
+  // disabled there) and through the single-entity queries otherwise.
+  function refreshDashboardData() {
+    if (allMode) {
+      dashboardFanOuts.forEach((fanOut) => fanOut.refetch());
+      return;
+    }
+    dashboardOverviewQuery.refetch();
+    propertiesQuery.refetch();
+    tenantsQuery.refetch();
+    obligationsQuery.refetch();
+    rentRollQuery.refetch();
+    onboardingQuery.refetch();
+    documentIntakesQuery.refetch();
   }
 
   function reviewQueueCsv() {
@@ -3589,18 +3723,13 @@ export function Dashboard({
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="">Select entity</option>
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+          allowAllEntities={!isIntakeWorkspace}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
@@ -3621,15 +3750,7 @@ export function Dashboard({
                 ) : null}
                 <SecondaryButton
                   type="button"
-                  onClick={() => {
-                    dashboardOverviewQuery.refetch();
-                    propertiesQuery.refetch();
-                    tenantsQuery.refetch();
-                    obligationsQuery.refetch();
-                    rentRollQuery.refetch();
-                    onboardingQuery.refetch();
-                    documentIntakesQuery.refetch();
-                  }}
+                  onClick={refreshDashboardData}
                   disabled={!selectedEntityId}
                 >
                   <RefreshCw size={15} />
@@ -3654,13 +3775,7 @@ export function Dashboard({
               type="button"
               onClick={() => {
                 entitiesQuery.refetch();
-                dashboardOverviewQuery.refetch();
-                propertiesQuery.refetch();
-                tenantsQuery.refetch();
-                obligationsQuery.refetch();
-                rentRollQuery.refetch();
-                onboardingQuery.refetch();
-                documentIntakesQuery.refetch();
+                refreshDashboardData();
               }}
             >
               <RefreshCw size={15} />
@@ -3718,15 +3833,7 @@ export function Dashboard({
                 </SecondaryButton>
                 <SecondaryButton
                   type="button"
-                  onClick={() => {
-                    dashboardOverviewQuery.refetch();
-                    propertiesQuery.refetch();
-                    tenantsQuery.refetch();
-                    obligationsQuery.refetch();
-                    rentRollQuery.refetch();
-                    onboardingQuery.refetch();
-                    documentIntakesQuery.refetch();
-                  }}
+                  onClick={refreshDashboardData}
                   disabled={!selectedEntityId}
                 >
                   <RefreshCw size={15} />
@@ -4185,14 +4292,7 @@ export function Dashboard({
             {isIntakeWorkspace ? (
               <RegisterImportPanel
                 entityId={selectedEntityId}
-                onApplied={() => {
-                  dashboardOverviewQuery.refetch();
-                  propertiesQuery.refetch();
-                  tenantsQuery.refetch();
-                  obligationsQuery.refetch();
-                  rentRollQuery.refetch();
-                  documentIntakesQuery.refetch();
-                }}
+                onApplied={refreshDashboardData}
               />
             ) : null}
 
@@ -4468,23 +4568,42 @@ export function Dashboard({
           </div>
         </section>
 
-        {!isIntakeWorkspace ? (
+        {/* UpcomingLeaseEventsPanel + CompliancePanel are driven by the
+            single-entity insights rollup (getInsightsOverview), which is not
+            a safely additive cross-entity number. In all-mode we scope them off
+            with a clear note rather than fabricating a merged value. */}
+        {!isIntakeWorkspace && allMode ? (
+          <SectionPanel
+            title="Lease events & compliance"
+            icon={<CalendarClock size={17} className="text-primary" />}
+          >
+            <div className="p-4 text-sm text-muted-foreground">
+              Lease events and compliance roll-ups are shown when a single entity
+              is selected.
+            </div>
+          </SectionPanel>
+        ) : null}
+
+        {!isIntakeWorkspace && !allMode ? (
           <UpcomingLeaseEventsPanel
             overview={insightsOverviewQuery.data}
             isLoading={insightsOverviewQuery.isLoading}
           />
         ) : null}
 
-        {!isIntakeWorkspace ? (
+        {!isIntakeWorkspace && !allMode ? (
           <CompliancePanel
             overview={insightsOverviewQuery.data}
             isLoading={insightsOverviewQuery.isLoading}
           />
         ) : null}
 
-        <AskLeasiumPanel entityId={selectedEntityId} />
+        {/* Ask Leasium + Activity feed are single-entity scoped surfaces. In
+            all-mode we pass the empty scoped id so they fall back to their
+            "select an entity" state rather than firing with the sentinel. */}
+        <AskLeasiumPanel entityId={scopedEntityId} />
 
-        <ActivityFeedPanel entityId={selectedEntityId} />
+        <ActivityFeedPanel entityId={scopedEntityId} />
       </div>
     </main>
   );
