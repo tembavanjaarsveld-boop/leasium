@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -39,9 +40,12 @@ import {
   promoteInboxMessage,
   triageInboxMessage,
 } from "@/lib/api";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
 import { cn, friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 const KIND_LABEL: Record<InboxTriageKind, string> = {
   maintenance_request: "Maintenance request",
@@ -125,16 +129,24 @@ function InboxWorkspace() {
     queryFn: listEntities,
   });
 
+  // The inbox is a paste-and-classify tool, not a stored-list surface, so there
+  // is no primary per-entity list to fan out. All-entities mode here just
+  // collapses the scope to "" (disabling the secondary promote pickers) and
+  // gates the single-entity classify/promote actions; useEntityFanOut is not
+  // needed. scopedEntityId is the safe id to feed the API.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+
   const propertiesQuery = useQuery({
-    queryKey: ["inbox-promote-properties", selectedEntityId],
-    queryFn: () => listProperties(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && Boolean(result),
+    queryKey: ["inbox-promote-properties", scopedEntityId],
+    queryFn: () => listProperties(scopedEntityId),
+    enabled: Boolean(scopedEntityId) && Boolean(result),
   });
 
   const tenantsQuery = useQuery({
-    queryKey: ["inbox-promote-tenants", selectedEntityId],
-    queryFn: () => listTenants(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && Boolean(result),
+    queryKey: ["inbox-promote-tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId) && Boolean(result),
   });
 
   const leasesQuery = useQuery({
@@ -147,10 +159,10 @@ function InboxWorkspace() {
   });
 
   const contractorsQuery = useQuery({
-    queryKey: ["inbox-promote-contractors", selectedEntityId],
-    queryFn: () => listContractors(selectedEntityId),
+    queryKey: ["inbox-promote-contractors", scopedEntityId],
+    queryFn: () => listContractors(scopedEntityId),
     enabled:
-      Boolean(selectedEntityId) &&
+      Boolean(scopedEntityId) &&
       Boolean(result) &&
       result?.kind === "vendor_or_contractor",
   });
@@ -158,14 +170,18 @@ function InboxWorkspace() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) {
-      setSelectedEntityId(stored);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!selectedEntityId && entitiesQuery.data?.length) {
-      setSelectedEntityId(entitiesQuery.data[0].id);
+    const accessibleIds = new Set(
+      (entitiesQuery.data ?? []).map((entity) => entity.id),
+    );
+    const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
+    // The All-entities sentinel is a valid restore target even though it is not
+    // a real entity id, so the cross-entity view survives navigation/reload.
+    const next =
+      stored && (isAllEntities(stored) || accessibleIds.has(stored))
+        ? stored
+        : firstEntity;
+    if (!selectedEntityId && next) {
+      setSelectedEntityId(next);
     }
   }, [entitiesQuery.data, selectedEntityId]);
 
@@ -231,8 +247,8 @@ function InboxWorkspace() {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = body.trim();
-    if (!trimmed || !selectedEntityId) return;
-    triageMutation.mutate({ entity_id: selectedEntityId, body: trimmed });
+    if (!trimmed || !scopedEntityId) return;
+    triageMutation.mutate({ entity_id: scopedEntityId, body: trimmed });
   }
 
   function handleReset() {
@@ -258,7 +274,7 @@ function InboxWorkspace() {
   }
 
   function handlePromote() {
-    if (!result || !selectedEntityId) return;
+    if (!result || !scopedEntityId) return;
     if (!isPromotable(result.kind)) return;
     const tenantContactUpdates =
       result.kind === "tenant_contact" && tenantContactPreview
@@ -271,7 +287,7 @@ function InboxWorkspace() {
           )
         : undefined;
     promoteMutation.mutate({
-      entity_id: selectedEntityId,
+      entity_id: scopedEntityId,
       kind: result.kind,
       summary: result.summary,
       body: body.trim(),
@@ -284,9 +300,9 @@ function InboxWorkspace() {
   }
 
   function handlePrepareTenantContact() {
-    if (!selectedEntityId || !promoteTenantId) return;
+    if (!scopedEntityId || !promoteTenantId) return;
     tenantContactPreviewMutation.mutate({
-      entity_id: selectedEntityId,
+      entity_id: scopedEntityId,
       tenant_id: promoteTenantId,
       body: body.trim(),
     });
@@ -305,6 +321,7 @@ function InboxWorkspace() {
     ).length ?? 0;
   const promoteDisabled =
     !showPromote ||
+    !scopedEntityId ||
     promoteMutation.isPending ||
     (promoteRequiresTenant && !promoteTenantId) ||
     (promoteShowsTenantContactPreview &&
@@ -322,22 +339,17 @@ function InboxWorkspace() {
   }, [result, promoteContractorId]);
 
   const submitDisabled =
-    !selectedEntityId || !body.trim() || triageMutation.isPending;
+    !scopedEntityId || !body.trim() || triageMutation.isPending;
 
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          {(entitiesQuery.data ?? []).map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
       <div className="mx-auto grid max-w-5xl gap-5 px-5 py-6">
         <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary-soft/40 via-white to-accent-soft/25 px-5 py-4 shadow-leasiumXs">
@@ -399,7 +411,15 @@ function InboxWorkspace() {
                 Tip: pressing Cmd/Ctrl + Enter inside the textarea will
                 classify.
               </p>
-              <Button type="submit" disabled={submitDisabled}>
+              <Button
+                type="submit"
+                disabled={submitDisabled}
+                title={
+                  allMode
+                    ? "Select a single entity to classify a message"
+                    : undefined
+                }
+              >
                 {triageMutation.isPending ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin" /> Classifying…
@@ -746,6 +766,11 @@ function InboxWorkspace() {
                       type="button"
                       onClick={handlePromote}
                       disabled={promoteDisabled}
+                      title={
+                        allMode
+                          ? "Select a single entity to promote to a draft"
+                          : undefined
+                      }
                     >
                       {promoteMutation.isPending ? (
                         <span className="inline-flex items-center gap-2">

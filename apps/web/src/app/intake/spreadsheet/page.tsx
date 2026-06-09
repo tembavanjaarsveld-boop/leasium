@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -23,7 +24,6 @@ import {
   PageHeader,
   SecondaryButton,
   SectionPanel,
-  Select,
   StatusBadge,
 } from "@/components/ui";
 import {
@@ -37,9 +37,8 @@ import {
   type RegisterImportDryRunRecord,
 } from "@/lib/api";
 import { saveBlob } from "@/lib/download";
+import { ENTITY_STORAGE_KEY, isAllEntities } from "@/lib/entity-selection";
 import { friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 function valueLabel(value: unknown) {
   if (value === null || value === undefined || value === "") {
@@ -89,7 +88,9 @@ function SpreadsheetImportWorkspace() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) {
+    // Spreadsheet import targets a single entity; ignore the cross-entity
+    // "All entities" sentinel another page may have persisted.
+    if (stored && !isAllEntities(stored)) {
       setSelectedEntityId(stored);
     }
   }, []);
@@ -212,23 +213,18 @@ function SpreadsheetImportWorkspace() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => {
-            setSelectedEntityId(event.target.value);
-            if (event.target.value) {
-              window.localStorage.setItem(ENTITY_STORAGE_KEY, event.target.value);
+          allowAllEntities={false}
+          onChange={(value) => {
+            setSelectedEntityId(value);
+            if (value) {
+              window.localStorage.setItem(ENTITY_STORAGE_KEY, value);
             }
           }}
-        >
-          <option value="">Select entity</option>
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">

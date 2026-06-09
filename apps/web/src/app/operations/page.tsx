@@ -36,6 +36,7 @@ import {
 } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -99,13 +100,18 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { cn, friendlyError } from "@/lib/utils";
 
 import {
   ArrearsReviewPacketPanel as ArrearsReviewPacketPanelView,
 } from "./ArrearsReviewPacketPanel";
 
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_PROPERTIES: PropertyRecord[] = [];
 const EMPTY_TENANTS: TenantRecord[] = [];
 const EMPTY_OBLIGATIONS: ObligationRecord[] = [];
@@ -2487,7 +2493,12 @@ function OperationsWorkspace() {
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
-    const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
+    // The All-entities sentinel is a valid restore target even though it is
+    // not a real entity id, so the cross-entity view survives navigation.
+    const next =
+      stored && (isAllEntities(stored) || accessibleIds.has(stored))
+        ? stored
+        : firstEntity;
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
@@ -2533,79 +2544,151 @@ function OperationsWorkspace() {
     (entity) => entity.id === selectedEntityId,
   );
 
+  // All-entities mode: entity-scoped queries use scopedEntityId (empty in
+  // all-mode, so they stay disabled) and the page reads merged fan-out
+  // results. Single-entity writes are gated off while allMode is on.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const propertiesQuery = useQuery({
-    queryKey: ["operations-properties", selectedEntityId],
-    queryFn: () => listProperties(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-properties", scopedEntityId],
+    queryFn: () => listProperties(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   const tenantsQuery = useQuery({
-    queryKey: ["operations-tenants", selectedEntityId],
-    queryFn: () => listTenants(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   const obligationsQuery = useQuery({
-    queryKey: ["operations-obligations", selectedEntityId],
-    queryFn: () => listObligations({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-obligations", scopedEntityId],
+    queryFn: () => listObligations({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
 
   const complianceChecksQuery = useQuery({
-    queryKey: ["operations-compliance-checks", selectedEntityId],
-    queryFn: () => listComplianceChecks({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-compliance-checks", scopedEntityId],
+    queryFn: () => listComplianceChecks({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
 
   const onboardingQuery = useQuery({
-    queryKey: ["operations-onboarding", selectedEntityId],
-    queryFn: () => listTenantOnboardings(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-onboarding", scopedEntityId],
+    queryFn: () => listTenantOnboardings(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   const documentIntakesQuery = useQuery({
-    queryKey: ["operations-document-intakes", selectedEntityId],
-    queryFn: () => listDocumentIntakes(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-document-intakes", scopedEntityId],
+    queryFn: () => listDocumentIntakes(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   // Stored documents are only fetched while an evidence-link form is open.
   const evidenceDocumentsQuery = useQuery({
-    queryKey: ["operations-evidence-documents", selectedEntityId],
-    queryFn: () => listDocuments({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId) && evidenceLinkForm !== null,
+    queryKey: ["operations-evidence-documents", scopedEntityId],
+    queryFn: () => listDocuments({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId) && evidenceLinkForm !== null,
   });
 
   const maintenanceQuery = useQuery({
-    queryKey: ["operations-maintenance", selectedEntityId],
-    queryFn: () => listMaintenanceWorkOrders({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-maintenance", scopedEntityId],
+    queryFn: () => listMaintenanceWorkOrders({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
 
   const invoiceDraftsQuery = useQuery({
-    queryKey: ["operations-invoice-drafts", selectedEntityId],
-    queryFn: () => listInvoiceDrafts({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-invoice-drafts", scopedEntityId],
+    queryFn: () => listInvoiceDrafts({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
 
   const arrearsQuery = useQuery({
-    queryKey: ["operations-arrears", selectedEntityId],
-    queryFn: () => listArrearsCases({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["operations-arrears", scopedEntityId],
+    queryFn: () => listArrearsCases({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
+  });
+
+  // Fan-out copies of the primary list queries for all-entities mode. Each
+  // runs the same per-entity request across every accessible entity and
+  // concatenates the results so the queue/maintenance/arrears tables can
+  // render a cross-entity view.
+  const propertiesFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-properties"],
+    queryFn: listProperties,
+  });
+  const tenantsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-tenants"],
+    queryFn: listTenants,
+  });
+  const obligationsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-obligations"],
+    queryFn: (entityId) => listObligations({ entity_id: entityId }),
+  });
+  const complianceChecksFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-compliance-checks"],
+    queryFn: (entityId) => listComplianceChecks({ entity_id: entityId }),
+  });
+  const onboardingFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-onboarding"],
+    queryFn: listTenantOnboardings,
+  });
+  const documentIntakesFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-document-intakes"],
+    queryFn: listDocumentIntakes,
+  });
+  const maintenanceFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-maintenance"],
+    queryFn: (entityId) => listMaintenanceWorkOrders({ entity_id: entityId }),
+  });
+  const invoiceDraftsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-invoice-drafts"],
+    queryFn: (entityId) => listInvoiceDrafts({ entity_id: entityId }),
+  });
+  const arrearsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["operations-arrears"],
+    queryFn: (entityId) => listArrearsCases({ entity_id: entityId }),
   });
 
   const invalidateOperations = () => {
     queryClient.invalidateQueries({
-      queryKey: ["operations-obligations", selectedEntityId],
+      queryKey: ["operations-obligations", scopedEntityId],
     });
     queryClient.invalidateQueries({
-      queryKey: ["operations-compliance-checks", selectedEntityId],
+      queryKey: ["operations-compliance-checks", scopedEntityId],
     });
     queryClient.invalidateQueries({
-      queryKey: ["operations-maintenance", selectedEntityId],
+      queryKey: ["operations-maintenance", scopedEntityId],
     });
     queryClient.invalidateQueries({
-      queryKey: ["operations-arrears", selectedEntityId],
+      queryKey: ["operations-arrears", scopedEntityId],
     });
   };
 
@@ -2657,7 +2740,7 @@ function OperationsWorkspace() {
       }),
     onSuccess: (completedCheck, check) => {
       queryClient.setQueryData<ComplianceCheckRecord[]>(
-        ["operations-compliance-checks", selectedEntityId],
+        ["operations-compliance-checks", scopedEntityId],
         (current) =>
           current?.map((row) =>
             row.id === completedCheck.id ? completedCheck : row,
@@ -2684,7 +2767,7 @@ function OperationsWorkspace() {
       let documentId = input.documentId;
       if (input.file) {
         const uploaded = await uploadDocument({
-          entityId: selectedEntityId,
+          entityId: scopedEntityId,
           propertyId: input.check.property_id ?? undefined,
           tenantId: input.check.tenant_id ?? undefined,
           leaseId: input.check.lease_id ?? undefined,
@@ -2706,7 +2789,7 @@ function OperationsWorkspace() {
     },
     onSuccess: (linkedCheck, input) => {
       queryClient.setQueryData<ComplianceCheckRecord[]>(
-        ["operations-compliance-checks", selectedEntityId],
+        ["operations-compliance-checks", scopedEntityId],
         (current) =>
           current?.map((row) =>
             row.id === linkedCheck.id ? linkedCheck : row,
@@ -2745,7 +2828,7 @@ function OperationsWorkspace() {
     mutationFn: createMaintenanceWorkOrder,
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", selectedEntityId],
+        queryKey: ["operations-maintenance", scopedEntityId],
       });
       setMaintenanceForm(emptyMaintenanceForm);
       setMaintenanceFormOpen(false);
@@ -2772,7 +2855,7 @@ function OperationsWorkspace() {
     if (next == null) return;
     const previousValue = workOrder[field];
     if (next === previousValue) return;
-    const queryKey = ["operations-maintenance", selectedEntityId];
+    const queryKey = ["operations-maintenance", scopedEntityId];
     const previous =
       queryClient.getQueryData<MaintenanceWorkOrderRecord[]>(queryKey) ?? null;
     if (previous) {
@@ -2789,7 +2872,7 @@ function OperationsWorkspace() {
       } as Parameters<typeof updateMaintenanceWorkOrder>[1]);
       setMaintenanceInlineUndo({
         id: `${workOrder.id}-${field}-${Date.now()}`,
-        entityId: selectedEntityId,
+        entityId: scopedEntityId,
         workOrderId: workOrder.id,
         title: workOrder.title,
         field,
@@ -2873,7 +2956,7 @@ function OperationsWorkspace() {
     mutationFn: createArrearsCase,
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["operations-arrears", selectedEntityId],
+        queryKey: ["operations-arrears", scopedEntityId],
       });
       setArrearsForm(emptyArrearsForm);
       setArrearsFormOpen(false);
@@ -2901,7 +2984,7 @@ function OperationsWorkspace() {
     }) => recordArrearsPromiseToPay(payload.id, payload.data),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["operations-arrears", selectedEntityId],
+        queryKey: ["operations-arrears", scopedEntityId],
       }),
   });
 
@@ -2919,7 +3002,7 @@ function OperationsWorkspace() {
   const workAssignmentDigestMutation = useMutation({
     mutationFn: (sendEmailApproved: boolean = false) =>
       runWorkAssignmentDigest({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         cadence: digestCadence,
         send_email_approved: sendEmailApproved,
       }),
@@ -2928,35 +3011,90 @@ function OperationsWorkspace() {
 
   const operationsLoading =
     entitiesQuery.isLoading ||
-    (Boolean(selectedEntityId) &&
-      (propertiesQuery.isLoading ||
-        tenantsQuery.isLoading ||
-        obligationsQuery.isLoading ||
-        complianceChecksQuery.isLoading ||
-        onboardingQuery.isLoading ||
-        documentIntakesQuery.isLoading ||
-        maintenanceQuery.isLoading ||
-        invoiceDraftsQuery.isLoading ||
-        arrearsQuery.isLoading));
+    (allMode
+      ? propertiesFanOut.isLoading ||
+        tenantsFanOut.isLoading ||
+        obligationsFanOut.isLoading ||
+        complianceChecksFanOut.isLoading ||
+        onboardingFanOut.isLoading ||
+        documentIntakesFanOut.isLoading ||
+        maintenanceFanOut.isLoading ||
+        invoiceDraftsFanOut.isLoading ||
+        arrearsFanOut.isLoading
+      : Boolean(selectedEntityId) &&
+        (propertiesQuery.isLoading ||
+          tenantsQuery.isLoading ||
+          obligationsQuery.isLoading ||
+          complianceChecksQuery.isLoading ||
+          onboardingQuery.isLoading ||
+          documentIntakesQuery.isLoading ||
+          maintenanceQuery.isLoading ||
+          invoiceDraftsQuery.isLoading ||
+          arrearsQuery.isLoading));
 
   const currentUser = securityWorkspaceQuery.data?.current_user ?? null;
-  const properties = propertiesQuery.data ?? EMPTY_PROPERTIES;
-  const tenants = tenantsQuery.data ?? EMPTY_TENANTS;
-  const obligations = obligationsQuery.data ?? EMPTY_OBLIGATIONS;
-  const complianceChecks =
-    complianceChecksQuery.data ?? EMPTY_COMPLIANCE_CHECKS;
-  const onboardings = onboardingQuery.data ?? EMPTY_ONBOARDINGS;
-  const intakes = documentIntakesQuery.data ?? EMPTY_INTAKES;
-  const maintenance = maintenanceQuery.data ?? EMPTY_MAINTENANCE;
-  const arrears = arrearsQuery.data ?? EMPTY_ARREARS;
-  const invoiceDrafts = invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS;
+  // Merged views the UI reads regardless of single- vs all-entity mode.
+  const properties = useMemo(
+    () => (allMode ? propertiesFanOut.data : (propertiesQuery.data ?? EMPTY_PROPERTIES)),
+    [allMode, propertiesFanOut.data, propertiesQuery.data],
+  );
+  const tenants = useMemo(
+    () => (allMode ? tenantsFanOut.data : (tenantsQuery.data ?? EMPTY_TENANTS)),
+    [allMode, tenantsFanOut.data, tenantsQuery.data],
+  );
+  const obligations = useMemo(
+    () =>
+      allMode
+        ? obligationsFanOut.data
+        : (obligationsQuery.data ?? EMPTY_OBLIGATIONS),
+    [allMode, obligationsFanOut.data, obligationsQuery.data],
+  );
+  const complianceChecks = useMemo(
+    () =>
+      allMode
+        ? complianceChecksFanOut.data
+        : (complianceChecksQuery.data ?? EMPTY_COMPLIANCE_CHECKS),
+    [allMode, complianceChecksFanOut.data, complianceChecksQuery.data],
+  );
+  const onboardings = useMemo(
+    () =>
+      allMode
+        ? onboardingFanOut.data
+        : (onboardingQuery.data ?? EMPTY_ONBOARDINGS),
+    [allMode, onboardingFanOut.data, onboardingQuery.data],
+  );
+  const intakes = useMemo(
+    () =>
+      allMode
+        ? documentIntakesFanOut.data
+        : (documentIntakesQuery.data ?? EMPTY_INTAKES),
+    [allMode, documentIntakesFanOut.data, documentIntakesQuery.data],
+  );
+  const maintenance = useMemo(
+    () =>
+      allMode
+        ? maintenanceFanOut.data
+        : (maintenanceQuery.data ?? EMPTY_MAINTENANCE),
+    [allMode, maintenanceFanOut.data, maintenanceQuery.data],
+  );
+  const arrears = useMemo(
+    () => (allMode ? arrearsFanOut.data : (arrearsQuery.data ?? EMPTY_ARREARS)),
+    [allMode, arrearsFanOut.data, arrearsQuery.data],
+  );
+  const invoiceDrafts = useMemo(
+    () =>
+      allMode
+        ? invoiceDraftsFanOut.data
+        : (invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS),
+    [allMode, invoiceDraftsFanOut.data, invoiceDraftsQuery.data],
+  );
   const securityMembers = securityWorkspaceQuery.data?.members ?? EMPTY_MEMBERS;
   const assignableMembers = useMemo(
     () =>
       securityMembers
-        .filter((member) => memberCanReceiveWork(member, selectedEntityId))
+        .filter((member) => memberCanReceiveWork(member, scopedEntityId))
         .sort((a, b) => memberLabel(a).localeCompare(memberLabel(b))),
-    [securityMembers, selectedEntityId],
+    [securityMembers, scopedEntityId],
   );
 
   const queueItems = useMemo(
@@ -3060,7 +3198,7 @@ function OperationsWorkspace() {
       return {
         id: member.id,
         label: memberLabel(member),
-        role: memberEntityRole(member, selectedEntityId),
+        role: memberEntityRole(member, scopedEntityId),
         count: memberItems.length,
         urgentCount: memberItems.filter((item) =>
           ["danger", "warning"].includes(item.tone),
@@ -3156,15 +3294,25 @@ function OperationsWorkspace() {
 
   const error =
     entitiesQuery.error ||
-    propertiesQuery.error ||
-    tenantsQuery.error ||
-    obligationsQuery.error ||
-    complianceChecksQuery.error ||
-    onboardingQuery.error ||
-    documentIntakesQuery.error ||
-    maintenanceQuery.error ||
-    invoiceDraftsQuery.error ||
-    arrearsQuery.error ||
+    (allMode
+      ? propertiesFanOut.error ||
+        tenantsFanOut.error ||
+        obligationsFanOut.error ||
+        complianceChecksFanOut.error ||
+        onboardingFanOut.error ||
+        documentIntakesFanOut.error ||
+        maintenanceFanOut.error ||
+        invoiceDraftsFanOut.error ||
+        arrearsFanOut.error
+      : propertiesQuery.error ||
+        tenantsQuery.error ||
+        obligationsQuery.error ||
+        complianceChecksQuery.error ||
+        onboardingQuery.error ||
+        documentIntakesQuery.error ||
+        maintenanceQuery.error ||
+        invoiceDraftsQuery.error ||
+        arrearsQuery.error) ||
     createMaintenanceMutation.error ||
     updateMaintenanceMutation.error ||
     createArrearsMutation.error ||
@@ -3190,6 +3338,18 @@ function OperationsWorkspace() {
 
   function refresh() {
     securityWorkspaceQuery.refetch();
+    if (allMode) {
+      propertiesFanOut.refetch();
+      tenantsFanOut.refetch();
+      obligationsFanOut.refetch();
+      complianceChecksFanOut.refetch();
+      onboardingFanOut.refetch();
+      documentIntakesFanOut.refetch();
+      maintenanceFanOut.refetch();
+      invoiceDraftsFanOut.refetch();
+      arrearsFanOut.refetch();
+      return;
+    }
     propertiesQuery.refetch();
     tenantsQuery.refetch();
     obligationsQuery.refetch();
@@ -3203,12 +3363,12 @@ function OperationsWorkspace() {
 
   function submitMaintenance(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedEntityId || !maintenanceForm.title.trim()) {
+    if (!scopedEntityId || !maintenanceForm.title.trim()) {
       return;
     }
     const quoteAmount = dollarsToCents(maintenanceForm.quote_amount);
     createMaintenanceMutation.mutate({
-      entity_id: selectedEntityId,
+      entity_id: scopedEntityId,
       title: maintenanceForm.title.trim(),
       description: optionalString(maintenanceForm.description),
       property_id: maintenanceForm.property_id || null,
@@ -3240,12 +3400,12 @@ function OperationsWorkspace() {
 
   function submitArrears(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedEntityId || !arrearsForm.tenant_id) {
+    if (!scopedEntityId || !arrearsForm.tenant_id) {
       return;
     }
     const tenant = tenants.find((item) => item.id === arrearsForm.tenant_id);
     createArrearsMutation.mutate({
-      entity_id: selectedEntityId,
+      entity_id: scopedEntityId,
       tenant_id: arrearsForm.tenant_id,
       status: arrearsForm.status,
       currency: "AUD",
@@ -3300,7 +3460,7 @@ function OperationsWorkspace() {
       metadata,
       assignee,
       currentUser,
-      entityId: selectedEntityId,
+      entityId: scopedEntityId,
       title,
       kind,
       dueDate,
@@ -3493,7 +3653,7 @@ function OperationsWorkspace() {
         onAssign={onAssign}
         onAction={onAction}
         onNotify={onNotify}
-        disabled={assignmentPending}
+        disabled={assignmentPending || allMode}
         membersLoading={securityWorkspaceQuery.isLoading}
       />
     );
@@ -3556,7 +3716,7 @@ function OperationsWorkspace() {
                 status: "completed",
               })
             }
-            disabled={updateObligationMutation.isPending}
+            disabled={updateObligationMutation.isPending || allMode}
           >
             <CheckCircle2 size={15} className="text-success" />
             Complete
@@ -3574,7 +3734,7 @@ function OperationsWorkspace() {
                     status: "waived",
                   });
                 }}
-                disabled={updateObligationMutation.isPending}
+                disabled={updateObligationMutation.isPending || allMode}
               >
                 Confirm
               </button>
@@ -3596,7 +3756,7 @@ function OperationsWorkspace() {
                   : undefined
               }
               onClick={() => setWaiveConfirmId(item.id)}
-              disabled={updateObligationMutation.isPending}
+              disabled={updateObligationMutation.isPending || allMode}
             >
               Waive
             </button>
@@ -3633,7 +3793,7 @@ function OperationsWorkspace() {
           onUpdate={(data) =>
             updateMaintenanceMutation.mutate({ id: item.record.id, data })
           }
-          disabled={updateMaintenanceMutation.isPending}
+          disabled={updateMaintenanceMutation.isPending || allMode}
           compactLabels={options?.compactLabels}
         />
       );
@@ -3644,7 +3804,7 @@ function OperationsWorkspace() {
         onUpdate={(data) =>
           updateArrearsMutation.mutate({ id: item.record.id, data })
         }
-        disabled={updateArrearsMutation.isPending}
+        disabled={updateArrearsMutation.isPending || allMode}
         compactLabels={options?.compactLabels}
       />
     );
@@ -3674,6 +3834,11 @@ function OperationsWorkspace() {
         <p className="mt-1 text-sm leading-5 text-muted-foreground">
           {item.description}
         </p>
+        {allMode ? (
+          <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+            {entityNameById.get(item.record.entity_id) ?? "Unknown entity"}
+          </div>
+        ) : null}
       </Link>
       {isAssignableQueueItem(item) ? (
         <>
@@ -3711,18 +3876,12 @@ function OperationsWorkspace() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="">Select entity</option>
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
@@ -3745,7 +3904,12 @@ function OperationsWorkspace() {
                   setActiveTab("maintenance");
                   setMaintenanceFormOpen((open) => !open);
                 }}
-                disabled={!selectedEntityId}
+                disabled={!scopedEntityId}
+                title={
+                  allMode
+                    ? "Select a single entity to create a work order"
+                    : undefined
+                }
               >
                 <Plus size={15} />
                 Work order
@@ -3756,7 +3920,12 @@ function OperationsWorkspace() {
                   setActiveTab("arrears");
                   setArrearsFormOpen((open) => !open);
                 }}
-                disabled={!selectedEntityId}
+                disabled={!scopedEntityId}
+                title={
+                  allMode
+                    ? "Select a single entity to create an arrears case"
+                    : undefined
+                }
               >
                 <Plus size={15} />
                 Arrears case
@@ -4000,7 +4169,14 @@ function OperationsWorkspace() {
                       type="button"
                       className="min-h-11 w-full justify-start px-3"
                       disabled={
-                        assignmentPending || readyNotificationItems.length === 0
+                        assignmentPending ||
+                        allMode ||
+                        readyNotificationItems.length === 0
+                      }
+                      title={
+                        allMode
+                          ? "Select a single entity to send ready notices"
+                          : undefined
                       }
                       onClick={() =>
                         sendReadyAssignmentNotificationsMutation.mutate(
@@ -4033,8 +4209,13 @@ function OperationsWorkspace() {
                       type="button"
                       className="min-h-11 w-full justify-start px-3"
                       disabled={
-                        !selectedEntityId ||
+                        !scopedEntityId ||
                         workAssignmentDigestMutation.isPending
+                      }
+                      title={
+                        allMode
+                          ? "Select a single entity to generate a digest"
+                          : undefined
                       }
                       onClick={() => workAssignmentDigestMutation.mutate(false)}
                     >
@@ -4049,8 +4230,13 @@ function OperationsWorkspace() {
                       type="button"
                       className="min-h-11 w-full justify-start px-3"
                       disabled={
-                        !selectedEntityId ||
+                        !scopedEntityId ||
                         workAssignmentDigestMutation.isPending
+                      }
+                      title={
+                        allMode
+                          ? "Select a single entity to send a digest"
+                          : undefined
                       }
                       onClick={() => workAssignmentDigestMutation.mutate(true)}
                     >
@@ -4460,6 +4646,12 @@ function OperationsWorkspace() {
                                 <span className="text-xs font-medium text-muted-foreground">
                                   {sentenceLabel(check.kind)}
                                 </span>
+                                {allMode ? (
+                                  <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                    {entityNameById.get(check.entity_id) ??
+                                      "Unknown entity"}
+                                  </span>
+                                ) : null}
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {[
@@ -4492,7 +4684,13 @@ function OperationsWorkspace() {
                                   className="min-h-11 w-full px-3 sm:w-auto"
                                   disabled={
                                     !canCompleteComplianceCheck(check) ||
-                                    completeComplianceCheckMutation.isPending
+                                    completeComplianceCheckMutation.isPending ||
+                                    allMode
+                                  }
+                                  title={
+                                    allMode
+                                      ? "Select a single entity to complete a check"
+                                      : undefined
                                   }
                                   onClick={() =>
                                     completeComplianceCheckMutation.mutate(check)
@@ -4516,6 +4714,12 @@ function OperationsWorkspace() {
                                   <SecondaryButton
                                     type="button"
                                     className="min-h-11 w-full px-3 sm:w-auto"
+                                    disabled={allMode}
+                                    title={
+                                      allMode
+                                        ? "Select a single entity to add evidence"
+                                        : undefined
+                                    }
                                     onClick={() =>
                                       setEvidenceLinkForm((current) =>
                                         current?.checkId === check.id
@@ -4866,6 +5070,12 @@ function OperationsWorkspace() {
                               <span className="text-xs font-medium text-muted-foreground">
                                 {sentenceLabel(obligation.status)}
                               </span>
+                              {allMode ? (
+                                <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {entityNameById.get(obligation.entity_id) ??
+                                    "Unknown entity"}
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {[
@@ -4930,6 +5140,12 @@ function OperationsWorkspace() {
                               <StatusBadge tone={intakeTone(intake)}>
                                 {intakeChip(intake)}
                               </StatusBadge>
+                              {allMode ? (
+                                <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {entityNameById.get(intake.entity_id) ??
+                                    "Unknown entity"}
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {[
@@ -4981,6 +5197,12 @@ function OperationsWorkspace() {
                                 <StatusBadge tone={maintenanceTone(workOrder)}>
                                   {sentenceLabel(workOrder.status)}
                                 </StatusBadge>
+                                {allMode ? (
+                                  <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                    {entityNameById.get(workOrder.entity_id) ??
+                                      "Unknown entity"}
+                                  </span>
+                                ) : null}
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {[
@@ -5350,6 +5572,12 @@ function OperationsWorkspace() {
                             >
                               {workOrder.title}
                             </Link>
+                            {allMode ? (
+                              <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(workOrder.entity_id) ??
+                                  "Unknown entity"}
+                              </span>
+                            ) : null}
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5">
                               <span className="text-leasium-micro uppercase tracking-wide text-muted-foreground">
                                 Status
@@ -5359,6 +5587,7 @@ function OperationsWorkspace() {
                                 ariaLabel={`Status for ${workOrder.title}`}
                                 placeholder="Set status"
                                 options={MAINTENANCE_STATUS_OPTIONS}
+                                disabled={allMode}
                                 onSave={(next) =>
                                   saveWorkOrderField(workOrder, "status", next)
                                 }
@@ -5373,6 +5602,7 @@ function OperationsWorkspace() {
                                 ariaLabel={`Priority for ${workOrder.title}`}
                                 placeholder="Set priority"
                                 options={MAINTENANCE_PRIORITY_OPTIONS}
+                                disabled={allMode}
                                 onSave={(next) =>
                                   saveWorkOrderField(
                                     workOrder,
@@ -5444,7 +5674,7 @@ function OperationsWorkspace() {
                                 data,
                               })
                             }
-                            disabled={updateMaintenanceMutation.isPending}
+                            disabled={updateMaintenanceMutation.isPending || allMode}
                             expanded={expandedMaintenanceId === workOrder.id}
                             onToggleDetails={() =>
                               setExpandedMaintenanceId((current) =>
@@ -5470,7 +5700,7 @@ function OperationsWorkspace() {
                                 data,
                               })
                             }
-                            disabled={updateMaintenanceMutation.isPending}
+                            disabled={updateMaintenanceMutation.isPending || allMode}
                             expanded={expandedMaintenanceId === workOrder.id}
                             onToggleDetails={() =>
                               setExpandedMaintenanceId((current) =>
@@ -5487,7 +5717,7 @@ function OperationsWorkspace() {
                               properties={properties}
                               tenants={tenants}
                               invoiceDrafts={invoiceDrafts}
-                              disabled={updateMaintenanceMutation.isPending}
+                              disabled={updateMaintenanceMutation.isPending || allMode}
                               onUpdate={(data) =>
                                 updateMaintenanceMutation.mutate({
                                   id: workOrder.id,
@@ -5737,6 +5967,12 @@ function OperationsWorkspace() {
                             <span className="font-semibold">
                               {tenantName(tenants, arrearsCase.tenant_id)}
                             </span>
+                            {allMode ? (
+                              <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                {entityNameById.get(arrearsCase.entity_id) ??
+                                  "Unknown entity"}
+                              </span>
+                            ) : null}
                             <StatusBadge tone={arrearsTone(arrearsCase)}>
                               {formatMoney(
                                 arrearsCase.total_balance_cents,
@@ -5843,7 +6079,7 @@ function OperationsWorkspace() {
                                 data,
                               })
                             }
-                            disabled={updateArrearsMutation.isPending}
+                            disabled={updateArrearsMutation.isPending || allMode}
                           />
                         </div>
                         <div className="xl:col-span-2">
@@ -5869,7 +6105,8 @@ function OperationsWorkspace() {
                               })
                             }
                             disabled={
-                              recordArrearsPromiseToPayMutation.isPending
+                              recordArrearsPromiseToPayMutation.isPending ||
+                              allMode
                             }
                           />
                         </div>

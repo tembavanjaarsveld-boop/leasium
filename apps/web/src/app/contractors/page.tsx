@@ -20,9 +20,10 @@ import {
   UserPlus,
   Wrench,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -48,9 +49,13 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 const PRIORITY_LABEL: Record<number, string> = {
   1: "Preferred",
@@ -166,12 +171,36 @@ function ContractorsContent() {
     if (first) setSelectedEntityId(first);
   }, [entitiesQuery.data, selectedEntityId]);
 
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const contractorsQuery = useQuery({
-    queryKey: ["contractors", selectedEntityId],
-    queryFn: () => listContractors(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["contractors", scopedEntityId],
+    queryFn: () => listContractors(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
-  const contractors = contractorsQuery.data ?? [];
+  const contractorsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["contractors"],
+    queryFn: listContractors,
+  });
+  const contractors = allMode
+    ? contractorsFanOut.data
+    : (contractorsQuery.data ?? []);
+  const contractorsLoading = allMode
+    ? contractorsFanOut.isLoading
+    : contractorsQuery.isLoading;
+  const contractorsError = allMode
+    ? contractorsFanOut.error
+    : contractorsQuery.error;
 
   const [showCreate, setShowCreate] = useState(false);
   const [directoryReceipt, setDirectoryReceipt] = useState<string | null>(null);
@@ -201,20 +230,12 @@ function ContractorsContent() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-          aria-label="Select entity"
-        >
-          <option value="" disabled>
-            Select an entity
-          </option>
-          {(entitiesQuery.data ?? []).map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
@@ -242,6 +263,12 @@ function ContractorsContent() {
               <Button
                 type="button"
                 onClick={() => setShowCreate((prev) => !prev)}
+                disabled={!scopedEntityId}
+                title={
+                  allMode
+                    ? "Select a single entity to add a contractor"
+                    : undefined
+                }
               >
                 <Plus size={16} />
                 {showCreate ? "Close form" : "Add contractor"}
@@ -266,21 +293,21 @@ function ContractorsContent() {
           />
         ) : null}
 
-        {contractorsQuery.isLoading ? (
+        {contractorsLoading ? (
           <SectionPanel>
             <SkeletonRows rows={4} />
           </SectionPanel>
         ) : null}
 
-        {contractorsQuery.error ? (
+        {contractorsError ? (
           <p className="rounded-md border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
-            {friendlyError(contractorsQuery.error)}
+            {friendlyError(contractorsError)}
           </p>
         ) : null}
 
-        {!contractorsQuery.isLoading &&
+        {!contractorsLoading &&
         contractors.length === 0 &&
-        !contractorsQuery.error ? (
+        !contractorsError ? (
           <EmptyState
             icon={<Wrench size={18} />}
             title="No contractors yet."
@@ -292,9 +319,12 @@ function ContractorsContent() {
           <ContractorCard
             key={contractor.id}
             contractor={contractor}
+            entityName={
+              allMode ? entityNameById.get(contractor.entity_id) : undefined
+            }
             onChanged={() =>
               queryClient.invalidateQueries({
-                queryKey: ["contractors", selectedEntityId],
+                queryKey: ["contractors", scopedEntityId],
               })
             }
           />
@@ -470,9 +500,11 @@ function AddContractorForm({
 
 function ContractorCard({
   contractor,
+  entityName,
   onChanged,
 }: {
   contractor: ContractorRecord;
+  entityName?: string;
   onChanged: () => void;
 }) {
   const deleteMutation = useMutation({
@@ -490,6 +522,9 @@ function ContractorCard({
         .join(" · ")}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          {entityName ? (
+            <StatusBadge tone="neutral">{entityName}</StatusBadge>
+          ) : null}
           <StatusBadge tone={tone}>
             {PRIORITY_LABEL[contractor.priority] ?? `Priority ${contractor.priority}`}
           </StatusBadge>

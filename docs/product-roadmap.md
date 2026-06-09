@@ -8,6 +8,18 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 "All entities" list-page rollout (Operations/Contractors/Inbox/Spreadsheet):**
+  extended the shared `EntityPicker`/fan-out pattern. Operations all-mode fans out
+  every visible list (maintenance, arrears/obligations, compliance, onboarding,
+  intakes, invoice drafts, properties, tenants), labels rows by entity, and gates
+  all write actions (assignment, notices, digests, reminders, completions, create)
+  to a single entity. Contractors merges + labels vendors and gates Add. Inbox is a
+  paste-and-classify tool (no list) so all-mode just gates classify/promote to a
+  single entity. Spreadsheet intake is single-entity by nature, so the toggle is
+  hidden there. Frontend-only, no mutation. Smoke covers contractors merge+gating;
+  Operations relies on the shared (already-tested) picker/fan-out. Pending Remba
+  review. (Note: two Operations/maintenance-detail smokes are red on `main`
+  independent of this work — pre-existing, unrelated to entity selection.)
 - [~] **2026-06-10 "All entities" shared foundation + People/Tenants:** extracted
   shared entity-selection plumbing — `apps/web/src/lib/entity-selection.ts`
   (`ALL_ENTITIES_VALUE` sentinel, `isAllEntities`/`scopeEntityId`, shared storage

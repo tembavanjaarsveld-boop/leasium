@@ -3393,6 +3393,31 @@ test("properties All entities view merges across entities and drops into one", a
   ).toBeVisible();
 });
 
+test("contractors All entities merges vendors across entities and gates add", async ({
+  page,
+}) => {
+  await page.goto("/contractors");
+
+  await expect(
+    page.getByRole("heading", { name: "Contractor directory" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "All entities" }).click();
+
+  // Vendor from the primary entity and the secondary entity both render.
+  await expect(
+    page.getByText("Cool Air Services", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Rivergum Plumbing", { exact: true }),
+  ).toBeVisible();
+
+  // Add contractor needs a single entity, so it is disabled in all-mode.
+  await expect(
+    page.getByRole("button", { name: "Add contractor" }),
+  ).toBeDisabled();
+});
+
 test("tenants All entities merges tenants across entities and gates invite", async ({
   page,
 }) => {
