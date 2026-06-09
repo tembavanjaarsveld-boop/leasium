@@ -3393,6 +3393,35 @@ test("properties All entities view merges across entities and drops into one", a
   ).toBeVisible();
 });
 
+test("tenants All entities merges tenants across entities and gates invite", async ({
+  page,
+}) => {
+  await page.goto("/tenants");
+
+  await expect(
+    page.getByRole("heading", { name: "Tenant workspace" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "All entities" }).click();
+
+  // Tenants from both entities show; the secondary-entity row is labelled with
+  // its entity (scoped to the row to avoid the hidden picker <option>).
+  const tenantTable = page.getByRole("table").first();
+  const rivergumRow = tenantTable.getByRole("row", {
+    name: /Rivergum Logistics/,
+  });
+  await expect(
+    tenantTable.getByRole("row", { name: /Bright Cafe/ }),
+  ).toBeVisible();
+  await expect(rivergumRow).toBeVisible();
+  await expect(
+    rivergumRow.getByText("Secondary Holdings Pty Ltd"),
+  ).toBeVisible();
+
+  // Send invite needs a single entity, so it is disabled in all-mode.
+  await expect(page.getByRole("button", { name: "Send invite" })).toBeDisabled();
+});
+
 test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await page.goto("/tenants/tenant-1");
 

@@ -6,6 +6,29 @@ Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-
 
 Remba is the required UX sign-off for design-facing changes. Any change that affects navigation, page layout, forms, density, interaction flow, dashboard content, visual hierarchy, empty/loading/error states, or customer-facing copy needs a Remba review before it is considered complete.
 
+## Figma-First Design Stage (added 2026-06-10)
+
+Design-facing work starts in Figma before code. The canonical file is
+**"Leasium — Design Source of Truth"** in Temba's Figma drafts
+(https://www.figma.com/design/PO2jOANgmqgZHfqWZXOZGU), seeded 2026-06-10 from
+the live app and the Codex design source of truth:
+
+- **01 Foundations** — color styles (Brand/Neutral/Semantic/App), text styles
+  (Display → Micro), radius + spacing reference. Mirrors §3–5 of
+  [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md);
+  that doc remains the token source of record — update both together.
+- **02 Components** — sidebar (7-hub nav), top bar, buttons, status chips,
+  metric card, tab bar, property table row.
+- **03 Screens** — Dashboard, Properties, Work (Operations), Smart Intake at
+  1440×900, built from the components.
+
+Workflow: new design-facing slices get a frame in this file first (duplicate
+the nearest screen, modify, then implement). Figma frame review can stand in
+for the pre-implementation half of the Remba gate; code review of the shipped
+surface remains the second half. Screens not yet captured in Figma
+(Settings, Notifications, People, Money, Insights, tenant portal) are
+back-filled when first touched by a design-facing slice.
+
 ## Remba Review Gate
 
 - [ ] Remba has reviewed the affected screen or flow.
@@ -37,6 +60,14 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   unchanged. Verified by eslint + tsc + Playwright smoke (platform-admin + settings
   specs green). Pending prototype/Remba review of the `/admin` console density and
   the Settings panel removal. Decision: [platform-admin-tier-ia.md](platform-admin-tier-ia.md).
+- **"All entities" shared picker + People/Tenants (2026-06-10, prototype mode, no Remba gate):**
+  a shared `EntityPicker` (dropdown + always-visible "All entities" toggle) now backs
+  the Tenants page and the People hub (Tenants + Vendors). In all-mode the lists merge
+  across every entity and each row gains an entity label; entity-scoped write actions
+  (Send invite, reminders) disable until a single entity is chosen. Same visible-toggle
+  treatment as Properties. Rollout to the remaining list + aggregation surfaces is in
+  progress (tracked in the roadmap). Remba should review the all-mode row density + the
+  per-row entity label treatment once the rollout settles.
 - **Properties "All entities" portfolio view (2026-06-10, prototype mode, no Remba gate):**
   the Properties entity picker gains an `All entities` option plus an always-visible
   `All entities` toggle button beside the picker (both shown only when more than one

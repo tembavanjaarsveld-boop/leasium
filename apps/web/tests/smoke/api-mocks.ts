@@ -360,6 +360,19 @@ const initialTenants = [
       ],
     },
   },
+  {
+    id: "tenant-secondary-1",
+    entity_id: secondaryEntityId,
+    legal_name: "Rivergum Logistics Pty Ltd",
+    trading_name: "Rivergum Logistics",
+    abn: "61123456789",
+    contact_name: "Priya Shah",
+    contact_email: "priya@rivergum.example",
+    contact_phone: "0400 555 666",
+    billing_email: null,
+    notes: null,
+    metadata: {},
+  },
 ];
 let tenants = jsonClone(initialTenants);
 
@@ -388,6 +401,20 @@ const contractors = [
     phone: "07 3000 1111",
     service_radius_km: 15,
     priority: 2,
+    notes: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+  },
+  {
+    id: "contractor-secondary-1",
+    entity_id: secondaryEntityId,
+    name: "Rivergum Plumbing",
+    company_name: "Rivergum Plumbing Pty Ltd",
+    categories: ["plumbing"],
+    email: "service@rivergumplumbing.example",
+    phone: "07 3000 3333",
+    service_radius_km: 25,
+    priority: 1,
     notes: null,
     created_at: "2026-05-01T00:00:00.000Z",
     updated_at: "2026-05-01T00:00:00.000Z",
@@ -6729,12 +6756,26 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/tenants") {
-      await fulfillJson(route, tenants);
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        requestedEntityId
+          ? tenants.filter((tenant) => tenant.entity_id === requestedEntityId)
+          : tenants,
+      );
       return;
     }
 
     if (method === "GET" && path === "/contractors") {
-      await fulfillJson(route, contractors);
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        requestedEntityId
+          ? contractors.filter(
+              (contractor) => contractor.entity_id === requestedEntityId,
+            )
+          : contractors,
+      );
       return;
     }
 

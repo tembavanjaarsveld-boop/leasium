@@ -66,6 +66,39 @@ test("people hub renders tabs and the owners directory", async ({ page }) => {
   await expect(page.getByText(/Prospects are on the roadmap/i)).toBeVisible();
 });
 
+test("people hub All entities merges tenants and vendors across entities", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+
+  await page.goto("/people");
+
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  // Tenants is the default tab for a self-managed owner.
+  await page.getByRole("button", { name: "All entities" }).click();
+
+  // Tenant from the primary entity and the secondary entity both render. The
+  // secondary card is labelled with its entity (scoped to the card to avoid the
+  // hidden picker <option> of the same text).
+  await expect(page.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+  const rivergumCard = page
+    .locator("li")
+    .filter({ hasText: "Rivergum Logistics Pty Ltd" });
+  await expect(rivergumCard).toBeVisible();
+  await expect(
+    rivergumCard.getByText("Secondary Holdings Pty Ltd"),
+  ).toBeVisible();
+
+  // Vendors merge across entities too.
+  await page.getByRole("tab", { name: "Vendors" }).click();
+  await expect(
+    page.getByText("Bright Spark Electrical", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Rivergum Plumbing", { exact: true }),
+  ).toBeVisible();
+});
+
 test("mobile people hub tabs stay touch-safe", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });

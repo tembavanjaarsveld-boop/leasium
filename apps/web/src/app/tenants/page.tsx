@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { DetailDrawer } from "@/components/detail-drawer";
+import { EntityPicker } from "@/components/entity-picker";
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -57,9 +58,13 @@ import {
   onboardingReminderLabel,
   onboardingReminderTone,
 } from "@/lib/delivery";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { cn, friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type FilterKey = "all" | "needs_onboarding" | "sent" | "submitted" | "overdue" | "cancelled";
 
@@ -243,7 +248,12 @@ function TenantWorkspace() {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
     const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
     const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
-    const next = stored && accessibleIds.has(stored) ? stored : firstEntity;
+    // The All-entities sentinel is a valid restore target even though it is not
+    // a real entity id, so the cross-entity view survives navigation/reload.
+    const next =
+      stored && (isAllEntities(stored) || accessibleIds.has(stored))
+        ? stored
+        : firstEntity;
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
@@ -255,31 +265,76 @@ function TenantWorkspace() {
     }
   }, [selectedEntityId]);
 
+  // All-entities mode: entity-scoped queries use scopedEntityId (empty in
+  // all-mode, so they stay disabled) and the page reads merged fan-out results.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const tenantsQuery = useQuery({
-    queryKey: ["tenants", selectedEntityId],
-    queryFn: () => listTenants(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   const onboardingQuery = useQuery({
-    queryKey: ["tenant-onboardings", selectedEntityId],
-    queryFn: () => listTenantOnboardings(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["tenant-onboardings", scopedEntityId],
+    queryFn: () => listTenantOnboardings(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   const rentRollQuery = useQuery({
-    queryKey: ["rent-roll", selectedEntityId],
-    queryFn: () => listRentRoll({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["rent-roll", scopedEntityId],
+    queryFn: () => listRentRoll({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
+
+  const tenantsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["tenants"],
+    queryFn: listTenants,
+  });
+  const onboardingsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["tenant-onboardings"],
+    queryFn: listTenantOnboardings,
+  });
+  const rentRollFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["rent-roll"],
+    queryFn: (entityId) => listRentRoll({ entity_id: entityId }),
+  });
+
+  // Merged views the UI reads regardless of single- vs all-entity mode.
+  const tenants = useMemo(
+    () => (allMode ? tenantsFanOut.data : (tenantsQuery.data ?? [])),
+    [allMode, tenantsFanOut.data, tenantsQuery.data],
+  );
+  const onboardings = useMemo(
+    () => (allMode ? onboardingsFanOut.data : (onboardingQuery.data ?? [])),
+    [allMode, onboardingsFanOut.data, onboardingQuery.data],
+  );
+  const rentRollRows = useMemo(
+    () => (allMode ? rentRollFanOut.data : (rentRollQuery.data ?? [])),
+    [allMode, rentRollFanOut.data, rentRollQuery.data],
+  );
 
   // Properties + units feed the Send-invite form. Properties are loaded
   // once per entity; units are loaded per selected property so the unit
   // dropdown only shows units that belong to the chosen property.
   const propertiesQuery = useQuery({
-    queryKey: ["properties", selectedEntityId],
-    queryFn: () => listProperties(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["properties", scopedEntityId],
+    queryFn: () => listProperties(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
 
   const unitsQuery = useQuery({
@@ -309,7 +364,7 @@ function TenantWorkspace() {
       string,
       { activeLeases: number; totalAnnualCents: number }
     >();
-    const rows = rentRollQuery.data ?? [];
+    const rows = rentRollRows;
     const occupied = new Set(["active", "holding_over"]);
     for (const row of rows) {
       if (
@@ -331,19 +386,20 @@ function TenantWorkspace() {
       });
     }
     return map;
-  }, [rentRollQuery.data]);
+  }, [rentRollRows]);
   const entitySelectionLoading =
     entitiesQuery.isLoading ||
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
   const tenantsLoading =
     entitySelectionLoading ||
-    (Boolean(selectedEntityId) &&
-      (tenantsQuery.isLoading || onboardingQuery.isLoading));
+    (allMode
+      ? tenantsFanOut.isLoading || onboardingsFanOut.isLoading
+      : Boolean(selectedEntityId) &&
+        (tenantsQuery.isLoading || onboardingQuery.isLoading));
 
   const tenantRows = useMemo(() => {
-    const onboardings = onboardingQuery.data ?? [];
     const needle = search.trim().toLowerCase();
-    return (tenantsQuery.data ?? [])
+    return tenants
       .map((tenant) => ({
         tenant,
         onboarding: latestOnboarding(tenant.id, onboardings),
@@ -380,19 +436,18 @@ function TenantWorkspace() {
         const bRank = b.onboarding ? dueRank(b.onboarding.due_date) : -1;
         return aRank - bRank || tenantName(a.tenant).localeCompare(tenantName(b.tenant));
       });
-  }, [filter, onboardingQuery.data, search, tenantsQuery.data]);
+  }, [filter, onboardings, search, tenants]);
 
   const counts = useMemo(() => {
-    const onboardings = onboardingQuery.data ?? [];
     return {
-      all: tenantsQuery.data?.length ?? 0,
+      all: tenants.length,
       sent: onboardings.filter((item) => item.status === "sent").length,
       submitted: onboardings.filter((item) => item.status === "submitted").length,
       overdue: onboardings.filter(
         (item) => item.status === "sent" && dueRank(item.due_date) < 0,
       ).length,
     };
-  }, [onboardingQuery.data, tenantsQuery.data]);
+  }, [onboardings, tenants]);
 
   // Send-invite is the new primary path: the operator enters minimum
   // info (where + who + email), and the chain (tenant -> lease ->
@@ -552,18 +607,12 @@ function TenantWorkspace() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="">Select entity</option>
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
@@ -578,8 +627,13 @@ function TenantWorkspace() {
             <SecondaryButton
               type="button"
               onClick={() => {
-                tenantsQuery.refetch();
-                onboardingQuery.refetch();
+                if (allMode) {
+                  tenantsFanOut.refetch();
+                  onboardingsFanOut.refetch();
+                } else {
+                  tenantsQuery.refetch();
+                  onboardingQuery.refetch();
+                }
               }}
               disabled={!selectedEntityId}
             >
@@ -589,12 +643,24 @@ function TenantWorkspace() {
             <SecondaryButton
               type="button"
               onClick={() => setShowReminderApproval(true)}
-              disabled={!selectedEntityId || runRemindersMutation.isPending}
+              disabled={
+                !scopedEntityId || runRemindersMutation.isPending
+              }
+              title={
+                allMode ? "Select a single entity to send reminders" : undefined
+              }
             >
               <Clock3 size={15} />
               Review reminders
             </SecondaryButton>
-            <Button type="button" onClick={() => setShowCreate(true)}>
+            <Button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              disabled={!scopedEntityId}
+              title={
+                allMode ? "Select a single entity to send an invite" : undefined
+              }
+            >
               <Send size={16} />
               Send invite
             </Button>
@@ -921,6 +987,12 @@ function TenantWorkspace() {
                       >
                         {tenantName(tenant)}
                       </button>
+                      {allMode ? (
+                        <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                          {entityNameById.get(tenant.entity_id) ??
+                            "Unknown entity"}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-muted-foreground">{tenant.abn ?? "No ABN recorded"}</div>
                       {summary ? (
                         <div className={`mt-1 ${chipClass("success", { density: "compact", bordered: true })}`}>
@@ -1069,6 +1141,12 @@ function TenantWorkspace() {
                           {onboardingStatusLabel}
                         </StatusBadge>
                       </div>
+                      {allMode ? (
+                        <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                          {entityNameById.get(tenant.entity_id) ??
+                            "Unknown entity"}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-muted-foreground">
                         {tenant.contact_email ?? tenant.contact_phone ?? "No contact on file"}
                       </div>
@@ -1145,8 +1223,8 @@ function TenantWorkspace() {
       </div>
       <TenantQuickViewDrawer
         tenantId={drawerTenantId}
-        tenants={tenantsQuery.data ?? []}
-        onboardings={onboardingQuery.data ?? []}
+        tenants={tenants}
+        onboardings={onboardings}
         leaseSummaries={tenantLeaseSummaries}
         onClose={() => setDrawerTenantId(null)}
       />

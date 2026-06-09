@@ -12,25 +12,30 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, Send, Sparkles, Users, Wrench } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
   PageHeader,
   SectionPanel,
-  Select,
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
+import type { Entity } from "@/lib/api";
 import { listContractors, listEntities, listTenants } from "@/lib/api";
+import {
+  ENTITY_CHANGED_EVENT,
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { useOperatingMode } from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
-const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
 
 type TabKey = "tenants" | "owners" | "vendors" | "prospects";
 
@@ -135,20 +140,12 @@ function PeopleContent() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="" disabled>
-            Select an entity
-          </option>
-          {(entitiesQuery.data ?? []).map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
@@ -184,13 +181,19 @@ function PeopleContent() {
         </div>
 
         {activeTab === "owners" && showOwners ? (
-          <OwnersDirectory entityId={selectedEntityId} />
+          <OwnersDirectory entityId={scopeEntityId(selectedEntityId)} />
         ) : null}
         {activeTab === "tenants" ? (
-          <TenantsTab entityId={selectedEntityId} />
+          <TenantsTab
+            entityId={selectedEntityId}
+            entities={entitiesQuery.data}
+          />
         ) : null}
         {activeTab === "vendors" ? (
-          <VendorsTab entityId={selectedEntityId} />
+          <VendorsTab
+            entityId={selectedEntityId}
+            entities={entitiesQuery.data}
+          />
         ) : null}
         {activeTab === "prospects" ? <ProspectsTab /> : null}
       </div>
@@ -198,13 +201,33 @@ function PeopleContent() {
   );
 }
 
-function TenantsTab({ entityId }: { entityId: string }) {
+function TenantsTab({
+  entityId,
+  entities,
+}: {
+  entityId: string;
+  entities: Entity[] | undefined;
+}) {
+  const allMode = isAllEntities(entityId);
+  const scopedEntityId = scopeEntityId(entityId);
+  const entityNameById = useMemo(
+    () => new Map((entities ?? []).map((entity) => [entity.id, entity.name])),
+    [entities],
+  );
   const tenantsQuery = useQuery({
-    queryKey: ["tenants", entityId],
-    queryFn: () => listTenants(entityId),
-    enabled: Boolean(entityId),
+    queryKey: ["tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
-  const tenants = tenantsQuery.data ?? [];
+  const tenantsFanOut = useEntityFanOut({
+    entities,
+    enabled: allMode,
+    keyPrefix: ["tenants"],
+    queryFn: listTenants,
+  });
+  const tenants = allMode ? tenantsFanOut.data : (tenantsQuery.data ?? []);
+  const isLoading = allMode ? tenantsFanOut.isLoading : tenantsQuery.isLoading;
+  const error = allMode ? tenantsFanOut.error : tenantsQuery.error;
 
   return (
     <SectionPanel
@@ -222,15 +245,13 @@ function TenantsTab({ entityId }: { entityId: string }) {
       }
     >
       <div className="p-4">
-        {tenantsQuery.isLoading ? <SkeletonRows rows={3} /> : null}
-        {tenantsQuery.error ? (
+        {isLoading ? <SkeletonRows rows={3} /> : null}
+        {error ? (
           <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {friendlyError(tenantsQuery.error)}
+            {friendlyError(error)}
           </p>
         ) : null}
-        {!tenantsQuery.isLoading &&
-        tenants.length === 0 &&
-        !tenantsQuery.error ? (
+        {!isLoading && tenants.length === 0 && !error ? (
           <p className="text-sm text-muted-foreground">No tenants yet.</p>
         ) : null}
         <ul className="grid gap-2">
@@ -262,6 +283,11 @@ function TenantsTab({ entityId }: { entityId: string }) {
                 <p className="truncate font-medium text-foreground">
                   {tenant.legal_name}
                 </p>
+                {allMode ? (
+                  <p className="truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
+                    {entityNameById.get(tenant.entity_id) ?? "Unknown entity"}
+                  </p>
+                ) : null}
                 <p className="truncate text-muted-foreground">
                   {tenant.trading_name || tenant.abn || "No trading name"}
                 </p>
@@ -296,13 +322,37 @@ function TenantsTab({ entityId }: { entityId: string }) {
   );
 }
 
-function VendorsTab({ entityId }: { entityId: string }) {
+function VendorsTab({
+  entityId,
+  entities,
+}: {
+  entityId: string;
+  entities: Entity[] | undefined;
+}) {
+  const allMode = isAllEntities(entityId);
+  const scopedEntityId = scopeEntityId(entityId);
+  const entityNameById = useMemo(
+    () => new Map((entities ?? []).map((entity) => [entity.id, entity.name])),
+    [entities],
+  );
   const contractorsQuery = useQuery({
-    queryKey: ["contractors", entityId],
-    queryFn: () => listContractors(entityId),
-    enabled: Boolean(entityId),
+    queryKey: ["contractors", scopedEntityId],
+    queryFn: () => listContractors(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
-  const contractors = contractorsQuery.data ?? [];
+  const contractorsFanOut = useEntityFanOut({
+    entities,
+    enabled: allMode,
+    keyPrefix: ["contractors"],
+    queryFn: listContractors,
+  });
+  const contractors = allMode
+    ? contractorsFanOut.data
+    : (contractorsQuery.data ?? []);
+  const isLoading = allMode
+    ? contractorsFanOut.isLoading
+    : contractorsQuery.isLoading;
+  const error = allMode ? contractorsFanOut.error : contractorsQuery.error;
 
   return (
     <SectionPanel
@@ -311,15 +361,13 @@ function VendorsTab({ entityId }: { entityId: string }) {
       description="Maintenance vendors, categories, priority, and contact readiness."
     >
       <div className="p-4">
-        {contractorsQuery.isLoading ? <SkeletonRows rows={3} /> : null}
-        {contractorsQuery.error ? (
+        {isLoading ? <SkeletonRows rows={3} /> : null}
+        {error ? (
           <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {friendlyError(contractorsQuery.error)}
+            {friendlyError(error)}
           </p>
         ) : null}
-        {!contractorsQuery.isLoading &&
-        contractors.length === 0 &&
-        !contractorsQuery.error ? (
+        {!isLoading && contractors.length === 0 && !error ? (
           <p className="text-sm text-muted-foreground">No vendors yet.</p>
         ) : null}
         <ul className="grid gap-2">
@@ -332,6 +380,12 @@ function VendorsTab({ entityId }: { entityId: string }) {
                 <p className="truncate font-medium text-foreground">
                   {contractor.name}
                 </p>
+                {allMode ? (
+                  <p className="truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
+                    {entityNameById.get(contractor.entity_id) ??
+                      "Unknown entity"}
+                  </p>
+                ) : null}
                 <p className="truncate text-muted-foreground">
                   {contractor.company_name || "Independent vendor"}
                 </p>

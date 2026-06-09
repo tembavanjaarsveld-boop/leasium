@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 "All entities" shared foundation + People/Tenants:** extracted
+  shared entity-selection plumbing — `apps/web/src/lib/entity-selection.ts`
+  (`ALL_ENTITIES_VALUE` sentinel, `isAllEntities`/`scopeEntityId`, shared storage
+  key + change event), a reusable `EntityPicker` (dropdown + always-visible "All
+  entities" toggle that returns to the prior single entity), and a
+  `useEntityFanOut` hook. Rolled it onto the Tenants page and the People hub
+  (Tenants + Vendors tabs): all-mode fans out per entity, merges client-side, and
+  labels each row with its entity; entity-scoped writes (Send invite, reminders)
+  are disabled until a single entity is chosen. Frontend-only, no mutation. Smoke
+  covers both merges. Rollout to remaining list + aggregation surfaces continues.
+  Pending Remba review.
 - [~] **2026-06-10 Properties "All entities" portfolio view:** the entity picker
   now offers an `All entities` option plus an always-visible `All entities` toggle
   beside the picker (shown when more than one entity exists; the visible toggle keeps
