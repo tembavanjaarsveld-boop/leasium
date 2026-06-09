@@ -24,6 +24,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import {
   EvidenceSourceTrail,
   type EvidenceFieldChange,
@@ -41,7 +42,6 @@ import {
   PageHeader,
   SecondaryButton,
   SectionPanel,
-  Select,
   StatusBadge,
   type StatusTone,
 } from "@/components/ui";
@@ -75,9 +75,13 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { cn, friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 
 type QaTab = "issues" | "contacts" | "sources" | "onboarding" | "billing";
 
@@ -116,6 +120,7 @@ type EnrichmentCandidate = {
   kind: "Property" | "Tenant";
   targetType: EnrichmentTargetType;
   targetId: string;
+  entityId: string;
   title: string;
   detail: string;
   href: string;
@@ -233,6 +238,7 @@ type SourceRow = {
 
 type TenantPrepRow = {
   id: string;
+  entityId: string;
   tenantId: string | null;
   leaseId: string | null;
   tenantName: string;
@@ -1092,6 +1098,7 @@ function buildTenantPrep(
       ].filter((item): item is string => Boolean(item));
       return {
         id: row.lease_id ?? row.tenancy_unit_id,
+        entityId: row.entity_id,
         tenantId: row.tenant_id,
         leaseId: row.lease_id,
         tenantName: tenant
@@ -1218,6 +1225,7 @@ function buildEnrichmentCandidates({
         kind: "Property",
         targetType: "property",
         targetId: property.id,
+        entityId: property.entity_id,
         title: property.name,
         detail:
           "Property public enrichment can propose address and ownership fields.",
@@ -1259,6 +1267,7 @@ function buildEnrichmentCandidates({
         kind: "Tenant",
         targetType: "tenant",
         targetId: tenant.id,
+        entityId: tenant.entity_id,
         title: tenantName(tenant),
         detail:
           "Tenant public enrichment can propose ABN, trading name, and registered address.",
@@ -2914,6 +2923,8 @@ function BlockerTriagePanel({
 function EnrichmentCandidateCard({
   candidate,
   review,
+  allMode,
+  entityName,
   onPreview,
   onApply,
   onRemoveSuggestion,
@@ -2921,6 +2932,8 @@ function EnrichmentCandidateCard({
 }: {
   candidate: EnrichmentCandidate;
   review: EnrichmentReviewState | undefined;
+  allMode: boolean;
+  entityName: string | null;
   onPreview: (candidate: EnrichmentCandidate) => void;
   onApply: (
     candidate: EnrichmentCandidate,
@@ -2947,6 +2960,11 @@ function EnrichmentCandidateCard({
           {candidate.priority === "high" ? "High-impact" : "Helpful"}
         </StatusBadge>
       </div>
+      {entityName ? (
+        <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+          {entityName}
+        </div>
+      ) : null}
       <p className="text-sm text-muted-foreground">{candidate.detail}</p>
       <p className="text-xs font-semibold text-foreground">{candidate.impact}</p>
       <p className="text-xs font-medium text-muted-foreground">
@@ -2962,6 +2980,10 @@ function EnrichmentCandidateCard({
             type="button"
             className="min-h-11 rounded-lg px-3"
             onClick={() => onPreview(candidate)}
+            disabled={allMode}
+            title={
+              allMode ? "Select a single entity to apply fixes" : undefined
+            }
           >
             <Sparkles size={14} />
             Suggest fixes
@@ -3062,7 +3084,10 @@ function EnrichmentCandidateCard({
                 type="button"
                 className="min-h-11"
                 onClick={() => onApply(candidate, suggestions)}
-                disabled={review.status === "applying"}
+                disabled={review.status === "applying" || allMode}
+                title={
+                  allMode ? "Select a single entity to apply fixes" : undefined
+                }
               >
                 {review.status === "applying" ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -3261,12 +3286,16 @@ function PortfolioCompletionPanel({
   blockedFollowups,
   bulkReviewGroups,
   onOpenTab,
+  allMode,
+  entityNameById,
 }: {
   items: QaCompletionItem[];
   enrichmentCandidates: EnrichmentCandidate[];
   blockedFollowups: BlockedFollowup[];
   bulkReviewGroups: BulkReviewGroup[];
   onOpenTab: (tab: QaTab) => void;
+  allMode: boolean;
+  entityNameById: Map<string, string>;
 }) {
   const queryClient = useQueryClient();
   const [reportReceipt, setReportReceipt] = useState<string | null>(null);
@@ -3974,6 +4003,13 @@ function PortfolioCompletionPanel({
                     key={candidate.id}
                     candidate={candidate}
                     review={enrichmentReviews[candidate.id]}
+                    allMode={allMode}
+                    entityName={
+                      allMode
+                        ? (entityNameById.get(candidate.entityId) ??
+                          "Unknown entity")
+                        : null
+                    }
                     onPreview={(item) => previewEnrichmentMutation.mutate(item)}
                     onApply={(item, suggestions) =>
                       applyEnrichmentMutation.mutate({
@@ -4088,6 +4124,9 @@ function PortfolioQaWorkspace() {
       window.localStorage.setItem(ENTITY_STORAGE_KEY, first);
     } else if (
       selectedEntityId &&
+      // The All-entities sentinel is a valid selection even though it is not a
+      // real entity id, so the cross-entity view survives navigation/reload.
+      !isAllEntities(selectedEntityId) &&
       !entities.some((entity) => entity.id === selectedEntityId)
     ) {
       setSelectedEntityId(first);
@@ -4103,6 +4142,15 @@ function PortfolioQaWorkspace() {
     }
   }, [selectedEntityId]);
 
+  // All-entities mode: entity-scoped queries use scopedEntityId (empty in
+  // all-mode, so they stay disabled) and the page reads merged fan-out results.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () => new Map(entities.map((entity) => [entity.id, entity.name])),
+    [entities],
+  );
+
   useEffect(() => {
     if (activeTab !== "contacts" || !focusedTenantId) {
       return;
@@ -4116,62 +4164,116 @@ function PortfolioQaWorkspace() {
   }, [activeTab, focusedTenantId]);
 
   const propertiesQuery = useQuery({
-    queryKey: ["properties", selectedEntityId],
-    queryFn: () => listProperties(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["properties", scopedEntityId],
+    queryFn: () => listProperties(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const tenantsQuery = useQuery({
-    queryKey: ["tenants", selectedEntityId],
-    queryFn: () => listTenants(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const rentRollQuery = useQuery({
-    queryKey: ["rent-roll", selectedEntityId],
-    queryFn: () => listRentRoll({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["rent-roll", scopedEntityId],
+    queryFn: () => listRentRoll({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
   const obligationsQuery = useQuery({
-    queryKey: ["obligations", selectedEntityId],
-    queryFn: () => listObligations({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["obligations", scopedEntityId],
+    queryFn: () => listObligations({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
   });
   const intakesQuery = useQuery({
-    queryKey: ["document-intakes", selectedEntityId],
-    queryFn: () => listDocumentIntakes(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["document-intakes", scopedEntityId],
+    queryFn: () => listDocumentIntakes(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const onboardingsQuery = useQuery({
-    queryKey: ["tenant-onboardings", selectedEntityId],
-    queryFn: () => listTenantOnboardings(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["tenant-onboardings", scopedEntityId],
+    queryFn: () => listTenantOnboardings(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const billingDraftsQuery = useQuery({
-    queryKey: ["billing-drafts", selectedEntityId],
-    queryFn: () => listBillingDrafts({ entity_id: selectedEntityId }),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["billing-drafts", scopedEntityId],
+    queryFn: () => listBillingDrafts({ entity_id: scopedEntityId }),
+    enabled: Boolean(scopedEntityId),
+  });
+
+  // Fan the same per-entity lists across every accessible entity in all-mode.
+  // The QA computations below run on the merged arrays, so cleanup queues and
+  // roll-up counts aggregate across entities without changing single-entity
+  // behaviour.
+  const propertiesFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["properties"],
+    queryFn: listProperties,
+  });
+  const tenantsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["tenants"],
+    queryFn: listTenants,
+  });
+  const rentRollFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["rent-roll"],
+    queryFn: (entityId) => listRentRoll({ entity_id: entityId }),
+  });
+  const obligationsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["obligations"],
+    queryFn: (entityId) => listObligations({ entity_id: entityId }),
+  });
+  const intakesFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["document-intakes"],
+    queryFn: listDocumentIntakes,
+  });
+  const onboardingsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["tenant-onboardings"],
+    queryFn: listTenantOnboardings,
+  });
+  const billingDraftsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["billing-drafts"],
+    queryFn: (entityId) => listBillingDrafts({ entity_id: entityId }),
   });
 
   const properties = useMemo(
-    () => propertiesQuery.data ?? [],
-    [propertiesQuery.data],
+    () => (allMode ? propertiesFanOut.data : (propertiesQuery.data ?? [])),
+    [allMode, propertiesFanOut.data, propertiesQuery.data],
   );
-  const tenants = useMemo(() => tenantsQuery.data ?? [], [tenantsQuery.data]);
+  const tenants = useMemo(
+    () => (allMode ? tenantsFanOut.data : (tenantsQuery.data ?? [])),
+    [allMode, tenantsFanOut.data, tenantsQuery.data],
+  );
   const rentRoll = useMemo(
-    () => rentRollQuery.data ?? [],
-    [rentRollQuery.data],
+    () => (allMode ? rentRollFanOut.data : (rentRollQuery.data ?? [])),
+    [allMode, rentRollFanOut.data, rentRollQuery.data],
   );
   const obligations = useMemo(
-    () => obligationsQuery.data ?? [],
-    [obligationsQuery.data],
+    () => (allMode ? obligationsFanOut.data : (obligationsQuery.data ?? [])),
+    [allMode, obligationsFanOut.data, obligationsQuery.data],
   );
-  const intakes = useMemo(() => intakesQuery.data ?? [], [intakesQuery.data]);
+  const intakes = useMemo(
+    () => (allMode ? intakesFanOut.data : (intakesQuery.data ?? [])),
+    [allMode, intakesFanOut.data, intakesQuery.data],
+  );
   const onboardings = useMemo(
-    () => onboardingsQuery.data ?? [],
-    [onboardingsQuery.data],
+    () => (allMode ? onboardingsFanOut.data : (onboardingsQuery.data ?? [])),
+    [allMode, onboardingsFanOut.data, onboardingsQuery.data],
   );
   const billingDrafts = useMemo(
-    () => billingDraftsQuery.data ?? [],
-    [billingDraftsQuery.data],
+    () =>
+      allMode ? billingDraftsFanOut.data : (billingDraftsQuery.data ?? []),
+    [allMode, billingDraftsFanOut.data, billingDraftsQuery.data],
   );
 
   const issues = useMemo(
@@ -4290,22 +4392,38 @@ function PortfolioQaWorkspace() {
 
   const loading =
     entitiesQuery.isLoading ||
-    propertiesQuery.isLoading ||
-    tenantsQuery.isLoading ||
-    rentRollQuery.isLoading ||
-    obligationsQuery.isLoading ||
-    intakesQuery.isLoading ||
-    onboardingsQuery.isLoading ||
-    billingDraftsQuery.isLoading;
+    (allMode
+      ? propertiesFanOut.isLoading ||
+        tenantsFanOut.isLoading ||
+        rentRollFanOut.isLoading ||
+        obligationsFanOut.isLoading ||
+        intakesFanOut.isLoading ||
+        onboardingsFanOut.isLoading ||
+        billingDraftsFanOut.isLoading
+      : propertiesQuery.isLoading ||
+        tenantsQuery.isLoading ||
+        rentRollQuery.isLoading ||
+        obligationsQuery.isLoading ||
+        intakesQuery.isLoading ||
+        onboardingsQuery.isLoading ||
+        billingDraftsQuery.isLoading);
   const error =
     entitiesQuery.error ??
-    propertiesQuery.error ??
-    tenantsQuery.error ??
-    rentRollQuery.error ??
-    obligationsQuery.error ??
-    intakesQuery.error ??
-    onboardingsQuery.error ??
-    billingDraftsQuery.error;
+    (allMode
+      ? (propertiesFanOut.error ??
+        tenantsFanOut.error ??
+        rentRollFanOut.error ??
+        obligationsFanOut.error ??
+        intakesFanOut.error ??
+        onboardingsFanOut.error ??
+        billingDraftsFanOut.error)
+      : (propertiesQuery.error ??
+        tenantsQuery.error ??
+        rentRollQuery.error ??
+        obligationsQuery.error ??
+        intakesQuery.error ??
+        onboardingsQuery.error ??
+        billingDraftsQuery.error));
 
   const updateTenantMutation = useMutation({
     mutationFn: ({
@@ -4484,6 +4602,16 @@ function PortfolioQaWorkspace() {
   });
 
   function refreshAll() {
+    if (allMode) {
+      propertiesFanOut.refetch();
+      tenantsFanOut.refetch();
+      rentRollFanOut.refetch();
+      obligationsFanOut.refetch();
+      intakesFanOut.refetch();
+      onboardingsFanOut.refetch();
+      billingDraftsFanOut.refetch();
+      return;
+    }
     propertiesQuery.refetch();
     tenantsQuery.refetch();
     rentRollQuery.refetch();
@@ -4602,18 +4730,12 @@ function PortfolioQaWorkspace() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="">Select entity</option>
-          {entities.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
@@ -4710,6 +4832,8 @@ function PortfolioQaWorkspace() {
               blockedFollowups={blockedFollowups}
               bulkReviewGroups={bulkReviewGroups}
               onOpenTab={setActiveTab}
+              allMode={allMode}
+              entityNameById={entityNameById}
             />
             <GuidedFixQueue steps={guidedSteps} onOpenTab={setActiveTab} />
             <BlockerTriagePanel
@@ -4788,7 +4912,12 @@ function PortfolioQaWorkspace() {
                   <SecondaryButton
                     type="button"
                     onClick={stagePropertySuggestions}
-                    disabled={!propertiesNeedingBillingFix.length}
+                    disabled={!propertiesNeedingBillingFix.length || allMode}
+                    title={
+                      allMode
+                        ? "Select a single entity to apply fixes"
+                        : undefined
+                    }
                   >
                     <Sparkles size={15} />
                     Stage suggestions
@@ -4805,7 +4934,13 @@ function PortfolioQaWorkspace() {
                     }
                     disabled={
                       !stagedPropertyRows.length ||
-                      updatePropertyBatchMutation.isPending
+                      updatePropertyBatchMutation.isPending ||
+                      allMode
+                    }
+                    title={
+                      allMode
+                        ? "Select a single entity to apply fixes"
+                        : undefined
                     }
                   >
                     {updatePropertyBatchMutation.isPending ? (
@@ -4845,6 +4980,12 @@ function PortfolioQaWorkspace() {
                               {missingFields.length} missing
                             </StatusBadge>
                           </div>
+                          {allMode ? (
+                            <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                              {entityNameById.get(property.entity_id) ??
+                                "Unknown entity"}
+                            </div>
+                          ) : null}
                           <p className="mt-1 text-xs text-muted-foreground">
                             {missingFields.join(", ")}
                           </p>
@@ -4931,7 +5072,12 @@ function PortfolioQaWorkspace() {
                               draft: propertyDrafts[property.id] ?? {},
                             })
                           }
-                          disabled={updatePropertyMutation.isPending}
+                          disabled={updatePropertyMutation.isPending || allMode}
+                          title={
+                            allMode
+                              ? "Select a single entity to apply fixes"
+                              : undefined
+                          }
                         >
                           {updatePropertyMutation.isPending ? (
                             <Loader2 size={15} className="animate-spin" />
@@ -4965,7 +5111,12 @@ function PortfolioQaWorkspace() {
                 <SecondaryButton
                   type="button"
                   onClick={stageTenantSuggestions}
-                  disabled={!tenantsNeedingContact.length}
+                  disabled={!tenantsNeedingContact.length || allMode}
+                  title={
+                    allMode
+                      ? "Select a single entity to apply fixes"
+                      : undefined
+                  }
                 >
                   <Sparkles size={15} />
                   Stage suggestions
@@ -4982,7 +5133,13 @@ function PortfolioQaWorkspace() {
                   }
                   disabled={
                     !stagedTenantRows.length ||
-                    updateTenantBatchMutation.isPending
+                    updateTenantBatchMutation.isPending ||
+                    allMode
+                  }
+                  title={
+                    allMode
+                      ? "Select a single entity to apply fixes"
+                      : undefined
                   }
                 >
                   {updateTenantBatchMutation.isPending ? (
@@ -5032,6 +5189,12 @@ function PortfolioQaWorkspace() {
                             {missingFields.length} missing
                           </StatusBadge>
                         </div>
+                        {allMode ? (
+                          <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                            {entityNameById.get(tenant.entity_id) ??
+                              "Unknown entity"}
+                          </div>
+                        ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {missingFields.join(", ")}
                         </p>
@@ -5100,7 +5263,12 @@ function PortfolioQaWorkspace() {
                             draft: tenantDrafts[tenant.id] ?? {},
                           })
                         }
-                        disabled={updateTenantMutation.isPending}
+                        disabled={updateTenantMutation.isPending || allMode}
+                        title={
+                          allMode
+                            ? "Select a single entity to apply fixes"
+                            : undefined
+                        }
                       >
                         {updateTenantMutation.isPending ? (
                           <Loader2 size={15} className="animate-spin" />
@@ -5233,7 +5401,12 @@ function PortfolioQaWorkspace() {
                         .filter((id): id is string => Boolean(id)),
                     )
                   }
-                  disabled={!readyPrepRows.length}
+                  disabled={!readyPrepRows.length || allMode}
+                  title={
+                    allMode
+                      ? "Select a single entity to apply fixes"
+                      : undefined
+                  }
                 >
                   <CheckCircle2 size={15} />
                   Select ready
@@ -5249,7 +5422,13 @@ function PortfolioQaWorkspace() {
                   }
                   disabled={
                     !selectedReadyRows.length ||
-                    batchOnboardingMutation.isPending
+                    batchOnboardingMutation.isPending ||
+                    allMode
+                  }
+                  title={
+                    allMode
+                      ? "Select a single entity to apply fixes"
+                      : undefined
                   }
                 >
                   {batchOnboardingMutation.isPending ? (
@@ -5285,7 +5464,7 @@ function PortfolioQaWorkspace() {
                     checked={Boolean(
                       row.leaseId && selectedLeaseIds.includes(row.leaseId),
                     )}
-                    disabled={!row.ready || !row.leaseId}
+                    disabled={!row.ready || !row.leaseId || allMode}
                     onChange={(event) =>
                       row.leaseId &&
                       toggleLease(row.leaseId, event.target.checked)
@@ -5299,6 +5478,11 @@ function PortfolioQaWorkspace() {
                         {row.ready ? "Ready" : "Not ready"}
                       </StatusBadge>
                     </div>
+                    {allMode ? (
+                      <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                        {entityNameById.get(row.entityId) ?? "Unknown entity"}
+                      </div>
+                    ) : null}
                     <p className="mt-1 text-sm text-muted-foreground">
                       {row.propertyName} / {row.unitLabel}
                     </p>
@@ -5320,7 +5504,12 @@ function PortfolioQaWorkspace() {
                             batchOnboardingMutation.mutate([row.leaseId]);
                           }
                         }}
-                        disabled={batchOnboardingMutation.isPending}
+                        disabled={batchOnboardingMutation.isPending || allMode}
+                        title={
+                          allMode
+                            ? "Select a single entity to apply fixes"
+                            : undefined
+                        }
                         className="min-h-11 px-3"
                       >
                         {batchOnboardingMutation.isPending ? (
@@ -5373,7 +5562,14 @@ function PortfolioQaWorkspace() {
               <Button
                 type="button"
                 onClick={() => billingBatchMutation.mutate()}
-                disabled={!selectedEntityId || billingBatchMutation.isPending}
+                disabled={
+                  !scopedEntityId || billingBatchMutation.isPending || allMode
+                }
+                title={
+                  allMode
+                    ? "Select a single entity to apply fixes"
+                    : undefined
+                }
               >
                 {billingBatchMutation.isPending ? (
                   <Loader2 size={15} className="animate-spin" />

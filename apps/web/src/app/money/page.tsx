@@ -41,8 +41,7 @@ import {
   isManagingAgentOperatingMode,
   useOperatingMode,
 } from "@/lib/use-operating-mode";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
+import { ENTITY_STORAGE_KEY, isAllEntities } from "@/lib/entity-selection";
 
 type MoneyTab = "billing" | "statements" | "xero" | "basiq";
 
@@ -172,7 +171,9 @@ function MoneyContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) setSelectedEntityId(stored);
+    // Money stays single-entity (per-entity provider connections + statements);
+    // ignore the cross-entity "All entities" sentinel another page may persist.
+    if (stored && !isAllEntities(stored)) setSelectedEntityId(stored);
     const tab = new URL(window.location.href).searchParams.get("tab");
     if (isMoneyTab(tab)) setActiveTab(tab);
   }, []);

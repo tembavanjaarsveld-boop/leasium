@@ -19,13 +19,13 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
   PageHeader,
   SecondaryButton,
   SectionPanel,
-  Select,
   StatusBadge,
   type StatusTone,
 } from "@/components/ui";
@@ -39,6 +39,7 @@ import {
   type WorkAssignmentNoticeChannelReceiptRecord,
   type WorkAssignmentNotificationCenterDigestRecord,
   type WorkAssignmentNotificationCenterItemRecord,
+  type WorkAssignmentNotificationCenterRecord,
   type WorkAssignmentNotificationChannelRecord,
   type WorkAssignmentProviderHistoryRecord,
   type WorkAssignmentNoticeGroup,
@@ -46,9 +47,22 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { cn } from "@/lib/utils";
 
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
+// In all-entities mode the merged notice/receipt rows carry the entity they
+// came from (derived from the per-entity fan-out grouping, since the API rows
+// do not embed an entity id). The tag drives the small entity label on each
+// row; it is undefined in single-entity mode.
+type EntityTag = { __entityId?: string };
+type TaggedNotice = WorkAssignmentNotificationCenterItemRecord & EntityTag;
+type TaggedDigestReceipt = WorkAssignmentNotificationCenterDigestRecord &
+  EntityTag;
 
 type NoticeFilter = "all" | WorkAssignmentNoticeGroup | "follow_up" | "failed";
 type DeliveryChannelFilter = "all" | "email" | "sms" | "in_app" | "preview";
@@ -1235,12 +1249,16 @@ function NoticeRow({
   isSending,
   isSendingSms,
   notice,
+  entityName,
+  allMode,
   onSend,
   onSendSms,
 }: {
   isSending: boolean;
   isSendingSms: boolean;
   notice: WorkAssignmentNotificationCenterItemRecord;
+  entityName?: string | null;
+  allMode: boolean;
   onSend: (notice: WorkAssignmentNotificationCenterItemRecord) => void;
   onSendSms: (notice: WorkAssignmentNotificationCenterItemRecord) => void;
 }) {
@@ -1277,6 +1295,11 @@ function NoticeRow({
             <StatusBadge tone="warning">Follow-up due</StatusBadge>
           ) : null}
         </div>
+        {allMode ? (
+          <div className="mt-1 text-leasium-micro font-semibold uppercase text-muted-foreground">
+            {entityName ?? "Unknown entity"}
+          </div>
+        ) : null}
         <div className="mt-1 text-sm text-muted-foreground">
           {notice.summary ??
             notice.notification_detail ??
@@ -1328,7 +1351,10 @@ function NoticeRow({
             <SecondaryButton
               type="button"
               className="h-9 px-2.5"
-              disabled={isSending}
+              disabled={isSending || allMode}
+              title={
+                allMode ? "Select a single entity to send" : undefined
+              }
               onClick={() => onSend(notice)}
             >
               <Send size={14} />
@@ -1339,7 +1365,10 @@ function NoticeRow({
             <SecondaryButton
               type="button"
               className="h-9 px-2.5"
-              disabled={isSendingSms}
+              disabled={isSendingSms || allMode}
+              title={
+                allMode ? "Select a single entity to send" : undefined
+              }
               onClick={() => onSendSms(notice)}
             >
               <MessageSquare size={14} />
@@ -1389,7 +1418,16 @@ function NotificationsWorkspace() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const next = stored || entitiesQuery.data?.[0]?.id;
+    const accessibleIds = new Set(
+      (entitiesQuery.data ?? []).map((entity) => entity.id),
+    );
+    const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
+    // The All-entities sentinel is a valid restore target even though it is not
+    // a real entity id, so the cross-entity view survives navigation/reload.
+    const next =
+      stored && (isAllEntities(stored) || accessibleIds.has(stored))
+        ? stored
+        : firstEntity;
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
@@ -1401,29 +1439,55 @@ function NotificationsWorkspace() {
     }
   }, [selectedEntityId]);
 
+  // All-entities mode: the single-entity center query uses scopedEntityId
+  // (empty in all-mode, so it stays disabled) and the page reads merged
+  // fan-out results. Single-entity writes are gated off while allMode is on.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const selectedEntity = entitiesQuery.data?.find(
-    (entity) => entity.id === selectedEntityId,
+    (entity) => entity.id === scopedEntityId,
   );
 
   const centerQuery = useQuery({
-    queryKey: ["work-assignment-notification-center", selectedEntityId],
-    queryFn: () => getWorkAssignmentNotificationCenter(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["work-assignment-notification-center", scopedEntityId],
+    queryFn: () => getWorkAssignmentNotificationCenter(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
+  });
+
+  // Fan the composite center across every entity. The hook flattens T[], so
+  // each per-entity queryFn returns a single-element array holding that
+  // entity's whole center record; merged notice/receipt arrays are derived
+  // below. The per-entity key matches the single-entity query, sharing cache.
+  const centerFanOut = useEntityFanOut<WorkAssignmentNotificationCenterRecord>({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["work-assignment-notification-center"],
+    queryFn: async (entityId) => [
+      await getWorkAssignmentNotificationCenter(entityId),
+    ],
   });
 
   const markReadMutation = useMutation({
     mutationFn: () =>
-      markWorkAssignmentNotificationCenterRead(selectedEntityId),
+      markWorkAssignmentNotificationCenterRead(scopedEntityId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", selectedEntityId],
+        queryKey: ["work-assignment-notification-center", scopedEntityId],
       }),
   });
 
   const retryDigestMutation = useMutation({
     mutationFn: (receipt: WorkAssignmentNotificationCenterDigestRecord) =>
       runWorkAssignmentDigest({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         cadence: receipt.cadence,
         send_email_approved: true,
         delivery_trigger: "recovery",
@@ -1431,14 +1495,14 @@ function NotificationsWorkspace() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", selectedEntityId],
+        queryKey: ["work-assignment-notification-center", scopedEntityId],
       }),
   });
 
   const sendNoticeMutation = useMutation({
     mutationFn: (notice: WorkAssignmentNotificationCenterItemRecord) =>
       sendWorkAssignmentNoticeEmail({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         target_id: notice.target_id,
         target_type: notice.target_type,
         delivery_trigger:
@@ -1449,14 +1513,14 @@ function NotificationsWorkspace() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", selectedEntityId],
+        queryKey: ["work-assignment-notification-center", scopedEntityId],
       }),
   });
 
   const sendSmsNoticeMutation = useMutation({
     mutationFn: (notice: WorkAssignmentNotificationCenterItemRecord) =>
       sendWorkAssignmentNoticeSms({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         target_id: notice.target_id,
         target_type: notice.target_type,
         delivery_trigger:
@@ -1467,77 +1531,122 @@ function NotificationsWorkspace() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", selectedEntityId],
+        queryKey: ["work-assignment-notification-center", scopedEntityId],
       }),
   });
 
   const center = centerQuery.data;
   const centerChannels = center?.channels ?? [];
+
+  // Merged, entity-tagged list views the UI reads in all-mode. Notice/receipt
+  // rows do not embed an entity id, so each row is tagged from the center it
+  // came from during the fan-out grouping. Composite scalar/summary fields
+  // (channel readiness, provider setup checks, counts) stay single-entity-only.
+  const mergedNotices = useMemo<TaggedNotice[]>(
+    () =>
+      centerFanOut.data.flatMap((entityCenter) =>
+        entityCenter.notices.map((notice) => ({
+          ...notice,
+          __entityId: entityCenter.entity_id,
+        })),
+      ),
+    [centerFanOut.data],
+  );
+  const mergedDigestReceipts = useMemo<TaggedDigestReceipt[]>(
+    () =>
+      centerFanOut.data.flatMap((entityCenter) =>
+        entityCenter.digest_receipts.map((receipt) => ({
+          ...receipt,
+          __entityId: entityCenter.entity_id,
+        })),
+      ),
+    [centerFanOut.data],
+  );
+
+  // Unified accessors so the filter/count/render code below works the same way
+  // in single- and all-entity mode. In single mode these fall back to the
+  // composite center payload; in all mode they read the merged arrays.
+  const notices = useMemo<TaggedNotice[]>(
+    () => (allMode ? mergedNotices : (center?.notices ?? [])),
+    [allMode, center?.notices, mergedNotices],
+  );
+  const digestReceipts = useMemo<TaggedDigestReceipt[]>(
+    () => (allMode ? mergedDigestReceipts : (center?.digest_receipts ?? [])),
+    [allMode, center?.digest_receipts, mergedDigestReceipts],
+  );
+  // In all-mode the center scalar payload is unavailable; treat presence of
+  // fan-out data as "have something to show" for empty-state gating.
+  const hasCenterData = allMode ? centerFanOut.data.length > 0 : Boolean(center);
+  const centerLoading = allMode
+    ? centerFanOut.isLoading
+    : centerQuery.isLoading;
+  const centerFetching = allMode
+    ? centerFanOut.isFetching
+    : centerQuery.isFetching;
   const noticeFilterCounts = useMemo(
     () =>
       Object.fromEntries(
         noticeFilters.map((filter) => [
           filter,
-          center?.notices.filter((notice) =>
-            matchesNoticeFilter(notice, filter),
-          ).length ?? 0,
+          notices.filter((notice) => matchesNoticeFilter(notice, filter))
+            .length,
         ]),
       ) as Record<NoticeFilter, number>,
-    [center?.notices],
+    [notices],
   );
   const noticeChannelFilterCounts = useMemo(
     () =>
       Object.fromEntries(
         noticeChannelFilters.map((filter) => [
           filter,
-          center?.notices.filter((notice) =>
+          notices.filter((notice) =>
             matchesNoticeChannelFilter(notice, filter),
-          ).length ?? 0,
+          ).length,
         ]),
       ) as Record<DeliveryChannelFilter, number>,
-    [center?.notices],
+    [notices],
   );
   const digestFilterCounts = useMemo(
     () =>
       Object.fromEntries(
         digestFilters.map((filter) => [
           filter,
-          center?.digest_receipts.filter((receipt) =>
+          digestReceipts.filter((receipt) =>
             matchesDigestFilter(receipt, filter),
-          ).length ?? 0,
+          ).length,
         ]),
       ) as Record<DigestFilter, number>,
-    [center?.digest_receipts],
+    [digestReceipts],
   );
   const digestChannelFilterCounts = useMemo(
     () =>
       Object.fromEntries(
         digestChannelFilters.map((filter) => [
           filter,
-          center?.digest_receipts.filter((receipt) =>
+          digestReceipts.filter((receipt) =>
             matchesDigestChannelFilter(receipt, filter),
-          ).length ?? 0,
+          ).length,
         ]),
       ) as Record<DeliveryChannelFilter, number>,
-    [center?.digest_receipts],
+    [digestReceipts],
   );
   const filteredNotices = useMemo(
     () =>
-      center?.notices.filter(
+      notices.filter(
         (notice) =>
           matchesNoticeFilter(notice, noticeFilter) &&
           matchesNoticeChannelFilter(notice, noticeChannelFilter),
-      ) ?? [],
-    [center?.notices, noticeChannelFilter, noticeFilter],
+      ),
+    [notices, noticeChannelFilter, noticeFilter],
   );
   const filteredDigestReceipts = useMemo(
     () =>
-      center?.digest_receipts.filter(
+      digestReceipts.filter(
         (receipt) =>
           matchesDigestFilter(receipt, digestFilter) &&
           matchesDigestChannelFilter(receipt, digestChannelFilter),
-      ) ?? [],
-    [center?.digest_receipts, digestChannelFilter, digestFilter],
+      ),
+    [digestReceipts, digestChannelFilter, digestFilter],
   );
   const providerReadinessCsvText = () => {
     if (!center) {
@@ -1611,81 +1720,128 @@ function NotificationsWorkspace() {
       "work-notification-review-packet.csv",
     );
   };
+  // Count-card values sum cleanly across entities (they are per-entity scalar
+  // totals), so all-mode adds them up from the fan-out centers.
+  const countTotals = useMemo(() => {
+    if (allMode) {
+      return centerFanOut.data.reduce(
+        (totals, entityCenter) => ({
+          unread: totals.unread + entityCenter.unread_count,
+          attention: totals.attention + entityCenter.attention_count,
+          ready: totals.ready + entityCenter.ready_count,
+          inFlight: totals.inFlight + entityCenter.in_flight_count,
+          done: totals.done + entityCenter.done_count,
+          digestReceipts:
+            totals.digestReceipts + entityCenter.digest_receipt_count,
+        }),
+        {
+          unread: 0,
+          attention: 0,
+          ready: 0,
+          inFlight: 0,
+          done: 0,
+          digestReceipts: 0,
+        },
+      );
+    }
+    return {
+      unread: center?.unread_count ?? 0,
+      attention: center?.attention_count ?? 0,
+      ready: center?.ready_count ?? 0,
+      inFlight: center?.in_flight_count ?? 0,
+      done: center?.done_count ?? 0,
+      digestReceipts: center?.digest_receipt_count ?? 0,
+    };
+  }, [allMode, center, centerFanOut.data]);
+  const noticeTotalCount = useMemo(
+    () =>
+      allMode
+        ? centerFanOut.data.reduce(
+            (total, entityCenter) => total + entityCenter.notice_count,
+            0,
+          )
+        : (center?.notice_count ?? 0),
+    [allMode, center?.notice_count, centerFanOut.data],
+  );
   const countCards = useMemo(
     () => [
       {
         label: "Unread",
-        value: center?.unread_count ?? 0,
+        value: countTotals.unread,
         tone: "primary" as StatusTone,
       },
       {
         label: "Attention",
-        value: center?.attention_count ?? 0,
+        value: countTotals.attention,
         tone: "danger" as StatusTone,
       },
       {
         label: "Ready",
-        value: center?.ready_count ?? 0,
+        value: countTotals.ready,
         tone: "primary" as StatusTone,
       },
       {
         label: "In flight",
-        value: center?.in_flight_count ?? 0,
+        value: countTotals.inFlight,
         tone: "warning" as StatusTone,
       },
       {
         label: "Delivered",
-        value: center?.done_count ?? 0,
+        value: countTotals.done,
         tone: "success" as StatusTone,
       },
       {
         label: "Digest receipts",
-        value: center?.digest_receipt_count ?? 0,
+        value: countTotals.digestReceipts,
         tone: "neutral" as StatusTone,
       },
     ],
-    [center],
+    [countTotals],
   );
 
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="">Select entity</option>
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
           title="Notifications"
           description={
-            selectedEntity
-              ? `${selectedEntity.name} work notices and digest receipts.`
-              : "Choose an entity to review work notices and digest receipts."
+            allMode
+              ? "Work notices and digest receipts across every entity."
+              : selectedEntity
+                ? `${selectedEntity.name} work notices and digest receipts.`
+                : "Choose an entity to review work notices and digest receipts."
           }
           actions={
             <>
-              {center ? (
-                <StatusBadge tone={center.unread_count ? "primary" : "neutral"}>
-                  {center.unread_count} unread
+              {hasCenterData ? (
+                <StatusBadge
+                  tone={countTotals.unread ? "primary" : "neutral"}
+                >
+                  {countTotals.unread} unread
                 </StatusBadge>
               ) : null}
               <SecondaryButton
                 type="button"
                 disabled={
-                  !selectedEntityId ||
+                  !scopedEntityId ||
                   !center ||
                   center.unread_count === 0 ||
-                  markReadMutation.isPending
+                  markReadMutation.isPending ||
+                  allMode
+                }
+                title={
+                  allMode
+                    ? "Select a single entity to mark reviewed"
+                    : undefined
                 }
                 onClick={() => markReadMutation.mutate()}
               >
@@ -1694,12 +1850,14 @@ function NotificationsWorkspace() {
               </SecondaryButton>
               <SecondaryButton
                 type="button"
-                disabled={!selectedEntityId || centerQuery.isFetching}
-                onClick={() => centerQuery.refetch()}
+                disabled={!selectedEntityId || centerFetching}
+                onClick={() =>
+                  allMode ? centerFanOut.refetch() : centerQuery.refetch()
+                }
               >
                 <RefreshCw
                   size={15}
-                  className={centerQuery.isFetching ? "animate-spin" : ""}
+                  className={centerFetching ? "animate-spin" : ""}
                 />
                 Refresh
               </SecondaryButton>
@@ -1733,40 +1891,42 @@ function NotificationsWorkspace() {
           description="Assignment notices across maintenance, arrears, and critical dates."
           icon={<Bell size={17} className="text-primary" />}
           actions={
-            center ? (
+            hasCenterData ? (
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone="neutral">
-                  {center.notice_count}{" "}
-                  {center.notice_count === 1 ? "notice" : "notices"}
+                  {noticeTotalCount}{" "}
+                  {noticeTotalCount === 1 ? "notice" : "notices"}
                 </StatusBadge>
-                <ExportMenu
-                  actions={[
-                    {
-                      key: "copy-review-packet",
-                      label: "Copy review packet",
-                      icon: <ClipboardCopy size={14} />,
-                      onSelect: () => void copyReviewPacket(),
-                    },
-                    {
-                      key: "download-review-packet",
-                      label: "Download review packet CSV",
-                      icon: <Download size={14} />,
-                      onSelect: downloadReviewPacketCsv,
-                    },
-                    {
-                      key: "copy-readiness",
-                      label: "Copy readiness CSV",
-                      icon: <ClipboardCopy size={14} />,
-                      onSelect: () => void copyProviderReadinessCsv(),
-                    },
-                    {
-                      key: "download-readiness",
-                      label: "Download readiness CSV",
-                      icon: <Download size={14} />,
-                      onSelect: downloadProviderReadinessCsv,
-                    },
-                  ]}
-                />
+                {center && !allMode ? (
+                  <ExportMenu
+                    actions={[
+                      {
+                        key: "copy-review-packet",
+                        label: "Copy review packet",
+                        icon: <ClipboardCopy size={14} />,
+                        onSelect: () => void copyReviewPacket(),
+                      },
+                      {
+                        key: "download-review-packet",
+                        label: "Download review packet CSV",
+                        icon: <Download size={14} />,
+                        onSelect: downloadReviewPacketCsv,
+                      },
+                      {
+                        key: "copy-readiness",
+                        label: "Copy readiness CSV",
+                        icon: <ClipboardCopy size={14} />,
+                        onSelect: () => void copyProviderReadinessCsv(),
+                      },
+                      {
+                        key: "download-readiness",
+                        label: "Download readiness CSV",
+                        icon: <Download size={14} />,
+                        onSelect: downloadProviderReadinessCsv,
+                      },
+                    ]}
+                  />
+                ) : null}
               </div>
             ) : null
           }
@@ -1831,6 +1991,12 @@ function NotificationsWorkspace() {
               <ProviderSetupChecks channels={centerChannels} />
             </div>
           ) : null}
+          {allMode ? (
+            <div className="border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+              Channel readiness and provider setup are shown when a single
+              entity is selected.
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
             {noticeFilters.map((filter) => (
               <FilterButton
@@ -1861,7 +2027,7 @@ function NotificationsWorkspace() {
           <div>
             {filteredNotices.map((notice) => (
               <NoticeRow
-                key={`${notice.target_type}-${notice.target_id}`}
+                key={`${notice.__entityId ?? ""}-${notice.target_type}-${notice.target_id}`}
                 isSending={
                   sendNoticeMutation.isPending &&
                   sendNoticeMutation.variables?.target_id === notice.target_id
@@ -1871,14 +2037,20 @@ function NotificationsWorkspace() {
                   sendSmsNoticeMutation.variables?.target_id === notice.target_id
                 }
                 notice={notice}
+                allMode={allMode}
+                entityName={
+                  notice.__entityId
+                    ? entityNameById.get(notice.__entityId)
+                    : null
+                }
                 onSend={(nextNotice) => sendNoticeMutation.mutate(nextNotice)}
                 onSendSms={(nextNotice) =>
                   sendSmsNoticeMutation.mutate(nextNotice)
                 }
               />
             ))}
-            {!centerQuery.isLoading &&
-            center &&
+            {!centerLoading &&
+            hasCenterData &&
             filteredNotices.length === 0 ? (
               <EmptyState
                 icon={<Bell size={18} />}
@@ -1894,9 +2066,9 @@ function NotificationsWorkspace() {
           description="Receipts from manually generated, scheduled, or approved Work digest emails."
           icon={<MailCheck size={17} className="text-primary" />}
           actions={
-            center ? (
+            hasCenterData ? (
               <StatusBadge tone="neutral">
-                {center.digest_receipt_count} receipts
+                {countTotals.digestReceipts} receipts
               </StatusBadge>
             ) : null
           }
@@ -1936,7 +2108,7 @@ function NotificationsWorkspace() {
               );
               return (
                 <div
-                  key={`${receipt.assignee_user_id}-${receipt.generated_at}`}
+                  key={`${receipt.__entityId ?? ""}-${receipt.assignee_user_id}-${receipt.generated_at}`}
                   className="rounded-xl border border-border bg-white p-3 text-sm"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1947,6 +2119,14 @@ function NotificationsWorkspace() {
                       <div className="truncate text-xs text-muted-foreground">
                         {receipt.assignee_email}
                       </div>
+                      {allMode ? (
+                        <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                          {receipt.__entityId
+                            ? (entityNameById.get(receipt.__entityId) ??
+                              "Unknown entity")
+                            : "Unknown entity"}
+                        </div>
+                      ) : null}
                     </div>
                     <StatusBadge tone={digestReceiptTone(receipt)}>
                       {digestReceiptLabel(receipt)}
@@ -2001,7 +2181,14 @@ function NotificationsWorkspace() {
                         type="button"
                         className="h-9 px-2.5"
                         disabled={
-                          !selectedEntityId || retryDigestMutation.isPending
+                          !scopedEntityId ||
+                          retryDigestMutation.isPending ||
+                          allMode
+                        }
+                        title={
+                          allMode
+                            ? "Select a single entity to send"
+                            : undefined
                         }
                         onClick={() => retryDigestMutation.mutate(receipt)}
                       >
@@ -2015,8 +2202,8 @@ function NotificationsWorkspace() {
                 </div>
               );
             })}
-            {!centerQuery.isLoading &&
-            center &&
+            {!centerLoading &&
+            hasCenterData &&
             filteredDigestReceipts.length === 0 ? (
               <EmptyState
                 icon={<MailCheck size={18} />}

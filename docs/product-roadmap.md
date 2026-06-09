@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 "All entities" composite pages + single-entity guards:** Comms,
+  Notifications, and Portfolio-QA now support all-mode by fanning out their
+  composite payloads per entity, concatenating the list/queue/notice/receipt
+  parts (entity-tagged rows), summing additive counts, and showing a "select a
+  single entity" note for per-entity-only sections (channel readiness, provider
+  setup, comms templates). All provider/write actions stay gated to a single
+  entity. Settings stays single-entity (its picker already had no all-entities
+  option and ignores a stored sentinel); Money and Statements stay single-entity
+  (per-entity provider connections / per-owner financial docs) and now ignore a
+  cross-entity sentinel persisted by another page. Frontend-only, no mutation.
+  Pending Remba review.
 - [~] **2026-06-10 "All entities" list-page rollout (Operations/Contractors/Inbox/Spreadsheet):**
   extended the shared `EntityPicker`/fan-out pattern. Operations all-mode fans out
   every visible list (maintenance, arrears/obligations, compliance, onboarding,

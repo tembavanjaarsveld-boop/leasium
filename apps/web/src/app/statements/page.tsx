@@ -75,13 +75,12 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import { ENTITY_STORAGE_KEY, isAllEntities } from "@/lib/entity-selection";
 import {
   isManagingAgentOperatingMode,
   useOperatingMode,
 } from "@/lib/use-operating-mode";
 import { friendlyError } from "@/lib/utils";
-
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const DISPATCH_APPROVAL_EXPORT_GUARDRAIL =
   "Review-only export: downloading this file does not download owner PDFs, download PDF packs, send owner email, dispatch comms, dispatch invoices, write Xero data, preview or apply payment reconciliation, refresh providers, or mutate provider history.";
 const DISPATCH_APPROVAL_COPY_GUARDRAIL =
@@ -1387,7 +1386,9 @@ function StatementsContent() {
       return;
     }
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) setSelectedEntityId(stored);
+    // Owner statements are per-entity/owner financial docs; ignore the
+    // cross-entity "All entities" sentinel another page may persist.
+    if (stored && !isAllEntities(stored)) setSelectedEntityId(stored);
   }, []);
   useEffect(() => {
     if (!selectedEntityId) return;

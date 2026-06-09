@@ -47,6 +47,7 @@ import {
   CommsTemplateEditorDrawer,
   type CommsTemplateEditorAction,
 } from "@/components/comms-template-editor-drawer";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -55,7 +56,6 @@ import {
   Input,
   PageHeader,
   SecondaryButton,
-  Select,
   SectionPanel,
   SkeletonRows,
   StatusBadge,
@@ -81,12 +81,26 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import {
+  ENTITY_CHANGED_EVENT,
+  ENTITY_STORAGE_KEY,
+  isAllEntities,
+  scopeEntityId,
+} from "@/lib/entity-selection";
+import { useEntityFanOut } from "@/lib/use-entity-fan-out";
 import { friendlyError } from "@/lib/utils";
 
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
-const ENTITY_CHANGED_EVENT = "leasium:entity-id-change";
-
 type CommsFilter = "all" | CommsKind;
+// All-entities rows carry their source entity alongside the record, since the
+// candidate/event payloads have no entity_id field of their own.
+type EntityTaggedCandidate = {
+  entityId: string;
+  candidate: CommsCandidateRecord;
+};
+type EntityTaggedCommsEvent = {
+  entityId: string;
+  event: CommsCorrespondenceEventRecord;
+};
 type OutboundLogFilter = "all" | "attention" | "email" | "sms";
 type OutboundLogDownload = {
   events: CommsCorrespondenceEventRecord[];
@@ -691,6 +705,8 @@ function CommsContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
+    // The All-entities sentinel is a valid restore target even though it is not
+    // a real entity id, so the cross-entity view survives navigation/reload.
     if (stored) setSelectedEntityId(stored);
   }, []);
   useEffect(() => {
@@ -705,24 +721,62 @@ function CommsContent() {
     if (first) setSelectedEntityId(first);
   }, [entitiesQuery.data, selectedEntityId]);
 
+  // All-entities mode: entity-scoped queries use scopedEntityId (empty in
+  // all-mode, so they stay disabled) and the page reads merged fan-out results.
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
   const queueQuery = useQuery({
-    queryKey: ["comms-queue", selectedEntityId],
-    queryFn: () => getCommsQueue(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["comms-queue", scopedEntityId],
+    queryFn: () => getCommsQueue(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const outboundLogQuery = useQuery({
-    queryKey: ["comms-outbound-log", selectedEntityId],
-    queryFn: () => getCommsOutboundLog(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["comms-outbound-log", scopedEntityId],
+    queryFn: () => getCommsOutboundLog(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const templateCatalogQuery = useQuery({
-    queryKey: ["comms-template-catalog", selectedEntityId],
+    queryKey: ["comms-template-catalog", scopedEntityId],
     queryFn: () =>
       listBrandedCommunicationTemplates({
-        entityId: selectedEntityId,
+        entityId: scopedEntityId,
         includeInactive: true,
       }),
-    enabled: Boolean(selectedEntityId),
+    enabled: Boolean(scopedEntityId),
+  });
+
+  // Fan-out copies of the composite queue + outbound log. The fan-out hook
+  // flattens arrays, so each per-entity queryFn extracts the composite's
+  // items[] and tags every row with its entityId during concatenation (the
+  // candidate/event records carry no entity_id of their own). A distinct
+  // keyPrefix keeps these tagged arrays out of the single-entity composite
+  // cache. Summary fields (generated_at) are not merged here — the UI derives
+  // summary counts from the merged rows.
+  const queueFanOut = useEntityFanOut<EntityTaggedCandidate>({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["comms-queue-fanout"],
+    queryFn: async (entityId) => {
+      const record = await getCommsQueue(entityId);
+      return record.candidates.map((candidate) => ({ entityId, candidate }));
+    },
+  });
+  const outboundLogFanOut = useEntityFanOut<EntityTaggedCommsEvent>({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["comms-outbound-log-fanout"],
+    queryFn: async (entityId) => {
+      const record = await getCommsOutboundLog(entityId);
+      return record.events.map((event) => ({ entityId, event }));
+    },
   });
   const [templateEditorState, setTemplateEditorState] = useState<{
     mode: "create" | "edit";
@@ -810,10 +864,25 @@ function CommsContent() {
   useEffect(() => {
     setSettledCandidateIds(new Set());
   }, [selectedEntityId]);
-  const candidates = useMemo(
-    () => queueQuery.data?.candidates ?? [],
-    [queueQuery.data?.candidates],
+  // Merged candidate list the UI reads regardless of single- vs all-entity
+  // mode. In all-mode the fan-out rows are concatenated (already per-entity
+  // tagged); the entity label for each candidate id is looked up below.
+  const candidates = useMemo<CommsCandidateRecord[]>(
+    () =>
+      allMode
+        ? queueFanOut.data.map((row) => row.candidate)
+        : (queueQuery.data?.candidates ?? []),
+    [allMode, queueFanOut.data, queueQuery.data?.candidates],
   );
+  const candidateEntityNameById = useMemo(() => {
+    if (!allMode) return new Map<string, string>();
+    return new Map(
+      queueFanOut.data.map((row) => [
+        row.candidate.id,
+        entityNameById.get(row.entityId) ?? "Unknown entity",
+      ]),
+    );
+  }, [allMode, queueFanOut.data, entityNameById]);
   useEffect(() => {
     setSettledCandidateIds((previous) => {
       if (previous.size === 0) return previous;
@@ -870,11 +939,30 @@ function CommsContent() {
     settledCount === 0
       ? `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining this session.`
       : `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining, ${settledCount} settled this session.`;
-  const queueGeneratedLabel = formatDateTime(queueQuery.data?.generated_at);
-  const outboundLogEvents = outboundLogQuery.data?.events ?? [];
-  const selectedEntityName =
-    entitiesQuery.data?.find((entity) => entity.id === selectedEntityId)?.name ??
-    "Selected entity";
+  const queueGeneratedLabel = allMode
+    ? null
+    : formatDateTime(queueQuery.data?.generated_at);
+  // Merged outbound log events + the per-event entity label (all-mode only).
+  const outboundLogEvents = useMemo<CommsCorrespondenceEventRecord[]>(
+    () =>
+      allMode
+        ? outboundLogFanOut.data.map((row) => row.event)
+        : (outboundLogQuery.data?.events ?? []),
+    [allMode, outboundLogFanOut.data, outboundLogQuery.data?.events],
+  );
+  const outboundEventEntityNameById = useMemo(() => {
+    if (!allMode) return new Map<string, string>();
+    return new Map(
+      outboundLogFanOut.data.map((row) => [
+        row.event.id,
+        entityNameById.get(row.entityId) ?? "Unknown entity",
+      ]),
+    );
+  }, [allMode, outboundLogFanOut.data, entityNameById]);
+  const selectedEntityName = allMode
+    ? "All entities"
+    : (entitiesQuery.data?.find((entity) => entity.id === selectedEntityId)
+        ?.name ?? "Selected entity");
   const storedTemplates = useMemo(
     () => templateCatalogQuery.data ?? [],
     [templateCatalogQuery.data],
@@ -900,7 +988,19 @@ function CommsContent() {
       (template) => template.key === editingKey && !template.deleted_at,
     );
   }, [storedTemplates, templateEditorState]);
-  const queueRefreshDisabled = !selectedEntityId || queueQuery.isFetching;
+  // Loading/error/fetching routed through allMode so the cross-entity view
+  // reflects the merged fan-out state, not the (disabled) single-entity query.
+  const queueIsLoading = allMode
+    ? queueFanOut.isLoading
+    : queueQuery.isLoading;
+  const queueIsFetching = allMode
+    ? queueFanOut.isFetching
+    : queueQuery.isFetching;
+  const queueError = allMode ? queueFanOut.error : queueQuery.error;
+  const queueLoaded = allMode
+    ? !queueFanOut.isLoading
+    : Boolean(queueQuery.data);
+  const queueRefreshDisabled = !selectedEntityId || queueIsFetching;
   const [reviewCsvCopyReceipt, setReviewCsvCopyReceipt] = useState<string | null>(
     null,
   );
@@ -909,13 +1009,21 @@ function CommsContent() {
   >(null);
   const [templateCatalogCsvCopyReceipt, setTemplateCatalogCsvCopyReceipt] =
     useState<string | null>(null);
+  // In all-mode the merged rows have no single generated_at; pass null so the
+  // CSV records "undated" while still exporting every entity's drafts.
+  const queueGeneratedAt = allMode
+    ? null
+    : (queueQuery.data?.generated_at ?? null);
+  const outboundLogGeneratedAt = allMode
+    ? null
+    : (outboundLogQuery.data?.generated_at ?? null);
   const reviewCsv = () => {
-    if (!queueQuery.data) {
+    if (!queueLoaded) {
       return null;
     }
     return commsQueueReviewCsv({
       candidates,
-      generatedAt: queueQuery.data.generated_at,
+      generatedAt: queueGeneratedAt,
       filterSummaryLabel,
       progressSummaryLabel,
       settledCount,
@@ -936,25 +1044,28 @@ function CommsContent() {
   };
   const downloadReviewCsv = () => {
     const csv = reviewCsv();
-    if (!queueQuery.data || !csv) {
+    if (!queueLoaded || !csv) {
       return;
     }
     saveBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
-      `comms-queue-review-${commsQueueReviewDate(queueQuery.data.generated_at)}.csv`,
+      `comms-queue-review-${commsQueueReviewDate(queueGeneratedAt)}.csv`,
     );
   };
+  const outboundLogLoaded = allMode
+    ? !outboundLogFanOut.isLoading
+    : Boolean(outboundLogQuery.data);
   const outboundLogCsv = ({
     events,
     filterLabel,
     totalEvents,
   }: OutboundLogDownload) => {
-    if (!outboundLogQuery.data) {
+    if (!outboundLogLoaded) {
       return null;
     }
     return commsOutboundLogCsv({
       events,
-      generatedAt: outboundLogQuery.data.generated_at,
+      generatedAt: outboundLogGeneratedAt,
       filterLabel,
       totalEvents,
     });
@@ -973,12 +1084,12 @@ function CommsContent() {
   };
   const downloadOutboundLogCsv = (download: OutboundLogDownload) => {
     const csv = outboundLogCsv(download);
-    if (!outboundLogQuery.data || !csv) {
+    if (!outboundLogLoaded || !csv) {
       return;
     }
     saveBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
-      `comms-outbound-log-${commsQueueReviewDate(outboundLogQuery.data.generated_at)}.csv`,
+      `comms-outbound-log-${commsQueueReviewDate(outboundLogGeneratedAt)}.csv`,
     );
   };
   const templateCatalogCsv = (download: TemplateCatalogDownload) =>
@@ -1003,20 +1114,12 @@ function CommsContent() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-          aria-label="Select entity"
-        >
-          <option value="" disabled>
-            Select an entity
-          </option>
-          {(entitiesQuery.data ?? []).map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+        />
       </AppHeader>
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
@@ -1034,7 +1137,7 @@ function CommsContent() {
                 onClick={() => {
                   void copyReviewCsv();
                 }}
-                disabled={!queueQuery.data || candidates.length === 0}
+                disabled={!queueLoaded || candidates.length === 0}
               >
                 <Copy size={15} />
                 Copy review CSV
@@ -1042,7 +1145,7 @@ function CommsContent() {
               <SecondaryButton
                 type="button"
                 onClick={downloadReviewCsv}
-                disabled={!queueQuery.data || candidates.length === 0}
+                disabled={!queueLoaded || candidates.length === 0}
               >
                 <Download size={15} />
                 Download review CSV
@@ -1053,20 +1156,25 @@ function CommsContent() {
               <SecondaryButton
                 type="button"
                 onClick={() => {
-                  void queueQuery.refetch();
-                  void outboundLogQuery.refetch();
-                  void queryClient.invalidateQueries({
-                    queryKey: ["comms-queue-counts", selectedEntityId],
-                  });
+                  if (allMode) {
+                    queueFanOut.refetch();
+                    outboundLogFanOut.refetch();
+                  } else {
+                    void queueQuery.refetch();
+                    void outboundLogQuery.refetch();
+                    void queryClient.invalidateQueries({
+                      queryKey: ["comms-queue-counts", selectedEntityId],
+                    });
+                  }
                 }}
                 disabled={queueRefreshDisabled}
               >
-                {queueQuery.isFetching ? (
+                {queueIsFetching ? (
                   <Loader2 size={15} className="animate-spin" />
                 ) : (
                   <RefreshCw size={15} />
                 )}
-                {queueQuery.isFetching ? "Refreshing…" : "Refresh queue"}
+                {queueIsFetching ? "Refreshing…" : "Refresh queue"}
               </SecondaryButton>
             </div>
           }
@@ -1090,6 +1198,7 @@ function CommsContent() {
           templates={activeTemplates}
           inactiveTemplates={inactiveTemplates}
           entityName={selectedEntityName}
+          allMode={allMode}
           isLoading={templateCatalogQuery.isLoading}
           error={templateCatalogQuery.error}
           onCopy={copyTemplateCatalogCsv}
@@ -1104,13 +1213,21 @@ function CommsContent() {
         />
         <OutboundLogPanel
           events={outboundLogEvents}
-          guardrails={outboundLogQuery.data?.guardrails ?? []}
-          isLoading={outboundLogQuery.isLoading}
-          error={outboundLogQuery.error}
+          guardrails={
+            allMode
+              ? [
+                  "Read-only cross-entity view: merged from every accessible entity. Sending stays per entity — select a single entity to dispatch or dismiss.",
+                ]
+              : (outboundLogQuery.data?.guardrails ?? [])
+          }
+          isLoading={allMode ? outboundLogFanOut.isLoading : outboundLogQuery.isLoading}
+          error={allMode ? outboundLogFanOut.error : outboundLogQuery.error}
+          allMode={allMode}
+          entityNameById={outboundEventEntityNameById}
           onCopy={copyOutboundLogCsv}
           onDownload={downloadOutboundLogCsv}
           copyReceipt={outboundLogCsvCopyReceipt}
-          downloadDisabled={!outboundLogQuery.data || outboundLogEvents.length === 0}
+          downloadDisabled={!outboundLogLoaded || outboundLogEvents.length === 0}
         />
         {candidates.length ? (
           <div className="rounded-md border border-border bg-white p-2">
@@ -1144,19 +1261,19 @@ function CommsContent() {
           </div>
         ) : null}
 
-        {queueQuery.isLoading ? (
+        {queueIsLoading ? (
           <SectionPanel>
             <SkeletonRows rows={4} />
           </SectionPanel>
         ) : null}
 
-        {queueQuery.error ? (
+        {queueError ? (
           <p className="rounded-md border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
-            {friendlyError(queueQuery.error)}
+            {friendlyError(queueError)}
           </p>
         ) : null}
 
-        {!queueQuery.isLoading && candidates.length === 0 && !queueQuery.error ? (
+        {!queueIsLoading && candidates.length === 0 && !queueError ? (
           <EmptyState
             icon={<CheckCircle2 size={18} />}
             title="Inbox zero. No drafts to review."
@@ -1164,10 +1281,10 @@ function CommsContent() {
           />
         ) : null}
 
-        {!queueQuery.isLoading &&
+        {!queueIsLoading &&
         candidates.length > 0 &&
         filteredCandidates.length === 0 &&
-        !queueQuery.error ? (
+        !queueError ? (
           <EmptyState
             icon={<Inbox size={18} />}
             title="No drafts in this filter."
@@ -1175,9 +1292,9 @@ function CommsContent() {
           />
         ) : null}
 
-        {!queueQuery.isLoading &&
+        {!queueIsLoading &&
         filteredCandidates.length > 0 &&
-        !queueQuery.error ? (
+        !queueError ? (
           <div
             role="list"
             aria-label="Comms draft review queue"
@@ -1195,7 +1312,13 @@ function CommsContent() {
               >
                 <CandidateCard
                   candidate={candidate}
-                  entityId={selectedEntityId}
+                  entityId={scopedEntityId}
+                  allMode={allMode}
+                  entityName={
+                    allMode
+                      ? (candidateEntityNameById.get(candidate.id) ?? null)
+                      : null
+                  }
                   onSettled={(candidateId) => {
                     setSettledCandidateIds((previous) => {
                       const next = new Set(previous);
@@ -1203,13 +1326,13 @@ function CommsContent() {
                       return next;
                     });
                     void queryClient.invalidateQueries({
-                      queryKey: ["comms-queue", selectedEntityId],
+                      queryKey: ["comms-queue", scopedEntityId],
                     });
                     void queryClient.invalidateQueries({
-                      queryKey: ["comms-queue-counts", selectedEntityId],
+                      queryKey: ["comms-queue-counts", scopedEntityId],
                     });
                     void queryClient.invalidateQueries({
-                      queryKey: ["comms-outbound-log", selectedEntityId],
+                      queryKey: ["comms-outbound-log", scopedEntityId],
                     });
                   }}
                 />
@@ -1223,7 +1346,7 @@ function CommsContent() {
         mode={templateEditorState?.mode ?? "create"}
         template={templateEditorState?.template ?? null}
         templateHistory={templateEditorHistory}
-        entityId={selectedEntityId || null}
+        entityId={scopedEntityId || null}
         onClose={() => setTemplateEditorState(null)}
         onSaved={handleTemplateEditorSaved}
       />
@@ -1264,6 +1387,7 @@ function TemplateCatalogPanel({
   templates,
   inactiveTemplates,
   entityName,
+  allMode,
   isLoading,
   error,
   onCopy,
@@ -1275,6 +1399,7 @@ function TemplateCatalogPanel({
   templates: BrandedCommunicationTemplateRecord[];
   inactiveTemplates: BrandedCommunicationTemplateRecord[];
   entityName: string;
+  allMode: boolean;
   isLoading: boolean;
   error: unknown;
   onCopy: (download: TemplateCatalogDownload) => void | Promise<void>;
@@ -1287,8 +1412,11 @@ function TemplateCatalogPanel({
   const templateCountLabel = `${templates.length} active ${
     templates.length === 1 ? "template" : "templates"
   }`;
-  const actionDisabled = isLoading || Boolean(error) || templates.length === 0;
-  const editorDisabled = isLoading || Boolean(error);
+  // Templates are configured per entity, so management is single-entity only.
+  // In all-mode the panel shows a "select a single entity" note instead.
+  const actionDisabled =
+    allMode || isLoading || Boolean(error) || templates.length === 0;
+  const editorDisabled = allMode || isLoading || Boolean(error);
 
   return (
     <SectionPanel
@@ -1301,6 +1429,9 @@ function TemplateCatalogPanel({
             type="button"
             onClick={onCreate}
             disabled={editorDisabled}
+            title={
+              allMode ? "Select a single entity to manage templates" : undefined
+            }
           >
             <Plus size={15} />
             New template
@@ -1330,22 +1461,28 @@ function TemplateCatalogPanel({
         </div>
       }
     >
-      {isLoading ? (
+      {allMode ? (
+        <div className="p-4 text-sm text-muted-foreground">
+          Templates are configured per entity. Select a single entity to view
+          and manage its communication templates.
+        </div>
+      ) : null}
+      {!allMode && isLoading ? (
         <div className="p-4">
           <SkeletonRows rows={2} />
         </div>
       ) : null}
-      {error ? (
+      {!allMode && error ? (
         <p className="m-4 rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
           {friendlyError(error)}
         </p>
       ) : null}
-      {!isLoading && !error && templates.length === 0 ? (
+      {!allMode && !isLoading && !error && templates.length === 0 ? (
         <div className="p-4 text-sm text-muted-foreground">
           No active communication templates are stored for {entityName}.
         </div>
       ) : null}
-      {!isLoading && !error && templates.length > 0 ? (
+      {!allMode && !isLoading && !error && templates.length > 0 ? (
         <div aria-label="Active templates" className="divide-y divide-border">
           {templates.map((template) => (
             <TemplateCatalogCard
@@ -1356,7 +1493,7 @@ function TemplateCatalogPanel({
           ))}
         </div>
       ) : null}
-      {!isLoading && !error && inactiveTemplates.length > 0 ? (
+      {!allMode && !isLoading && !error && inactiveTemplates.length > 0 ? (
         <details className="border-t border-border bg-muted/10" open>
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">
             Inactive templates ({inactiveTemplates.length})
@@ -1451,6 +1588,8 @@ function OutboundLogPanel({
   guardrails,
   isLoading,
   error,
+  allMode,
+  entityNameById,
   onCopy,
   onDownload,
   copyReceipt,
@@ -1460,6 +1599,8 @@ function OutboundLogPanel({
   guardrails: string[];
   isLoading: boolean;
   error: unknown;
+  allMode: boolean;
+  entityNameById: Map<string, string>;
   onCopy: (download: OutboundLogDownload) => void | Promise<void>;
   onDownload: (download: OutboundLogDownload) => void;
   copyReceipt: string | null;
@@ -1599,6 +1740,11 @@ function OutboundLogPanel({
                     <p className="font-medium text-foreground">
                       {event.summary ?? event.event_type}
                     </p>
+                    {allMode ? (
+                      <p className="mt-1 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                        {entityNameById.get(event.id) ?? "Unknown entity"}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-muted-foreground">
                       {commsEventKindLabel(event)}
                       {event.recipient ? ` to ${event.recipient}` : ""}
@@ -1691,10 +1837,14 @@ function CommsFilterButton({
 function CandidateCard({
   candidate,
   entityId,
+  allMode,
+  entityName,
   onSettled,
 }: {
   candidate: CommsCandidateRecord;
   entityId: string;
+  allMode: boolean;
+  entityName: string | null;
   onSettled: (candidateId: string) => void;
 }) {
   const channel = candidate.kind === "inbound_sms" ? "sms" : "email";
@@ -1849,6 +1999,11 @@ function CandidateCard({
       icon={<Inbox size={17} />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          {allMode && entityName ? (
+            <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+              {entityName}
+            </span>
+          ) : null}
           <StatusBadge tone={isSms ? "primary" : "neutral"}>
             {isSms ? "Twilio SMS" : "SendGrid email"}
           </StatusBadge>
@@ -2039,7 +2194,10 @@ function CandidateCard({
                   <SecondaryButton
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={evidenceMutation.isPending}
+                    disabled={evidenceMutation.isPending || allMode}
+                    title={
+                      allMode ? "Select a single entity to send" : undefined
+                    }
                   >
                     {evidenceMutation.isPending ? (
                       <Loader2 size={15} className="animate-spin" />
@@ -2117,8 +2275,10 @@ function CandidateCard({
               onClick={() => dismissMutation.mutate()}
               disabled={
                 actionPending ||
-                draftSettled
+                draftSettled ||
+                allMode
               }
+              title={allMode ? "Select a single entity to send" : undefined}
             >
               <X size={15} />
               Dismiss
@@ -2134,8 +2294,10 @@ function CandidateCard({
               disabled={
                 actionPending ||
                 draftSettled ||
-                dispatchBlocked
+                dispatchBlocked ||
+                allMode
               }
+              title={allMode ? "Select a single entity to send" : undefined}
             >
               {dispatchMutation.isPending ? (
                 <Loader2 size={16} className="animate-spin" />
