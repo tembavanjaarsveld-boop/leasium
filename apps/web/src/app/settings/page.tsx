@@ -130,6 +130,7 @@ import {
   type SecurityWorkAssignmentDigestCadence,
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
+  type EntityType,
   type EntityXeroStatusValue,
   type OwnershipSplitApplyResult,
   type WorkAssignmentNotificationTemplateCatalogRecord,
@@ -214,6 +215,29 @@ const settingsTabs: Array<{
   { id: "organisation", label: "Organisation", icon: <Building2 size={15} /> },
   { id: "connect", label: "Connect", icon: <PlugZap size={15} /> },
 ];
+
+const ENTITY_TYPE_OPTIONS: EntityType[] = [
+  "trust",
+  "company",
+  "smsf",
+  "individual",
+  "partnership",
+];
+
+function guessEntityType(name: string): EntityType | "" {
+  const lower = name.toLowerCase();
+  if (lower.includes("smsf") || lower.includes("super fund")) return "smsf";
+  if (lower.includes("trust")) return "trust";
+  if (
+    lower.includes("pty ltd") ||
+    lower.includes("limited") ||
+    lower.includes(" ltd")
+  ) {
+    return "company";
+  }
+  if (lower.includes("partnership")) return "partnership";
+  return "";
+}
 
 function EntityPropertiesList({ entityId }: { entityId: string }) {
   const query = useQuery({
@@ -3031,6 +3055,11 @@ function SettingsWorkspace() {
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
   const selectedEntityTypeLabel = entityTypeLabel(selectedEntity?.entity_type);
   const ownershipSplitPlan = ownershipSplitPlanQuery.data;
+  const [splitTypeByKey, setSplitTypeByKey] = useState<
+    Record<string, EntityType | "">
+  >({});
+  const splitTypeFor = (key: string, name: string): EntityType | "" =>
+    splitTypeByKey[key] ?? guessEntityType(name);
   const [splitConfirming, setSplitConfirming] = useState(false);
   const [splitResult, setSplitResult] = useState<OwnershipSplitApplyResult | null>(
     null,
@@ -3040,6 +3069,8 @@ function SettingsWorkspace() {
       applyOwnershipSplit(
         (ownershipSplitPlan?.groups ?? []).map((group) => ({
           proposed_name: group.proposed_name,
+          entity_type:
+            splitTypeFor(group.normalized_key, group.proposed_name) || null,
           property_ids: group.properties.map((property) => property.id),
         })),
       ),
@@ -5106,6 +5137,7 @@ function SettingsWorkspace() {
                     <thead>
                       <tr className="text-left text-xs font-semibold uppercase text-muted-foreground">
                         <th className="px-3 py-2">Proposed entity (trust)</th>
+                        <th className="px-3 py-2">Type</th>
                         <th className="px-3 py-2">Properties</th>
                         <th className="px-3 py-2">Units</th>
                         <th className="px-3 py-2">Leases</th>
@@ -5119,6 +5151,30 @@ function SettingsWorkspace() {
                         >
                           <td className="px-3 py-2 font-medium text-foreground">
                             {group.proposed_name}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select
+                              aria-label={`Type for ${group.proposed_name}`}
+                              value={splitTypeFor(
+                                group.normalized_key,
+                                group.proposed_name,
+                              )}
+                              disabled={Boolean(splitResult)}
+                              onChange={(event) =>
+                                setSplitTypeByKey((current) => ({
+                                  ...current,
+                                  [group.normalized_key]: event.target
+                                    .value as EntityType | "",
+                                }))
+                              }
+                            >
+                              <option value="">Type not set</option>
+                              {ENTITY_TYPE_OPTIONS.map((type) => (
+                                <option key={type} value={type}>
+                                  {entityTypeLabel(type)}
+                                </option>
+                              ))}
+                            </Select>
                           </td>
                           <td className="px-3 py-2 text-muted-foreground">
                             {group.property_count}
