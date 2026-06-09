@@ -246,6 +246,36 @@ const initialProperties = [
     xero_tracking_category: "Eagle Street Office",
     metadata: {},
   },
+  {
+    id: "property-secondary-1",
+    entity_id: secondaryEntityId,
+    name: "Rivergum Industrial Estate",
+    street_address: "5 Rivergum Drive",
+    suburb: "Acacia Ridge",
+    state: "QLD",
+    postcode: "4110",
+    country_code: "AU",
+    property_type: "commercial_industrial",
+    parcel_id: "L9-SP54321",
+    land_sqm: 2400,
+    building_sqm: 1800,
+    parking_spaces: 20,
+    has_solar_pv: false,
+    ownership_structure: "trust",
+    owner_legal_name: "Secondary Holdings Pty Ltd",
+    owner_abn: "98989898989",
+    trustee_name: null,
+    trust_name: null,
+    invoice_issuer_name: null,
+    billing_contact_name: null,
+    billing_email: null,
+    invoice_reference: "RIE-",
+    ownership_split: null,
+    owner_gst_registered: true,
+    xero_contact_id: null,
+    xero_tracking_category: "Rivergum",
+    metadata: {},
+  },
 ];
 
 let properties = jsonClone(initialProperties);
@@ -6341,8 +6371,15 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (method === "GET" && path === `/premises/by-entity/${entityId}`) {
-      await fulfillJson(route, properties);
+    const byEntityMatch = path.match(/^\/premises\/by-entity\/([^/]+)$/);
+    if (method === "GET" && byEntityMatch) {
+      const requestedEntityId = byEntityMatch[1];
+      await fulfillJson(
+        route,
+        properties.filter(
+          (record) => record.entity_id === requestedEntityId,
+        ),
+      );
       return;
     }
 

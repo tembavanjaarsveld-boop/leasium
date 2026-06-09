@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Properties "All entities" portfolio view:** the entity picker
+  now offers an `All entities` option (shown when more than one entity exists)
+  that fans out one properties query per accessible entity and merges them into
+  a single, entity-labelled Portfolio list (desktop table + mobile cards).
+  Portfolio-list-only by design: selecting a property drops the workspace into
+  that property's own entity context so entity-scoped panels load correctly;
+  entity-scoped queries stay disabled in all-mode via a `scopedEntityId` so the
+  sentinel never hits the API, and `New property` is disabled until a single
+  entity is chosen. Persists/deep-links via `?entity_id=__all_entities__`.
+  Frontend-only, no new endpoint, no mutation. Smoke covers the merged view and
+  the drop-into-entity selection. Pending Remba review.
 - [x] **2026-06-08 agent push wave 11 (2 slices):** Dashboard compliance cue card
   (overdue/due-soon + evidence counts, links into compliance/insights, from
   existing overview data); arrears latest promise-to-pay projection (backend,

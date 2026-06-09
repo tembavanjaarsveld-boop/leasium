@@ -1,7 +1,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   AlertTriangle,
   Ban,
@@ -162,6 +167,12 @@ const PropertyLeafletMap = dynamic(
 );
 
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
+// Sentinel picker value for the cross-entity "All entities" portfolio view.
+// Not a real entity id, so entity-scoped queries must treat it as "no entity".
+const ALL_ENTITIES_VALUE = "__all_entities__";
+// Stable empty reference so propertyRecords keeps a steady identity when not in
+// the cross-entity "All entities" view (avoids needless downstream recompute).
+const EMPTY_PROPERTY_RECORDS: never[] = [];
 const PROPERTY_STORAGE_KEY = "leasium.property_id";
 const PROPERTY_DENSITY_STORAGE_KEY = "leasium.properties.density";
 
@@ -1986,15 +1997,67 @@ function Workspace({
     queryKey: ["entities"],
     queryFn: listEntities,
   });
+  // "All entities" is a cross-entity, Portfolio-list-only browse mode. The
+  // picker holds a sentinel value; entity-scoped queries use scopedEntityId
+  // (empty in all-mode) so they stay disabled rather than firing the sentinel
+  // at the API.
+  const isAllEntities = selectedEntityId === ALL_ENTITIES_VALUE;
+  const scopedEntityId = isAllEntities ? "" : selectedEntityId;
   const propertiesQuery = useQuery({
-    queryKey: ["properties", selectedEntityId],
-    queryFn: () => listProperties(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["properties", scopedEntityId],
+    queryFn: () => listProperties(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
-  const propertyRecords = useMemo(
-    () => (propertiesQuery.error ? [] : (propertiesQuery.data ?? [])),
-    [propertiesQuery.data, propertiesQuery.error],
+  // In all-mode, fan out one properties query per accessible entity and merge
+  // client-side. Each query shares the single-entity cache key, so switching
+  // between a specific entity and "All" reuses already-fetched rows.
+  const allEntityIds = useMemo(
+    () => (entitiesQuery.data ?? []).map((entity) => entity.id),
+    [entitiesQuery.data],
   );
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+  const allPropertiesQueries = useQueries({
+    queries: isAllEntities
+      ? allEntityIds.map((entityId) => ({
+          queryKey: ["properties", entityId],
+          queryFn: () => listProperties(entityId),
+        }))
+      : [],
+  });
+  const allPropertiesRecords = useMemo(
+    () =>
+      isAllEntities
+        ? allPropertiesQueries.flatMap((query) => query.data ?? [])
+        : EMPTY_PROPERTY_RECORDS,
+    [isAllEntities, allPropertiesQueries],
+  );
+  const allPropertiesLoading =
+    isAllEntities &&
+    allPropertiesQueries.length > 0 &&
+    allPropertiesQueries.some((query) => query.isLoading);
+  const allPropertiesFetching =
+    isAllEntities && allPropertiesQueries.some((query) => query.isFetching);
+  const allPropertiesError = isAllEntities
+    ? (allPropertiesQueries.find((query) => query.error)?.error ?? null)
+    : null;
+  const propertyRecords = useMemo(() => {
+    if (isAllEntities) {
+      return allPropertiesError ? [] : allPropertiesRecords;
+    }
+    return propertiesQuery.error ? [] : (propertiesQuery.data ?? []);
+  }, [
+    isAllEntities,
+    allPropertiesError,
+    allPropertiesRecords,
+    propertiesQuery.data,
+    propertiesQuery.error,
+  ]);
   const requestedPropertyMissingFromList = Boolean(
     requestedPropertyId &&
       propertiesQuery.data &&
@@ -2007,7 +2070,7 @@ function Workspace({
   const selectedPropertyScopedQueriesEnabled =
     Boolean(selectedPropertyId) && !requestedPropertyMissingFromList;
   const entityScopedPropertyChildrenEnabled =
-    Boolean(selectedEntityId) &&
+    Boolean(scopedEntityId) &&
     !requestedPropertyMissingFromList &&
     !requestedPropertySelectionPending;
   const requestedPropertyQuery = useQuery({
@@ -2022,9 +2085,9 @@ function Workspace({
     enabled: selectedPropertyScopedQueriesEnabled,
   });
   const tenantsQuery = useQuery({
-    queryKey: ["tenants", selectedEntityId],
-    queryFn: () => listTenants(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const leasesQuery = useQuery({
     queryKey: ["leases", selectedPropertyId],
@@ -2032,10 +2095,10 @@ function Workspace({
     enabled: selectedPropertyScopedQueriesEnabled,
   });
   const obligationsQuery = useQuery({
-    queryKey: ["obligations", selectedEntityId, selectedPropertyId],
+    queryKey: ["obligations", scopedEntityId, selectedPropertyId],
     queryFn: () =>
       listObligations({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         property_id: selectedPropertyScopedQueriesEnabled
           ? selectedPropertyId
           : undefined,
@@ -2043,34 +2106,34 @@ function Workspace({
     enabled: entityScopedPropertyChildrenEnabled,
   });
   const rentRollQuery = useQuery({
-    queryKey: ["rent-roll", selectedEntityId, rentRollPropertyId, rentRollAsOf],
+    queryKey: ["rent-roll", scopedEntityId, rentRollPropertyId, rentRollAsOf],
     queryFn: () =>
       listRentRoll({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         property_id: rentRollPropertyId || undefined,
         as_of: rentRollAsOf,
       }),
-    enabled: Boolean(selectedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const calendarRentRollQuery = useQuery({
-    queryKey: ["rent-roll-calendar", selectedEntityId, rentRollAsOf],
+    queryKey: ["rent-roll-calendar", scopedEntityId, rentRollAsOf],
     queryFn: () =>
       listRentRoll({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         as_of: rentRollAsOf,
       }),
-    enabled: Boolean(selectedEntityId && rentRollPropertyId),
+    enabled: Boolean(scopedEntityId && rentRollPropertyId),
   });
   const insightsOverviewQuery = useQuery<InsightsOverviewRecord>({
-    queryKey: ["insights-overview", selectedEntityId, rentRollAsOf],
-    queryFn: () => getInsightsOverview(selectedEntityId, rentRollAsOf),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["insights-overview", scopedEntityId, rentRollAsOf],
+    queryFn: () => getInsightsOverview(scopedEntityId, rentRollAsOf),
+    enabled: Boolean(scopedEntityId),
   });
   const chargeRulesQuery = useQuery({
-    queryKey: ["charge-rules", selectedEntityId, selectedPropertyId],
+    queryKey: ["charge-rules", scopedEntityId, selectedPropertyId],
     queryFn: () =>
       listChargeRules({
-        entity_id: selectedEntityId,
+        entity_id: scopedEntityId,
         property_id: selectedPropertyScopedQueriesEnabled
           ? selectedPropertyId
           : undefined,
@@ -2078,9 +2141,9 @@ function Workspace({
     enabled: entityScopedPropertyChildrenEnabled,
   });
   const tenantOnboardingsQuery = useQuery({
-    queryKey: ["tenant-onboarding", selectedEntityId],
-    queryFn: () => listTenantOnboardings(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    queryKey: ["tenant-onboarding", scopedEntityId],
+    queryFn: () => listTenantOnboardings(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
   });
   const leaseReviewUnitsQuery = useQuery({
     queryKey: ["lease-review-units", leaseReviewPropertyId],
@@ -2152,8 +2215,10 @@ function Workspace({
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
+    // The "All entities" sentinel is a valid restore target even though it is
+    // not in accessibleIds, so it survives reload and ?entity_id deep links.
     const preferred = [fromUrl, stored, firstEntity].find(
-      (id) => id && accessibleIds.has(id),
+      (id) => id && (id === ALL_ENTITIES_VALUE || accessibleIds.has(id)),
     );
     const next = preferred || firstEntity || "";
     if (!selectedEntityId && next) {
@@ -2161,6 +2226,7 @@ function Workspace({
     }
     if (
       selectedEntityId &&
+      selectedEntityId !== ALL_ENTITIES_VALUE &&
       accessibleIds.size &&
       !accessibleIds.has(selectedEntityId)
     ) {
@@ -2356,9 +2422,11 @@ function Workspace({
     (!selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
   const propertiesLoading =
     entitySelectionLoading ||
-    (Boolean(selectedEntityId) &&
-      !propertiesQuery.data &&
-      (propertiesQuery.isLoading || propertiesQuery.isFetching));
+    (isAllEntities
+      ? allPropertiesLoading
+      : Boolean(selectedEntityId) &&
+        !propertiesQuery.data &&
+        (propertiesQuery.isLoading || propertiesQuery.isFetching));
   const tenancyUnitsLoading =
     Boolean(selectedPropertyId) &&
     !tenancyUnitsQuery.data &&
@@ -3176,6 +3244,17 @@ function Workspace({
   });
 
   function selectProperty(propertyId: string) {
+    // In the cross-entity "All entities" view, selecting a property drops the
+    // workspace into that property's own entity context so the entity-scoped
+    // panels (tenants, leases, obligations, charge rules) load correctly.
+    if (isAllEntities) {
+      const target = propertyRecords.find(
+        (property) => property.id === propertyId,
+      );
+      if (target) {
+        setSelectedEntityId(target.entity_id);
+      }
+    }
     setSelectedPropertyId(propertyId);
     setRequestedPropertyId(propertyId);
     window.localStorage.setItem(PROPERTY_STORAGE_KEY, propertyId);
@@ -3583,6 +3662,9 @@ function Workspace({
           <option value="">
             {entitiesLoading ? "Checking entities" : "Select entity"}
           </option>
+          {(entitiesQuery.data?.length ?? 0) > 1 ? (
+            <option value={ALL_ENTITIES_VALUE}>All entities</option>
+          ) : null}
           {entitiesQuery.data?.map((entity) => (
             <option key={entity.id} value={entity.id}>
               {entity.name}
@@ -3596,11 +3678,15 @@ function Workspace({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold">
-                {selectedEntity?.name ?? "Select an entity"}
+                {isAllEntities
+                  ? "All entities"
+                  : (selectedEntity?.name ?? "Select an entity")}
               </h2>
               <p className="text-sm text-muted-foreground">
-                {propertiesQuery.isError
-                  ? friendlyError(propertiesQuery.error)
+                {(isAllEntities ? allPropertiesError : propertiesQuery.error)
+                  ? friendlyError(
+                      isAllEntities ? allPropertiesError : propertiesQuery.error,
+                    )
                   : propertiesLoading
                     ? "Checking properties"
                     : ownerTagFilter
@@ -3611,28 +3697,53 @@ function Workspace({
                               : "properties"
                           } tagged ${activeOwnerTag.label}`
                         : "0 properties for this ownership tag"
-                      : `${propertyRecords.length} active properties`}
+                      : isAllEntities
+                        ? `${propertyRecords.length} ${
+                            propertyRecords.length === 1
+                              ? "property"
+                              : "properties"
+                          } across ${allEntityIds.length} entities`
+                        : `${propertyRecords.length} active properties`}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <SecondaryButton
                 type="button"
-                onClick={() => propertiesQuery.refetch()}
-                disabled={!selectedEntityId || propertiesQuery.isFetching}
+                onClick={() => {
+                  if (isAllEntities) {
+                    allPropertiesQueries.forEach((query) => query.refetch());
+                  } else {
+                    propertiesQuery.refetch();
+                  }
+                }}
+                disabled={
+                  isAllEntities
+                    ? allPropertiesFetching
+                    : !selectedEntityId || propertiesQuery.isFetching
+                }
               >
-                {propertiesQuery.isFetching && !propertiesLoading ? (
+                {(isAllEntities
+                  ? allPropertiesFetching
+                  : propertiesQuery.isFetching) && !propertiesLoading ? (
                   <Loader2 size={16} className="animate-spin" />
                 ) : (
                   <RefreshCw size={16} />
                 )}
-                {propertiesQuery.isFetching && !propertiesLoading
+                {(isAllEntities
+                  ? allPropertiesFetching
+                  : propertiesQuery.isFetching) && !propertiesLoading
                   ? "Refreshing…"
                   : "Refresh"}
               </SecondaryButton>
               <Button
                 type="button"
                 onClick={startPropertyCreate}
-                disabled={!selectedEntityId}
+                disabled={!selectedEntityId || isAllEntities}
+                title={
+                  isAllEntities
+                    ? "Select a single entity to add a property"
+                    : undefined
+                }
               >
                 <Plus size={16} />
                 New property
@@ -5573,6 +5684,7 @@ function Workspace({
                     occupancyByPropertyId={occupancyByPropertyId}
                     nextExpiryByPropertyId={nextExpiryByPropertyId}
                     selectedEntityName={selectedEntity?.name}
+                    entityNameById={isAllEntities ? entityNameById : undefined}
                     selectedPropertyId={selectedPropertyId}
                     ownershipPaletteByLabel={ownershipPaletteByLabel}
                     isLoading={propertiesLoading}
@@ -5667,6 +5779,21 @@ function Workspace({
                                   <span className="font-medium">
                                     {property.name}
                                   </span>
+                                  {isAllEntities ? (
+                                    <span
+                                      className="inline-flex max-w-[16rem] items-center truncate rounded-full border border-border bg-muted px-2 py-0.5 text-leasium-micro font-semibold leading-4 text-muted-foreground"
+                                      title={
+                                        entityNameById.get(property.entity_id) ??
+                                        "Unknown entity"
+                                      }
+                                    >
+                                      <span className="truncate">
+                                        {entityNameById.get(
+                                          property.entity_id,
+                                        ) ?? "Unknown entity"}
+                                      </span>
+                                    </span>
+                                  ) : null}
                                   {(() => {
                                     const occupancy = occupancyByPropertyId.get(
                                       property.id,
@@ -5822,7 +5949,11 @@ function Workspace({
                               No properties match this ownership tag.
                             </td>
                           </tr>
-                        ) : propertiesQuery.data?.length === 0 ? (
+                        ) : (
+                            isAllEntities
+                              ? propertyRecords.length === 0
+                              : propertiesQuery.data?.length === 0
+                          ) ? (
                           <tr>
                             <td
                               className="px-3 py-8 text-center text-muted-foreground"
@@ -7149,6 +7280,7 @@ type PropertyBoardViewProps = {
 
 type PropertyMobileListViewProps = PropertyBoardViewProps & {
   selectedEntityName?: string;
+  entityNameById?: Map<string, string>;
   ownershipPaletteByLabel: ReturnType<typeof propertyOwnershipPaletteMap>;
   isLoading: boolean;
   isOwnerTagFiltered: boolean;
@@ -7162,6 +7294,7 @@ function PropertyMobileListView({
   occupancyByPropertyId,
   nextExpiryByPropertyId,
   selectedEntityName,
+  entityNameById,
   selectedPropertyId,
   ownershipPaletteByLabel,
   isLoading,
@@ -7227,6 +7360,12 @@ function PropertyMobileListView({
                   <h3 className="break-words text-sm font-semibold text-foreground">
                     {property.name}
                   </h3>
+                  {entityNameById ? (
+                    <p className="mt-0.5 break-words text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      {entityNameById.get(property.entity_id) ??
+                        "Unknown entity"}
+                    </p>
+                  ) : null}
                   <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
                     {property.street_address}
                     {property.suburb || property.state ? ", " : ""}

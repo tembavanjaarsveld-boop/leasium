@@ -3347,6 +3347,52 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(page.getByText("Citation stored for Owner ABN")).toBeVisible();
 });
 
+test("properties All entities view merges across entities and drops into one", async ({
+  page,
+}) => {
+  await page.goto("/properties?entity_id=entity-1");
+
+  await expect(
+    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+  ).toBeVisible();
+
+  await page.getByLabel("Entity").selectOption({ label: "All entities" });
+
+  await expect(
+    page.getByRole("heading", { name: "All entities" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("4 properties across 2 entities"),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/entity_id=__all_entities__/);
+
+  const allTable = page.getByRole("table").first();
+  const primaryRow = allTable.getByRole("row", {
+    name: /Queen Street Retail Centre/,
+  });
+  const secondaryRow = allTable.getByRole("row", {
+    name: /Rivergum Industrial Estate/,
+  });
+  await expect(primaryRow).toBeVisible();
+  await expect(secondaryRow).toBeVisible();
+  await expect(
+    primaryRow.getByText("Acme Holdings Pty Ltd"),
+  ).toBeVisible();
+  await expect(
+    secondaryRow.getByText("Secondary Holdings Pty Ltd").first(),
+  ).toBeVisible();
+
+  // Selecting a property drops the workspace into that property's entity.
+  // Click the property name (the address cell is an inline-edit that stops
+  // row-click propagation).
+  await secondaryRow.getByText("Rivergum Industrial Estate").click();
+  await expect(page.getByLabel("Entity")).toHaveValue("entity-2");
+  await expect(page).toHaveURL(/property_id=property-secondary-1/);
+  await expect(
+    page.getByRole("heading", { name: "Secondary Holdings Pty Ltd" }),
+  ).toBeVisible();
+});
+
 test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await page.goto("/tenants/tenant-1");
 

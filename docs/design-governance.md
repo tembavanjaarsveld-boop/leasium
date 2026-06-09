@@ -37,6 +37,17 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   unchanged. Verified by eslint + tsc + Playwright smoke (platform-admin + settings
   specs green). Pending prototype/Remba review of the `/admin` console density and
   the Settings panel removal. Decision: [platform-admin-tier-ia.md](platform-admin-tier-ia.md).
+- **Properties "All entities" portfolio view (2026-06-10, prototype mode, no Remba gate):**
+  the Properties entity picker gains an `All entities` option (shown only when more
+  than one entity exists) that merges every accessible entity's properties into one
+  Portfolio list, each row labelled with its entity (desktop table + mobile cards).
+  It is a browse-only mode: selecting a property drops the workspace into that
+  property's own entity context; `New property` is disabled until a single entity is
+  chosen. No new top-level nav item (honours the 7-item cap), no provider/API mutation
+  — entity-scoped queries stay disabled in all-mode. Verified by eslint + tsc +
+  Playwright smoke (merged view + drop-into-entity selection; existing property/
+  portfolio specs green). Remba should review the all-mode row density and the
+  per-row entity label treatment with the wider Properties workspace pass.
 - **Vendor portal contractor login UI (2026-06-02, prototype mode, no Remba gate):**
   `/vendor-portal` account entry, `/vendor-portal/invite/[token]` Clerk claim gate,
   and a signed-in contractor dashboard (accept / post-update / upload-photo per
