@@ -50,11 +50,13 @@ import {
   InsightsSnapshotRecord,
   InsightsSnapshotType,
   InvoiceStatusItemRecord,
+  getPortfolioRollup,
   listEntities,
   listInsightsSnapshots,
   LiveExceptionRecord,
   MaintenanceAgingItemRecord,
   revokeInsightsSnapshot,
+  entityTypeLabel,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
@@ -1081,6 +1083,13 @@ function InsightsWorkspace() {
     enabled: Boolean(activeEntityId),
   });
 
+  const portfolioRollupQuery = useQuery({
+    queryKey: ["insights-portfolio-rollup"],
+    queryFn: getPortfolioRollup,
+    enabled: activeTab === "portfolio",
+  });
+  const portfolioRollup = portfolioRollupQuery.data;
+
   const createSnapshotMutation = useMutation({
     mutationFn: () =>
       createInsightsSnapshot({
@@ -1417,6 +1426,84 @@ function InsightsWorkspace() {
             </div>
 
             {activeTab === "portfolio" ? (
+            <>
+            {portfolioRollup && portfolioRollup.totals.entity_count > 1 ? (
+              <SectionPanel
+                title="Portfolio rollup"
+                description="Occupancy and obligation health across every entity. Books stay separate per entity; this is the single portfolio view over them."
+                icon={<Building2 size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge tone="neutral">
+                      {portfolioRollup.totals.entity_count} entities
+                    </StatusBadge>
+                    <StatusBadge tone="primary">
+                      {portfolioRollup.totals.property_count} properties
+                    </StatusBadge>
+                    {portfolioRollup.totals.occupancy_pct !== null ? (
+                      <StatusBadge tone="success">
+                        {portfolioRollup.totals.occupancy_pct}% occupied
+                      </StatusBadge>
+                    ) : null}
+                    {portfolioRollup.totals.overdue_obligation_count > 0 ? (
+                      <StatusBadge tone="danger">
+                        {portfolioRollup.totals.overdue_obligation_count} overdue
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                }
+              >
+                <div className="overflow-x-auto p-4">
+                  <table className="w-full min-w-[680px] border-collapse text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold uppercase text-muted-foreground">
+                        <th className="px-3 py-2">Entity</th>
+                        <th className="px-3 py-2">Type</th>
+                        <th className="px-3 py-2">Properties</th>
+                        <th className="px-3 py-2">Occupancy</th>
+                        <th className="px-3 py-2">Overdue</th>
+                        <th className="px-3 py-2">Due soon</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {portfolioRollup.entities.map((row) => (
+                        <tr
+                          key={row.id}
+                          className="border-t border-border"
+                        >
+                          <td className="px-3 py-2 font-medium text-foreground">
+                            {row.name}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {entityTypeLabel(row.entity_type)}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {row.property_count}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {row.occupancy_pct === null
+                              ? "—"
+                              : `${row.occupancy_pct}% (${row.active_lease_count}/${row.unit_count})`}
+                          </td>
+                          <td className="px-3 py-2">
+                            {row.overdue_obligation_count > 0 ? (
+                              <StatusBadge tone="danger">
+                                {row.overdue_obligation_count}
+                              </StatusBadge>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {row.due_soon_obligation_count}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionPanel>
+            ) : null}
             <SectionPanel
               title="Shareable Snapshots"
               description="Freeze the current owner, finance, or lease-event view into a revocable link."
@@ -1493,6 +1580,7 @@ function InsightsWorkspace() {
                 </div>
               </div>
             </SectionPanel>
+            </>
             ) : null}
 
             {activeTab === "overview" ? (

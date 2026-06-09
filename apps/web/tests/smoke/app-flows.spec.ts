@@ -6160,7 +6160,12 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(
     page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
   ).toBeVisible();
-  await expect(page.getByText("Trust", { exact: true })).toBeVisible();
+  const ownerEntitySnapshotPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
+  });
+  await expect(
+    ownerEntitySnapshotPanel.getByText("Trust", { exact: true }).first(),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Generate link" }).click();
   await expect(page.getByText("Snapshot link ready")).toBeVisible();

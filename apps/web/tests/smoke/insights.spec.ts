@@ -130,6 +130,11 @@ test("insights exports review packet CSV from loaded overview data", async ({
   // Portfolio tab: owner/entity snapshot.
   await page.getByRole("tab", { name: /Portfolio/ }).click();
   await expect(
+    page.getByRole("heading", { name: "Portfolio rollup" }),
+  ).toBeVisible();
+  await expect(page.getByText("2 entities")).toBeVisible();
+  await expect(page.getByText("75% occupied")).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
   ).toBeVisible();
 

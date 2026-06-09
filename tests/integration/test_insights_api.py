@@ -47,6 +47,48 @@ def _entity_id(session: Session) -> str:
     return str(entity.id)
 
 
+def test_insights_portfolio_rollup_aggregates_across_entities(
+    client: TestClient,
+    session: Session,
+) -> None:
+    seed = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seed is not None
+    organisation_id = str(seed.organisation_id)
+
+    second = client.post(
+        "/api/v1/entities",
+        json={
+            "organisation_id": organisation_id,
+            "name": "Rivergum Trust",
+            "entity_type": "trust",
+        },
+    ).json()
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": second["id"],
+            "name": "Rivergum House",
+            "street_address": "9 Rivergum Road",
+            "property_type": "residential",
+        },
+    )
+    assert property_response.status_code == 201
+
+    response = client.get("/api/v1/insights/portfolio-rollup")
+    assert response.status_code == 200
+    body = response.json()
+    rows = {row["name"]: row for row in body["entities"]}
+
+    assert "Rivergum Trust" in rows
+    assert rows["Rivergum Trust"]["property_count"] == 1
+    assert rows["Rivergum Trust"]["occupancy_pct"] is None
+
+    totals = body["totals"]
+    assert totals["entity_count"] == len(body["entities"])
+    assert totals["entity_count"] >= 2
+    assert totals["property_count"] >= 1
+
+
 def test_insights_overview_summarises_live_operations_without_leaking_tool_inputs(
     client: TestClient,
     session: Session,

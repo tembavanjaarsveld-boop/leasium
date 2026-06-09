@@ -180,9 +180,13 @@ pytest on Temba's Mac (sandbox can't), frontend eslint/tsc/smoke in the sandbox.
    entity; post previews state "posts to [Entity]'s Xero."
    → verify: smoke spec on a property with a known entity; backend test that
    post preview names the entity. Guardrail: still review-first, no write.
-7. **Cross-entity portfolio rollup.** Read-only consolidated arrears/income/
-   occupancy across entities (extend existing Insights rather than a new
-   endpoint per `CLAUDE.md` §2.11 spirit).
+7. **Cross-entity portfolio rollup.** Read-only consolidated view across
+   entities, surfaced on the Insights → Portfolio tab. Shipped scope: property
+   count, occupancy (active leases / units), and obligation health (overdue /
+   due-soon) per entity plus org totals, via GET /insights/portfolio-rollup
+   (grouped counts, no provider calls). **Follow-up:** $income and $-arrears
+   stay per-entity for now — rolling those up cleanly needs the arrears/invoice
+   engines and is deferred rather than approximated, to protect data integrity.
    → verify: backend test summing across ≥2 entities; smoke for the view.
 8. **(Deferred — property-manager GTM phase, Structure B)** Inter-entity
    management-fee invoicing: AR invoice in manager Xero ↔ AP bill in trust Xero,
@@ -192,3 +196,16 @@ pytest on Temba's Mac (sandbox can't), frontend eslint/tsc/smoke in the sandbox.
 
 Tickets 1–7 are the active scope and serve SKJ (Structure A) fully. Ticket 8 is
 parked until the managing-agent phase.
+
+## Status — shipped 2026-06-09 (prototype mode, UI Remba-pending)
+
+Tickets 1–7 landed and were verified (backend ruff + pytest on SQLite; frontend
+eslint + tsc + Playwright smoke). Migration 0040 was not run against Postgres in
+this session — apply on next Mac/Neon run. Commits:
+
+- Wave 1 `6940d27` — entity_type + is_managing_entity (migration 0040).
+- Wave 2 `4905bb2` — relabel Xero connect panel to typed entity (the screenshot fix).
+- Wave 3 `d953e8b` — Entities & Xero hub (health summary + status table).
+- Wave 4 `3f3f240` — per-row connect + guided "Connect next entity".
+- Wave 5 `5bc3906` — "Posts to <entity>'s Xero" on the posting preview.
+- Wave 6 (this commit) — Insights → Portfolio cross-entity rollup.

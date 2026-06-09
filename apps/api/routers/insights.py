@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
@@ -39,6 +39,7 @@ from stewart.core.models import (
     Tenant,
     TenantOnboarding,
     TenantOnboardingStatus,
+    UserEntityRole,
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
@@ -71,6 +72,9 @@ from apps.api.schemas.insights import (
     MaintenanceSnapshotRead,
     OwnerEntitySnapshotRead,
     PortfolioHealthRead,
+    PortfolioRollupEntityRead,
+    PortfolioRollupRead,
+    PortfolioRollupTotals,
 )
 
 router = APIRouter(prefix="/insights", tags=["insights"])
@@ -1451,6 +1455,142 @@ def _build_insights_overview(
             "Automation activity is summarized from audit logs without exposing tool inputs.",
         ],
     )
+
+@router.get("/portfolio-rollup", response_model=PortfolioRollupRead)
+def insights_portfolio_rollup(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    as_of: date | None = None,
+) -> PortfolioRollupRead:
+    """Read-only occupancy + obligation health across every accessible entity.
+
+    A single portfolio view over books that legally stay separate per entity.
+    No provider calls; counts only. Income/$-arrears stay per-entity and are a
+    follow-up (see docs/multi-entity-xero-ia.md).
+    """
+    as_of = as_of or date.today()
+    due_soon_until = as_of + timedelta(days=30)
+
+    entities = list(
+        session.scalars(
+            select(Entity)
+            .join(UserEntityRole, UserEntityRole.entity_id == Entity.id)
+            .where(
+                Entity.organisation_id == user.organisation_id,
+                UserEntityRole.user_id == user.id,
+                Entity.deleted_at.is_(None),
+            )
+            .order_by(Entity.name)
+        )
+    )
+    entity_ids = [entity.id for entity in entities]
+
+    property_counts: dict[UUID, int] = {}
+    unit_counts: dict[UUID, int] = {}
+    active_lease_counts: dict[UUID, int] = {}
+    overdue_counts: dict[UUID, int] = {}
+    due_soon_counts: dict[UUID, int] = {}
+
+    if entity_ids:
+        for entity_id, count in session.execute(
+            select(Property.entity_id, func.count(Property.id))
+            .where(Property.entity_id.in_(entity_ids), Property.deleted_at.is_(None))
+            .group_by(Property.entity_id)
+        ):
+            property_counts[entity_id] = count
+        for entity_id, count in session.execute(
+            select(Property.entity_id, func.count(TenancyUnit.id))
+            .join(TenancyUnit, TenancyUnit.property_id == Property.id)
+            .where(
+                Property.entity_id.in_(entity_ids),
+                Property.deleted_at.is_(None),
+                TenancyUnit.deleted_at.is_(None),
+            )
+            .group_by(Property.entity_id)
+        ):
+            unit_counts[entity_id] = count
+        for entity_id, count in session.execute(
+            select(Property.entity_id, func.count(Lease.id))
+            .join(TenancyUnit, TenancyUnit.property_id == Property.id)
+            .join(Lease, Lease.tenancy_unit_id == TenancyUnit.id)
+            .where(Property.entity_id.in_(entity_ids), *_active_lease_filter(as_of))
+            .group_by(Property.entity_id)
+        ):
+            active_lease_counts[entity_id] = count
+        for entity_id, count in session.execute(
+            select(Obligation.entity_id, func.count(Obligation.id))
+            .where(
+                Obligation.entity_id.in_(entity_ids),
+                Obligation.deleted_at.is_(None),
+                Obligation.status.in_(OPEN_OBLIGATION_STATUSES),
+                Obligation.due_date < as_of,
+            )
+            .group_by(Obligation.entity_id)
+        ):
+            overdue_counts[entity_id] = count
+        for entity_id, count in session.execute(
+            select(Obligation.entity_id, func.count(Obligation.id))
+            .where(
+                Obligation.entity_id.in_(entity_ids),
+                Obligation.deleted_at.is_(None),
+                Obligation.status.in_(OPEN_OBLIGATION_STATUSES),
+                Obligation.due_date >= as_of,
+                Obligation.due_date <= due_soon_until,
+            )
+            .group_by(Obligation.entity_id)
+        ):
+            due_soon_counts[entity_id] = count
+
+    rows: list[PortfolioRollupEntityRead] = []
+    total_props = total_units = total_active = total_overdue = total_due_soon = 0
+    for entity in entities:
+        prop_count = property_counts.get(entity.id, 0)
+        unit_count = unit_counts.get(entity.id, 0)
+        active = active_lease_counts.get(entity.id, 0)
+        vacant = max(unit_count - active, 0)
+        occupancy = round(active / unit_count * 100, 1) if unit_count else None
+        overdue = overdue_counts.get(entity.id, 0)
+        due_soon = due_soon_counts.get(entity.id, 0)
+        total_props += prop_count
+        total_units += unit_count
+        total_active += active
+        total_overdue += overdue
+        total_due_soon += due_soon
+        rows.append(
+            PortfolioRollupEntityRead(
+                id=entity.id,
+                name=entity.name,
+                entity_type=entity.entity_type,
+                is_managing_entity=entity.is_managing_entity,
+                property_count=prop_count,
+                unit_count=unit_count,
+                active_lease_count=active,
+                vacant_unit_count=vacant,
+                occupancy_pct=occupancy,
+                overdue_obligation_count=overdue,
+                due_soon_obligation_count=due_soon,
+            )
+        )
+
+    total_vacant = max(total_units - total_active, 0)
+    total_occupancy = (
+        round(total_active / total_units * 100, 1) if total_units else None
+    )
+    return PortfolioRollupRead(
+        as_of=as_of,
+        totals=PortfolioRollupTotals(
+            entity_count=len(entities),
+            property_count=total_props,
+            unit_count=total_units,
+            active_lease_count=total_active,
+            vacant_unit_count=total_vacant,
+            occupancy_pct=total_occupancy,
+            overdue_obligation_count=total_overdue,
+            due_soon_obligation_count=total_due_soon,
+        ),
+        entities=rows,
+    )
+
 
 @router.get("/overview", response_model=InsightsOverviewRead)
 def insights_overview(

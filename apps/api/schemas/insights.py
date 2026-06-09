@@ -33,6 +33,37 @@ class PortfolioHealthRead(BaseModel):
     tenant_onboarding_waiting_count: int
 
 
+class PortfolioRollupEntityRead(BaseModel):
+    id: UUID
+    name: str
+    entity_type: str | None
+    is_managing_entity: bool | None
+    property_count: int
+    unit_count: int
+    active_lease_count: int
+    vacant_unit_count: int
+    occupancy_pct: float | None
+    overdue_obligation_count: int
+    due_soon_obligation_count: int
+
+
+class PortfolioRollupTotals(BaseModel):
+    entity_count: int
+    property_count: int
+    unit_count: int
+    active_lease_count: int
+    vacant_unit_count: int
+    occupancy_pct: float | None
+    overdue_obligation_count: int
+    due_soon_obligation_count: int
+
+
+class PortfolioRollupRead(BaseModel):
+    as_of: Date
+    totals: PortfolioRollupTotals
+    entities: list[PortfolioRollupEntityRead]
+
+
 class InsightTargetRead(BaseModel):
     property_id: UUID | None = None
     tenancy_unit_id: UUID | None = None

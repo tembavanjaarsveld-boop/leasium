@@ -5493,6 +5493,51 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/insights/portfolio-rollup") {
+      await fulfillJson(route, {
+        as_of: "2026-05-19",
+        totals: {
+          entity_count: 2,
+          property_count: 3,
+          unit_count: 4,
+          active_lease_count: 3,
+          vacant_unit_count: 1,
+          occupancy_pct: 75,
+          overdue_obligation_count: 1,
+          due_soon_obligation_count: 2,
+        },
+        entities: [
+          {
+            id: entityId,
+            name: "Acme Holdings Pty Ltd",
+            entity_type: "company",
+            is_managing_entity: true,
+            property_count: 2,
+            unit_count: 3,
+            active_lease_count: 3,
+            vacant_unit_count: 0,
+            occupancy_pct: 100,
+            overdue_obligation_count: 0,
+            due_soon_obligation_count: 1,
+          },
+          {
+            id: secondaryEntityId,
+            name: "Secondary Holdings Pty Ltd",
+            entity_type: "trust",
+            is_managing_entity: false,
+            property_count: 1,
+            unit_count: 1,
+            active_lease_count: 0,
+            vacant_unit_count: 1,
+            occupancy_pct: 0,
+            overdue_obligation_count: 1,
+            due_soon_obligation_count: 1,
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/register-imports/dry-run") {
       await fulfillJson(route, registerImportDryRun());
       return;

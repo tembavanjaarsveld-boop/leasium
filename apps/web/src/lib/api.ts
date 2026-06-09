@@ -3217,6 +3217,39 @@ export function getEntitiesXeroOverview() {
   return request<EntityXeroOverviewRecord>("/entities/xero-overview");
 }
 
+export type PortfolioRollupEntityRecord = {
+  id: string;
+  name: string;
+  entity_type: EntityType | null;
+  is_managing_entity: boolean | null;
+  property_count: number;
+  unit_count: number;
+  active_lease_count: number;
+  vacant_unit_count: number;
+  occupancy_pct: number | null;
+  overdue_obligation_count: number;
+  due_soon_obligation_count: number;
+};
+
+export type PortfolioRollupRecord = {
+  as_of: string;
+  totals: {
+    entity_count: number;
+    property_count: number;
+    unit_count: number;
+    active_lease_count: number;
+    vacant_unit_count: number;
+    occupancy_pct: number | null;
+    overdue_obligation_count: number;
+    due_soon_obligation_count: number;
+  };
+  entities: PortfolioRollupEntityRecord[];
+};
+
+export function getPortfolioRollup() {
+  return request<PortfolioRollupRecord>("/insights/portfolio-rollup");
+}
+
 export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }
