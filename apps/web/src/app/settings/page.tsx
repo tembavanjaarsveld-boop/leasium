@@ -2621,6 +2621,20 @@ function SettingsWorkspace() {
     },
   });
 
+  // Per-row connect from the Entities & Xero hub: connects a specific entity
+  // (not the selected one) so operators can walk through them one at a time.
+  const xeroEntityConnectMutation = useMutation({
+    mutationFn: (entityId: string) => startXeroOAuth(entityId),
+    onSuccess: (result, entityId) => {
+      setSelectedEntityId(entityId);
+      if (result.authorization_url) {
+        window.location.href = result.authorization_url;
+        return;
+      }
+      refreshXeroViews();
+    },
+  });
+
   const xeroContactSyncMutation = useMutation({
     mutationFn: () => previewXeroContactSync(selectedEntityId),
     onSuccess: (result) => {
@@ -3185,6 +3199,11 @@ function SettingsWorkspace() {
     not_connected: { label: "Not connected", tone: "warning" },
   };
   const xeroOverview = entitiesXeroOverviewQuery.data;
+  const xeroNextUnconnectedEntity = xeroOverview?.entities.find(
+    (row) =>
+      row.xero_status === "not_connected" ||
+      row.xero_status === "token_expired",
+  );
   const accountingStep = status
     ? accountingNextStep({
         freshness: status.accounting_freshness,
@@ -5357,6 +5376,26 @@ function SettingsWorkspace() {
                       {xeroCallbackFeedback.title}
                     </div>
                     <p className="mt-1">{xeroCallbackFeedback.detail}</p>
+                    {xeroCallbackFeedback.tone === "success" &&
+                    xeroNextUnconnectedEntity ? (
+                      <Button
+                        type="button"
+                        className="mt-3"
+                        disabled={xeroEntityConnectMutation.isPending}
+                        onClick={() =>
+                          xeroEntityConnectMutation.mutate(
+                            xeroNextUnconnectedEntity.id,
+                          )
+                        }
+                      >
+                        {xeroEntityConnectMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <ExternalLink size={15} />
+                        )}
+                        Connect next: {xeroNextUnconnectedEntity.name}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -5394,6 +5433,7 @@ function SettingsWorkspace() {
                         <th className="px-3 py-2">Properties</th>
                         <th className="px-3 py-2">Xero</th>
                         <th className="px-3 py-2">Last sync</th>
+                        <th className="px-3 py-2 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5434,6 +5474,22 @@ function SettingsWorkspace() {
                               {row.last_sync_at
                                 ? new Date(row.last_sync_at).toLocaleDateString()
                                 : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <SecondaryButton
+                                type="button"
+                                disabled={xeroEntityConnectMutation.isPending}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  xeroEntityConnectMutation.mutate(row.id);
+                                }}
+                              >
+                                {row.xero_status === "connected"
+                                  ? "Reconnect"
+                                  : row.xero_status === "token_expired"
+                                    ? "Reconnect"
+                                    : "Connect"}
+                              </SecondaryButton>
                             </td>
                           </tr>
                         );

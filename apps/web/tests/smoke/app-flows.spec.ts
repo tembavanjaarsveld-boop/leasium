@@ -5298,6 +5298,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     entitiesXeroHub.getByText("Token expired · Secondary Xero Org"),
   ).toBeVisible();
   await expect(
+    entitiesXeroHub.getByRole("button", { name: "Reconnect" }).first(),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Connect Xero" }),
   ).toBeVisible();
   await expect(page.getByText("Selected entity")).toBeVisible();
