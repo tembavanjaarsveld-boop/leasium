@@ -577,8 +577,18 @@ test("settings can switch operating mode without orphaning self-managed owner re
     page.getByRole("heading", { name: "Operating mode" }),
   ).toBeVisible();
   await expect(operatingModeSelect).toHaveValue("self_managed_owner");
-  await expect(page.getByText("Your entities & trusts")).toBeVisible();
-  await expect(page.getByText("No owners yet.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your entities & properties" }),
+  ).toBeVisible();
+  const entitiesPropertiesSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Your entities & properties" }),
+  });
+  await expect(
+    entitiesPropertiesSection.getByText("Acme Holdings Pty Ltd"),
+  ).toBeVisible();
+  await expect(
+    entitiesPropertiesSection.getByText("Owner & trust records"),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Split into trust entities (preview)" }),
   ).toBeVisible();
@@ -595,7 +605,9 @@ test("settings can switch operating mode without orphaning self-managed owner re
   await expect.poll(() => operatingModePayloads.length).toBe(1);
   expect(operatingModePayloads[0]).toEqual({ operating_mode: "hybrid" });
   await expect(operatingModeSelect).toHaveValue("hybrid");
-  await expect(page.getByText("Your entities & trusts")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Your entities & properties" }),
+  ).toHaveCount(0);
   expect(forbiddenProviderRequests).toEqual([]);
 });
 

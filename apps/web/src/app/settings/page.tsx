@@ -8,6 +8,7 @@ import {
   BellOff,
   Building2,
   CheckCircle2,
+  ChevronRight,
   CircleDollarSign,
   Copy,
   Download,
@@ -211,6 +212,43 @@ const settingsTabs: Array<{
   { id: "organisation", label: "Organisation", icon: <Building2 size={15} /> },
   { id: "connect", label: "Connect", icon: <PlugZap size={15} /> },
 ];
+
+function EntityPropertiesList({ entityId }: { entityId: string }) {
+  const query = useQuery({
+    queryKey: ["entity-properties", entityId],
+    queryFn: () => listProperties(entityId),
+  });
+  if (query.isLoading) {
+    return (
+      <div className="px-3 py-2 text-sm text-muted-foreground">
+        Loading properties…
+      </div>
+    );
+  }
+  const properties = query.data ?? [];
+  if (properties.length === 0) {
+    return (
+      <div className="px-3 py-2 text-sm text-muted-foreground">
+        No properties under this entity yet.
+      </div>
+    );
+  }
+  return (
+    <ul className="grid gap-1 px-3 py-2">
+      {properties.map((property) => (
+        <li
+          key={property.id}
+          className="flex flex-wrap items-baseline gap-2 text-sm"
+        >
+          <span className="font-medium text-foreground">{property.name}</span>
+          <span className="text-muted-foreground">
+            {[property.suburb, property.state].filter(Boolean).join(", ")}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 const roleOptions: Array<{ value: SecurityRole; label: string }> = [
   { value: "owner", label: "Owner" },
@@ -2474,6 +2512,14 @@ function SettingsWorkspace() {
     queryFn: getOwnershipSplitPlan,
     enabled: activeTab === "organisation",
   });
+  const entitiesOverviewForOrg = useQuery({
+    queryKey: ["entities-xero-overview"],
+    queryFn: getEntitiesXeroOverview,
+    enabled: activeTab === "organisation",
+  });
+  const [expandedEntityRows, setExpandedEntityRows] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const xeroDiagnosticsQuery = useQuery({
     queryKey: ["xero-connection-diagnostics", selectedEntityId],
@@ -2983,6 +3029,17 @@ function SettingsWorkspace() {
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
   const selectedEntityTypeLabel = entityTypeLabel(selectedEntity?.entity_type);
   const ownershipSplitPlan = ownershipSplitPlanQuery.data;
+  const orgEntities = entitiesOverviewForOrg.data?.entities ?? [];
+  const toggleEntityRow = (id: string) =>
+    setExpandedEntityRows((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   const workEmailEnabledCount = selectedEntityRoleMembers.filter(
     workAssignmentEmailEnabled,
   ).length;
@@ -4899,22 +4956,105 @@ function SettingsWorkspace() {
                       id="entity-owners-title"
                       className="text-lg font-semibold leading-7 text-foreground"
                     >
-                      Your entities & trusts
+                      Your entities & properties
                     </h2>
                     <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                      Owning companies, trusts, and SPVs used for entity-grouped
-                      statements and tax.
+                      Each entity owns its properties and connects to its own
+                      Xero. Expand an entity to see its properties.
                     </p>
                   </div>
                   <StatusBadge tone="neutral">Self-managed</StatusBadge>
                 </div>
-                {selectedEntityId ? (
-                  <OwnersDirectory entityId={selectedEntityId} />
-                ) : (
-                  <p className="rounded-md border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
-                    Select an entity to manage its owning entities.
-                  </p>
-                )}
+
+                <div className="overflow-hidden rounded-2xl border border-border bg-white">
+                  {orgEntities.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground">
+                      {entitiesOverviewForOrg.isLoading
+                        ? "Loading entities…"
+                        : "No entities yet."}
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {orgEntities.map((entity) => {
+                        const expanded = expandedEntityRows.has(entity.id);
+                        return (
+                          <li key={entity.id}>
+                            <button
+                              type="button"
+                              onClick={() => toggleEntityRow(entity.id)}
+                              className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+                            >
+                              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                                <ChevronRight
+                                  size={15}
+                                  className={`shrink-0 text-muted-foreground transition-transform ${
+                                    expanded ? "rotate-90" : ""
+                                  }`}
+                                />
+                                <span className="font-semibold text-foreground">
+                                  {entity.name}
+                                </span>
+                                <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                                  {entityTypeLabel(entity.entity_type)}
+                                </span>
+                                {entity.is_managing_entity ? (
+                                  <StatusBadge tone="primary">
+                                    Managing entity
+                                  </StatusBadge>
+                                ) : null}
+                              </span>
+                              <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                                <span>
+                                  {entity.property_count}{" "}
+                                  {entity.property_count === 1
+                                    ? "property"
+                                    : "properties"}
+                                </span>
+                                <StatusBadge
+                                  tone={
+                                    entity.xero_status === "connected"
+                                      ? "success"
+                                      : entity.xero_status === "token_expired"
+                                        ? "danger"
+                                        : "neutral"
+                                  }
+                                >
+                                  {entity.xero_status === "connected"
+                                    ? "Xero connected"
+                                    : entity.xero_status === "token_expired"
+                                      ? "Xero token expired"
+                                      : entity.xero_status === "manual"
+                                        ? "Xero manual"
+                                        : "Xero not connected"}
+                                </StatusBadge>
+                              </span>
+                            </button>
+                            {expanded ? (
+                              <div className="border-t border-border bg-muted/15">
+                                <EntityPropertiesList entityId={entity.id} />
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <details className="rounded-2xl border border-border bg-white">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-foreground">
+                    Owner &amp; trust records
+                  </summary>
+                  <div className="border-t border-border p-2">
+                    {selectedEntityId ? (
+                      <OwnersDirectory entityId={selectedEntityId} />
+                    ) : (
+                      <p className="rounded-md border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
+                        Select an entity to manage its owning entities.
+                      </p>
+                    )}
+                  </div>
+                </details>
               </section>
             ) : null}
 
