@@ -38,8 +38,10 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
   specs green). Pending prototype/Remba review of the `/admin` console density and
   the Settings panel removal. Decision: [platform-admin-tier-ia.md](platform-admin-tier-ia.md).
 - **Properties "All entities" portfolio view (2026-06-10, prototype mode, no Remba gate):**
-  the Properties entity picker gains an `All entities` option (shown only when more
-  than one entity exists) that merges every accessible entity's properties into one
+  the Properties entity picker gains an `All entities` option plus an always-visible
+  `All entities` toggle button beside the picker (both shown only when more than one
+  entity exists; the button avoids the option being scrolled out of view in a long
+  native dropdown). It merges every accessible entity's properties into one
   Portfolio list, each row labelled with its entity (desktop table + mobile cards).
   It is a browse-only mode: selecting a property drops the workspace into that
   property's own entity context; `New property` is disabled until a single entity is

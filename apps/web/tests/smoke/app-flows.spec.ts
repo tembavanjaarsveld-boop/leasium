@@ -3356,7 +3356,7 @@ test("properties All entities view merges across entities and drops into one", a
     page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
   ).toBeVisible();
 
-  await page.getByLabel("Entity").selectOption({ label: "All entities" });
+  await page.getByRole("button", { name: "All entities" }).click();
 
   await expect(
     page.getByRole("heading", { name: "All entities" }),

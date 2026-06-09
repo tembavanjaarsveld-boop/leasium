@@ -9,8 +9,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 ## Built
 
 - [~] **2026-06-10 Properties "All entities" portfolio view:** the entity picker
-  now offers an `All entities` option (shown when more than one entity exists)
-  that fans out one properties query per accessible entity and merges them into
+  now offers an `All entities` option plus an always-visible `All entities` toggle
+  beside the picker (shown when more than one entity exists; the visible toggle keeps
+  it discoverable in a long native dropdown) that fans out one properties query per
+  accessible entity and merges them into
   a single, entity-labelled Portfolio list (desktop table + mobile cards).
   Portfolio-list-only by design: selecting a property drops the workspace into
   that property's own entity context so entity-scoped panels load correctly;

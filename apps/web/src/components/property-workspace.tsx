@@ -20,6 +20,7 @@ import {
   ExternalLink,
   FileText,
   ImageIcon,
+  Layers,
   LayoutGrid,
   Link2,
   Loader2,
@@ -2022,6 +2023,14 @@ function Workspace({
       ),
     [entitiesQuery.data],
   );
+  // Remember the last single entity so toggling "All entities" off returns the
+  // operator to where they were rather than the first entity in the list.
+  const lastRealEntityIdRef = useRef<string>("");
+  useEffect(() => {
+    if (selectedEntityId && !isAllEntities) {
+      lastRealEntityIdRef.current = selectedEntityId;
+    }
+  }, [selectedEntityId, isAllEntities]);
   const allPropertiesQueries = useQueries({
     queries: isAllEntities
       ? allEntityIds.map((entityId) => ({
@@ -3243,6 +3252,19 @@ function Workspace({
     },
   });
 
+  function toggleAllEntities() {
+    if (isAllEntities) {
+      const back =
+        lastRealEntityIdRef.current || entitiesQuery.data?.[0]?.id || "";
+      setSelectedEntityId(back);
+    } else {
+      if (ownerTagFilter) {
+        clearOwnerTagFilter();
+      }
+      setSelectedEntityId(ALL_ENTITIES_VALUE);
+    }
+  }
+
   function selectProperty(propertyId: string) {
     // In the cross-entity "All entities" view, selecting a property drops the
     // workspace into that property's own entity context so the entity-scoped
@@ -3649,28 +3671,47 @@ function Workspace({
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
-          aria-label="Entity"
-          value={selectedEntityId}
-          onChange={(event) => {
-            setSelectedEntityId(event.target.value);
-            if (ownerTagFilter) {
-              clearOwnerTagFilter();
-            }
-          }}
-        >
-          <option value="">
-            {entitiesLoading ? "Checking entities" : "Select entity"}
-          </option>
-          {(entitiesQuery.data?.length ?? 0) > 1 ? (
-            <option value={ALL_ENTITIES_VALUE}>All entities</option>
-          ) : null}
-          {entitiesQuery.data?.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
+        <div className="flex items-center gap-2">
+          <Select
+            aria-label="Entity"
+            value={selectedEntityId}
+            onChange={(event) => {
+              setSelectedEntityId(event.target.value);
+              if (ownerTagFilter) {
+                clearOwnerTagFilter();
+              }
+            }}
+          >
+            <option value="">
+              {entitiesLoading ? "Checking entities" : "Select entity"}
             </option>
-          ))}
-        </Select>
+            {(entitiesQuery.data?.length ?? 0) > 1 ? (
+              <option value={ALL_ENTITIES_VALUE}>All entities</option>
+            ) : null}
+            {entitiesQuery.data?.map((entity) => (
+              <option key={entity.id} value={entity.id}>
+                {entity.name}
+              </option>
+            ))}
+          </Select>
+          {(entitiesQuery.data?.length ?? 0) > 1 ? (
+            <button
+              type="button"
+              aria-pressed={isAllEntities}
+              onClick={toggleAllEntities}
+              title="Show properties across every entity"
+              className={cn(
+                "inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-sm font-medium transition",
+                isAllEntities
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-white text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <Layers size={15} />
+              All entities
+            </button>
+          ) : null}
+        </div>
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
