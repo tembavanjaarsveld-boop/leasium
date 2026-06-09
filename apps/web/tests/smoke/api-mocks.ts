@@ -2095,6 +2095,7 @@ const tenantPortalSession = (
 const securityWorkspace = (
   operatingMode: MockOperatingMode = "self_managed_owner",
   canManageSecurity = true,
+  isPlatformAdmin = false,
 ) => ({
   auth: {
     auth_mode: "dev",
@@ -2113,6 +2114,7 @@ const securityWorkspace = (
     organisation_id: "org-1",
     email: "owner@example.com",
     display_name: "Owner Operator",
+    is_platform_admin: isPlatformAdmin,
   },
   organisation: {
     id: "org-1",
@@ -2229,8 +2231,13 @@ const securityWorkspace = (
 const securityMe = (
   operatingMode: MockOperatingMode = "self_managed_owner",
   canManageSecurity = true,
+  isPlatformAdmin = false,
 ) => {
-  const workspace = securityWorkspace(operatingMode, canManageSecurity);
+  const workspace = securityWorkspace(
+    operatingMode,
+    canManageSecurity,
+    isPlatformAdmin,
+  );
   return {
     auth: workspace.auth,
     current_user: workspace.current_user,
@@ -2275,6 +2282,68 @@ async function fulfillJson(route: Route, body: JsonBody, status = 200) {
 function jsonClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
+
+// Platform-admin tier fixtures (docs/platform-admin-tier-ia.md).
+const platformMember = (
+  overrides: Partial<Record<string, unknown>> = {},
+) => ({
+  id: "client-operator-1",
+  email: "owner@harbourlane.example",
+  display_name: "Harbour Lane Owner",
+  is_active: true,
+  access_status: "login_linked",
+  login_linked: true,
+  invite_email_status: "accepted",
+  invite_email_detail: "Provider login is linked for this operator.",
+  invite_sent_at: "2026-05-01T00:00:00.000Z",
+  invite_expires_at: "2026-05-04T00:00:00.000Z",
+  invite_accepted_at: "2026-05-01T00:00:00.000Z",
+  notification_preferences: {
+    work_assignment_email_enabled: true,
+    work_assignment_sms_enabled: false,
+    work_assignment_sms_phone: null,
+    work_assignment_notice_template_key: "work_assignment_notification",
+    work_assignment_notice_template_version: "v1",
+    work_assignment_digest_cadence: "off",
+    work_assignment_digest_template_key: "work_assignment_digest",
+    work_assignment_digest_template_version: "v1",
+    work_assignment_digest_last_generated_at: null,
+    work_assignment_digest_last_item_count: null,
+    work_assignment_digest_history: [],
+  },
+  created_at: "2026-05-01T00:00:00.000Z",
+  roles: [],
+  ...overrides,
+});
+
+const initialPlatformOrganisations = [
+  {
+    id: "client-org-1",
+    name: "Harbour Lane Holdings",
+    country_code: "AU",
+    timezone: "Australia/Brisbane",
+    operating_mode: "self_managed_owner",
+    is_active: true,
+    suspended_at: null,
+    operator_count: 1,
+    created_at: "2026-05-01T00:00:00.000Z",
+    first_operator_email: "owner@harbourlane.example",
+    first_operator_access_status: "login_linked",
+  },
+  {
+    id: "client-org-2",
+    name: "Rivergum Trust",
+    country_code: "AU",
+    timezone: "Australia/Sydney",
+    operating_mode: "managing_agent",
+    is_active: true,
+    suspended_at: null,
+    operator_count: 1,
+    created_at: "2026-05-02T00:00:00.000Z",
+    first_operator_email: "admin@rivergum.example",
+    first_operator_access_status: "invited",
+  },
+];
 
 function jsonStringArray(value: JsonBody | undefined) {
   if (!Array.isArray(value)) {
@@ -2515,6 +2584,7 @@ type MockLeasiumApiOptions = {
   tenantPortalActivityFeed?: boolean;
   operatingMode?: MockOperatingMode;
   canManageSecurity?: boolean;
+  platformAdmin?: boolean;
   ownerStatementMissingRecipientInvoice?: boolean;
   xeroDiagnosticsBlocked?: boolean;
   xeroDiagnosticsUnauthorized?: boolean;
@@ -2621,6 +2691,8 @@ export async function mockLeasiumApi(
   let chargeTaxType: string | null = null;
   let operatingMode = options.operatingMode ?? "self_managed_owner";
   const canManageSecurity = options.canManageSecurity ?? true;
+  const isPlatformAdmin = options.platformAdmin ?? false;
+  let platformOrganisations = jsonClone(initialPlatformOrganisations);
   const ownerStatementMissingRecipientInvoice =
     options.ownerStatementMissingRecipientInvoice ?? false;
   let xeroDraftApproved = false;
@@ -4727,14 +4799,185 @@ export async function mockLeasiumApi(
     if (method === "GET" && path === "/security/workspace") {
       await fulfillJson(
         route,
-        securityWorkspace(operatingMode, canManageSecurity),
+        securityWorkspace(operatingMode, canManageSecurity, isPlatformAdmin),
       );
       return;
     }
 
     if (method === "GET" && path === "/me") {
-      await fulfillJson(route, securityMe(operatingMode, canManageSecurity));
+      await fulfillJson(
+        route,
+        securityMe(operatingMode, canManageSecurity, isPlatformAdmin),
+      );
       return;
+    }
+
+    if (path.startsWith("/platform/")) {
+      if (!isPlatformAdmin) {
+        await fulfillJson(
+          route,
+          { detail: "Platform admin access is required." },
+          403,
+        );
+        return;
+      }
+      // GET /platform/organisations
+      if (method === "GET" && path === "/platform/organisations") {
+        await fulfillJson(route, { organisations: platformOrganisations });
+        return;
+      }
+      // POST /platform/organisations
+      if (method === "POST" && path === "/platform/organisations") {
+        const payload = request.postDataJSON() as {
+          organisation_name: string;
+          operator_email: string;
+          operator_display_name?: string;
+          country_code?: string;
+          timezone?: string;
+        };
+        const operatorName =
+          payload.operator_display_name ?? payload.operator_email;
+        const newOrg = {
+          id: `client-org-${platformOrganisations.length + 1}`,
+          name: payload.organisation_name,
+          country_code: payload.country_code ?? "AU",
+          timezone: payload.timezone ?? "Australia/Brisbane",
+          operating_mode: "self_managed_owner",
+          is_active: true,
+          suspended_at: null,
+          operator_count: 1,
+          created_at: "2026-06-09T00:00:00.000Z",
+          first_operator_email: payload.operator_email,
+          first_operator_access_status: "invited",
+        };
+        platformOrganisations = [...platformOrganisations, newOrg];
+        const member = platformMember({
+          id: `client-operator-new-${platformOrganisations.length}`,
+          email: payload.operator_email,
+          display_name: operatorName,
+          access_status: "invited",
+          login_linked: false,
+          invite_email_status: "sent",
+          invite_email_detail: "Invite recorded for review-first delivery.",
+          invite_accepted_at: null,
+        });
+        await fulfillJson(
+          route,
+          {
+            organisation: newOrg,
+            operator: member,
+            invite_accept_url: "https://leasium.test/invite/new",
+            delivery_status: "skipped",
+            delivery_detail: "Invite recorded; provider send not fired.",
+          },
+          201,
+        );
+        return;
+      }
+      // PATCH /platform/organisations/{id} (suspend/restore)
+      const orgPatchMatch = path.match(/^\/platform\/organisations\/([^/]+)$/);
+      if (method === "PATCH" && orgPatchMatch) {
+        const orgId = orgPatchMatch[1];
+        const payload = request.postDataJSON() as { is_active?: boolean };
+        platformOrganisations = platformOrganisations.map((org) =>
+          org.id === orgId
+            ? {
+                ...org,
+                is_active: payload.is_active ?? org.is_active,
+                suspended_at: (payload.is_active ?? org.is_active)
+                  ? null
+                  : "2026-06-09T00:00:00.000Z",
+              }
+            : org,
+        );
+        const updated = platformOrganisations.find((org) => org.id === orgId);
+        if (!updated) {
+          await fulfillJson(route, { detail: "Organisation not found." }, 404);
+          return;
+        }
+        await fulfillJson(route, updated);
+        return;
+      }
+      // GET /platform/organisations/{id}/members
+      const membersMatch = path.match(
+        /^\/platform\/organisations\/([^/]+)\/members$/,
+      );
+      if (method === "GET" && membersMatch) {
+        await fulfillJson(route, {
+          members: [
+            platformMember({
+              id: `${membersMatch[1]}-operator-1`,
+            }),
+          ],
+        });
+        return;
+      }
+      // POST /platform/organisations/{id}/members
+      if (method === "POST" && membersMatch) {
+        const payload = request.postDataJSON() as {
+          email: string;
+          display_name: string;
+        };
+        const member = platformMember({
+          id: `${membersMatch[1]}-operator-new`,
+          email: payload.email,
+          display_name: payload.display_name,
+          access_status: "invited",
+          login_linked: false,
+          invite_email_status: "sent",
+          invite_email_detail: "Invite recorded for review-first delivery.",
+          invite_accepted_at: null,
+        });
+        await fulfillJson(
+          route,
+          {
+            member,
+            delivery_status: "skipped",
+            delivery_detail: "Invite recorded; provider send not fired.",
+            invite_accept_url: "https://leasium.test/invite/new-member",
+          },
+          201,
+        );
+        return;
+      }
+      // POST /platform/organisations/{id}/members/{memberId}/invite
+      const inviteMatch = path.match(
+        /^\/platform\/organisations\/([^/]+)\/members\/([^/]+)\/invite$/,
+      );
+      if (method === "POST" && inviteMatch) {
+        const member = platformMember({
+          id: inviteMatch[2],
+          access_status: "invited",
+          login_linked: false,
+          invite_email_status: "sent",
+          invite_accepted_at: null,
+        });
+        await fulfillJson(route, {
+          member,
+          delivery_status: "skipped",
+          delivery_detail: "Invite re-recorded; provider send not fired.",
+          invite_accept_url: "https://leasium.test/invite/resend",
+        });
+        return;
+      }
+      // PATCH /platform/organisations/{id}/members/{memberId}
+      const memberPatchMatch = path.match(
+        /^\/platform\/organisations\/([^/]+)\/members\/([^/]+)$/,
+      );
+      if (method === "PATCH" && memberPatchMatch) {
+        const payload = request.postDataJSON() as { is_active?: boolean };
+        const isActive = payload.is_active ?? true;
+        await fulfillJson(route, {
+          member: platformMember({
+            id: memberPatchMatch[2],
+            is_active: isActive,
+            access_status: isActive ? "login_linked" : "disabled",
+          }),
+          delivery_status: "not_sent",
+          delivery_detail: null,
+        });
+        return;
+      }
     }
 
     if (

@@ -27,6 +27,16 @@ Remba is the required UX sign-off for design-facing changes. Any change that aff
 - Leasium should feel like modern tooling for operators: calm, fast, clear, and confident.
 - **Navigation legibility is the standard (DoorLoop-informed, 2026-05-31):** organise around two spines — Properties → Units and a single People hub — with fewer destinations and consistent record pages. See the dated section below.
 - **Account operating mode gates the Owners hub (2026-05-31):** the People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are *managing-agent* framing. A self-managed owner-operator has no third-party owner and must not see the Owners hub — gate it on an account `operating_mode` (default `self_managed_owner`), set at onboarding; keep entity-grouped statements via Entities for owner-operators. **Shipped 2026-05-31 (prototype mode, no Remba gate):** People tab-set + default by mode, an owner/admin Settings operating-mode toggle, a "Your entities & trusts" Settings panel for self-managed owners, owner-statement palette/shortcut gating, Money/Statements dispatch gating with provider-call guard tests, and owner-portal preview/invite/account/document-download gating for self-managed accounts. Deeper disbursement/trust-accounting gates remain follow-ups once those route surfaces exist. Decision + sketch: [account-operating-mode-ia.md](account-operating-mode-ia.md).
+- **Platform-admin `/admin` tier (2026-06-09, prototype mode, no Remba gate):**
+  a Leasium-operated surface above the client orgs, gated on `is_platform_admin`.
+  Two design-facing changes: (1) a new `/admin` route group with a Clients console
+  (list/provision/suspend/restore + per-client operator management) and the
+  relocated Integrations health card; (2) the Integrations panel is **removed from
+  client Settings** — clients no longer see provider config. A nav entry for
+  `/admin` shows only for platform admins; the 7-item client sidebar cap is
+  unchanged. Verified by eslint + tsc + Playwright smoke (platform-admin + settings
+  specs green). Pending prototype/Remba review of the `/admin` console density and
+  the Settings panel removal. Decision: [platform-admin-tier-ia.md](platform-admin-tier-ia.md).
 - **Vendor portal contractor login UI (2026-06-02, prototype mode, no Remba gate):**
   `/vendor-portal` account entry, `/vendor-portal/invite/[token]` Clerk claim gate,
   and a signed-in contractor dashboard (accept / post-update / upload-photo per

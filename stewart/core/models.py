@@ -320,6 +320,10 @@ class Organisation(Base):
     operating_mode: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=OperatingMode.self_managed_owner.value
     )
+    # Reversible, audited suspension toggled from the platform-admin tier. NULL =
+    # active; a timestamp = suspended (the auth resolver rejects logins for the org).
+    # Never used to delete data — restore clears it.
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
@@ -562,6 +566,12 @@ class AppUser(Base):
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     auth_provider_id: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Platform-admin tier flag. Platform admins are normal AppUser rows under the
+    # reserved "Leasium Platform" organisation; their cross-org privilege comes
+    # from this flag, not from that org's data. server_default false.
+    is_platform_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
     invite_status: Mapped[OperatorInviteStatus] = mapped_column(
         Enum(OperatorInviteStatus, name="operator_invite_status"),
         nullable=False,

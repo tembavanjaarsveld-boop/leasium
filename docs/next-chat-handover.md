@@ -1,6 +1,60 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-08
+Last updated: 2026-06-09
+
+## Cowork continuation - 2026-06-09 (platform-admin tier, Waves 1–4 — latest)
+
+Built via two parallel agents (disjoint backend/frontend write sets), reconciled
+and verified by the orchestrator. **Not yet committed/pushed at time of writing —
+awaiting Temba's go.** Review-first; provider guardrail intact.
+
+A new **platform-admin tier** above the client orgs (decision +
+build plan: `docs/platform-admin-tier-ia.md`). The integrations the client saw in
+Settings were already global Render env vars — this adds the tier that owns them
+and manages clients, and removes the surface from client Settings.
+
+- **Wave 1 — flag + gate + seed.** `AppUser.is_platform_admin` (migration
+  `20260609_0041`, also adds `Organisation.suspended_at`); `is_platform_admin`
+  threaded onto `CurrentUser` (Clerk from the row, dev via `DEV_IS_PLATFORM_ADMIN`,
+  default true locally); `require_platform_admin` dependency; idempotent
+  `scripts/seed_platform_admin.py` seeds a reserved "Leasium Platform" org (no
+  entities/properties) + `platform-admin@leasium.ai`. Public bootstrap stays closed
+  once the reserved org exists (verified, not removed).
+- **Wave 2 — integration surface re-gated.** `GET /system/integration-status`
+  now `require_platform_admin` (403 for client operators). "No secrets" contract
+  intact.
+- **Wave 3 — client provisioning + management API** (`apps/api/routers/platform.py`,
+  all `require_platform_admin`, audited, provider-mocked): `POST/GET
+  /platform/organisations` (provision + invite first operator / list, excludes the
+  reserved org); `PATCH /platform/organisations/{id}` suspend/restore (a suspended
+  org's operators are rejected at the Clerk auth resolver); cross-org operator mgmt
+  at `/platform/organisations/{id}/members…` (list/add/invite/resend/disable).
+- **Wave 4 — `/admin` frontend.** `apps/web/src/app/admin/page.tsx` gated on
+  `is_platform_admin` (Clients console + relocated `IntegrationsHealthCard`);
+  Integrations panel removed from client Settings; nav entry gated; `api.ts` client
+  methods/types added. Design-facing → prototype/Remba follow-up logged in
+  `docs/design-governance.md`.
+
+Decisions taken on the open Wave-1 questions: separate platform-admin email; seed
+script (public bootstrap retired in effect); `operating_mode` not set at provision
+(defaults `self_managed_owner`).
+
+Verification: backend `ruff` clean + `pytest` **607 passed, 1 skipped** (Postgres-
+only migration test; run up/down on next Neon/Mac pass); single Alembic head
+`20260609_0041`. Frontend `eslint` + `tsc` clean; Playwright smoke green
+(`platform-admin.spec` 3 + `settings.spec` 7). Files touched (no git yet):
+`stewart/core/{models,auth,settings}.py`, `apps/api/deps.py`, `apps/api/main.py`,
+`apps/api/routers/{system,platform}.py`, `apps/api/schemas/platform.py`,
+`scripts/seed_platform_admin.py`, `migrations/versions/20260609_0041_*.py`,
+`tests/integration/test_platform_admin_api.py`, `.env.example`;
+`apps/web/src/app/admin/page.tsx`, `apps/web/src/components/{integrations-health-card,app-shell}.tsx`,
+`apps/web/src/lib/{api.ts,use-platform-admin.ts}`, `apps/web/src/app/settings/page.tsx`,
+`apps/web/tests/smoke/{platform-admin.spec.ts,settings.spec.ts,api-mocks.ts}`.
+
+Deploy notes: run migration `20260609_0041` on Neon/Render; set
+`DEV_IS_PLATFORM_ADMIN`/`PLATFORM_*` (see `.env.example`) and run
+`scripts/seed_platform_admin.py` once to mint the reserved org + admin. No Vercel
+env change needed.
 
 ## Cowork continuation - 2026-06-08 (agent push wave 11: 2 slices - latest)
 

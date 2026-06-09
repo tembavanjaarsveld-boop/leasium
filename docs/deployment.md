@@ -90,6 +90,8 @@ Set the API host environment from `.env.example`, with production values for:
 - `XERO_REDIRECT_URI` set to `<PUBLIC_API_URL>/api/v1/xero/oauth/callback`
 - `XERO_STATE_SECRET`
 - `XERO_TOKEN_ENCRYPTION_KEY`
+- `PLATFORM_ORGANISATION_ID` / `PLATFORM_ORGANISATION_NAME` / `PLATFORM_ADMIN_USER_ID` / `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_NAME` — the reserved platform-admin tier (see Platform-Admin Tier below). Defaults in `.env.example` are fine for SKJ's single deployment.
+- `DEV_IS_PLATFORM_ADMIN` — dev-auth only; when `AUTH_MODE=dev` the dev operator acts as a platform admin so `/admin` is reachable locally. Irrelevant under `AUTH_MODE=clerk`.
 
 `FRONTEND_URL` must be `https://leasium.ai` so browser requests pass CORS and
 all email/SMS links use the branded domain. `CORS_ALLOWED_ORIGINS` should include
@@ -124,6 +126,35 @@ and `email_verified` claims. If those claims are absent, the API falls back to
 that key configured anywhere tenant portal account creation is enabled.
 
 Provider webhook URLs should also use `https://api.leasium.ai`.
+
+## Platform-Admin Tier
+
+The platform-admin tier (`docs/platform-admin-tier-ia.md`) is the Leasium-operated
+level above the client orgs. It owns the provider config (which is already the
+global Render env vars above) and manages client organisations. Provider
+credentials do **not** move into the database — only access to the integration
+status surface (`GET /system/integration-status`) and the client-management API
+(`/platform/organisations…`) is gated to platform admins.
+
+One-time setup on a hosted environment, after migration `20260609_0041` has run:
+
+1. Confirm `PLATFORM_*` env values (defaults in `.env.example` are fine for a
+   single deployment; the reserved org holds no entities/properties).
+2. Run the idempotent seed to mint the reserved "Leasium Platform" org + first
+   platform-admin operator:
+
+   ```
+   .venv/bin/python -m scripts.seed_platform_admin
+   ```
+
+3. Under `AUTH_MODE=clerk`, the seeded platform admin signs in with
+   `PLATFORM_ADMIN_EMAIL` (keep it a distinct login from any client operator).
+   Under `AUTH_MODE=dev`, set `DEV_IS_PLATFORM_ADMIN=true` to reach `/admin`
+   locally.
+
+New client orgs are then provisioned from `/admin` (Clients → Provision client),
+not from the legacy first-workspace bootstrap, which stays closed once the
+reserved org exists.
 
 ## Observability
 

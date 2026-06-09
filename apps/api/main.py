@@ -36,6 +36,7 @@ from apps.api.routers import (
     owner_portal,
     owners,
     payments,
+    platform,
     portfolio_qa,
     properties,
     register_imports,
@@ -175,3 +176,4 @@ app.include_router(owner_entities.router, prefix="/api/v1")
 app.include_router(owner_portal.router, prefix="/api/v1")
 app.include_router(vendor_portal.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
+app.include_router(platform.router, prefix="/api/v1")

@@ -490,6 +490,7 @@ export type SecurityWorkspaceRecord = {
     organisation_id: string;
     email: string;
     display_name: string;
+    is_platform_admin: boolean;
   };
   organisation: {
     id: string;
@@ -3448,6 +3449,127 @@ export type IntegrationStatusRecord = {
 
 export function getIntegrationStatus() {
   return request<IntegrationStatusRecord>("/system/integration-status");
+}
+
+// --- Platform-admin tier (docs/platform-admin-tier-ia.md) ---
+// These endpoints are platform-admin gated server-side; the frontend only
+// reaches them from the /admin surface. Field names follow the design-doc
+// contract; the orchestrator reconciles any drift against the real backend.
+
+export type PlatformOrganisationRecord = {
+  id: string;
+  name: string;
+  country_code: string;
+  timezone: string;
+  operating_mode: OperatingMode;
+  is_active: boolean;
+  suspended_at: string | null;
+  operator_count: number;
+  created_at: string;
+  first_operator_email: string | null;
+  first_operator_access_status: SecurityMemberRecord["access_status"] | null;
+};
+
+export type PlatformOrganisationCreatePayload = {
+  organisation_name: string;
+  operator_email: string;
+  operator_display_name?: string;
+  country_code?: string;
+  timezone?: string;
+};
+
+export type PlatformOrganisationCreateRecord = {
+  organisation: PlatformOrganisationRecord;
+  operator: SecurityMemberRecord;
+  invite_accept_url: string | null;
+  delivery_status: string;
+  delivery_detail: string | null;
+};
+
+export type PlatformMemberCreatePayload = {
+  email: string;
+  display_name: string;
+  is_active?: boolean;
+};
+
+export type PlatformMemberUpdatePayload = {
+  display_name?: string;
+  is_active?: boolean;
+};
+
+export async function listPlatformOrganisations() {
+  const result = await request<{ organisations: PlatformOrganisationRecord[] }>(
+    "/platform/organisations",
+  );
+  return result.organisations;
+}
+
+export function createPlatformOrganisation(
+  payload: PlatformOrganisationCreatePayload,
+) {
+  return request<PlatformOrganisationCreateRecord>("/platform/organisations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function setPlatformOrganisationActive(
+  organisationId: string,
+  isActive: boolean,
+) {
+  return request<PlatformOrganisationRecord>(
+    `/platform/organisations/${organisationId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    },
+  );
+}
+
+export async function listPlatformOrganisationMembers(organisationId: string) {
+  const result = await request<{ members: SecurityMemberRecord[] }>(
+    `/platform/organisations/${organisationId}/members`,
+  );
+  return result.members;
+}
+
+export function createPlatformOrganisationMember(
+  organisationId: string,
+  payload: PlatformMemberCreatePayload,
+) {
+  return request<SecurityMemberInviteRecord>(
+    `/platform/organisations/${organisationId}/members`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function resendPlatformOrganisationMemberInvite(
+  organisationId: string,
+  memberId: string,
+) {
+  return request<SecurityMemberInviteRecord>(
+    `/platform/organisations/${organisationId}/members/${memberId}/invite`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function updatePlatformOrganisationMember(
+  organisationId: string,
+  memberId: string,
+  payload: PlatformMemberUpdatePayload,
+) {
+  return request<SecurityMemberInviteRecord>(
+    `/platform/organisations/${organisationId}/members/${memberId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export type AskCitationKind =

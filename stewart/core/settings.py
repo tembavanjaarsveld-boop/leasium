@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     dev_user_email: str = "temba@example.com"
     dev_user_name: str = "Temba van Jaarsveld"
     dev_organisation_id: UUID = UUID("00000000-0000-7000-8000-000000000100")
+    # Dev auth acts as a platform admin locally so the /admin surface is reachable
+    # without Clerk. In clerk mode the flag is read from the AppUser row instead.
+    dev_is_platform_admin: bool = True
+    # Reserved "Leasium Platform" organisation + first platform-admin operator,
+    # seeded idempotently by scripts/seed_platform_admin.py. The reserved org holds
+    # no entities/properties; platform admins act across client orgs via the flag.
+    platform_organisation_id: UUID = UUID("00000000-0000-7000-8000-000000000900")
+    platform_organisation_name: str = "Leasium Platform"
+    platform_admin_user_id: UUID = UUID("00000000-0000-7000-8000-000000000901")
+    platform_admin_email: str = "platform-admin@leasium.ai"
+    platform_admin_name: str = "Leasium Platform Admin"
     clerk_secret_key: str = ""
     clerk_jwks_url: str = ""
     clerk_issuer: str = ""

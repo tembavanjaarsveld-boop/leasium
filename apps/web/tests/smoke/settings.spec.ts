@@ -69,14 +69,10 @@ test("settings organisation loading states use contextual labels", async ({
   page,
 }) => {
   let releaseSecurityWorkspace: () => void = () => {};
-  let releaseIntegrationStatus: () => void = () => {};
   let releaseBrandedTemplates: () => void = () => {};
   let releaseProperties: () => void = () => {};
   const securityWorkspaceCanResolve = new Promise<void>((resolve) => {
     releaseSecurityWorkspace = resolve;
-  });
-  const integrationStatusCanResolve = new Promise<void>((resolve) => {
-    releaseIntegrationStatus = resolve;
   });
   const brandedTemplatesCanResolve = new Promise<void>((resolve) => {
     releaseBrandedTemplates = resolve;
@@ -87,10 +83,6 @@ test("settings organisation loading states use contextual labels", async ({
 
   await page.route("**/api/v1/security/workspace", async (route) => {
     await securityWorkspaceCanResolve;
-    await route.fallback();
-  });
-  await page.route("**/api/v1/system/integration-status", async (route) => {
-    await integrationStatusCanResolve;
     await route.fallback();
   });
   await page.route(
@@ -108,7 +100,6 @@ test("settings organisation loading states use contextual labels", async ({
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Organisation" }).click();
 
-  await expect(page.getByText("Checking integration status.")).toBeVisible();
   await expect(page.getByText("Checking organisation")).toBeVisible();
   await expect(page.getByText("Checking timezone")).toBeVisible();
   await expect(
@@ -122,7 +113,6 @@ test("settings organisation loading states use contextual labels", async ({
   await expect(page.getByText("Loading ownership tags...")).toHaveCount(0);
 
   releaseSecurityWorkspace();
-  releaseIntegrationStatus();
   releaseBrandedTemplates();
   releaseProperties();
 });

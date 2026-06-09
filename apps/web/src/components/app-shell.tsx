@@ -14,6 +14,7 @@ import {
   Moon,
   Search,
   Settings as SettingsIcon,
+  ShieldCheck,
   Sparkles,
   Sun,
   Users,
@@ -43,6 +44,7 @@ import {
 import { getCommsQueueCounts } from "@/lib/api";
 import { clerkUserButtonTouchTargetAppearance } from "@/lib/clerk-appearance";
 import { useOperatingMode } from "@/lib/use-operating-mode";
+import { usePlatformAdmin } from "@/lib/use-platform-admin";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn } from "@/lib/utils";
 
@@ -163,6 +165,17 @@ const navItems: NavItem[] = [
     shortcut: "G S",
   },
 ];
+
+// Platform-admin tier (docs/platform-admin-tier-ia.md). Rendered only when the
+// current operator holds is_platform_admin — client operators never see it, so
+// the 7-hub client cap is unchanged. Appended after Settings as an admin-tier
+// entry, kept visually consistent with the primary nav rows.
+const platformAdminNavItem: NavItem = {
+  href: "/admin",
+  label: "Platform admin",
+  matchPaths: ["/admin"],
+  icon: ShieldCheck,
+};
 
 const mobileBottomNavHrefs = [
   "/",
@@ -438,7 +451,16 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const mobileNavRender = useUnmountDelay(mobileNavOpen, 300);
   const commsBadge = useCommsBadge();
   const { operatingMode } = useOperatingMode();
+  const { isPlatformAdmin } = usePlatformAdmin();
   const shortcutTimeoutRef = useRef<number | null>(null);
+
+  // Client operators never see the /admin entry; platform admins get it as an
+  // appended admin-tier row after the 7 client hubs + Settings.
+  const visibleNavItems = useMemo(
+    () =>
+      isPlatformAdmin ? [...navItems, platformAdminNavItem] : navItems,
+    [isPlatformAdmin],
+  );
 
   // Owner statements are issued/disbursed to *third-party* owners — agent-only
   // framing (docs/account-operating-mode-ia.md). For a self_managed_owner, hide
@@ -622,7 +644,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         aria-label="Primary"
         className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
       >
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const active = isNavActive(item);
           const Icon = item.icon;
           const showCommsBadge =

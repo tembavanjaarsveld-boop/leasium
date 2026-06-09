@@ -15,7 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from stewart.core.db import get_session, utcnow
-from stewart.core.models import AppUser, OperatorInviteStatus, UserEntityRole, UserRole
+from stewart.core.models import (
+    AppUser,
+    OperatorInviteStatus,
+    Organisation,
+    UserEntityRole,
+    UserRole,
+)
 from stewart.core.settings import Settings, get_settings
 
 
@@ -26,6 +32,7 @@ class CurrentUser:
     email: str
     display_name: str
     actor: str
+    is_platform_admin: bool = False
 
 
 @dataclass(frozen=True)
@@ -41,6 +48,7 @@ def _dev_user(settings: Settings) -> CurrentUser:
         email=settings.dev_user_email,
         display_name=settings.dev_user_name,
         actor=f"user:{settings.dev_user_email}",
+        is_platform_admin=settings.dev_is_platform_admin,
     )
 
 
@@ -65,12 +73,19 @@ def _clerk_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unknown Clerk user.",
         )
+    organisation = session.get(Organisation, user.organisation_id)
+    if organisation is not None and organisation.suspended_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This organisation is suspended. Contact Leasium.",
+        )
     return CurrentUser(
         id=user.id,
         organisation_id=user.organisation_id,
         email=user.email,
         display_name=user.display_name,
         actor=f"user:{user.email}",
+        is_platform_admin=user.is_platform_admin,
     )
 
 
@@ -290,6 +305,19 @@ def assert_entity_role(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have access to this entity.",
         )
+
+
+def require_platform_admin(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> CurrentUser:
+    """Raise 403 unless the current user is a platform admin."""
+
+    if not user.is_platform_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform-admin access is required.",
+        )
+    return user
 
 
 def require_entity_role(

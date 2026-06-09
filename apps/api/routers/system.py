@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from stewart.core.settings import Settings, get_settings
 
-from apps.api.deps import CurrentUser, get_current_user
+from apps.api.deps import CurrentUser, require_platform_admin
 from apps.api.schemas.system import IntegrationStatusRead, ProviderStatus
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/system", tags=["system"])
     response_model_exclude_none=True,
 )
 def get_integration_status(
-    user: Annotated[CurrentUser, Depends(get_current_user)],  # noqa: ARG001
+    user: Annotated[CurrentUser, Depends(require_platform_admin)],  # noqa: ARG001
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> IntegrationStatusRead:
     return IntegrationStatusRead(
