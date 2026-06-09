@@ -12,8 +12,10 @@ from stewart.core.db import utcnow
 from stewart.core.models import (
     Entity,
     Lease,
+    Obligation,
     Property,
     TenancyUnit,
+    Tenant,
     UserEntityRole,
     UserRole,
     XeroConnection,
@@ -27,6 +29,9 @@ from apps.api.schemas.register import (
     EntityXeroOverviewRead,
     EntityXeroOverviewSummary,
     EntityXeroStatusRead,
+    OwnershipSplitApplyEntityResult,
+    OwnershipSplitApplyRequest,
+    OwnershipSplitApplyResult,
     OwnershipSplitGroupRead,
     OwnershipSplitPlanRead,
     OwnershipSplitPropertyRead,
@@ -298,6 +303,188 @@ def entities_ownership_split_plan(
         proposed_entity_count=len(group_reads),
         unresolved_property_count=unresolved,
         groups=group_reads,
+    )
+
+
+@router.post(
+    "/ownership-split/apply",
+    response_model=OwnershipSplitApplyResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def entities_ownership_split_apply(
+    payload: OwnershipSplitApplyRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> OwnershipSplitApplyResult:
+    """Reviewed apply: create one entity per group and reassign its properties.
+
+    Moves the property, its property-scoped obligations, and tenants whose leases
+    fall entirely within one group. Tenants whose leases span entities are left
+    in place and flagged rather than corrupted. Units / leases / charge rules
+    carry no entity_id and follow their property structurally. Runs in one
+    transaction; no provider calls. Each created entity records an audit row with
+    the source entity and moved property ids for reversibility.
+    """
+    write_entity_ids = {
+        entity_id
+        for entity_id, role in session.execute(
+            select(UserEntityRole.entity_id, UserEntityRole.role)
+            .join(Entity, Entity.id == UserEntityRole.entity_id)
+            .where(
+                Entity.organisation_id == user.organisation_id,
+                UserEntityRole.user_id == user.id,
+            )
+        )
+        if role in WRITE_ROLES
+    }
+
+    requested_ids = [pid for group in payload.groups for pid in group.property_ids]
+    if not requested_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No properties to split."
+        )
+    properties = {
+        prop.id: prop
+        for prop in session.scalars(
+            select(Property).where(
+                Property.id.in_(requested_ids), Property.deleted_at.is_(None)
+            )
+        )
+    }
+
+    org_entities = list(
+        session.scalars(
+            select(Entity).where(
+                Entity.organisation_id == user.organisation_id,
+                Entity.deleted_at.is_(None),
+            )
+        )
+    )
+    entity_by_id = {entity.id: entity for entity in org_entities}
+    entity_by_norm_name = {
+        _normalise_owner_label(entity.name): entity for entity in org_entities
+    }
+
+    notes: list[str] = []
+    property_to_new_entity: dict[UUID, UUID] = {}
+    source_entity_ids: set[UUID] = set()
+    created: list[OwnershipSplitApplyEntityResult] = []
+    moved_property_count = 0
+    skipped_property_count = 0
+    moved_obligation_count = 0
+
+    for group in payload.groups:
+        name = group.proposed_name.strip()
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Each group needs a name."
+            )
+        norm_name = _normalise_owner_label(name)
+        # Determine movable properties: known, writable, and not already sitting
+        # under an entity of this group's name (keeps re-runs idempotent).
+        group_props: list[Property] = []
+        for pid in group.property_ids:
+            prop = properties.get(pid)
+            if prop is None or prop.entity_id not in write_entity_ids:
+                skipped_property_count += 1
+                continue
+            current_entity = entity_by_id.get(prop.entity_id)
+            if current_entity is not None and (
+                _normalise_owner_label(current_entity.name) == norm_name
+            ):
+                continue  # already under this target — idempotent no-op
+            group_props.append(prop)
+        if not group_props:
+            continue
+
+        target = entity_by_norm_name.get(norm_name)
+        newly_created = target is None
+        if target is None:
+            target = Entity(
+                organisation_id=user.organisation_id,
+                name=name,
+                entity_type=group.entity_type.value if group.entity_type else None,
+            )
+            session.add(target)
+            session.flush()
+            session.add(
+                UserEntityRole(user_id=user.id, entity_id=target.id, role=UserRole.owner)
+            )
+            entity_by_norm_name[norm_name] = target
+            entity_by_id[target.id] = target
+
+        moved_from: dict[str, str] = {}
+        for prop in group_props:
+            source_entity_ids.add(prop.entity_id)
+            moved_from[str(prop.id)] = str(prop.entity_id)
+            prop.entity_id = target.id
+            property_to_new_entity[prop.id] = target.id
+            moved_property_count += 1
+            for obligation in session.scalars(
+                select(Obligation).where(
+                    Obligation.property_id == prop.id, Obligation.deleted_at.is_(None)
+                )
+            ):
+                obligation.entity_id = target.id
+                moved_obligation_count += 1
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=target.id,
+            action="entity_split",
+            target_table="entity",
+            target_id=target.id,
+            tool_input={"moved_from": moved_from},
+            tool_output_summary=f"Split {len(group_props)} properties into '{name}'.",
+        )
+        if newly_created:
+            created.append(
+                OwnershipSplitApplyEntityResult(
+                    id=target.id, name=name, property_count=len(group_props)
+                )
+            )
+
+    moved_tenant_count = 0
+    flagged_tenant_count = 0
+    if source_entity_ids:
+        for tenant in session.scalars(
+            select(Tenant).where(
+                Tenant.entity_id.in_(source_entity_ids), Tenant.deleted_at.is_(None)
+            )
+        ):
+            target_entities: set[UUID] = set()
+            touches_unmoved = False
+            has_lease = False
+            for (property_id,) in session.execute(
+                select(TenancyUnit.property_id)
+                .join(Lease, Lease.tenancy_unit_id == TenancyUnit.id)
+                .where(Lease.tenant_id == tenant.id, Lease.deleted_at.is_(None))
+            ):
+                has_lease = True
+                new_entity_id = property_to_new_entity.get(property_id)
+                if new_entity_id is None:
+                    touches_unmoved = True
+                else:
+                    target_entities.add(new_entity_id)
+            if has_lease and not touches_unmoved and len(target_entities) == 1:
+                tenant.entity_id = next(iter(target_entities))
+                moved_tenant_count += 1
+            elif len(target_entities) > 1 or (target_entities and touches_unmoved):
+                flagged_tenant_count += 1
+                notes.append(
+                    f"Tenant '{tenant.legal_name}' left in place (leases span entities)."
+                )
+
+    session.commit()
+    return OwnershipSplitApplyResult(
+        created_entities=created,
+        moved_property_count=moved_property_count,
+        moved_obligation_count=moved_obligation_count,
+        moved_tenant_count=moved_tenant_count,
+        skipped_property_count=skipped_property_count,
+        flagged_tenant_count=flagged_tenant_count,
+        notes=notes,
     )
 
 

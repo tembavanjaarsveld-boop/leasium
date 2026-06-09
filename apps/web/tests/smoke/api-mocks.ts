@@ -5520,6 +5520,22 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/entities/ownership-split/apply") {
+      await fulfillJson(route, {
+        created_entities: [
+          { id: "entity-grhq", name: "GRHQ Pty Ltd", property_count: 2 },
+          { id: "entity-sji", name: "SJI No 1 Pty Ltd", property_count: 1 },
+        ],
+        moved_property_count: 3,
+        moved_obligation_count: 2,
+        moved_tenant_count: 2,
+        skipped_property_count: 0,
+        flagged_tenant_count: 1,
+        notes: [],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/insights/overview") {
       await fulfillJson(route, insightsOverview());
       return;

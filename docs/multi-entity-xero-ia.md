@@ -221,11 +221,17 @@ This is a review-first, two-step migration:
   with property/unit/lease counts (read-only, no mutation). Surfaced as a
   "Split into trust entities (preview)" panel in Settings → Organisation when the
   portfolio names more trusts than it has entities.
-- **Step 2 — reviewed apply (NEXT, not built).** Operator reviews/edits the
-  grouping, then an explicit apply creates the Entities and reassigns each
-  property + its units/leases/tenants/obligations, with an audit + reversible
-  mapping. No provider calls. This mutates production property/financial data, so
-  it stays behind explicit operator approval (CLAUDE.md §2.1 spirit).
+- **Step 2 — reviewed apply (SHIPPED).** POST /entities/ownership-split/apply
+  takes the reviewed groups and, in one transaction: resolves-or-creates one
+  entity per group (by name, so re-runs are idempotent), moves each property and
+  its property-scoped obligations, and moves tenants whose leases fall entirely
+  within one group. Tenants whose leases span entities are left in place and
+  flagged (not corrupted). Units/leases/charge-rules carry no entity_id and
+  follow their property. Each created entity records an audit row with the
+  source entity + moved property ids (`tool_input.moved_from`) for
+  reversibility. No provider calls. Surfaced as a two-step "Apply split…" →
+  "Confirm" control on the preview panel with a result summary. Mutating, so it
+  stays behind explicit operator confirmation (CLAUDE.md §2.1 spirit).
 
 ## Onboarding — where new users start (decided 2026-06-09)
 

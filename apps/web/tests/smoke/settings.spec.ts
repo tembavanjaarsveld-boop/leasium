@@ -599,6 +599,13 @@ test("settings can switch operating mode without orphaning self-managed owner re
     }),
   });
   await expect(splitPanel.getByText("GRHQ Pty Ltd")).toBeVisible();
+  await splitPanel.getByRole("button", { name: "Apply split…" }).click();
+  await splitPanel
+    .getByRole("button", { name: /Confirm — create/ })
+    .click();
+  await expect(
+    splitPanel.getByText(/Created 2 entities, moved 3 properties/),
+  ).toBeVisible();
 
   await operatingModeSelect.selectOption("hybrid");
 

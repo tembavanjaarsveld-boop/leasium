@@ -190,6 +190,106 @@ def test_entities_ownership_split_plan_groups_by_head_owner(
     assert body["proposed_entity_count"] == 2
 
 
+def test_entities_ownership_split_apply_moves_properties_and_clean_tenants(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+
+    def make_property(name: str) -> str:
+        response = client.post(
+            "/api/v1/properties",
+            json={
+                "entity_id": str(skj.id),
+                "name": name,
+                "street_address": f"{name} Road",
+                "property_type": "commercial_office",
+            },
+        )
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    property_a = make_property("Split Prop A")
+    property_b = make_property("Split Prop B")
+    property_c = make_property("Split Prop C")
+
+    unit_a = TenancyUnit(property_id=UUID(property_a), unit_label="UA")
+    unit_c = TenancyUnit(property_id=UUID(property_c), unit_label="UC")
+    session.add_all([unit_a, unit_c])
+    session.flush()
+
+    tenant_a = Tenant(entity_id=skj.id, legal_name="Split Tenant A")
+    tenant_c = Tenant(entity_id=skj.id, legal_name="Split Tenant C")
+    tenant_x = Tenant(entity_id=skj.id, legal_name="Split Tenant X")
+    session.add_all([tenant_a, tenant_c, tenant_x])
+    session.flush()
+
+    session.add_all(
+        [
+            Lease(tenancy_unit_id=unit_a.id, tenant_id=tenant_a.id),
+            Lease(tenancy_unit_id=unit_c.id, tenant_id=tenant_c.id),
+            Lease(tenancy_unit_id=unit_a.id, tenant_id=tenant_x.id),
+            Lease(tenancy_unit_id=unit_c.id, tenant_id=tenant_x.id),
+            Obligation(
+                entity_id=skj.id,
+                property_id=UUID(property_a),
+                title="Insurance A",
+                due_date=date(2026, 7, 1),
+            ),
+            Obligation(
+                entity_id=skj.id,
+                property_id=UUID(property_c),
+                title="Insurance C",
+                due_date=date(2026, 7, 1),
+            ),
+        ]
+    )
+    session.commit()
+
+    body = {
+        "groups": [
+            {
+                "proposed_name": "GRHQ Pty Ltd",
+                "entity_type": "trust",
+                "property_ids": [property_a, property_b],
+            },
+            {
+                "proposed_name": "SJI No 1 Pty Ltd",
+                "entity_type": "trust",
+                "property_ids": [property_c],
+            },
+        ]
+    }
+    response = client.post("/api/v1/entities/ownership-split/apply", json=body)
+    assert response.status_code == 201
+    result = response.json()
+    assert len(result["created_entities"]) == 2
+    assert result["moved_property_count"] == 3
+    assert result["moved_obligation_count"] == 2
+    assert result["moved_tenant_count"] == 2
+    assert result["flagged_tenant_count"] == 1
+
+    session.expire_all()
+    grhq = session.scalar(select(Entity).where(Entity.name == "GRHQ Pty Ltd"))
+    sji = session.scalar(select(Entity).where(Entity.name == "SJI No 1 Pty Ltd"))
+    assert grhq is not None and sji is not None
+    assert session.get(Property, UUID(property_a)).entity_id == grhq.id
+    assert session.get(Property, UUID(property_b)).entity_id == grhq.id
+    assert session.get(Property, UUID(property_c)).entity_id == sji.id
+    assert session.get(Tenant, tenant_a.id).entity_id == grhq.id
+    assert session.get(Tenant, tenant_c.id).entity_id == sji.id
+    # Tenant X leases span both new entities, so it is left in place, not moved.
+    assert session.get(Tenant, tenant_x.id).entity_id == skj.id
+
+    # Re-running the same apply is idempotent: nothing new is created or moved.
+    repeat = client.post("/api/v1/entities/ownership-split/apply", json=body)
+    assert repeat.status_code == 201
+    repeat_result = repeat.json()
+    assert repeat_result["created_entities"] == []
+    assert repeat_result["moved_property_count"] == 0
+
+
 def test_property_crud_writes_audit_and_filters_soft_deleted(
     client: TestClient,
     session: Session,

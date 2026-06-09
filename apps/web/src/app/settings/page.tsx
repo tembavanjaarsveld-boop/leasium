@@ -85,6 +85,7 @@ import {
   type ProviderStatusRecord,
   getPaymentInstructions,
   getXeroStatus,
+  applyOwnershipSplit,
   entityTypeLabel,
   getEntitiesXeroOverview,
   getOwnershipSplitPlan,
@@ -130,6 +131,7 @@ import {
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
   type EntityXeroStatusValue,
+  type OwnershipSplitApplyResult,
   type WorkAssignmentNotificationTemplateCatalogRecord,
   type WorkAssignmentNotificationTemplateKind,
   type WorkAssignmentNotificationTemplateRecord,
@@ -3029,6 +3031,26 @@ function SettingsWorkspace() {
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
   const selectedEntityTypeLabel = entityTypeLabel(selectedEntity?.entity_type);
   const ownershipSplitPlan = ownershipSplitPlanQuery.data;
+  const [splitConfirming, setSplitConfirming] = useState(false);
+  const [splitResult, setSplitResult] = useState<OwnershipSplitApplyResult | null>(
+    null,
+  );
+  const applySplitMutation = useMutation({
+    mutationFn: () =>
+      applyOwnershipSplit(
+        (ownershipSplitPlan?.groups ?? []).map((group) => ({
+          proposed_name: group.proposed_name,
+          property_ids: group.properties.map((property) => property.id),
+        })),
+      ),
+    onSuccess: (result) => {
+      setSplitResult(result);
+      setSplitConfirming(false);
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["entities-xero-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["ownership-split-plan"] });
+    },
+  });
   const orgEntities = entitiesOverviewForOrg.data?.entities ?? [];
   const toggleEntityRow = (id: string) =>
     setExpandedEntityRows((current) => {
@@ -5111,6 +5133,65 @@ function SettingsWorkspace() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="flex flex-col gap-3 border-t border-border p-4">
+                  {splitResult ? (
+                    <p className="rounded-md border border-success/30 bg-success/5 px-3 py-2 text-sm text-success">
+                      Created {splitResult.created_entities.length} entit
+                      {splitResult.created_entities.length === 1 ? "y" : "ies"},
+                      moved {splitResult.moved_property_count} properties,{" "}
+                      {splitResult.moved_tenant_count} tenants and{" "}
+                      {splitResult.moved_obligation_count} obligations.
+                      {splitResult.flagged_tenant_count > 0
+                        ? ` ${splitResult.flagged_tenant_count} tenant(s) left in place (leases span entities).`
+                        : ""}
+                    </p>
+                  ) : null}
+                  {applySplitMutation.error ? (
+                    <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                      {friendlyError(applySplitMutation.error)}
+                    </p>
+                  ) : null}
+                  {!splitResult ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {splitConfirming ? (
+                        <>
+                          <Button
+                            type="button"
+                            disabled={applySplitMutation.isPending}
+                            onClick={() => applySplitMutation.mutate()}
+                          >
+                            {applySplitMutation.isPending ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : null}
+                            Confirm — create{" "}
+                            {ownershipSplitPlan?.proposed_entity_count} entities &
+                            move properties
+                          </Button>
+                          <SecondaryButton
+                            type="button"
+                            disabled={applySplitMutation.isPending}
+                            onClick={() => setSplitConfirming(false)}
+                          >
+                            Cancel
+                          </SecondaryButton>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            type="button"
+                            onClick={() => setSplitConfirming(true)}
+                          >
+                            Apply split…
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            Creates the entities and moves each property (with its
+                            obligations and clean tenants). No Xero is touched.
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </SectionPanel>
             ) : null}

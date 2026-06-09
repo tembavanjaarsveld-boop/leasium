@@ -3293,6 +3293,31 @@ export function getOwnershipSplitPlan() {
   return request<OwnershipSplitPlanRecord>("/entities/ownership-split-plan");
 }
 
+export type OwnershipSplitApplyGroupPayload = {
+  proposed_name: string;
+  entity_type?: EntityType | null;
+  property_ids: string[];
+};
+
+export type OwnershipSplitApplyResult = {
+  created_entities: { id: string; name: string; property_count: number }[];
+  moved_property_count: number;
+  moved_obligation_count: number;
+  moved_tenant_count: number;
+  skipped_property_count: number;
+  flagged_tenant_count: number;
+  notes: string[];
+};
+
+export function applyOwnershipSplit(
+  groups: OwnershipSplitApplyGroupPayload[],
+) {
+  return request<OwnershipSplitApplyResult>("/entities/ownership-split/apply", {
+    method: "POST",
+    body: JSON.stringify({ groups }),
+  });
+}
+
 export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }

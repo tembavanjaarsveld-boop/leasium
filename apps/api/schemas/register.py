@@ -127,6 +127,32 @@ class OwnershipSplitPlanRead(ApiModel):
     groups: list[OwnershipSplitGroupRead]
 
 
+class OwnershipSplitApplyGroup(BaseModel):
+    proposed_name: str
+    entity_type: EntityType | None = None
+    property_ids: list[UUID]
+
+
+class OwnershipSplitApplyRequest(BaseModel):
+    groups: list[OwnershipSplitApplyGroup]
+
+
+class OwnershipSplitApplyEntityResult(ApiModel):
+    id: UUID
+    name: str
+    property_count: int
+
+
+class OwnershipSplitApplyResult(ApiModel):
+    created_entities: list[OwnershipSplitApplyEntityResult]
+    moved_property_count: int
+    moved_obligation_count: int
+    moved_tenant_count: int
+    skipped_property_count: int
+    flagged_tenant_count: int
+    notes: list[str]
+
+
 class PropertyCreate(BaseModel):
     entity_id: UUID
     name: str
