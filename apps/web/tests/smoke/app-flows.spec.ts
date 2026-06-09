@@ -5283,6 +5283,21 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Connect" }).click();
   await expect(
+    page.getByRole("heading", { name: "Entities & Xero" }),
+  ).toBeVisible();
+  await expect(page.getByText("1 of 2 connected")).toBeVisible();
+  await expect(page.getByText("1 token expired")).toBeVisible();
+  const entitiesXeroHub = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Entities & Xero" }),
+  });
+  await expect(
+    entitiesXeroHub.getByText("Acme Holdings Pty Ltd"),
+  ).toBeVisible();
+  await expect(entitiesXeroHub.getByText("Managing entity")).toBeVisible();
+  await expect(
+    entitiesXeroHub.getByText("Token expired · Secondary Xero Org"),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Connect Xero" }),
   ).toBeVisible();
   await expect(page.getByText("Selected entity")).toBeVisible();

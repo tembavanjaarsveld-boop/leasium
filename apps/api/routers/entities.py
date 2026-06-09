@@ -1,22 +1,36 @@
 """Entity CRUD routes."""
 
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Entity, UserEntityRole, UserRole
+from stewart.core.models import Entity, Property, UserEntityRole, UserRole, XeroConnection
 
 from apps.api.deps import CurrentUser, get_current_user, get_session
-from apps.api.schemas.register import EntityCreate, EntityRead, EntityUpdate
+from apps.api.schemas.register import (
+    EntityCreate,
+    EntityRead,
+    EntityUpdate,
+    EntityXeroOverviewRead,
+    EntityXeroOverviewSummary,
+    EntityXeroStatusRead,
+)
 
 router = APIRouter(prefix="/entities", tags=["entities"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+
+
+def _as_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 @router.get("", response_model=list[EntityRead])
@@ -59,6 +73,91 @@ def create_entity(
     session.commit()
     session.refresh(entity)
     return entity
+
+
+@router.get("/xero-overview", response_model=EntityXeroOverviewRead)
+def entities_xero_overview(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> EntityXeroOverviewRead:
+    """Cross-entity Xero connection health for the Entities & Xero hub.
+
+    One row per accessible entity with its property count and derived Xero
+    status. Read-only: this never starts an OAuth flow or touches a provider.
+    """
+    entities = list(
+        session.scalars(
+            select(Entity)
+            .join(UserEntityRole, UserEntityRole.entity_id == Entity.id)
+            .where(
+                Entity.organisation_id == user.organisation_id,
+                UserEntityRole.user_id == user.id,
+                Entity.deleted_at.is_(None),
+            )
+            .order_by(Entity.name)
+        )
+    )
+    entity_ids = [entity.id for entity in entities]
+    property_counts: dict[UUID, int] = {}
+    connections: dict[UUID, XeroConnection] = {}
+    if entity_ids:
+        for entity_id, count in session.execute(
+            select(Property.entity_id, func.count(Property.id))
+            .where(Property.entity_id.in_(entity_ids), Property.deleted_at.is_(None))
+            .group_by(Property.entity_id)
+        ):
+            property_counts[entity_id] = count
+        for connection in session.scalars(
+            select(XeroConnection).where(
+                XeroConnection.entity_id.in_(entity_ids),
+                XeroConnection.revoked_at.is_(None),
+                XeroConnection.deleted_at.is_(None),
+            )
+        ):
+            connections[connection.entity_id] = connection
+
+    now = datetime.now(UTC)
+    counts = {"connected": 0, "token_expired": 0, "manual": 0, "not_connected": 0}
+    rows: list[EntityXeroStatusRead] = []
+    for entity in entities:
+        connection = connections.get(entity.id)
+        if connection is not None:
+            expires_at = _as_aware(connection.token_expires_at)
+            if expires_at is not None and expires_at < now:
+                xero_status = "token_expired"
+            else:
+                xero_status = "connected"
+            tenant_name = connection.tenant_name
+            last_sync_at = connection.last_contact_sync_at
+            token_expires_at = connection.token_expires_at
+        elif entity.xero_tenant_id:
+            xero_status = "manual"
+            tenant_name = None
+            last_sync_at = entity.xero_last_sync_at
+            token_expires_at = None
+        else:
+            xero_status = "not_connected"
+            tenant_name = None
+            last_sync_at = None
+            token_expires_at = None
+        counts[xero_status] += 1
+        rows.append(
+            EntityXeroStatusRead(
+                id=entity.id,
+                name=entity.name,
+                entity_type=entity.entity_type,
+                is_managing_entity=entity.is_managing_entity,
+                property_count=property_counts.get(entity.id, 0),
+                xero_status=xero_status,
+                tenant_name=tenant_name,
+                last_sync_at=last_sync_at,
+                token_expires_at=token_expires_at,
+            )
+        )
+    return EntityXeroOverviewRead(
+        summary=EntityXeroOverviewSummary(total=len(entities), **counts),
+        entities=rows,
+    )
 
 
 @router.get("/{entity_id}", response_model=EntityRead)

@@ -85,6 +85,7 @@ import {
   getPaymentInstructions,
   getXeroStatus,
   entityTypeLabel,
+  getEntitiesXeroOverview,
   listBrandedCommunicationTemplates,
   listEntities,
   listProperties,
@@ -126,6 +127,7 @@ import {
   type SecurityWorkAssignmentDigestCadence,
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
+  type EntityXeroStatusValue,
   type WorkAssignmentNotificationTemplateCatalogRecord,
   type WorkAssignmentNotificationTemplateKind,
   type WorkAssignmentNotificationTemplateRecord,
@@ -2461,6 +2463,11 @@ function SettingsWorkspace() {
     queryFn: () => getXeroStatus(selectedEntityId),
     enabled: Boolean(selectedEntityId) && activeTab === "connect",
   });
+  const entitiesXeroOverviewQuery = useQuery({
+    queryKey: ["entities-xero-overview"],
+    queryFn: getEntitiesXeroOverview,
+    enabled: activeTab === "connect",
+  });
 
   const xeroDiagnosticsQuery = useQuery({
     queryKey: ["xero-connection-diagnostics", selectedEntityId],
@@ -3168,6 +3175,16 @@ function SettingsWorkspace() {
     : status?.connection.connection_source === "manual"
       ? "Manual connection recorded"
       : "Not connected yet";
+  const entityXeroStatusMeta: Record<
+    EntityXeroStatusValue,
+    { label: string; tone: "success" | "warning" | "danger" | "neutral" }
+  > = {
+    connected: { label: "Connected", tone: "success" },
+    token_expired: { label: "Token expired", tone: "danger" },
+    manual: { label: "Manual", tone: "neutral" },
+    not_connected: { label: "Not connected", tone: "warning" },
+  };
+  const xeroOverview = entitiesXeroOverviewQuery.data;
   const accountingStep = status
     ? accountingNextStep({
         freshness: status.accounting_freshness,
@@ -5344,6 +5361,89 @@ function SettingsWorkspace() {
                 </div>
               </div>
             ) : null}
+            {xeroOverview && xeroOverview.summary.total > 1 ? (
+              <SectionPanel
+                title="Entities & Xero"
+                description="Each entity connects to its own Xero organisation. Select a row to manage its connection below."
+                icon={<PlugZap size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge tone="success">
+                      {xeroOverview.summary.connected} of{" "}
+                      {xeroOverview.summary.total} connected
+                    </StatusBadge>
+                    {xeroOverview.summary.token_expired > 0 ? (
+                      <StatusBadge tone="danger">
+                        {xeroOverview.summary.token_expired} token expired
+                      </StatusBadge>
+                    ) : null}
+                    {xeroOverview.summary.not_connected > 0 ? (
+                      <StatusBadge tone="warning">
+                        {xeroOverview.summary.not_connected} not connected
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                }
+              >
+                <div className="overflow-x-auto p-4">
+                  <table className="w-full min-w-[640px] border-collapse text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold uppercase text-muted-foreground">
+                        <th className="px-3 py-2">Entity</th>
+                        <th className="px-3 py-2">Type</th>
+                        <th className="px-3 py-2">Properties</th>
+                        <th className="px-3 py-2">Xero</th>
+                        <th className="px-3 py-2">Last sync</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {xeroOverview.entities.map((row) => {
+                        const meta = entityXeroStatusMeta[row.xero_status];
+                        const isSelected = row.id === selectedEntityId;
+                        return (
+                          <tr
+                            key={row.id}
+                            onClick={() => setSelectedEntityId(row.id)}
+                            className={`cursor-pointer border-t border-border transition-colors hover:bg-muted/30 ${
+                              isSelected ? "bg-muted/40" : ""
+                            }`}
+                          >
+                            <td className="px-3 py-2 font-medium text-foreground">
+                              <span className="flex flex-wrap items-center gap-2">
+                                {row.name}
+                                {row.is_managing_entity ? (
+                                  <StatusBadge tone="primary">
+                                    Managing entity
+                                  </StatusBadge>
+                                ) : null}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {entityTypeLabel(row.entity_type)}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {row.property_count}
+                            </td>
+                            <td className="px-3 py-2">
+                              <StatusBadge tone={meta.tone}>
+                                {meta.label}
+                                {row.tenant_name ? ` · ${row.tenant_name}` : ""}
+                              </StatusBadge>
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {row.last_sync_at
+                                ? new Date(row.last_sync_at).toLocaleDateString()
+                                : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionPanel>
+            ) : null}
+
             <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               <MetricCard
                 label="Connection"

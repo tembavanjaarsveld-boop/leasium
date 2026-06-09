@@ -3184,6 +3184,39 @@ export function listEntities() {
   return request<Entity[]>("/entities");
 }
 
+export type EntityXeroStatusValue =
+  | "connected"
+  | "token_expired"
+  | "manual"
+  | "not_connected";
+
+export type EntityXeroStatusRecord = {
+  id: string;
+  name: string;
+  entity_type: EntityType | null;
+  is_managing_entity: boolean | null;
+  property_count: number;
+  xero_status: EntityXeroStatusValue;
+  tenant_name: string | null;
+  last_sync_at: string | null;
+  token_expires_at: string | null;
+};
+
+export type EntityXeroOverviewRecord = {
+  summary: {
+    total: number;
+    connected: number;
+    token_expired: number;
+    manual: number;
+    not_connected: number;
+  };
+  entities: EntityXeroStatusRecord[];
+};
+
+export function getEntitiesXeroOverview() {
+  return request<EntityXeroOverviewRecord>("/entities/xero-overview");
+}
+
 export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }

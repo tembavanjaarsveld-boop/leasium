@@ -4682,6 +4682,43 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/entities/xero-overview") {
+      await fulfillJson(route, {
+        summary: {
+          total: 2,
+          connected: 1,
+          token_expired: 1,
+          manual: 0,
+          not_connected: 0,
+        },
+        entities: [
+          {
+            id: entityId,
+            name: "Acme Holdings Pty Ltd",
+            entity_type: "company",
+            is_managing_entity: true,
+            property_count: 2,
+            xero_status: "connected",
+            tenant_name: "Demo Xero Org",
+            last_sync_at: "2026-05-19T10:00:00.000Z",
+            token_expires_at: "2026-06-19T10:00:00.000Z",
+          },
+          {
+            id: secondaryEntityId,
+            name: "Secondary Holdings Pty Ltd",
+            entity_type: "trust",
+            is_managing_entity: false,
+            property_count: 0,
+            xero_status: "token_expired",
+            tenant_name: "Secondary Xero Org",
+            last_sync_at: null,
+            token_expires_at: "2020-01-01T00:00:00.000Z",
+          },
+        ],
+      });
+      return;
+    }
+
     if (method === "GET" && path === "/dashboard/overview") {
       await fulfillJson(route, dashboardOverview(url));
       return;

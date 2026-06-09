@@ -17,6 +17,7 @@ from stewart.core.models import (
     RentChargeRule,
     TenancyUnit,
     Tenant,
+    XeroConnection,
 )
 
 
@@ -72,6 +73,80 @@ def test_entity_type_and_managing_flag_round_trip(
         },
     )
     assert invalid_response.status_code == 422
+
+
+def test_entities_xero_overview_reports_status_and_counts(
+    client: TestClient,
+    session: Session,
+) -> None:
+    seed = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seed is not None
+    organisation_id = str(seed.organisation_id)
+
+    connected = client.post(
+        "/api/v1/entities",
+        json={"organisation_id": organisation_id, "name": "Aurora Trust", "entity_type": "trust"},
+    ).json()
+    expired = client.post(
+        "/api/v1/entities",
+        json={"organisation_id": organisation_id, "name": "Borealis Trust", "entity_type": "trust"},
+    ).json()
+
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": connected["id"],
+            "name": "Aurora House",
+            "street_address": "1 Aurora Street",
+            "property_type": "residential",
+        },
+    )
+    assert property_response.status_code == 201
+
+    session.add(
+        XeroConnection(
+            entity_id=UUID(connected["id"]),
+            xero_tenant_id="tenant-aurora",
+            tenant_name="Aurora Org",
+            access_token_ciphertext="x",
+            refresh_token_ciphertext="y",
+            token_expires_at=None,
+        )
+    )
+    session.add(
+        XeroConnection(
+            entity_id=UUID(expired["id"]),
+            xero_tenant_id="tenant-borealis",
+            tenant_name="Borealis Org",
+            access_token_ciphertext="x",
+            refresh_token_ciphertext="y",
+            token_expires_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+    )
+    session.commit()
+
+    response = client.get("/api/v1/entities/xero-overview")
+    assert response.status_code == 200
+    body = response.json()
+    rows = {row["name"]: row for row in body["entities"]}
+
+    assert rows["Aurora Trust"]["xero_status"] == "connected"
+    assert rows["Aurora Trust"]["property_count"] == 1
+    assert rows["Aurora Trust"]["tenant_name"] == "Aurora Org"
+    assert rows["Borealis Trust"]["xero_status"] == "token_expired"
+    assert rows["Borealis Trust"]["property_count"] == 0
+
+    summary = body["summary"]
+    assert summary["total"] == len(body["entities"])
+    assert (
+        summary["connected"]
+        + summary["token_expired"]
+        + summary["manual"]
+        + summary["not_connected"]
+        == summary["total"]
+    )
+    assert summary["connected"] >= 1
+    assert summary["token_expired"] >= 1
 
 
 def test_property_crud_writes_audit_and_filters_soft_deleted(

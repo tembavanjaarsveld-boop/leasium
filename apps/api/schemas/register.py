@@ -77,6 +77,34 @@ class EntityRead(ApiModel):
     deleted_at: datetime | None
 
 
+EntityXeroStatus = Literal["connected", "token_expired", "manual", "not_connected"]
+
+
+class EntityXeroStatusRead(ApiModel):
+    id: UUID
+    name: str
+    entity_type: EntityType | None
+    is_managing_entity: bool | None
+    property_count: int
+    xero_status: EntityXeroStatus
+    tenant_name: str | None
+    last_sync_at: datetime | None
+    token_expires_at: datetime | None
+
+
+class EntityXeroOverviewSummary(ApiModel):
+    total: int
+    connected: int
+    token_expired: int
+    manual: int
+    not_connected: int
+
+
+class EntityXeroOverviewRead(ApiModel):
+    summary: EntityXeroOverviewSummary
+    entities: list[EntityXeroStatusRead]
+
+
 class PropertyCreate(BaseModel):
     entity_id: UUID
     name: str
