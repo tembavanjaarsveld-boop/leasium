@@ -118,6 +118,29 @@ def test_integration_status_blocks_client_operator(
     assert response.status_code == 403
 
 
+# --- /me exposes the platform-admin flag (drives the /admin nav + gate) ----------
+
+
+def test_me_exposes_platform_admin_flag(client: TestClient) -> None:
+    # Default dev auth is a platform admin (dev_is_platform_admin defaults True).
+    response = client.get("/api/v1/me")
+    assert response.status_code == 200
+    assert response.json()["current_user"]["is_platform_admin"] is True
+
+
+def test_me_platform_admin_flag_false_for_client_operator(client: TestClient) -> None:
+    base = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base.model_copy(
+        update={"dev_is_platform_admin": False}
+    )
+    try:
+        response = client.get("/api/v1/me")
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+    assert response.status_code == 200
+    assert response.json()["current_user"]["is_platform_admin"] is False
+
+
 # --- client provisioning + management --------------------------------------------
 
 

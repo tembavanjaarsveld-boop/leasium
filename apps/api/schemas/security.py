@@ -66,6 +66,7 @@ class SecurityCurrentUserRead(BaseModel):
     organisation_id: UUID
     email: str
     display_name: str
+    is_platform_admin: bool = False
 
 
 class SecurityOrganisationRead(ApiModel):
