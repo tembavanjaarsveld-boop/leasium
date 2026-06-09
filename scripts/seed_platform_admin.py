@@ -8,7 +8,7 @@ docs/platform-admin-tier-ia.md.
 
 from sqlalchemy import func, select
 from stewart.core.db import SessionLocal
-from stewart.core.models import AppUser, OperatorInviteStatus, Organisation
+from stewart.core.models import AppUser, OperatingMode, OperatorInviteStatus, Organisation
 from stewart.core.settings import get_settings
 
 
@@ -25,6 +25,7 @@ def ensure_platform_admin(session) -> tuple[Organisation, AppUser]:  # noqa: ANN
             name=settings.platform_organisation_name,
             country_code="AU",
             timezone="Australia/Brisbane",
+            operating_mode=OperatingMode.self_managed_owner.value,
         )
         session.add(org)
         session.flush()
