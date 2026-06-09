@@ -5285,13 +5285,14 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Connect Xero" }),
   ).toBeVisible();
+  await expect(page.getByText("Selected entity")).toBeVisible();
   await expect(
     page.getByText(
-      "Each trust gets its own connection, so repeat this once per trust.",
+      "Each entity has its own Xero organisation, so connect them one at a time. Nothing is posted during connection.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect this trust" }),
+    page.getByRole("button", { name: "Connect this entity" }),
   ).toBeVisible();
   await expect(page.getByText("Xero sync exception queue")).toBeVisible();
   const exceptionQueuePanel = page.locator("section").filter({
@@ -5512,7 +5513,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     xeroConnectionPanel.getByText("Not connected").first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect this trust" }),
+    page.getByRole("button", { name: "Connect this entity" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Apply suggestion" }),
@@ -5893,7 +5894,7 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
     page.getByRole("heading", { name: "Connect Xero" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect this trust" }),
+    page.getByRole("button", { name: "Connect this entity" }),
   ).toBeVisible();
   const advancedSupportDetails = page
     .locator("details")
@@ -5909,7 +5910,7 @@ test("settings disables Xero provider actions when diagnostics block capabilitie
     0,
   );
   await expect(
-    page.getByRole("button", { name: "Connect this trust" }),
+    page.getByRole("button", { name: "Connect this entity" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Review contacts" }),
@@ -5934,7 +5935,7 @@ async function assertXeroDiagnosticsFailClosed(
     page.getByRole("button", { name: "Download setup packet" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Connect this trust" }),
+    page.getByRole("button", { name: "Connect this entity" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Review contacts" }),

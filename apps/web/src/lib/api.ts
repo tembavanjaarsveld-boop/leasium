@@ -1,9 +1,18 @@
+export type EntityType =
+  | "trust"
+  | "company"
+  | "smsf"
+  | "individual"
+  | "partnership";
+
 export type Entity = {
   id: string;
   organisation_id: string;
   name: string;
   abn: string | null;
   gst_registered: boolean;
+  entity_type: EntityType | null;
+  is_managing_entity: boolean | null;
   xero_tenant_id: string | null;
   xero_connected_at: string | null;
   xero_last_sync_at: string | null;
@@ -11,6 +20,18 @@ export type Entity = {
   created_at: string;
   deleted_at: string | null;
 };
+
+const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+  trust: "Trust",
+  company: "Company",
+  smsf: "SMSF",
+  individual: "Individual",
+  partnership: "Partnership",
+};
+
+export function entityTypeLabel(type: EntityType | null | undefined): string {
+  return type ? ENTITY_TYPE_LABELS[type] : "Type not set";
+}
 
 export type SecurityRole =
   | "owner"

@@ -84,6 +84,7 @@ import {
   type ProviderStatusRecord,
   getPaymentInstructions,
   getXeroStatus,
+  entityTypeLabel,
   listBrandedCommunicationTemplates,
   listEntities,
   listProperties,
@@ -2386,7 +2387,7 @@ function SettingsWorkspace() {
       setXeroCallbackFeedback({
         tone: "success",
         title: "Xero connected",
-        detail: `This trust is connected${
+        detail: `This entity is connected${
           tenantId ? ` to Xero organisation ${tenantId}` : ""
         }. Next, review suggested contacts before preparing invoices.`,
       });
@@ -2953,6 +2954,7 @@ function SettingsWorkspace() {
   );
   const selectedEntityRoleMembers = securityQuery.data?.members ?? [];
   const selectedEntityName = selectedEntity?.name ?? "selected entity";
+  const selectedEntityTypeLabel = entityTypeLabel(selectedEntity?.entity_type);
   const workEmailEnabledCount = selectedEntityRoleMembers.filter(
     workAssignmentEmailEnabled,
   ).length;
@@ -3160,7 +3162,7 @@ function SettingsWorkspace() {
     status?.connection.connection_source === "provider";
   const xeroPrimaryConnectLabel = status?.connection.connected
     ? "Reconnect Xero"
-    : "Connect this trust";
+    : "Connect this entity";
   const xeroConnectionSummary = xeroHasProviderConnection
     ? `Connected to ${xeroConnectedOrgName ?? "Xero"}`
     : status?.connection.connection_source === "manual"
@@ -5412,15 +5414,20 @@ function SettingsWorkspace() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-xs font-semibold uppercase text-muted-foreground">
-                            Selected trust
+                            Selected entity
                           </div>
-                          <div className="mt-1 text-lg font-semibold text-foreground">
-                            {selectedEntityName}
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-lg font-semibold text-foreground">
+                              {selectedEntityName}
+                            </span>
+                            <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                              {selectedEntityTypeLabel}
+                            </span>
                           </div>
                           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                             {xeroHasProviderConnection
-                              ? `Leasium is connected to ${xeroConnectedOrgName ?? "Xero"} for this trust. Next, review contacts and accounting mappings before any invoice draft is created.`
-                              : "Start by choosing the matching organisation in Xero. Each trust gets its own connection, so repeat this once per trust."}
+                              ? `Leasium is connected to ${xeroConnectedOrgName ?? "Xero"} for this entity. Next, review contacts and accounting mappings before any invoice draft is created.`
+                              : "Each entity has its own Xero organisation, so connect them one at a time. Nothing is posted during connection."}
                           </p>
                         </div>
                         <StatusBadge
@@ -5466,7 +5473,7 @@ function SettingsWorkspace() {
                       </div>
                       {!xeroCanStartOauth && !xeroHasProviderConnection ? (
                         <p className="mt-3 text-sm text-warning">
-                          Xero setup needs a support check before this trust can
+                          Xero setup needs a support check before this entity can
                           connect.
                         </p>
                       ) : null}
