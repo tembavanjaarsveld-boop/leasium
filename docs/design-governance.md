@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-08
+Last updated: 2026-06-10
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -43,6 +43,35 @@ the core design. It has been promoted into the canonical pages:
   45:168, Dashboard·Mobile 45:371, Work·Mobile 45:461. Properties, Smart Intake,
   Settings, Notifications remain as-built and adopt Horizon when next touched.
 - **04 Concept — Horizon** is kept as the design archive with the rationale card.
+  It also carries the Horizon extension frames **awaiting Temba's sign-off**
+  (2026-06-10, built in Geist): Properties 48:140 (card grid + stat strip),
+  Smart Intake 48:464 (hero dropzone + provenance trail), Notifications 49:249
+  (channel health + needs-you/receipts split), Settings 49:524 (tab cards +
+  per-operator notification cards). Once approved they promote to 03 Screens
+  like Dashboard/Work did.
+
+Figma infrastructure (2026-06-10): the **Leasium Color** variable collection
+holds 27 core tokens with Light + Dark modes (read programmatically via the
+Figma MCP `get_variable_defs`). Text styles now use **Geist** (matching prod).
+02 Components adds `Leasium/Horizon/Button` (Kind × State variant set: Primary/
+Secondary × Default/Hover/Pressed/Disabled, 50:156), `Skeleton row` 50:157, and
+`Empty state` 50:163. Code Connect mapping is blocked on the Figma plan tier
+(needs Org/Enterprise Dev seat) — until then this table is the component→code
+map for agents:
+
+| Figma component | Code location |
+|---|---|
+| Leasium/Horizon/Sidebar 44:117 | `apps/web/src/components/app-shell.tsx` (sidebar) — Horizon variant not yet implemented |
+| Leasium/Horizon/Command bar 44:155 | `apps/web/src/components/app-shell.tsx` (command palette trigger) — new |
+| Leasium/Horizon/Hero focus card 44:179 | new component, target `apps/web/src/components/dashboard/` |
+| Leasium/Horizon/Bento metric card 44:193 | replaces dashboard metric cards |
+| Leasium/Horizon/Work card 44:238 | new, target Operations queue rows |
+| Leasium/Horizon/Trust ribbon 44:274 | `apps/web/src/components/ui.tsx` — new primitive |
+| Leasium/Horizon/Segmented control 44:282 | `apps/web/src/components/ui.tsx` — new primitive |
+| Leasium/Horizon/Bottom nav (mobile) 44:301 | `apps/web/src/components/app-shell.tsx` (mobile nav + FAB) |
+| Leasium/Horizon/Button 50:156 | `apps/web/src/components/ui.tsx` PrimaryButton/SecondaryButton |
+| Leasium/Horizon/Skeleton row 50:157 | `apps/web/src/components/ui.tsx` SkeletonRows |
+| Leasium/Horizon/Empty state 50:163 | `apps/web/src/components/ui.tsx` EmptyState |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -89,6 +118,16 @@ back-filled when first touched by a design-facing slice.
   unchanged. Verified by eslint + tsc + Playwright smoke (platform-admin + settings
   specs green). Pending prototype/Remba review of the `/admin` console density and
   the Settings panel removal. Decision: [platform-admin-tier-ia.md](platform-admin-tier-ia.md).
+- **Horizon Dashboard v1 (2026-06-10, Remba pending):** first production
+  implementation from the approved Figma Dashboard target (`45:2`). The dashboard
+  command center now renders as a focus-first Horizon hero with one primary CTA,
+  compact next-up links, and the review-first trust ribbon; metric cards now use
+  the bento card rhythm (18px radius, 14px gutters, quiet uppercase labels), and
+  app canvas/card-border tokens are synced to the Horizon foundation. This is
+  presentation-only: existing dashboard queries, Smart Intake review/apply paths,
+  navigation links, and provider/write guardrails are unchanged. Remba should
+  review whether the focus counter (`1/N`), compact next-up chips, and lower
+  dashboard density match the approved Figma intent before this is marked `[x]`.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
   the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,
