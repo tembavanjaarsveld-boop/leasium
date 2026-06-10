@@ -2,7 +2,53 @@
 
 Last updated: 2026-06-10
 
-## Cowork continuation - 2026-06-10 (Horizon dashboard v1 - latest)
+## Cowork continuation - 2026-06-10 (Horizon Work desktop v1 - latest)
+
+Implemented the approved Horizon Work desktop slice from Figma source of truth
+`PO2jOANgmqgZHfqWZXOZGU`, node `45:168`. 04 Concept was not used; production
+source remains 01 Foundations / 02 Components / 03 Screens.
+
+Scope stayed intentionally narrow: `/operations` queue landing only, no Horizon
+shell/sidebar edits. The page title is now `Work`; the first viewport adds the
+Today/This week/All segmented control, `New work` primary CTA, Act
+now/Scheduled/Waiting triage lanes, Horizon-style severity-rail queue cards,
+team workload rail, compliance rail, Evening Digest card, and review-first trust
+ribbon. Existing assignment controls, local queue CSV export, notice inbox,
+digest preview/send controls, maintenance/compliance/arrears tabs, and all
+review-first provider guardrails remain on their existing explicit operator
+actions. No API shape, provider send, Xero/Basiq, payment, reconciliation, or
+queue mutation path changed.
+
+Files touched:
+
+- `apps/web/src/app/operations/page.tsx` — Horizon Work range/lane helpers,
+  triage board, Work cards, right rail, and visible `Work` header.
+- `apps/web/src/app/globals.css` — dark-mode remap for the existing
+  `bg-accent-soft` / `text-leasium-teal-strong` pairing so the trust ribbon
+  remains readable in dark checks.
+- Work smoke selectors in `operations-ux`, `app-flows`, and
+  `mobile-bottom-nav` now target `Work` and the Act now lane.
+- `docs/product-roadmap.md` and `docs/design-governance.md` log the slice as
+  Remba-pending.
+
+Verification completed locally:
+
+- `npm exec -- eslint src/app/operations/page.tsx tests/smoke/operations-ux.spec.ts tests/smoke/app-flows.spec.ts tests/smoke/mobile-bottom-nav.spec.ts`
+- `npm exec -- tsc --noEmit`
+- `git diff --check`
+- `npm run build`
+- `PORT=3011 npm run test:smoke -- tests/smoke/operations-ux.spec.ts` (18/18)
+- `PORT=3012 npm run test:smoke -- --grep "operations workspace surfaces maintenance and arrears work|operations workspace keeps mobile rows compact" tests/smoke/app-flows.spec.ts` (2/2)
+- `PORT=3013 npm run test:smoke -- tests/smoke/mobile-bottom-nav.spec.ts` (5/5)
+- `npm run test:smoke -- tests/smoke/operations-compliance.spec.ts` (6/6)
+- Temporary visual QA spec captured desktop/mobile light/dark screenshots at
+  `output/playwright/work-horizon/` and asserted no horizontal overflow.
+
+Next Horizon slice per `docs/horizon-implementation-brief.md`: Horizon app shell
+(`44:117`) as its own wide-blast-radius slice. Verify every route plus mobile
+drawer/bottom nav after that shell change.
+
+## Cowork continuation - 2026-06-10 (Horizon dashboard v1)
 
 Started the approved Horizon redesign implementation from Figma
 (`PO2jOANgmqgZHfqWZXOZGU`). Figma MCP connection works for direct nodes:

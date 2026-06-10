@@ -153,7 +153,7 @@ test("mobile shortcut hint clears the fixed bottom navigation", async ({
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Operations", exact: true }),
+    page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(
@@ -192,7 +192,7 @@ test("mobile keyboard shortcuts overlay keeps controls touch-safe above bottom n
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Operations", exact: true }),
+    page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
 
   await page.evaluate(() => {
@@ -236,7 +236,7 @@ test("mobile command search overlay keeps controls touch-safe above bottom nav",
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Operations", exact: true }),
+    page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Open search" }).click();

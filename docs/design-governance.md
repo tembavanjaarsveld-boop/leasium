@@ -87,7 +87,7 @@ map for agents:
 | Leasium/Horizon/Command bar 44:155 | `apps/web/src/components/app-shell.tsx` (command palette trigger) — new |
 | Leasium/Horizon/Hero focus card 44:179 | new component, target `apps/web/src/components/dashboard/` |
 | Leasium/Horizon/Bento metric card 44:193 | replaces dashboard metric cards |
-| Leasium/Horizon/Work card 44:238 | new, target Operations queue rows |
+| Leasium/Horizon/Work card 44:238 | `apps/web/src/app/operations/page.tsx` — Horizon Work v1 queue cards |
 | Leasium/Horizon/Trust ribbon 44:274 | `apps/web/src/components/ui.tsx` — new primitive |
 | Leasium/Horizon/Segmented control 44:282 | `apps/web/src/components/ui.tsx` — new primitive |
 | Leasium/Horizon/Bottom nav (mobile) 44:301 | `apps/web/src/components/app-shell.tsx` (mobile nav + FAB) |
@@ -150,6 +150,18 @@ back-filled when first touched by a design-facing slice.
   navigation links, and provider/write guardrails are unchanged. Remba should
   review whether the focus counter (`1/N`), compact next-up chips, and lower
   dashboard density match the approved Figma intent before this is marked `[x]`.
+- **Horizon Work desktop v1 (2026-06-10, Remba pending):** first production
+  implementation from the approved Figma Work target (`45:168`) on `/operations`,
+  scoped to the queue landing area and not the wider Horizon shell. The page now
+  presents Work as the primary title with a Today/This week/All segmented control,
+  Act now/Scheduled/Waiting triage lanes, severity-rail work cards, team-workload
+  and compliance right rail, Evening Digest card, and review-first trust ribbon.
+  Existing assignment, CSV export, notice inbox, digest preview/send, maintenance,
+  compliance, and arrears controls remain explicit operator actions; no provider
+  send or payment/reconciliation/Xero/Basiq path changed. Remba should review the
+  lane density, the default Today distribution with current demo data, and whether
+  the saved-view/tab controls are quiet enough above the board before this is
+  marked `[x]`.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
   the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,

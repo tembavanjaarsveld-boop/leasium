@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon Work desktop v1:** implemented the approved Figma Work
+  target (`PO2jOANgmqgZHfqWZXOZGU`, node `45:168`) on `/operations` without the
+  wider Horizon shell slice. The queue landing view now uses the `Work` title,
+  Today/This week/All segmented range, Figma-style Act now/Scheduled/Waiting
+  lanes with severity rails, compact Horizon work cards, team-workload and
+  compliance right rail, Evening Digest card, and review-first trust ribbon.
+  Existing assignment controls, local queue CSV export, notice inbox, digest
+  preview/send controls, maintenance/compliance/arrears tabs, and provider
+  guardrails remain on the same explicit operator actions; no API shape,
+  provider send, Xero/Basiq, payment, reconciliation, or queue mutation path was
+  changed. Pending Remba review.
 - [~] **2026-06-10 Horizon Dashboard v1:** first implementation pass from the
   approved Figma Horizon Dashboard target (`PO2jOANgmqgZHfqWZXOZGU`, node
   `45:2`). Dashboard now uses the Horizon canvas tokens, a focus-first

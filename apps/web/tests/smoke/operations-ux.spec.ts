@@ -23,10 +23,10 @@ async function expectTouchTarget(control: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
-test("mobile operations loading and queue actions stay readable", async ({
+test("work horizon layout keeps queue exports local-only", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await mockLeasiumApi(page);
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -164,23 +164,35 @@ test("mobile operations loading and queue actions stay readable", async ({
 
   await page.goto("/operations");
 
-  const metrics = page
-    .locator("section")
-    .filter({
-      has: page.getByText("Open work", { exact: true }),
-    })
-    .first();
-
-  await expect(metrics).toContainText("Checking");
-  await expect(metrics.getByText("...")).toHaveCount(0);
-
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Triage by urgency")).toBeVisible();
+  const workRange = page.getByRole("group", { name: "Work range" });
+  await expect(workRange.getByRole("button", { name: "Today" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(workRange.getByRole("button", { name: "This week" })).toBeVisible();
+  await expect(workRange.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New work" })).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
-  const queueActions = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Operations queue" }),
-    })
-    .first();
+  await expect(
+    page.getByRole("region", { name: /Act now/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: /Scheduled/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: /Waiting/ })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "TEAM WORKLOAD" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "COMPLIANCE" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "EVENING DIGEST" }),
+  ).toBeVisible();
+  await expect(page.getByText("Provider sends are review-first.")).toBeVisible();
+  const queueActions = page.getByRole("main");
   await queueActions.getByRole("button", { name: "Export & digest" }).click();
   const downloadQueueCsv = queueActions.getByRole("button", {
     name: "Download queue CSV",
@@ -274,7 +286,7 @@ test("maintenance inline undo toast controls stay touch-safe on mobile", async (
 
   await page.goto("/operations");
   await expect(
-    page.getByRole("heading", { name: "Operations", exact: true }),
+    page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();

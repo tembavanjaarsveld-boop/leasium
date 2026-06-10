@@ -194,7 +194,8 @@
 }
 
 :root[data-theme="dark"] .bg-accent\/10,
-:root[data-theme="dark"] .bg-accent\/15 {
+:root[data-theme="dark"] .bg-accent\/15,
+:root[data-theme="dark"] .bg-accent-soft {
   background-color: var(--leasium-info-soft) !important;
 }
 
@@ -249,6 +250,10 @@
 :root[data-theme="dark"] .text-primary,
 :root[data-theme="dark"] .text-primary-hover {
   color: var(--leasium-blue-hover) !important;
+}
+
+:root[data-theme="dark"] .text-leasium-teal-strong {
+  color: var(--leasium-teal-strong) !important;
 }
 
 :root[data-theme="dark"] .text-success,

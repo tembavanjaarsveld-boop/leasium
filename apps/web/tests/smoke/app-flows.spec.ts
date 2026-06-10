@@ -1929,11 +1929,11 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   });
 
   await expect(
-    page.getByRole("heading", { name: "Operations", exact: true }),
+    page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Overdue/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: /Act now/ })).toBeVisible();
   await page
     .getByRole("button", { name: "Assign owner for Air conditioning fault" })
     .click();
@@ -2036,7 +2036,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await page.getByLabel("Queue assignee").selectOption("all");
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();
-  await expect(page.getByText("Cool Air Services")).toBeVisible();
+  await expect(page.getByText("Cool Air Services").first()).toBeVisible();
   await expect(
     page.getByText("Assigned to Temba van Jaarsveld").first(),
   ).toBeVisible();
@@ -2162,7 +2162,7 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
   await page.goto("/operations");
 
   await expect(
-    page.getByRole("heading", { name: "Operations", exact: true }),
+    page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Air conditioning fault")).toBeVisible();
   await expectTouchTarget(page.getByRole("tab", { name: /Queue/ }));

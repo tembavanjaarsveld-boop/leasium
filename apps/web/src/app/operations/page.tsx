@@ -45,7 +45,7 @@ import {
   EmptyState,
   Field,
   Input,
-  PageHeader,
+  PageTitle,
   SecondaryButton,
   SectionPanel,
   Select,
@@ -125,7 +125,6 @@ const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
 const WORK_ASSIGNMENT_KEY = "work_assignment";
 const WORK_ASSIGNMENT_TEMPLATE_KEY = "work_assignment_notification";
 const WORK_ASSIGNMENT_TEMPLATE_VERSION = "v1";
-const OPERATIONS_METRIC_LOADING_LABEL = "Checking";
 const OPERATIONS_QUEUE_EXPORT_GUARDRAIL =
   "Local-only review export: downloading this file does not send SendGrid or Twilio messages, send tenant, owner, or provider email, dispatch providers, refresh providers, mutate provider history, generate billing drafts, perform Xero/Basiq writes, apply payment reconciliation, or update maintenance, arrears, onboarding, or assignment records.";
 const ARREARS_REVIEW_PACKET_GUARDRAIL =
@@ -198,6 +197,40 @@ const escalationStatuses: ArrearsEscalationStatus[] = [
 ];
 
 type OperationsTab = (typeof tabs)[number]["id"];
+
+const workRanges = [
+  { id: "today", label: "Today" },
+  { id: "week", label: "This week" },
+  { id: "all", label: "All" },
+] as const;
+
+type WorkRange = (typeof workRanges)[number]["id"];
+
+const horizonWorkLanes = [
+  {
+    id: "act_now",
+    label: "Act now",
+    tone: "danger",
+    dotClassName: "bg-danger",
+    railClassName: "bg-danger",
+  },
+  {
+    id: "scheduled",
+    label: "Scheduled",
+    tone: "primary",
+    dotClassName: "bg-info",
+    railClassName: "bg-info",
+  },
+  {
+    id: "waiting",
+    label: "Waiting",
+    tone: "neutral",
+    dotClassName: "bg-leasium-slate-300",
+    railClassName: "bg-leasium-slate-300",
+  },
+] as const;
+
+type HorizonWorkLaneId = (typeof horizonWorkLanes)[number]["id"];
 
 type QueueItem =
   | {
@@ -598,8 +631,6 @@ const QUEUE_BUCKETS = [
 
 type QueueBucketId = (typeof QUEUE_BUCKETS)[number]["id"];
 
-const QUEUE_BUCKET_PREVIEW = 12;
-
 function queueBucketId(item: QueueItem): QueueBucketId {
   if (!item.dueDate) {
     return "no_date";
@@ -612,6 +643,31 @@ function queueBucketId(item: QueueItem): QueueBucketId {
     return "due_soon";
   }
   return "scheduled";
+}
+
+function horizonWorkLaneId(item: QueueItem): HorizonWorkLaneId {
+  const bucket = queueBucketId(item);
+  if (bucket === "no_date") {
+    return "waiting";
+  }
+  if (bucket === "overdue" || item.tone === "danger") {
+    return "act_now";
+  }
+  return "scheduled";
+}
+
+function workRangeMatches(item: QueueItem, range: WorkRange) {
+  if (range === "all") {
+    return true;
+  }
+  if (!item.dueDate) {
+    return true;
+  }
+  const rank = dueRank(item.dueDate);
+  if (range === "today") {
+    return rank <= 0;
+  }
+  return rank <= 7;
 }
 
 function queueBucketTone(id: QueueBucketId): StatusTone {
@@ -2344,12 +2400,7 @@ function buildQueueItems(
 function OperationsWorkspace() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
-  const [queueBucketCollapsed, setQueueBucketCollapsed] = useState<
-    Record<QueueBucketId, boolean>
-  >({ overdue: false, due_soon: false, scheduled: true, no_date: true });
-  const [queueBucketShowAll, setQueueBucketShowAll] = useState<
-    Record<QueueBucketId, boolean>
-  >({ overdue: false, due_soon: false, scheduled: false, no_date: false });
+  const [workRange, setWorkRange] = useState<WorkRange>("today");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [maintenanceStatus, setMaintenanceStatus] = useState<
     MaintenanceWorkOrderStatus | "all"
@@ -3124,11 +3175,13 @@ function OperationsWorkspace() {
   const filteredOpenQueueItems = openQueueItems.filter((item) =>
     matchesAssigneeFilter(item, assigneeFilter, currentUser?.id),
   );
-  const queueBuckets = QUEUE_BUCKETS.map((bucket) => ({
-    id: bucket.id,
-    label: bucket.label,
-    items: filteredOpenQueueItems.filter(
-      (item) => queueBucketId(item) === bucket.id,
+  const visibleWorkItems = filteredOpenQueueItems.filter((item) =>
+    workRangeMatches(item, workRange),
+  );
+  const horizonWorkLaneRows = horizonWorkLanes.map((lane) => ({
+    ...lane,
+    items: visibleWorkItems.filter(
+      (item) => horizonWorkLaneId(item) === lane.id,
     ),
   }));
   const readyNotificationItems = filteredOpenQueueItems
@@ -3165,7 +3218,7 @@ function OperationsWorkspace() {
     } satisfies Record<AssignmentNoticeGroup, number>,
   );
   const queueReviewCsv = () =>
-    operationsQueueReviewCsv(filteredOpenQueueItems);
+    operationsQueueReviewCsv(visibleWorkItems);
   const copyQueueCsv = async () => {
     await copyTextToClipboard(queueReviewCsv());
   };
@@ -3229,6 +3282,46 @@ function OperationsWorkspace() {
   const missingEvidenceComplianceChecks = openComplianceChecks.filter(
     (check) => complianceEvidenceCount(check) === 0,
   );
+  const teamWorkloadRows = [
+    currentUser
+      ? {
+          id: currentUser.id,
+          label: currentUser.display_name || currentUser.email,
+          count: myWorkCount,
+          detail: "You",
+        }
+      : null,
+    ...workloadRows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      count: row.count,
+      detail: row.role ? label(row.role) : null,
+    })),
+    {
+      id: "unassigned",
+      label: "Unassigned",
+      count: unassignedWorkCount,
+      detail: unassignedWorkCount ? "Needs owner" : "Clear",
+    },
+  ].filter(
+    (
+      row,
+    ): row is {
+      id: string;
+      label: string;
+      count: number;
+      detail: string | null;
+    } => Boolean(row),
+  );
+  const maxTeamWorkloadCount = Math.max(
+    1,
+    ...teamWorkloadRows.map((row) => row.count),
+  );
+  const currentComplianceCount =
+    openComplianceChecks.length - overdueComplianceChecks.length;
+  const nextComplianceCheck = [...openComplianceChecks]
+    .filter((check) => check.status === "active")
+    .sort((a, b) => dueRank(a.next_due_date) - dueRank(b.next_due_date))[0];
   const complianceObligations = obligations.filter(isComplianceObligation);
   const complianceIntakes = intakes.filter(isComplianceIntake);
   const inspectionWorkOrders = maintenance.filter(isInspectionWorkOrder);
@@ -3810,71 +3903,92 @@ function OperationsWorkspace() {
     );
   }
 
-  const renderQueueRow = (item: QueueItem) => (
-    <div
-      key={item.id}
-      className="grid gap-2 px-4 py-3 sm:gap-3 sm:py-4 xl:grid-cols-[minmax(18rem,1fr)_22rem_auto] xl:items-start"
-    >
-      <Link
-        href={item.href}
-        data-ops-row
-        className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+  const renderHorizonWorkCard = (
+    item: QueueItem,
+    lane: (typeof horizonWorkLanes)[number],
+  ) => {
+    const urgency = queueUrgencyChip(item);
+    const context = item.description.split(" - ").filter(Boolean);
+    const secondaryContext = context.slice(1, 3).join(" - ");
+
+    return (
+      <article
+        key={item.id}
+        className="relative overflow-hidden rounded-[12px] border border-leasium-card-border bg-white p-3 shadow-[0_1px_3px_rgba(16,24,40,0.04)]"
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-leasium-body-compact font-medium leading-5 text-foreground">
-            {item.title}
-          </span>
-          <StatusBadge tone={queueUrgencyChip(item).tone}>
-            {queueUrgencyChip(item).label}
-          </StatusBadge>
-          <span className="text-xs font-medium text-muted-foreground">
-            {queueKindLabel(item)}
-          </span>
-        </div>
-        <p className="mt-1 text-sm leading-5 text-muted-foreground">
-          {item.description}
-        </p>
-        {allMode ? (
-          <div className="mt-0.5 text-leasium-micro font-semibold uppercase text-muted-foreground">
-            {entityNameById.get(item.record.entity_id) ?? "Unknown entity"}
+        <span
+          className={cn("absolute inset-y-0 left-0 w-1", lane.railClassName)}
+          aria-hidden="true"
+        />
+        <Link
+          href={item.href}
+          data-ops-row
+          className="block min-w-0 rounded-md pl-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+        >
+          <div className="flex flex-wrap items-start gap-2">
+            <span className="min-w-0 flex-1 text-[13px] font-semibold leading-[18px] text-foreground">
+              {item.title}
+            </span>
+            <StatusBadge tone={urgency.tone} className="text-leasium-micro">
+              {urgency.label}
+            </StatusBadge>
           </div>
-        ) : null}
-      </Link>
-      {isAssignableQueueItem(item) ? (
-        <>
-          <div className="hidden w-full xl:block xl:w-[22rem]">
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {context[0] ?? item.description}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+              {queueKindLabel(item)}
+            </span>
+            {secondaryContext ? (
+              <span className="truncate text-xs text-muted-foreground">
+                {secondaryContext}
+              </span>
+            ) : null}
+            {allMode ? (
+              <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                {entityNameById.get(item.record.entity_id) ?? "Unknown entity"}
+              </span>
+            ) : null}
+          </div>
+        </Link>
+        {isAssignableQueueItem(item) ? (
+          <div className="mt-3 grid gap-2 pl-1">
             {renderQueueAssignmentControl(item, undefined, true)}
-          </div>
-          <MobileRowDisclosure
-            title="Work controls"
-            subtitle={queueMobileActionSummary(item)}
-            icon={<UserRound size={15} />}
-          >
-            {renderQueueAssignmentControl(
-              item,
-              `Work controls owner selector: ${item.title}`,
-            )}
-            <div className="grid gap-2">
+            <div className="hidden flex-wrap gap-2 xl:flex">
               {renderQueueActions(item, {
                 compactLabels: true,
               })}
             </div>
-          </MobileRowDisclosure>
-        </>
-      ) : null}
-      <div
-        className={cn(
-          "grid w-full gap-2 sm:w-auto sm:grid-flow-col xl:grid-flow-row xl:justify-items-stretch",
-          isAssignableQueueItem(item) && "hidden xl:grid",
+            <MobileRowDisclosure
+              title="Work controls"
+              subtitle={queueMobileActionSummary(item)}
+              icon={<UserRound size={15} />}
+            >
+              {renderQueueAssignmentControl(
+                item,
+                `Work controls owner selector: ${item.title}`,
+              )}
+              <div className="grid gap-2">
+                {renderQueueActions(item, {
+                  compactLabels: true,
+                })}
+              </div>
+            </MobileRowDisclosure>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap gap-2 pl-1">
+            {renderQueueActions(item, {
+              compactLabels: true,
+            })}
+          </div>
         )}
-      >
-        {renderQueueActions(item)}
-      </div>
-    </div>
-  );
+      </article>
+    );
+  };
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-leasium-canvas">
       <AppHeader>
         <EntityPicker
           entities={entitiesQuery.data}
@@ -3885,54 +3999,66 @@ function OperationsWorkspace() {
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
-        <PageHeader
-          title="Operations"
-          description="Maintenance, arrears, tenant follow-ups, critical dates, and document exceptions."
-          actions={
-            <div className="flex flex-wrap gap-2">
-              <SecondaryButton
-                type="button"
-                onClick={refresh}
-                disabled={!selectedEntityId}
-              >
-                <RefreshCw size={15} />
-                Refresh
-              </SecondaryButton>
-              <Button
-                type="button"
-                onClick={() => {
-                  setActiveTab("maintenance");
-                  setMaintenanceFormOpen((open) => !open);
-                }}
-                disabled={!scopedEntityId}
-                title={
-                  allMode
-                    ? "Select a single entity to create a work order"
-                    : undefined
-                }
-              >
-                <Plus size={15} />
-                Work order
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  setActiveTab("arrears");
-                  setArrearsFormOpen((open) => !open);
-                }}
-                disabled={!scopedEntityId}
-                title={
-                  allMode
-                    ? "Select a single entity to create an arrears case"
-                    : undefined
-                }
-              >
-                <Plus size={15} />
-                Arrears case
-              </Button>
+        <section className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <PageTitle>Work</PageTitle>
+            <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
+              Triage by urgency - clear the red lane and the day is done.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="Work range"
+              className="inline-flex min-h-11 rounded-full border border-leasium-card-border bg-white p-1 shadow-leasiumXs"
+            >
+              {workRanges.map((range) => {
+                const active = workRange === range.id;
+                return (
+                  <button
+                    key={range.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setWorkRange(range.id)}
+                    className={cn(
+                      "min-h-9 rounded-full px-3 text-sm font-semibold transition duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {range.label}
+                  </button>
+                );
+              })}
             </div>
-          }
-        />
+            <SecondaryButton
+              type="button"
+              onClick={refresh}
+              disabled={!selectedEntityId}
+              aria-label="Refresh work"
+            >
+              <RefreshCw size={15} />
+              Refresh
+            </SecondaryButton>
+            <Button
+              type="button"
+              onClick={() => {
+                setActiveTab("maintenance");
+                setMaintenanceFormOpen((open) => !open);
+              }}
+              disabled={!scopedEntityId}
+              title={
+                allMode
+                  ? "Select a single entity to create a work order"
+                  : undefined
+              }
+            >
+              <Plus size={15} />
+              New work
+            </Button>
+          </div>
+        </section>
 
         {error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
@@ -3981,61 +4107,8 @@ function OperationsWorkspace() {
 
         {selectedEntityId ? (
           <>
-            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <MetricCard
-                icon={<ClipboardList size={17} className="text-primary" />}
-                label="Open work"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : openQueueItems.length
-                }
-                description="Everything in the queue below."
-              />
-              <MetricCard
-                icon={<AlertTriangle size={17} className="text-primary" />}
-                label="Overdue"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : overdueWorkCount
-                }
-                description="Queue items past their due date."
-              />
-              <MetricCard
-                icon={<Clock3 size={17} className="text-primary" />}
-                label="Due soon"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : dueSoonWorkCount
-                }
-                description="Queue items due within 7 days."
-              />
-              <MetricCard
-                icon={<UserRound size={17} className="text-primary" />}
-                label="Unassigned"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : unassignedWorkCount
-                }
-                description="Open work without an owner yet."
-              />
-              <MetricCard
-                icon={<MailCheck size={17} className="text-primary" />}
-                label="Follow-up due"
-                value={
-                  operationsLoading
-                    ? OPERATIONS_METRIC_LOADING_LABEL
-                    : followUpDueCount
-                }
-                description="Assignment reminders due now."
-              />
-            </section>
-
             <div
-              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
+              className="grid gap-2 rounded-[12px] border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid-cols-4"
               role="tablist"
               aria-label="Operations sections"
             >
@@ -4049,9 +4122,9 @@ function OperationsWorkspace() {
                     aria-selected={isActive}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium",
+                      "grid min-h-14 gap-1 rounded-[10px] px-3 py-2 text-left transition duration-200 ease-leasium",
                       isActive
-                        ? "bg-primary text-primary-foreground shadow-leasiumXs"
+                        ? "bg-primary-soft text-primary-hover shadow-leasiumXs"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
@@ -4059,7 +4132,7 @@ function OperationsWorkspace() {
                     <span
                       className={cn(
                         "text-xs",
-                        isActive && "text-primary-foreground",
+                        isActive && "text-primary-hover",
                       )}
                     >
                       {tab.description}
@@ -4141,323 +4214,197 @@ function OperationsWorkspace() {
             </div>
 
             {activeTab === "queue" ? (
-              <SectionPanel
-                title="Operations queue"
-                description={selectedEntity?.name ?? "Current entity"}
-                icon={<ClipboardList size={17} className="text-primary" />}
-                actions={
-                  <ExportDigestMenu>
-                    <SecondaryButton
-                      type="button"
-                      className="min-h-11 w-full justify-start px-3"
-                      disabled={!selectedEntityId || operationsLoading}
-                      onClick={downloadQueueCsv}
-                    >
-                      <Download size={15} />
-                      Download queue CSV
-                    </SecondaryButton>
-                    <SecondaryButton
-                      type="button"
-                      className="min-h-11 w-full justify-start px-3"
-                      disabled={!selectedEntityId || operationsLoading}
-                      onClick={copyQueueCsv}
-                    >
-                      <Copy size={15} />
-                      Copy queue CSV
-                    </SecondaryButton>
-                    <SecondaryButton
-                      type="button"
-                      className="min-h-11 w-full justify-start px-3"
-                      disabled={
-                        assignmentPending ||
-                        allMode ||
-                        readyNotificationItems.length === 0
-                      }
-                      title={
-                        allMode
-                          ? "Select a single entity to send ready notices"
-                          : undefined
-                      }
-                      onClick={() =>
-                        sendReadyAssignmentNotificationsMutation.mutate(
-                          readyNotificationItems,
-                        )
-                      }
-                    >
-                      <Send size={15} />
-                      {sendReadyAssignmentNotificationsMutation.isPending
-                        ? "Sending…"
-                        : "Send ready notices"}
-                      <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">
-                        {readyNotificationItems.length}
+              <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="grid min-w-0 gap-3">
+                  <div className="rounded-[12px] border border-leasium-card-border bg-white p-3 shadow-leasiumXs">
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-muted px-3 text-xs font-semibold text-slate">
+                        <UserRound size={14} className="text-primary" />
+                        Team workload
                       </span>
-                    </SecondaryButton>
-                    <Select
-                      aria-label="Digest cadence"
-                      value={digestCadence}
-                      onChange={(event) =>
-                        setDigestCadence(
-                          event.target.value as WorkAssignmentDigestCadence,
-                        )
-                      }
-                      className="w-full"
-                    >
-                      <option value="daily">Daily digest</option>
-                      <option value="weekly">Weekly digest</option>
-                    </Select>
-                    <SecondaryButton
-                      type="button"
-                      className="min-h-11 w-full justify-start px-3"
-                      disabled={
-                        !scopedEntityId ||
-                        workAssignmentDigestMutation.isPending
-                      }
-                      title={
-                        allMode
-                          ? "Select a single entity to generate a digest"
-                          : undefined
-                      }
-                      onClick={() => workAssignmentDigestMutation.mutate(false)}
-                    >
-                      {workAssignmentDigestMutation.isPending ? (
-                        <RefreshCw size={15} className="animate-spin" />
-                      ) : (
-                        <ReceiptText size={15} />
-                      )}
-                      Generate digest
-                    </SecondaryButton>
-                    <SecondaryButton
-                      type="button"
-                      className="min-h-11 w-full justify-start px-3"
-                      disabled={
-                        !scopedEntityId ||
-                        workAssignmentDigestMutation.isPending
-                      }
-                      title={
-                        allMode
-                          ? "Select a single entity to send a digest"
-                          : undefined
-                      }
-                      onClick={() => workAssignmentDigestMutation.mutate(true)}
-                    >
-                      <Send size={15} />
-                      Send digest
-                    </SecondaryButton>
-                  </ExportDigestMenu>
-                }
-              >
-                <div className="border-b border-border bg-muted/30 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
-                      <UserRound size={14} className="text-primary" />
-                      Team workload
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Show all open work, ${openQueueItems.length}`}
-                      onClick={() => setAssigneeFilter("all")}
-                      className={cn(
-                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
-                        assigneeFilter === "all"
-                          ? "border-primary/30 bg-primary-soft text-primary-hover"
-                          : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      Open
-                      <span className="text-foreground">
-                        {openQueueItems.length}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Show unowned work, ${unassignedWorkCount}`}
-                      onClick={() => setAssigneeFilter("unassigned")}
-                      className={cn(
-                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
-                        assigneeFilter === "unassigned"
-                          ? "border-primary/30 bg-primary-soft text-primary-hover"
-                          : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      Unassigned
-                      <span className="text-foreground">
-                        {unassignedWorkCount}
-                      </span>
-                    </button>
-                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
-                      Assigned
-                      <span className="text-foreground">
-                        {assignedWorkCount}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Show assignment follow-ups, ${followUpDueCount}`}
-                      onClick={() => setAssigneeFilter("follow_up")}
-                      className={cn(
-                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
-                        assigneeFilter === "follow_up"
-                          ? "border-primary/30 bg-primary-soft text-primary-hover"
-                          : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      Follow-up due
-                      <span className="text-foreground">
-                        {followUpDueCount}
-                      </span>
-                    </button>
-                    {currentUser ? (
                       <button
                         type="button"
-                        aria-label={`Show my work, ${myWorkCount}`}
-                        onClick={() => setAssigneeFilter("me")}
+                        aria-label={`Show all open work, ${openQueueItems.length}`}
+                        onClick={() => setAssigneeFilter("all")}
                         className={cn(
                           "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
-                          assigneeFilter === "me"
+                          assigneeFilter === "all"
                             ? "border-primary/30 bg-primary-soft text-primary-hover"
                             : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                         )}
                       >
-                        My work
-                        <span className="text-foreground">{myWorkCount}</span>
+                        Open
+                        <span className="text-foreground">
+                          {openQueueItems.length}
+                        </span>
                       </button>
-                    ) : null}
-                    {workloadRows.map((row) => {
-                      const filter = memberAssigneeFilter(row.id);
-                      const active = assigneeFilter === filter;
-                      return (
+                      <button
+                        type="button"
+                        aria-label={`Show unowned work, ${unassignedWorkCount}`}
+                        onClick={() => setAssigneeFilter("unassigned")}
+                        className={cn(
+                          "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                          assigneeFilter === "unassigned"
+                            ? "border-primary/30 bg-primary-soft text-primary-hover"
+                            : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        Unassigned
+                        <span className="text-foreground">
+                          {unassignedWorkCount}
+                        </span>
+                      </button>
+                      <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                        Assigned
+                        <span className="text-foreground">
+                          {assignedWorkCount}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Show assignment follow-ups, ${followUpDueCount}`}
+                        onClick={() => setAssigneeFilter("follow_up")}
+                        className={cn(
+                          "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                          assigneeFilter === "follow_up"
+                            ? "border-primary/30 bg-primary-soft text-primary-hover"
+                            : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        Follow-up due
+                        <span className="text-foreground">
+                          {followUpDueCount}
+                        </span>
+                      </button>
+                      {currentUser ? (
                         <button
-                          key={row.id}
                           type="button"
-                          aria-label={`Show ${row.label} work, ${row.count}`}
-                          onClick={() => setAssigneeFilter(filter)}
+                          aria-label={`Show my work, ${myWorkCount}`}
+                          onClick={() => setAssigneeFilter("me")}
                           className={cn(
-                            "inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
-                            active
+                            "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                            assigneeFilter === "me"
                               ? "border-primary/30 bg-primary-soft text-primary-hover"
                               : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
-                          title={`${row.label}${row.role ? ` - ${label(row.role)}` : ""}`}
                         >
-                          <span className="max-w-36 truncate">
-                            {row.id === currentUser?.id
-                              ? `${row.label} (me)`
-                              : row.label}
-                          </span>
-                          <span className="text-foreground">{row.count}</span>
-                          {row.urgentCount ? (
-                            <span className="text-danger-strong">
-                              {row.urgentCount} urgent
-                            </span>
-                          ) : null}
-                          {row.followUpCount ? (
-                            <span className="text-warning-strong">
-                              {row.followUpCount} follow-up
-                            </span>
-                          ) : null}
+                          My work
+                          <span className="text-foreground">{myWorkCount}</span>
                         </button>
-                      );
-                    })}
-                    <Select
-                      aria-label="Queue assignee"
-                      value={assigneeFilter}
-                      onChange={(event) =>
-                        setAssigneeFilter(event.target.value as AssigneeFilter)
-                      }
-                      className="w-full sm:ml-auto sm:w-52"
-                    >
-                      <option value="all">All open work</option>
-                      <option value="unassigned">Unassigned</option>
-                      <option value="follow_up">Follow-up due</option>
-                      {currentUser ? <option value="me">My work</option> : null}
-                      {assignableMembers.map((member) => (
-                        <option
-                          key={member.id}
-                          value={memberAssigneeFilter(member.id)}
-                        >
-                          {memberLabel(member)}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  {noticeInboxItems.length > 0 ? (
-                    <AssignmentNoticeInbox
-                      items={noticeInboxItems.slice(0, 4)}
-                      counts={noticeInboxCounts}
-                    />
-                  ) : null}
-                  {digestResult ? (
-                    <AssignmentDigestPreview result={digestResult} />
-                  ) : null}
-                </div>
-                <div onKeyDown={handleQueueKeyDown}>
-                  {queueBuckets.map((bucket) => {
-                    if (bucket.items.length === 0) {
-                      return null;
-                    }
-                    const collapsed = queueBucketCollapsed[bucket.id];
-                    const showAll = queueBucketShowAll[bucket.id];
-                    const visibleItems = showAll
-                      ? bucket.items
-                      : bucket.items.slice(0, QUEUE_BUCKET_PREVIEW);
-                    return (
-                      <div
-                        key={bucket.id}
-                        className="border-b border-border last:border-b-0"
-                      >
-                        <button
-                          type="button"
-                          aria-expanded={!collapsed}
-                          onClick={() =>
-                            setQueueBucketCollapsed((prev) => ({
-                              ...prev,
-                              [bucket.id]: !prev[bucket.id],
-                            }))
-                          }
-                          className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-3 text-left transition duration-200 ease-leasium hover:bg-muted/40"
-                        >
-                          <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                            <ChevronDown
-                              size={16}
-                              className={cn(
-                                "text-muted-foreground transition duration-200 ease-leasium",
-                                collapsed && "-rotate-90",
-                              )}
-                            />
-                            {bucket.label}
-                            <StatusBadge tone={queueBucketTone(bucket.id)}>
-                              {bucket.items.length}
-                            </StatusBadge>
-                          </span>
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {collapsed ? "Show" : "Hide"}
-                          </span>
-                        </button>
-                        {!collapsed ? (
-                          <div className="divide-y divide-border border-t border-border">
-                            {visibleItems.map((item) => renderQueueRow(item))}
-                            {bucket.items.length > QUEUE_BUCKET_PREVIEW ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setQueueBucketShowAll((prev) => ({
-                                    ...prev,
-                                    [bucket.id]: !prev[bucket.id],
-                                  }))
-                                }
-                                className="flex min-h-11 w-full items-center justify-center px-4 py-3 text-sm font-semibold text-primary transition duration-200 ease-leasium hover:bg-muted/40"
-                              >
-                                {showAll
-                                  ? "Show fewer"
-                                  : `Show all ${bucket.items.length}`}
-                              </button>
+                      ) : null}
+                      {workloadRows.map((row) => {
+                        const filter = memberAssigneeFilter(row.id);
+                        const active = assigneeFilter === filter;
+                        return (
+                          <button
+                            key={row.id}
+                            type="button"
+                            aria-label={`Show ${row.label} work, ${row.count}`}
+                            onClick={() => setAssigneeFilter(filter)}
+                            className={cn(
+                              "inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border px-3 text-xs font-semibold transition duration-200 ease-leasium",
+                              active
+                                ? "border-primary/30 bg-primary-soft text-primary-hover"
+                                : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                            )}
+                            title={`${row.label}${row.role ? ` - ${label(row.role)}` : ""}`}
+                          >
+                            <span className="max-w-36 truncate">
+                              {row.id === currentUser?.id
+                                ? `${row.label} (me)`
+                                : row.label}
+                            </span>
+                            <span className="text-foreground">{row.count}</span>
+                            {row.urgentCount ? (
+                              <span className="text-danger-strong">
+                                {row.urgentCount} urgent
+                              </span>
                             ) : null}
-                          </div>
+                            {row.followUpCount ? (
+                              <span className="text-warning-strong">
+                                {row.followUpCount} follow-up
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                      <Select
+                        aria-label="Queue assignee"
+                        value={assigneeFilter}
+                        onChange={(event) =>
+                          setAssigneeFilter(
+                            event.target.value as AssigneeFilter,
+                          )
+                        }
+                        className="w-full sm:ml-auto sm:w-52"
+                      >
+                        <option value="all">All open work</option>
+                        <option value="unassigned">Unassigned</option>
+                        <option value="follow_up">Follow-up due</option>
+                        {currentUser ? (
+                          <option value="me">My work</option>
                         ) : null}
-                      </div>
-                    );
-                  })}
-                  {!operationsLoading && filteredOpenQueueItems.length === 0 ? (
+                        {assignableMembers.map((member) => (
+                          <option
+                            key={member.id}
+                            value={memberAssigneeFilter(member.id)}
+                          >
+                            {memberLabel(member)}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    {noticeInboxItems.length > 0 ? (
+                      <AssignmentNoticeInbox
+                        items={noticeInboxItems.slice(0, 4)}
+                        counts={noticeInboxCounts}
+                      />
+                    ) : null}
+                  </div>
+
+                  <div
+                    className="grid gap-3 lg:grid-cols-3"
+                    onKeyDown={handleQueueKeyDown}
+                  >
+                    {horizonWorkLaneRows.map((lane) => (
+                      <section
+                        key={lane.id}
+                        role="region"
+                        aria-label={`${lane.label} ${lane.items.length}`}
+                        className="grid content-start gap-2 rounded-[12px] bg-muted p-2.5"
+                      >
+                        <header className="flex min-h-9 items-center justify-between gap-3 px-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "size-2 rounded-full",
+                                lane.dotClassName,
+                              )}
+                              aria-hidden="true"
+                            />
+                            <h2 className="text-[13px] font-semibold leading-5 text-foreground">
+                              {lane.label}
+                            </h2>
+                          </div>
+                          <StatusBadge tone={lane.tone}>
+                            {lane.items.length}
+                          </StatusBadge>
+                        </header>
+                        <div className="grid gap-2">
+                          {lane.items.map((item) =>
+                            renderHorizonWorkCard(item, lane),
+                          )}
+                          {!operationsLoading && lane.items.length === 0 ? (
+                            <div className="rounded-[12px] border border-dashed border-border bg-white/70 p-3 text-xs text-muted-foreground">
+                              No {lane.label.toLowerCase()} work in this view.
+                            </div>
+                          ) : null}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+
+                  {!operationsLoading && visibleWorkItems.length === 0 ? (
                     <EmptyState
                       title={
                         assigneeFilter === "all"
@@ -4509,8 +4456,240 @@ function OperationsWorkspace() {
                       }
                     />
                   ) : null}
+                  {digestResult ? (
+                    <AssignmentDigestPreview result={digestResult} />
+                  ) : null}
                 </div>
-              </SectionPanel>
+
+                <aside className="grid content-start gap-3">
+                  <section className="rounded-[12px] border border-leasium-card-border bg-white p-4 shadow-leasiumXs">
+                    <h2 className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      TEAM WORKLOAD
+                    </h2>
+                    <div className="mt-3 grid gap-3">
+                      {teamWorkloadRows.map((row) => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => {
+                            if (row.id === "unassigned") {
+                              setAssigneeFilter("unassigned");
+                            } else if (row.id === currentUser?.id) {
+                              setAssigneeFilter("me");
+                            } else {
+                              setAssigneeFilter(memberAssigneeFilter(row.id));
+                            }
+                          }}
+                          className="grid min-h-11 gap-1 text-left"
+                        >
+                          <span className="flex items-center justify-between gap-3 text-xs font-semibold text-foreground">
+                            <span className="truncate">{row.label}</span>
+                            <span>{row.count}</span>
+                          </span>
+                          <span className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <span
+                              className="block h-full rounded-full bg-primary"
+                              style={{
+                                width: `${Math.max(
+                                  8,
+                                  (row.count / maxTeamWorkloadCount) * 100,
+                                )}%`,
+                              }}
+                            />
+                          </span>
+                          {row.detail ? (
+                            <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                              {row.detail}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[12px] border border-leasium-card-border bg-white p-4 shadow-leasiumXs">
+                    <h2 className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      COMPLIANCE
+                    </h2>
+                    <div className="mt-3 flex items-center gap-4">
+                      <div
+                        className="grid size-20 shrink-0 place-items-center rounded-full"
+                        style={{
+                          background: `conic-gradient(var(--leasium-success) ${
+                            openComplianceChecks.length
+                              ? (currentComplianceCount /
+                                  openComplianceChecks.length) *
+                                100
+                              : 100
+                          }%, var(--leasium-slate-100) 0)`,
+                        }}
+                      >
+                        <div className="grid size-14 place-items-center rounded-full bg-white text-center">
+                          <span className="text-sm font-semibold text-foreground">
+                            {currentComplianceCount}/{openComplianceChecks.length}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-foreground">
+                          {currentComplianceCount} of{" "}
+                          {openComplianceChecks.length} current
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {nextComplianceCheck
+                            ? `${nextComplianceCheck.title} due ${formatDate(
+                                nextComplianceCheck.next_due_date,
+                              )}`
+                            : "No active compliance checks."}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[12px] border border-leasium-card-border bg-white p-4 shadow-leasiumXs">
+                    <h2 className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      EVENING DIGEST
+                    </h2>
+                    <p className="mt-2 text-sm leading-5 text-muted-foreground">
+                      Daily summary drafts at 5pm - you approve before anything
+                      sends.
+                    </p>
+                    <div className="mt-3 grid gap-2">
+                      <Button
+                        type="button"
+                        className="w-full justify-start px-3"
+                        disabled={
+                          !scopedEntityId ||
+                          workAssignmentDigestMutation.isPending
+                        }
+                        title={
+                          allMode
+                            ? "Select a single entity to generate a digest"
+                            : undefined
+                        }
+                        onClick={() =>
+                          workAssignmentDigestMutation.mutate(false)
+                        }
+                      >
+                        {workAssignmentDigestMutation.isPending ? (
+                          <RefreshCw size={15} className="animate-spin" />
+                        ) : (
+                          <ReceiptText size={15} />
+                        )}
+                        Preview digest
+                      </Button>
+                      <ExportDigestMenu>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 w-full justify-start px-3"
+                          disabled={!selectedEntityId || operationsLoading}
+                          onClick={downloadQueueCsv}
+                        >
+                          <Download size={15} />
+                          Download queue CSV
+                        </SecondaryButton>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 w-full justify-start px-3"
+                          disabled={!selectedEntityId || operationsLoading}
+                          onClick={copyQueueCsv}
+                        >
+                          <Copy size={15} />
+                          Copy queue CSV
+                        </SecondaryButton>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 w-full justify-start px-3"
+                          disabled={
+                            assignmentPending ||
+                            allMode ||
+                            readyNotificationItems.length === 0
+                          }
+                          title={
+                            allMode
+                              ? "Select a single entity to send ready notices"
+                              : undefined
+                          }
+                          onClick={() =>
+                            sendReadyAssignmentNotificationsMutation.mutate(
+                              readyNotificationItems,
+                            )
+                          }
+                        >
+                          <Send size={15} />
+                          {sendReadyAssignmentNotificationsMutation.isPending
+                            ? "Sending..."
+                            : "Send ready notices"}
+                          <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">
+                            {readyNotificationItems.length}
+                          </span>
+                        </SecondaryButton>
+                        <Select
+                          aria-label="Digest cadence"
+                          value={digestCadence}
+                          onChange={(event) =>
+                            setDigestCadence(
+                              event.target
+                                .value as WorkAssignmentDigestCadence,
+                            )
+                          }
+                          className="w-full"
+                        >
+                          <option value="daily">Daily digest</option>
+                          <option value="weekly">Weekly digest</option>
+                        </Select>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 w-full justify-start px-3"
+                          disabled={
+                            !scopedEntityId ||
+                            workAssignmentDigestMutation.isPending
+                          }
+                          title={
+                            allMode
+                              ? "Select a single entity to generate a digest"
+                              : undefined
+                          }
+                          onClick={() =>
+                            workAssignmentDigestMutation.mutate(false)
+                          }
+                        >
+                          {workAssignmentDigestMutation.isPending ? (
+                            <RefreshCw size={15} className="animate-spin" />
+                          ) : (
+                            <ReceiptText size={15} />
+                          )}
+                          Generate digest
+                        </SecondaryButton>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 w-full justify-start px-3"
+                          disabled={
+                            !scopedEntityId ||
+                            workAssignmentDigestMutation.isPending
+                          }
+                          title={
+                            allMode
+                              ? "Select a single entity to send a digest"
+                              : undefined
+                          }
+                          onClick={() =>
+                            workAssignmentDigestMutation.mutate(true)
+                          }
+                        >
+                          <Send size={15} />
+                          Send digest
+                        </SecondaryButton>
+                      </ExportDigestMenu>
+                    </div>
+                  </section>
+
+                  <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-accent/30 bg-accent-soft px-3 text-xs font-semibold text-leasium-teal-strong">
+                    <ShieldCheck size={14} />
+                    Provider sends are review-first.
+                  </div>
+                </aside>
+              </section>
             ) : null}
 
             {activeTab === "compliance" ? (
@@ -6884,31 +7063,6 @@ function AssignmentDigestPreview({
           </div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function MetricCard({
-  icon,
-  label: metricLabel,
-  value,
-  description,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string | number;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-muted-foreground">
-          {metricLabel}
-        </span>
-        {icon}
-      </div>
-      <div className="mt-3 text-3xl font-semibold">{value}</div>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
