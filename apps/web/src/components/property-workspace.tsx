@@ -97,6 +97,7 @@ import {
   EnrichmentSuggestion,
   ApiError,
   getProperty,
+  getSecurityWorkspace,
   getLeaseIntake,
   getInsightsOverview,
   InsightsOverviewRecord,
@@ -3015,7 +3016,21 @@ function Workspace({
   const [createEntityChoice, setCreateEntityChoice] = useState<string>("");
   const [newEntityName, setNewEntityName] = useState("");
   const [newEntityType, setNewEntityType] = useState<EntityType | "">("");
-  const organisationId = entitiesQuery.data?.[0]?.organisation_id;
+  const hasNoEntities =
+    entitiesQuery.isSuccess && (entitiesQuery.data?.length ?? 0) === 0;
+  // Brand-new organisations have no entities yet, so the entity list cannot
+  // supply an organisation id. Fall back to the shared security-workspace
+  // cache so the inline "create new entity" path still works (the New
+  // property flow is the only way to create the first entity).
+  const workspaceQuery = useQuery({
+    queryKey: ["security-workspace"],
+    queryFn: getSecurityWorkspace,
+    staleTime: 300_000,
+    enabled: hasNoEntities,
+  });
+  const organisationId =
+    entitiesQuery.data?.[0]?.organisation_id ??
+    workspaceQuery.data?.organisation.id;
   const ownershipStructure = form.watch("ownership_structure");
   const showOwnershipFields = ownershipStructure !== "current_entity";
 
@@ -3744,7 +3759,7 @@ function Workspace({
     setEditing(null);
     setBillingProfileOpen(false);
     form.reset(defaultPropertyFormValues);
-    setCreateEntityChoice(selectedEntityId);
+    setCreateEntityChoice(hasNoEntities ? NEW_ENTITY_VALUE : selectedEntityId);
     setNewEntityName("");
     setNewEntityType("");
     setPropertyEditorOpen(true);
@@ -4144,7 +4159,7 @@ function Workspace({
               <Button
                 type="button"
                 onClick={startPropertyCreate}
-                disabled={!selectedEntityId || isAllEntities}
+                disabled={(!selectedEntityId && !hasNoEntities) || isAllEntities}
                 title={
                   isAllEntities
                     ? "Select a single entity to add a property"
