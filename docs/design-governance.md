@@ -27,6 +27,30 @@ the live app and the Codex design source of truth:
   as Dashboard · Mobile and Work · Mobile at 390×844, with bottom-nav and
   mobile top-bar components on 02 Components.
 
+**Horizon design language — APPROVED 2026-06-10.** The Horizon uplift (focus-first
+hero action, bento metrics with data shapes, ⌘K command bar, severity rails, trust
+ribbon, mobile centre Smart-Intake capture button) was approved by Temba and is now
+the core design. It has been promoted into the canonical pages:
+
+- **01 Foundations** carries the Horizon additions: Canvas `#F7F9FC`, Card border
+  `#E7EBF0`, Hero wash gradient `#EAF0FF→#E8FAF7`, FAB gradient `#245BFF→#1EBEAB`,
+  severity-rail spec (3px: red/amber/blue/slate), bento layout rules (equal-height
+  rows, 14px gutters, radius 18/20), one-primary-CTA rule, trust-ribbon placement.
+- **02 Components** has the approved Horizon components: Sidebar 44:117, Command bar
+  44:155, Hero focus card 44:179, Bento metric card 44:193, Work card 44:238, Trust
+  ribbon 44:274, Segmented control 44:282, Bottom nav mobile 44:301.
+- **03 Screens** now shows the approved target design for Dashboard 45:2, Work
+  45:168, Dashboard·Mobile 45:371, Work·Mobile 45:461. Properties, Smart Intake,
+  Settings, Notifications remain as-built and adopt Horizon when next touched.
+- **04 Concept — Horizon** is kept as the design archive with the rationale card.
+
+**Dev tools and AI agents must treat the Figma file as the design source for core
+surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
+pull the target design from Figma (file key `PO2jOANgmqgZHfqWZXOZGU`, node IDs above)
+via the Figma MCP (`get_design_context` / `get_screenshot`) rather than inferring
+style from existing code. The Codex design source of truth doc remains the token
+source of record; Figma 01 Foundations mirrors it plus the Horizon additions.
+
 Workflow: new design-facing slices get a frame in this file first (duplicate
 the nearest screen, modify, then implement). Figma frame review can stand in
 for the pre-implementation half of the Remba gate; code review of the shipped

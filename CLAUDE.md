@@ -230,6 +230,26 @@ another read-only queue. Keep Smart Intake, comms candidates, and document
 evidence linking compatible, but do not change their shipped behavior unless the
 slice explicitly requires it.
 
+### 2.12 Figma is the design source for core surfaces
+
+Design starts in Figma, and the approved design lives there. Canonical file:
+**"Leasium — Design Source of Truth"**, file key `PO2jOANgmqgZHfqWZXOZGU`.
+
+- Pages: `01 Foundations` (tokens incl. Horizon additions), `02 Components`
+  (incl. `Leasium/Horizon/*` approved components), `03 Screens` (the target
+  design — Dashboard/Work desktop + mobile are the approved Horizon design;
+  other screens are as-built captures), `04 Concept — Horizon` (archive +
+  rationale).
+- When implementing design-facing work on a surface that exists in `03
+  Screens`, pull the target design from Figma via the Figma MCP
+  (`get_design_context`, `get_screenshot`) instead of inferring style from
+  existing code. Key node IDs are listed in
+  `docs/design-governance.md` §Figma-First Design Stage.
+- New design-facing slices: add/duplicate a frame in Figma first, get Temba's
+  sign-off there, then implement against it.
+- `docs/leasium-codex-design-source-of-truth.md` stays the token source of
+  record; keep it and Figma `01 Foundations` in sync when tokens change.
+
 ---
 
 ## How these two sections interact
