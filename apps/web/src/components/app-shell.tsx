@@ -355,7 +355,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-function OperatorUserControl() {
+function OperatorUserControl({ fallbackInitials }: { fallbackInitials: string }) {
   const { isLoaded, isSignedIn } = useUser();
 
   if (isLoaded && isSignedIn) {
@@ -363,13 +363,9 @@ function OperatorUserControl() {
   }
 
   return (
-    <Link
-      {...shellLinkProps}
-      href="/sign-in"
-      className="inline-flex h-11 items-center rounded-lg px-3 text-sm font-semibold text-slate transition duration-200 ease-leasium hover:bg-muted"
-    >
-      Sign in
-    </Link>
+    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-leasium-teal text-[11px] font-bold text-leasium-navy-900">
+      {fallbackInitials}
+    </span>
   );
 }
 
@@ -384,8 +380,10 @@ function initialsForName(name: string) {
 }
 
 function HorizonOperatorCard({
+  clerkConfigured,
   currentOperator,
 }: {
+  clerkConfigured: boolean;
   currentOperator?: SecurityMeRecord | null;
 }) {
   const operatorName =
@@ -419,9 +417,15 @@ function HorizonOperatorCard({
       data-testid="horizon-sidebar-user"
       className="flex min-h-12 w-full items-center gap-2 overflow-hidden rounded-xl bg-white/[0.06] px-3 py-2 text-white"
     >
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-leasium-teal text-[11px] font-bold text-leasium-navy-900">
-        {initialsForName(operatorName)}
-      </span>
+      {clerkConfigured ? (
+        <span className="-ml-2 grid h-11 w-11 shrink-0 place-items-center">
+          <OperatorUserControl fallbackInitials={initialsForName(operatorName)} />
+        </span>
+      ) : (
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-leasium-teal text-[11px] font-bold text-leasium-navy-900">
+          {initialsForName(operatorName)}
+        </span>
+      )}
       <span className="min-w-0">
         <span className="block truncate text-[13px] font-semibold leading-4">
           {operatorName}
@@ -834,21 +838,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         {sidebarUtilityNavItems.map(renderSidebarLink)}
       </nav>
       <div className="px-3 pb-4 pt-2 text-xs text-leasium-slate-300">
-        <button
-          type="button"
-          onClick={() => {
-            setCheatsheetOpen(true);
-            setMobileNavOpen(false);
-          }}
-          title="Keyboard shortcuts"
-          className="mb-2 flex min-h-11 w-full items-center justify-between rounded-[10px] px-3 transition duration-200 ease-leasium hover:bg-white/[0.06] hover:text-white"
-        >
-          <span>Keyboard shortcuts</span>
-          <kbd className="rounded border border-white/10 px-1 py-0.5 text-leasium-micro font-medium">
-            ?
-          </kbd>
-        </button>
-        <HorizonOperatorCard currentOperator={currentOperatorQuery.data} />
+        <HorizonOperatorCard
+          clerkConfigured={clerkConfigured}
+          currentOperator={currentOperatorQuery.data}
+        />
       </div>
     </>
   );
@@ -1021,15 +1014,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             >
               <Search size={15} />
             </button>
-            <button
-              type="button"
-              onClick={() => setCheatsheetOpen(true)}
-              aria-label="Show keyboard shortcuts"
-              title="Keyboard shortcuts (?)"
-              className={cn("hidden sm:inline-flex", headerUtilityButtonClass)}
-            >
-              <Keyboard size={15} />
-            </button>
             <Link
               {...shellLinkProps}
               href="/notifications"
@@ -1044,11 +1028,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               <Bell size={15} />
             </Link>
             <AppearanceToggle />
-            {clerkConfigured ? (
-              <div className="flex h-11 shrink-0 items-center pl-1">
-                <OperatorUserControl />
-              </div>
-            ) : null}
           </div>
         </div>
         {shortcutPending ? (

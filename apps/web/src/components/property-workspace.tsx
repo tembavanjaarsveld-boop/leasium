@@ -20,7 +20,6 @@ import {
   ExternalLink,
   FileText,
   ImageIcon,
-  Layers,
   LayoutGrid,
   Link2,
   Loader2,
@@ -2190,14 +2189,6 @@ function Workspace({
       ),
     [entitiesQuery.data],
   );
-  // Remember the last single entity so toggling "All entities" off returns the
-  // operator to where they were rather than the first entity in the list.
-  const lastRealEntityIdRef = useRef<string>("");
-  useEffect(() => {
-    if (selectedEntityId && !isAllEntities) {
-      lastRealEntityIdRef.current = selectedEntityId;
-    }
-  }, [selectedEntityId, isAllEntities]);
   const allPropertiesQueries = useQueries({
     queries: isAllEntities
       ? allEntityIds.map((entityId) => ({
@@ -3634,19 +3625,6 @@ function Workspace({
     },
   });
 
-  function toggleAllEntities() {
-    if (isAllEntities) {
-      const back =
-        lastRealEntityIdRef.current || entitiesQuery.data?.[0]?.id || "";
-      setSelectedEntityId(back);
-    } else {
-      if (ownerTagFilter) {
-        clearOwnerTagFilter();
-      }
-      setSelectedEntityId(ALL_ENTITIES_VALUE);
-    }
-  }
-
   function selectProperty(
     propertyId: string,
     options: { openDetail?: boolean } = {},
@@ -4146,23 +4124,6 @@ function Workspace({
               </option>
             ))}
           </Select>
-          {(entitiesQuery.data?.length ?? 0) > 1 ? (
-            <button
-              type="button"
-              aria-pressed={isAllEntities}
-              onClick={toggleAllEntities}
-              title="Show properties across every entity"
-              className={cn(
-                "inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-sm font-medium transition",
-                isAllEntities
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-white text-muted-foreground hover:bg-muted",
-              )}
-            >
-              <Layers size={15} />
-              All entities
-            </button>
-          ) : null}
         </div>
       </AppHeader>
 

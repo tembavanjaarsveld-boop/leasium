@@ -125,14 +125,18 @@ test("sidebar consolidates to seven hubs plus Settings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
 });
 
-test("desktop sidebar keyboard shortcut control stays touch-safe", async ({
+test("desktop sidebar account card stays touch-safe without shortcut chrome", async ({
   page,
 }) => {
   await page.goto("/");
 
-  await expectTouchTarget(
-    page.getByRole("button", { name: "Keyboard shortcuts ?" }),
-  );
+  const sidebar = page.getByRole("complementary", {
+    name: "Primary navigation",
+  });
+  await expect(
+    sidebar.getByRole("button", { name: "Keyboard shortcuts ?" }),
+  ).toHaveCount(0);
+  await expectTouchTarget(sidebar.getByTestId("horizon-sidebar-user"));
 });
 
 test("operator shell muted text and urgent badges keep readable contrast", async ({
@@ -142,7 +146,7 @@ test("operator shell muted text and urgent badges keep readable contrast", async
 
   const primaryNav = page.getByRole("navigation", { name: "Primary" });
   await expectContrast(
-    page.getByRole("button", { name: "Keyboard shortcuts ?" }),
+    page.getByTestId("horizon-sidebar-user").getByText("Owner Operator"),
   );
 
   const workLink = primaryNav.getByRole("link", {

@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon shell polish v1:** tightened the shared operator
+  shell after Temba review. The entity switcher now keeps `All entities` as a
+  dropdown option only (no separate visible toggle), the sidebar footer removes
+  the visible keyboard-shortcuts row while `?` / Cmd-K shortcuts still work, and
+  the Clerk/account control now lives in the bottom-left operator card instead
+  of the top utility bar. The top utility bar is reduced to command/search,
+  notifications, and appearance. Frontend shell-only: no API shape, provider
+  send, email/SMS, Xero/Basiq, payment, reconciliation, or workflow mutation
+  path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon Smart Intake desktop v1:** implemented the approved
   Figma Smart Intake target (`PO2jOANgmqgZHfqWZXOZGU`, node `55:166`) as the
   `/intake` landing/workspace. The page now opens with the Horizon header, hero
@@ -43,10 +52,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   Sidebar and mobile Bottom nav components from Figma (`PO2jOANgmqgZHfqWZXOZGU`,
   nodes `44:117` and `44:301`) in the shared operator shell. Desktop now uses
   the 232px dark Horizon rail with the entity switcher card, teal active rail,
-  seven primary hubs plus Settings, keyboard shortcut affordance, and operator
+  seven primary hubs plus Settings, and bottom-left operator
   card/sign-in fallback; mobile now uses Home / Properties / Smart Intake FAB /
   Work / Money with the full drawer still available. The top utility bar keeps
-  search, shortcuts, notifications, and appearance only. Frontend shell-only:
+  command/search, notifications, and appearance only. Frontend shell-only:
   no API shape, provider send, Xero/Basiq, payment, reconciliation, or workflow
   mutation path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon Work desktop v1:** implemented the approved Figma Work
@@ -109,8 +118,8 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 - [~] **2026-06-10 "All entities" shared foundation + People/Tenants:** extracted
   shared entity-selection plumbing — `apps/web/src/lib/entity-selection.ts`
   (`ALL_ENTITIES_VALUE` sentinel, `isAllEntities`/`scopeEntityId`, shared storage
-  key + change event), a reusable `EntityPicker` (dropdown + always-visible "All
-  entities" toggle that returns to the prior single entity), and a
+  key + change event), a reusable `EntityPicker` (dropdown-only `All entities`
+  option when multiple entities are available), and a
   `useEntityFanOut` hook. Rolled it onto the Tenants page and the People hub
   (Tenants + Vendors tabs): all-mode fans out per entity, merges client-side, and
   labels each row with its entity; entity-scoped writes (Send invite, reminders)
@@ -118,9 +127,8 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   covers both merges. Rollout to remaining list + aggregation surfaces continues.
   Pending Remba review.
 - [~] **2026-06-10 Properties "All entities" portfolio view:** the entity picker
-  now offers an `All entities` option plus an always-visible `All entities` toggle
-  beside the picker (shown when more than one entity exists; the visible toggle keeps
-  it discoverable in a long native dropdown) that fans out one properties query per
+  now offers an `All entities` dropdown option (shown when more than one entity
+  exists) that fans out one properties query per
   accessible entity and merges them into
   a single, entity-labelled Portfolio list (desktop table + mobile cards).
   Portfolio-list-only by design: selecting a property drops the workspace into
@@ -726,8 +734,8 @@ payment settlement. These are places to *beat* the standard.
 - [x] Tier 1 (c) v1: Dashboard metric trend deltas + sparklines. `DashboardMetricCard` now accepts an optional `trend: { delta, series[], direction, label }` and renders a coloured 7-day SVG sparkline + delta badge (Stripe-style "↓ 2 vs last week"). v1 wires the trend on the Operations card from `obligationsQuery` (lower-better palette so closing more than you open shows green). Property/tenant trends defer until the read API exposes `created_at`/`deleted_at` or a dedicated `/dashboard/metric-trends` backend endpoint lands. Pending Remba review.
 - [x] Tier 1 (b) v1: new generic `<DetailDrawer>` component at `apps/web/src/components/detail-drawer.tsx` (right-side panel, sticky header, primary-action footer, Escape close, body-scroll lock). Tenants table row click now opens a quick-view drawer showing contact, lease summary, and onboarding status, with "Open full record" footer link still routing to `/tenants/[id]`. Smoke coverage verifies the tenant quick-view drawer content, full-record link, and Escape close. Properties workspace already renders selected-property detail inline below the table; converting that to a drawer pattern is a larger restructure and remains TBD. Pending Remba review.
 - [x] Tier 1 (a) v1: 240px fixed left sidebar with the navy `#0B1020` background, brand at top, icon + label for each module (Dashboard / Smart Intake / Properties / Tenants / Work / Billing / Insights / Portfolio QA / Settings), `G X` shortcut chip per item on xl+ screens, and a "Keyboard shortcuts" footer link. Top bar collapses to a slim right-aligned utility row (entity selector children, search, cheatsheet, notifications, user). On <lg widths the sidebar hides and a hamburger button opens a left drawer with the same nav. AppHeader toggles `body.app-shell-active` on mount so layout.tsx's body can apply the 240px gutter only on operator surfaces — auth/setup/tenant-portal pages stay full-width. Pending Remba review of the navy/sidebar contrast against the existing soft-grey content area and whether the top bar should keep stickiness now that the sidebar already anchors navigation. Supporting UX evidence for the sidebar-over-top-bar choice (item count + nesting argument, NN/g and Baymard references, Linear/Stripe/Notion/Vercel comparison) lives at [`docs/nav-pattern-research-2026-05-23.md`](nav-pattern-research-2026-05-23.md).
-- [x] Tier 1 (a) follow-up: AppHeader top-right utilities now render as a single compact toolbar with the entity selector, command search, keyboard shortcuts, notifications, appearance, and profile/sign-in grouped inside one quiet container. This removes the always-visible row of separate bordered icon buttons while keeping the same operator actions available. Smoke coverage now asserts the selector and utility actions live inside the `Workspace utilities` toolbar. Pending Remba review.
-- [x] Tier 1 (a) touch-target follow-up: the desktop sidebar "Keyboard shortcuts ?" footer control now uses a 44px minimum hit target, matching the primary nav rows and top utility controls while keeping the same shortcut modal, copy, and IA. Smoke coverage locks the desktop sidebar footer control to the 44px target baseline. Pending Remba review with the wider sidebar/AppHeader density pass.
+- [x] Tier 1 (a) follow-up: AppHeader top-right utilities rendered as a single compact toolbar with the entity selector, command search, keyboard shortcuts, notifications, appearance, and profile/sign-in grouped inside one quiet container. Superseded by the 2026-06-10 Horizon shell polish: page-owned entity pickers now live in the sidebar/drawer, keyboard shortcuts are keyboard-only chrome, account/profile lives in the bottom-left operator card, and the top utility bar keeps command/search, notifications, and appearance.
+- [x] Tier 1 (a) touch-target follow-up: the desktop sidebar "Keyboard shortcuts ?" footer control used a 44px minimum hit target, matching the primary nav rows and top utility controls while keeping the same shortcut modal, copy, and IA. Superseded by the 2026-06-10 Horizon shell polish: the visible footer control was removed while shortcut behavior remains available from the keyboard.
 - [~] Tier 1 (a) contrast follow-up: the light-mode `text-muted-foreground` alias now maps to slate-500 so muted operator copy stays above the normal-text contrast baseline on the grey workspace canvas; the sidebar keyboard-shortcut footer, urgent Work comms badge, active tab subtitles, compact count badges, Settings section tabs, and measured warning/danger count labels use stronger existing tokens for readable small text, with Settings tab colour/background tweens removed so route-driven tab changes do not dip below contrast. No navigation, queue-count, command-shortcut, provider, email, Xero, payment, or reconciliation behaviour changed. Pending Remba review with the wider sidebar/AppHeader density pass.
 
 ### Tier 2 — strategic next bets (next 1-2 months)

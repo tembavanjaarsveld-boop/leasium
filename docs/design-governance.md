@@ -97,6 +97,7 @@ map for agents:
 | 03 Screens / Properties 55:2 | `apps/web/src/components/property-workspace.tsx` — Horizon Properties Cards v1 |
 | 03 Screens / Property detail 58:627 | `apps/web/src/components/property-workspace.tsx` — Horizon Property detail v1 |
 | 03 Screens / Smart Intake 55:166 | `apps/web/src/components/dashboard.tsx` via `/intake` (`Dashboard mode="intake"`) — Horizon Smart Intake desktop v1 |
+| 03 Screens / AI Mailbox Intake 82:2 | not implemented — concept frame for ai@leasium.ai mailbox intake (queue + quarantine), awaiting Temba sign-off; design doc `docs/ai-mailbox-intake-design.md` |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -169,9 +170,10 @@ back-filled when first touched by a design-facing slice.
   implementation from the approved Figma Sidebar and Bottom nav components
   (`44:117`, `44:301`). `AppHeader` now renders the 232px Horizon rail with the
   entity switcher card, seven primary hubs plus Settings, teal active rail,
-  keyboard shortcut affordance, and operator card/sign-in fallback; the mobile
+  bottom-left operator card/sign-in fallback, and keyboard-only shortcut access;
+  the mobile
   shell now uses Home / Properties / Smart Intake FAB / Work / Money while the
-  drawer keeps the full nav. Search, shortcuts, notifications, and appearance
+  drawer keeps the full nav. Command/search, notifications, and appearance
   stay in the top utility bar. No provider, payment, reconciliation, Xero/Basiq,
   or workflow mutation path changed. Remba should review the entity switcher
   density, active rail contrast, mobile FAB placement, and operator-card fallback.
@@ -213,8 +215,20 @@ back-filled when first touched by a design-facing slice.
   review hero density, queue/provenance hierarchy, the retained export/quick-add
   controls inside the Figma landing frame, mobile stacking, and whether applied
   provenance chips need richer backend counts before this is marked `[x]`.
+- **Horizon shell polish v1 (2026-06-10, Remba pending):** Temba review of the
+  shipped shell removed the extra visible chrome that diverged from the approved
+  Horizon sidebar. The entity switcher keeps `All entities` as a native dropdown
+  option only; the desktop sidebar footer removes the visible `Keyboard
+  shortcuts ?` row while preserving `?`, Cmd/Ctrl-K, Escape, and `G then letter`
+  shortcuts; and the account/avatar control now lives in the bottom-left
+  operator card rather than the top utility bar. The top utility bar now carries
+  command/search, notifications, and appearance. No provider, payment,
+  reconciliation, Xero/Basiq, or workflow mutation path changed. Remba should
+  review whether the cleaned footer/account placement and dropdown-only
+  all-entities affordance match the locked Horizon shell across desktop and
+  mobile before this is marked `[x]`.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
-  the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
+  the shared `EntityPicker` (dropdown-only `All entities` option) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,
   Contractors, Inbox) merge records across entities with per-row entity labels;
   composite pages (Comms, Notifications, Portfolio-QA) concat their list/queue/notice
@@ -227,18 +241,17 @@ back-filled when first touched by a design-facing slice.
   density, the per-row entity-label treatment, and the "select a single entity" notes
   once the rollout settles.
 - **"All entities" shared picker + People/Tenants (2026-06-10, prototype mode, no Remba gate):**
-  a shared `EntityPicker` (dropdown + always-visible "All entities" toggle) now backs
+  a shared `EntityPicker` (dropdown-only `All entities` option when multiple entities
+  are available) now backs
   the Tenants page and the People hub (Tenants + Vendors). In all-mode the lists merge
   across every entity and each row gains an entity label; entity-scoped write actions
-  (Send invite, reminders) disable until a single entity is chosen. Same visible-toggle
-  treatment as Properties. Rollout to the remaining list + aggregation surfaces is in
-  progress (tracked in the roadmap). Remba should review the all-mode row density + the
+  (Send invite, reminders) disable until a single entity is chosen. Rollout to the
+  remaining list + aggregation surfaces is in progress (tracked in the roadmap).
+  Remba should review the all-mode row density + the
   per-row entity label treatment once the rollout settles.
 - **Properties "All entities" portfolio view (2026-06-10, prototype mode, no Remba gate):**
-  the Properties entity picker gains an `All entities` option plus an always-visible
-  `All entities` toggle button beside the picker (both shown only when more than one
-  entity exists; the button avoids the option being scrolled out of view in a long
-  native dropdown). It merges every accessible entity's properties into one
+  the Properties entity picker gains a dropdown-only `All entities` option when more
+  than one entity exists. It merges every accessible entity's properties into one
   Portfolio list, each row labelled with its entity (desktop table + mobile cards).
   It is a browse-only mode: selecting a property drops the workspace into that
   property's own entity context; `New property` is disabled until a single entity is
@@ -261,10 +274,9 @@ back-filled when first touched by a design-facing slice.
   config is a Settings form (next slice). Plan:
   [`superpowers/plans/2026-06-02-tenant-payment-instructions.md`](superpowers/plans/2026-06-02-tenant-payment-instructions.md).
 - **Sidebar keyboard shortcut touch target (2026-06-07, prototype mode, no Remba gate):**
-  the desktop sidebar footer "Keyboard shortcuts ?" control now uses the same 44px minimum
-  hit target baseline as the primary navigation rows and top utility buttons. Copy, shortcut
-  behavior, modal behavior, and the 7-item sidebar IA are unchanged. Remba should review this
-  with the wider AppHeader/sidebar density pass, especially at the collapsed `md` breakpoint.
+  superseded by the 2026-06-10 Horizon shell polish. The desktop sidebar footer no
+  longer renders a visible "Keyboard shortcuts ?" control; shortcut behavior and the
+  modal remain available from the keyboard.
 - **Mobile navigation Escape close (2026-06-08, prototype mode, no Remba gate):**
   the sub-`md` sidebar drawer now closes from the existing global Escape key path, matching
   the command search and keyboard-shortcut overlays while keeping click/backdrop close paths,

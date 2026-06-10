@@ -2,7 +2,58 @@
 
 Last updated: 2026-06-10
 
-## Cowork continuation - 2026-06-10 (Horizon Smart Intake desktop v1 - latest)
+## Cowork continuation - 2026-06-10 (Horizon shell polish v1 - latest)
+
+Temba reviewed the shipped Horizon shell and requested three cleanup changes:
+remove the separate visible `All entities` pill beside the entity dropdown,
+remove the visible sidebar `Keyboard shortcuts ?` row, and move the account /
+avatar control from the top utility bar to the bottom-left operator card.
+
+Implemented in the shared operator shell. `All entities` remains selectable from
+the entity dropdown wherever cross-entity mode is supported; the keyboard
+shortcuts modal remains available with `?`, Cmd/Ctrl-K still opens command
+search, Escape still closes overlays, and `G then letter` navigation is
+unchanged. The top utility bar now carries command/search, notifications, and
+appearance only. The bottom-left operator card keeps the operator name/role and
+hosts the Clerk user control when Clerk is configured, with initials fallback in
+local smoke mode.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, or workflow mutation path changed.
+
+Files touched:
+
+- `apps/web/src/components/app-shell.tsx` — removed top shortcut/account chrome,
+  removed sidebar shortcut row, and moved Clerk/account control into the footer
+  operator card.
+- `apps/web/src/components/entity-picker.tsx` — removed the separate visible
+  `All entities` toggle while keeping the dropdown option.
+- `apps/web/src/components/property-workspace.tsx` — applied the same
+  dropdown-only `All entities` treatment to the Properties local picker.
+- `apps/web/tests/smoke/app-flows.spec.ts`,
+  `apps/web/tests/smoke/nav-consolidation.spec.ts`, and
+  `apps/web/tests/smoke/people-hub.spec.ts` — updated shell/all-entities smokes
+  to pin dropdown-only selection and keyboard-only shortcuts.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and this handover log
+  the polish as Remba-pending.
+
+Verification completed locally so far:
+
+- Red run: targeted shell/all-entities smokes failed on the still-visible
+  `All entities` and `Keyboard shortcuts ?` controls before implementation.
+- Green run: targeted shell/all-entities smokes passed (8/8).
+- `npm exec -- eslint src/components/app-shell.tsx src/components/entity-picker.tsx src/components/property-workspace.tsx tests/smoke/app-flows.spec.ts tests/smoke/nav-consolidation.spec.ts tests/smoke/people-hub.spec.ts`
+- `npm exec -- tsc --noEmit`
+- `NODE_ENV=development npm run test:smoke -- tests/smoke/appearance.spec.ts --workers=1` (9/9)
+
+Remaining before commit/push in this chat:
+
+- Run the final serial shell/mobile/appearance/People smoke pass and production
+  build.
+- Browser-check the shell at desktop and mobile.
+- Commit and push to `main`.
+
+## Cowork continuation - 2026-06-10 (Horizon Smart Intake desktop v1)
 
 Implemented the approved Horizon Smart Intake desktop slice from Figma source
 of truth `PO2jOANgmqgZHfqWZXOZGU`, node `55:166`. 04 Concept remains out of
@@ -182,10 +233,11 @@ Foundations / 02 Components / 03 Screens.
 
 Scope stayed shell-only. `AppHeader` now owns the 232px Horizon desktop rail,
 the top entity switcher card, seven primary hubs plus Settings, teal active
-rail, keyboard shortcut affordance, operator card/sign-in fallback, and the
+rail, bottom-left operator card/sign-in fallback, keyboard-only shortcut access,
+and the
 mobile Home / Properties / Smart Intake FAB / Work / Money bottom nav. The
 mobile drawer reuses the same Horizon sidebar content. The top utility bar now
-keeps search, shortcuts, notifications, and appearance only; page-owned entity
+keeps command/search, notifications, and appearance only; page-owned entity
 pickers move into the sidebar/drawer. Routes without a page-owned picker show
 the selected workspace as static context rather than a fake switch control.
 

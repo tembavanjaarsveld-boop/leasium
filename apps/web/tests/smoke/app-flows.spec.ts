@@ -54,6 +54,16 @@ async function expectTouchTarget(locator: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+async function selectAllEntitiesFromWorkspaceSwitcher(page: Page) {
+  const switcher = page
+    .getByRole("complementary", { name: "Primary navigation" })
+    .getByRole("group", { name: "Workspace switcher" });
+  await expect(
+    switcher.getByRole("button", { name: "All entities" }),
+  ).toHaveCount(0);
+  await switcher.getByLabel("Entity").selectOption("__all_entities__");
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   await mockLeasiumApi(page, {
     leaseMatchAcceptConflict: testInfo.title.includes(
@@ -142,6 +152,15 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveValue(
     "entity-1",
   );
+  await expect(
+    shellEntitySwitcher.getByRole("button", { name: "All entities" }),
+  ).toHaveCount(0);
+  const operatorCard = sidebar.getByTestId("horizon-sidebar-user");
+  await expect(operatorCard).toContainText("Owner Operator");
+  await expect(operatorCard).toContainText("Owner - operator");
+  await expect(
+    sidebar.getByRole("button", { name: "Keyboard shortcuts ?" }),
+  ).toHaveCount(0);
   const workspaceToolbar = page.getByRole("toolbar", {
     name: "Workspace utilities",
   });
@@ -151,10 +170,8 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     workspaceToolbar.getByRole("button", { name: "Open search" }),
   ).toBeVisible();
   await expect(
-    workspaceToolbar.getByRole("button", {
-      name: "Show keyboard shortcuts",
-    }),
-  ).toBeVisible();
+    workspaceToolbar.getByRole("button", { name: "Show keyboard shortcuts" }),
+  ).toHaveCount(0);
   await expect(
     workspaceToolbar.getByRole("link", { name: "Open notifications" }),
   ).toBeVisible();
@@ -1703,7 +1720,13 @@ test("keyboard cheatsheet hides owner-statement shortcuts for self-managed accou
 }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Show keyboard shortcuts" }).click();
+  await page.evaluate(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  });
+  await page.keyboard.press("?");
 
   await expect(
     page.getByRole("dialog", { name: "Keyboard shortcuts" }),
@@ -1741,7 +1764,13 @@ test("keyboard shortcuts include owner statements for managing-agent accounts", 
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Show keyboard shortcuts" }).click();
+  await page.evaluate(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  });
+  await page.keyboard.press("?");
   await expect(page.getByText("Owner statements")).toBeVisible();
   await page.mouse.click(300, 100);
   await expect(
@@ -3425,7 +3454,7 @@ test("properties All entities view merges across entities and drops into one", a
     page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "All entities" }).click();
+  await selectAllEntitiesFromWorkspaceSwitcher(page);
 
   await expect(
     page.getByText("4 properties across 2 entities"),
@@ -3472,7 +3501,7 @@ test("contractors All entities merges vendors across entities and gates add", as
     page.getByRole("heading", { name: "Contractor directory" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "All entities" }).click();
+  await selectAllEntitiesFromWorkspaceSwitcher(page);
 
   // Vendor from the primary entity and the secondary entity both render.
   await expect(
@@ -3497,7 +3526,7 @@ test("tenants All entities merges tenants across entities and gates invite", asy
     page.getByRole("heading", { name: "Tenant workspace" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "All entities" }).click();
+  await selectAllEntitiesFromWorkspaceSwitcher(page);
 
   // Tenants from both entities show; the secondary-entity row is labelled with
   // its entity (scoped to the row to avoid the hidden picker <option>).

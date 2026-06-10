@@ -75,7 +75,13 @@ test("people hub All entities merges tenants and vendors across entities", async
 
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   // Tenants is the default tab for a self-managed owner.
-  await page.getByRole("button", { name: "All entities" }).click();
+  const switcher = page
+    .getByRole("complementary", { name: "Primary navigation" })
+    .getByRole("group", { name: "Workspace switcher" });
+  await expect(
+    switcher.getByRole("button", { name: "All entities" }),
+  ).toHaveCount(0);
+  await switcher.getByLabel("Entity").selectOption("__all_entities__");
 
   // Tenant from the primary entity and the secondary entity both render. The
   // secondary card is labelled with its entity (scoped to the card to avoid the
