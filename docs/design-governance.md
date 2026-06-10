@@ -49,6 +49,29 @@ the core design. It has been promoted into the canonical pages:
   Settings) were approved by Temba and promoted to 03 Screens on 2026-06-10;
   the 04 copies remain as archive.
 
+**2026-06-10 yolo batch (Temba-approved, all six workstreams):**
+
+- **Detail screens** on 03: Document review 58:352 (source preview + extracted
+  fields + approve/edit + apply bar) and Property detail 58:627 (header, tabs,
+  bento, lease + activity).
+- **Mobile companions**: Properties·Mobile, Smart Intake·Mobile (with camera
+  capture), Notifications·Mobile, Settings·Mobile.
+- **New surfaces** on 03: People (tenant/vendor cards), Money (billing readiness
+  + approve-run flow), Insights (value flow, compliance ring, what-changed
+  narrative), and Tenant portal·Mobile (balance/pay card, requests, documents).
+- **Form/overlay primitives** on 02: Input variant set (Default/Focus/Error/
+  Disabled) 56:156, Select 56:157, Modal (approval confirm) 56:163, Drawer
+  (work-order detail) 56:173, Toast 56:209.
+- **Token binding**: ~1,550 fills/strokes across 03 bound to the Leasium Color
+  variables; Dashboard·Dark 62:696 demonstrates the dark mode via mode switch
+  (hero wash, ribbon, and sidebar pills carry dark-specific overrides; binding
+  gotcha: `setBoundVariableForPaint` drops paint opacity — translucent fills
+  must stay unbound).
+- **Prototype**: 105 ON_CLICK links wired — sidebar nav across all desktop
+  frames, hero CTA → Work, property card → Property detail, intake row →
+  Document review, breadcrumbs back, mobile bottom nav + FAB → Smart Intake.
+  Present from Dashboard to click through the product.
+
 Figma infrastructure (2026-06-10): the **Leasium Color** variable collection
 holds 27 core tokens with Light + Dark modes (read programmatically via the
 Figma MCP `get_variable_defs`). Text styles now use **Geist** (matching prod).
