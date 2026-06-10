@@ -7946,7 +7946,10 @@ function Workspace({
                 </details>
                 <Button
                   type="submit"
-                  disabled={!selectedEntityId || mutation.isPending}
+                  disabled={
+                    (!selectedEntityId && !createEntityChoice) ||
+                    mutation.isPending
+                  }
                 >
                   {editing ? <Check size={16} /> : <Plus size={16} />}
                   {editing ? "Save property" : "Add property"}
