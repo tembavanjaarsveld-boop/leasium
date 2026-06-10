@@ -29,10 +29,12 @@ import {
   Plus,
   ReceiptText,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
   Table2,
   Trash2,
   UploadCloud,
+  Wallet,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -174,6 +176,7 @@ const ALL_ENTITIES_VALUE = "__all_entities__";
 // Stable empty reference so propertyRecords keeps a steady identity when not in
 // the cross-entity "All entities" view (avoids needless downstream recompute).
 const EMPTY_PROPERTY_RECORDS: never[] = [];
+const EMPTY_RENT_ROLL_ROWS: RentRollRow[] = [];
 const PROPERTY_STORAGE_KEY = "leasium.property_id";
 const PROPERTY_DENSITY_STORAGE_KEY = "leasium.properties.density";
 
@@ -621,6 +624,60 @@ function formatMoney(cents: number | null | undefined) {
     currency: "AUD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+function isActiveRentRollLease(row: RentRollRow) {
+  return (
+    row.lease_id &&
+    row.lease_status &&
+    ["active", "holding_over"].includes(row.lease_status)
+  );
+}
+
+function propertyMonthlyRentById(
+  rows: RentRollRow[],
+  propertyIds?: ReadonlySet<string>,
+) {
+  const rentByPropertyId = new Map<string, number>();
+  for (const row of rows) {
+    if (propertyIds && !propertyIds.has(row.property_id)) continue;
+    if (!isActiveRentRollLease(row)) continue;
+    const amount = row.charge_rules_total_cents ?? 0;
+    if (amount <= 0) continue;
+    rentByPropertyId.set(
+      row.property_id,
+      (rentByPropertyId.get(row.property_id) ?? 0) + amount,
+    );
+  }
+  return rentByPropertyId;
+}
+
+function portfolioUnitOccupancy(
+  rows: RentRollRow[],
+  propertyIds?: ReadonlySet<string>,
+) {
+  const units = new Map<string, boolean>();
+  for (const row of rows) {
+    if (propertyIds && !propertyIds.has(row.property_id)) continue;
+    if (!row.tenancy_unit_id) continue;
+    const occupied = Boolean(isActiveRentRollLease(row));
+    units.set(
+      row.tenancy_unit_id,
+      (units.get(row.tenancy_unit_id) ?? false) || occupied,
+    );
+  }
+  return {
+    occupied: Array.from(units.values()).filter(Boolean).length,
+    total: units.size,
+  };
+}
+
+function isOccupiedPropertyStatus(status: PropertyOccupancyStatus) {
+  return (
+    status === "leased" ||
+    status === "leased_internal" ||
+    status === "partial"
+  );
 }
 
 function ownerGstFormValue(value: boolean | null | undefined) {
@@ -1321,8 +1378,8 @@ function propertyPortfolioViewOptions(): Array<{
   icon: ComponentType<{ size?: number; className?: string }>;
 }> {
   return [
+    { id: "board", label: "Cards", icon: LayoutGrid },
     { id: "table", label: "Table", icon: Table2 },
-    { id: "board", label: "Board", icon: LayoutGrid },
     { id: "map", label: "Map", icon: MapPin },
     { id: "calendar", label: "Calendar", icon: CalendarClock },
   ];
@@ -1906,23 +1963,27 @@ function leaseEventFollowUpReceipt(result: LeaseEventFollowUpRunRecord) {
 
 function propertyPortfolioViewFromSearch(): PropertyPortfolioView {
   if (typeof window === "undefined") {
-    return "table";
+    return "board";
   }
   const view = new URLSearchParams(window.location.search).get("view");
   if (
+    view === "cards" ||
     view === "board" ||
     view === "table" ||
     view === "map" ||
     view === "calendar"
   ) {
+    if (view === "cards") {
+      return "board";
+    }
     return view;
   }
-  return "table";
+  return "board";
 }
 
 function Workspace({
   initialAction,
-  initialView = "table",
+  initialView = "board",
 }: {
   initialAction?: PropertyWorkspaceInitialAction;
   initialView?: PropertyPortfolioView;
@@ -2050,8 +2111,6 @@ function Workspace({
     isAllEntities &&
     allPropertiesQueries.length > 0 &&
     allPropertiesQueries.some((query) => query.isLoading);
-  const allPropertiesFetching =
-    isAllEntities && allPropertiesQueries.some((query) => query.isFetching);
   const allPropertiesError = isAllEntities
     ? (allPropertiesQueries.find((query) => query.error)?.error ?? null)
     : null;
@@ -2124,6 +2183,15 @@ function Workspace({
       }),
     enabled: Boolean(scopedEntityId),
   });
+  const portfolioRentRollQuery = useQuery({
+    queryKey: ["rent-roll-portfolio", scopedEntityId, rentRollAsOf],
+    queryFn: () =>
+      listRentRoll({
+        entity_id: scopedEntityId,
+        as_of: rentRollAsOf,
+      }),
+    enabled: Boolean(scopedEntityId && rentRollPropertyId),
+  });
   const calendarRentRollQuery = useQuery({
     queryKey: ["rent-roll-calendar", scopedEntityId, rentRollAsOf],
     queryFn: () =>
@@ -2168,7 +2236,8 @@ function Workspace({
   });
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setRequestedPropertyId(params.get("property_id") ?? "");
+    const propertyIdFromUrl = params.get("property_id") ?? "";
+    setRequestedPropertyId(propertyIdFromUrl);
     const ownerTag = params.get("owner_tag") ?? "";
     setOwnerTagFilter((current) => (current === ownerTag ? current : ownerTag));
     const occupancy = params.get("occupancy");
@@ -2182,7 +2251,10 @@ function Workspace({
     ) {
       setOccupancyFilter(occupancy);
     }
-    setPropertyView(propertyPortfolioViewFromSearch());
+    const viewFromUrl = propertyPortfolioViewFromSearch();
+    setPropertyView(
+      propertyIdFromUrl && viewFromUrl === "board" ? "table" : viewFromUrl,
+    );
   }, []);
 
   useEffect(() => {
@@ -2193,7 +2265,7 @@ function Workspace({
     } else {
       url.searchParams.set("occupancy", occupancyFilter);
     }
-    if (propertyView === "table") {
+    if (propertyView === "board") {
       url.searchParams.delete("view");
     } else {
       url.searchParams.set("view", propertyView);
@@ -2306,27 +2378,51 @@ function Workspace({
     () => ownershipTags.find((tag) => tag.key === ownerTagFilter) ?? null,
     [ownershipTags, ownerTagFilter],
   );
+  const portfolioRentRollRows = useMemo(
+    () =>
+      rentRollPropertyId && scopedEntityId
+        ? (portfolioRentRollQuery.data ?? EMPTY_RENT_ROLL_ROWS)
+        : (rentRollQuery.data ?? EMPTY_RENT_ROLL_ROWS),
+    [
+      portfolioRentRollQuery.data,
+      rentRollPropertyId,
+      rentRollQuery.data,
+      scopedEntityId,
+    ],
+  );
+  const portfolioRentRollReady = Boolean(
+    scopedEntityId &&
+      (rentRollPropertyId ? portfolioRentRollQuery.data : rentRollQuery.data),
+  );
   const occupancyByPropertyId = useMemo(() => {
-    const rows = rentRollQuery.data ?? [];
     const map = new Map<string, PropertyOccupancy>();
-    const properties = propertiesQuery.data ?? [];
-    for (const property of properties) {
-      map.set(property.id, propertyOccupancyFromRentRoll(property, rows));
+    if (!portfolioRentRollReady) {
+      return map;
+    }
+    for (const property of propertyRecords) {
+      map.set(
+        property.id,
+        propertyOccupancyFromRentRoll(property, portfolioRentRollRows),
+      );
     }
     return map;
-  }, [propertiesQuery.data, rentRollQuery.data]);
+  }, [portfolioRentRollReady, portfolioRentRollRows, propertyRecords]);
   const nextExpiryByPropertyId = useMemo(() => {
-    const rows = rentRollQuery.data ?? [];
     const map = new Map<string, NextLeaseExpiry>();
-    const properties = propertiesQuery.data ?? [];
-    for (const property of properties) {
-      const expiry = propertyNextExpiryFromRentRoll(property.id, rows);
+    if (!portfolioRentRollReady) {
+      return map;
+    }
+    for (const property of propertyRecords) {
+      const expiry = propertyNextExpiryFromRentRoll(
+        property.id,
+        portfolioRentRollRows,
+      );
       if (expiry) {
         map.set(property.id, expiry);
       }
     }
     return map;
-  }, [propertiesQuery.data, rentRollQuery.data]);
+  }, [portfolioRentRollReady, portfolioRentRollRows, propertyRecords]);
   const occupancyCounts = useMemo(() => {
     const counts: Record<PropertyOccupancyStatus | "all", number> = {
       all: 0,
@@ -2397,7 +2493,7 @@ function Workspace({
           visiblePropertyIds.has(event.target.property_id)),
     );
     const rentRollEvents = rentRollLeaseEvents(
-      calendarRentRollQuery.data ?? rentRollQuery.data ?? [],
+      calendarRentRollQuery.data ?? portfolioRentRollRows,
       visiblePropertyIds,
     );
     const mergedEvents = [...insightEvents];
@@ -2421,8 +2517,46 @@ function Workspace({
     calendarRentRollQuery.data,
     displayedProperties,
     insightsOverviewQuery.data?.lease_event_snapshot.next_events,
-    rentRollQuery.data,
+    portfolioRentRollRows,
   ]);
+  const portfolioPropertyIds = useMemo(
+    () => new Set(propertyRecords.map((property) => property.id)),
+    [propertyRecords],
+  );
+  const monthlyRentByPropertyId = useMemo(
+    () => propertyMonthlyRentById(portfolioRentRollRows, portfolioPropertyIds),
+    [portfolioPropertyIds, portfolioRentRollRows],
+  );
+  const portfolioMonthlyRentCents = useMemo(
+    () =>
+      Array.from(monthlyRentByPropertyId.values()).reduce(
+        (total, amount) => total + amount,
+        0,
+      ),
+    [monthlyRentByPropertyId],
+  );
+  const portfolioUnitStats = useMemo(
+    () => portfolioUnitOccupancy(portfolioRentRollRows, portfolioPropertyIds),
+    [portfolioPropertyIds, portfolioRentRollRows],
+  );
+  const portfolioUnitOccupancyPercent = portfolioUnitStats.total
+    ? Math.round((portfolioUnitStats.occupied / portfolioUnitStats.total) * 100)
+    : 0;
+  const occupiedPropertyCount = useMemo(
+    () =>
+      Array.from(occupancyByPropertyId.values()).filter((occupancy) =>
+        isOccupiedPropertyStatus(occupancy.status),
+      ).length,
+    [occupancyByPropertyId],
+  );
+  const portfolioOccupancyPercent = occupancyCounts.all
+    ? Math.round((occupiedPropertyCount / occupancyCounts.all) * 100)
+    : null;
+  const renewalsWithin90Days = leaseCalendarEvents.filter((event) => {
+    if (!event.date) return false;
+    const delta = daysUntil(event.date);
+    return delta >= 0 && delta <= 90;
+  }).length;
   const entitiesLoading =
     !entitiesQuery.data &&
     (entitiesQuery.isLoading || entitiesQuery.isFetching);
@@ -2458,6 +2592,10 @@ function Workspace({
     (Boolean(selectedEntityId) &&
       !rentRollQuery.data &&
       (rentRollQuery.isLoading || rentRollQuery.isFetching));
+  const portfolioRentRollLoading =
+    Boolean(scopedEntityId && rentRollPropertyId) &&
+    !portfolioRentRollQuery.data &&
+    (portfolioRentRollQuery.isLoading || portfolioRentRollQuery.isFetching);
   const chargeRulesLoading =
     entitySelectionLoading ||
     (Boolean(selectedEntityId) &&
@@ -2481,6 +2619,7 @@ function Workspace({
     propertiesLoading ||
     obligationsLoading ||
     rentRollLoading ||
+    portfolioRentRollLoading ||
     chargeRulesLoading ||
     requestedPropertyLoading ||
     unitsWorkspaceLoading;
@@ -2492,6 +2631,7 @@ function Workspace({
       leasesQuery.isFetching ||
       obligationsQuery.isFetching ||
       rentRollQuery.isFetching ||
+      portfolioRentRollQuery.isFetching ||
       chargeRulesQuery.isFetching ||
       tenantOnboardingsQuery.isFetching) &&
     !propertyWorkspaceLoading;
@@ -2503,8 +2643,33 @@ function Workspace({
     leasesQuery.error ??
     obligationsQuery.error ??
     rentRollQuery.error ??
+    portfolioRentRollQuery.error ??
     chargeRulesQuery.error ??
     tenantOnboardingsQuery.error;
+  const portfolioSummaryText =
+    (isAllEntities ? allPropertiesError : propertiesQuery.error)
+      ? friendlyError(
+          isAllEntities ? allPropertiesError : propertiesQuery.error,
+        )
+      : propertiesLoading
+        ? "Checking properties"
+        : ownerTagFilter
+          ? activeOwnerTag
+            ? `${activeOwnerTag.propertyCount} ${
+                activeOwnerTag.propertyCount === 1 ? "property" : "properties"
+              } tagged ${activeOwnerTag.label}`
+            : "0 properties for this ownership tag"
+          : isAllEntities
+            ? `${propertyRecords.length} ${
+                propertyRecords.length === 1 ? "property" : "properties"
+              } across ${allEntityIds.length} entities`
+            : `${propertyRecords.length} ${
+                propertyRecords.length === 1 ? "property" : "properties"
+              } · ${
+                portfolioOccupancyPercent === null
+                  ? "occupancy pending"
+                  : `${portfolioOccupancyPercent}% occupied`
+              } · ${formatMoney(portfolioMonthlyRentCents)} monthly rent roll`;
   const requestedPropertyNotFound =
     requestedPropertyMissingFromList &&
     isNotFoundError(requestedPropertyQuery.error);
@@ -3667,6 +3832,39 @@ function Workspace({
   const propertyDirectoryHref = selectedEntityId
     ? `/properties?entity_id=${encodeURIComponent(selectedEntityId)}`
     : "/properties";
+  const propertyViewSwitcher = (
+    <div
+      role="tablist"
+      aria-label="Properties view"
+      className="inline-flex min-h-11 items-center gap-0.5 rounded-full border border-border bg-white p-0.5 text-xs font-medium shadow-leasiumXs"
+    >
+      {propertyPortfolioViewOptions().map((option) => {
+        const isActive = propertyView === option.id;
+        const OptionIcon = option.icon;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => {
+              setActiveWorkspaceTab("portfolio");
+              setPropertyView(option.id);
+            }}
+            className={cn(
+              "inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-1 transition duration-200 ease-leasium",
+              isActive
+                ? "bg-leasium-navy-800 text-white shadow-leasiumXs"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <OptionIcon size={14} className="inline-block" />
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
     <main className="min-h-screen">
@@ -3714,68 +3912,19 @@ function Workspace({
         </div>
       </AppHeader>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
+      <div className="mx-auto grid max-w-[1208px] gap-4 px-5 py-5 md:px-9 md:py-7">
         <section className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold">
-                {isAllEntities
-                  ? "All entities"
-                  : (selectedEntity?.name ?? "Select an entity")}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {(isAllEntities ? allPropertiesError : propertiesQuery.error)
-                  ? friendlyError(
-                      isAllEntities ? allPropertiesError : propertiesQuery.error,
-                    )
-                  : propertiesLoading
-                    ? "Checking properties"
-                    : ownerTagFilter
-                      ? activeOwnerTag
-                        ? `${activeOwnerTag.propertyCount} ${
-                            activeOwnerTag.propertyCount === 1
-                              ? "property"
-                              : "properties"
-                          } tagged ${activeOwnerTag.label}`
-                        : "0 properties for this ownership tag"
-                      : isAllEntities
-                        ? `${propertyRecords.length} ${
-                            propertyRecords.length === 1
-                              ? "property"
-                              : "properties"
-                          } across ${allEntityIds.length} entities`
-                        : `${propertyRecords.length} active properties`}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold leading-8 tracking-tight text-foreground">
+                Properties
+              </h1>
+              <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+                {portfolioSummaryText}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <SecondaryButton
-                type="button"
-                onClick={() => {
-                  if (isAllEntities) {
-                    allPropertiesQueries.forEach((query) => query.refetch());
-                  } else {
-                    propertiesQuery.refetch();
-                  }
-                }}
-                disabled={
-                  isAllEntities
-                    ? allPropertiesFetching
-                    : !selectedEntityId || propertiesQuery.isFetching
-                }
-              >
-                {(isAllEntities
-                  ? allPropertiesFetching
-                  : propertiesQuery.isFetching) && !propertiesLoading ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={16} />
-                )}
-                {(isAllEntities
-                  ? allPropertiesFetching
-                  : propertiesQuery.isFetching) && !propertiesLoading
-                  ? "Refreshing…"
-                  : "Refresh"}
-              </SecondaryButton>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {propertyViewSwitcher}
               <Button
                 type="button"
                 onClick={startPropertyCreate}
@@ -3811,6 +3960,7 @@ function Workspace({
                     tenantsQuery.refetch();
                     obligationsQuery.refetch();
                     rentRollQuery.refetch();
+                    portfolioRentRollQuery.refetch();
                     chargeRulesQuery.refetch();
                     tenantOnboardingsQuery.refetch();
                   }
@@ -3897,7 +4047,8 @@ function Workspace({
             </SectionPanel>
           ) : null}
 
-          {!requestedPropertyRecordBlocked ? (
+          {!requestedPropertyRecordBlocked &&
+          (propertyView === "table" || activeWorkspaceTab !== "portfolio") ? (
             <div
               className="mb-4 grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
               role="tablist"
@@ -5413,7 +5564,70 @@ function Workspace({
                 </div>
               ) : null}
 
-              {selectedProperty ? (
+              {propertyView === "board" && portfolioRentRollReady ? (
+                <div className="grid gap-3 md:grid-cols-3">
+                  <section className="flex items-center gap-3 rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+                    <div
+                      aria-hidden="true"
+                      className="grid h-12 w-12 shrink-0 place-items-center rounded-full"
+                      style={{
+                        background: `conic-gradient(var(--leasium-teal) ${portfolioUnitOccupancyPercent}%, var(--leasium-slate-100) 0)`,
+                      }}
+                    >
+                      <div className="h-8 w-8 rounded-full bg-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                        Occupancy
+                      </div>
+                      <div className="mt-1 text-[18px] font-bold leading-6 tracking-tight text-foreground">
+                        {portfolioUnitStats.total
+                          ? `${portfolioUnitStats.occupied} of ${portfolioUnitStats.total}`
+                          : "-"}
+                      </div>
+                      <div className="text-[11px] leading-4 text-muted-foreground">
+                        units occupied
+                      </div>
+                    </div>
+                  </section>
+                  <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                        Rent roll
+                      </div>
+                      <Wallet size={14} className="text-leasium-slate-300" />
+                    </div>
+                    <div className="mt-2 text-[22px] font-bold leading-7 tracking-tight text-foreground">
+                      {formatMoney(portfolioMonthlyRentCents)} / mo
+                    </div>
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                      Active lease charges only.
+                    </div>
+                  </section>
+                  <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                        Renewals · 90d
+                      </div>
+                      <CalendarClock
+                        size={14}
+                        className="text-leasium-slate-300"
+                      />
+                    </div>
+                    <div className="mt-2 text-[22px] font-bold leading-7 tracking-tight text-foreground">
+                      {renewalsWithin90Days}{" "}
+                      {renewalsWithin90Days === 1 ? "lease" : "leases"}
+                    </div>
+                    <div className="mt-1 text-[11px] font-semibold leading-4 text-primary">
+                      {renewalsWithin90Days
+                        ? "Review windows are ready."
+                        : "No renewal action inside 90 days."}
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+
+              {selectedProperty && propertyView === "table" ? (
                 <section className="overflow-hidden rounded-md border border-border bg-white">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                     <button
@@ -5623,61 +5837,35 @@ function Workspace({
                 </section>
               ) : null}
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <SavedViewsMenu
-                  surface="properties"
-                  currentFilters={{
-                    occupancy:
-                      occupancyFilter === "all" ? null : occupancyFilter,
-                    owner_tag: ownerTagFilter || null,
-                  }}
-                  onApplyView={(filters) => {
-                    const nextOccupancy = filters.occupancy;
-                    if (
-                      nextOccupancy === "leased" ||
-                      nextOccupancy === "leased_internal" ||
-                      nextOccupancy === "partial" ||
-                      nextOccupancy === "vacant" ||
-                      nextOccupancy === "unknown"
-                    ) {
-                      setOccupancyFilter(
-                        nextOccupancy as PropertyOccupancyStatus,
-                      );
-                    } else {
-                      setOccupancyFilter("all");
-                    }
-                    setOwnerTagFilter(filters.owner_tag ?? "");
-                  }}
-                />
-                <div
-                  role="tablist"
-                  aria-label="Properties view"
-                  className="inline-flex items-center gap-0.5 rounded-full border border-border bg-white p-0.5 text-xs font-medium"
-                >
-                  {propertyPortfolioViewOptions().map((option) => {
-                    const isActive = propertyView === option.id;
-                    const OptionIcon = option.icon;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        onClick={() => setPropertyView(option.id)}
-                        className={cn(
-                          "inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-1 transition",
-                          isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-muted",
-                        )}
-                      >
-                        <OptionIcon size={14} className="inline-block" />
-                        {option.label}
-                      </button>
-                    );
-                  })}
+              {propertyView === "table" ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <SavedViewsMenu
+                    surface="properties"
+                    currentFilters={{
+                      occupancy:
+                        occupancyFilter === "all" ? null : occupancyFilter,
+                      owner_tag: ownerTagFilter || null,
+                    }}
+                    onApplyView={(filters) => {
+                      const nextOccupancy = filters.occupancy;
+                      if (
+                        nextOccupancy === "leased" ||
+                        nextOccupancy === "leased_internal" ||
+                        nextOccupancy === "partial" ||
+                        nextOccupancy === "vacant" ||
+                        nextOccupancy === "unknown"
+                      ) {
+                        setOccupancyFilter(
+                          nextOccupancy as PropertyOccupancyStatus,
+                        );
+                      } else {
+                        setOccupancyFilter("all");
+                      }
+                      setOwnerTagFilter(filters.owner_tag ?? "");
+                    }}
+                  />
                 </div>
-              </div>
+              ) : null}
 
               {occupancyCounts.all > 0 ? (
                 <div className="flex flex-wrap items-center gap-1 text-xs">
@@ -6009,12 +6197,25 @@ function Workspace({
                   </div>
                 </>
               ) : propertyView === "board" ? (
-                <PropertyBoardView
+                <PropertyCardsView
                   properties={displayedProperties}
                   occupancyByPropertyId={occupancyByPropertyId}
                   nextExpiryByPropertyId={nextExpiryByPropertyId}
                   selectedPropertyId={selectedPropertyId}
-                  onSelect={selectProperty}
+                  selectedEntityName={selectedEntity?.name}
+                  entityNameById={isAllEntities ? entityNameById : undefined}
+                  ownershipPaletteByLabel={ownershipPaletteByLabel}
+                  monthlyRentByPropertyId={monthlyRentByPropertyId}
+                  isLoading={propertiesLoading}
+                  isOwnerTagFiltered={Boolean(ownerTagFilter)}
+                  hasProperties={propertyRecords.length > 0}
+                  canCreate={Boolean(selectedEntityId && !isAllEntities)}
+                  rentDataAvailable={portfolioRentRollReady}
+                  onSelect={(propertyId) => {
+                    selectProperty(propertyId);
+                    setPropertyView("table");
+                  }}
+                  onCreate={startPropertyCreate}
                 />
               ) : propertyView === "map" ? (
                 <PropertyMapView
@@ -7299,7 +7500,7 @@ function Workspace({
 
 export function PropertyWorkspace({
   initialAction,
-  initialView = "table",
+  initialView = "board",
 }: {
   initialAction?: PropertyWorkspaceInitialAction;
   initialView?: PropertyPortfolioView;
@@ -7328,6 +7529,19 @@ type PropertyMobileListViewProps = PropertyBoardViewProps & {
   hasProperties: boolean;
   onEdit: (property: PropertyRecord) => void;
   onOwnerTagFilter: (tagKey: string) => void;
+};
+
+type PropertyCardsViewProps = PropertyBoardViewProps & {
+  selectedEntityName?: string;
+  entityNameById?: Map<string, string>;
+  ownershipPaletteByLabel: ReturnType<typeof propertyOwnershipPaletteMap>;
+  monthlyRentByPropertyId: Map<string, number>;
+  isLoading: boolean;
+  isOwnerTagFiltered: boolean;
+  hasProperties: boolean;
+  canCreate: boolean;
+  rentDataAvailable: boolean;
+  onCreate: () => void;
 };
 
 function PropertyMobileListView({
@@ -7527,110 +7741,221 @@ function PropertyMobileListView({
   );
 }
 
-const BOARD_COLUMNS: {
-  status: PropertyOccupancyStatus | "unknown";
-  label: string;
-  tone: string;
-}[] = [
-  { status: "leased", label: "Leased", tone: "bg-success-soft" },
-  {
-    status: "leased_internal",
-    label: "Leased internal",
-    tone: "bg-primary-soft",
-  },
-  { status: "partial", label: "Partial", tone: "bg-warning-soft" },
-  { status: "vacant", label: "Vacant", tone: "bg-danger-soft" },
-  { status: "unknown", label: "No units", tone: "bg-muted/40" },
-];
+function propertyCardWashClassName(status: PropertyOccupancyStatus | undefined) {
+  if (status === "vacant") {
+    return "bg-warning-soft";
+  }
+  if (status === "partial") {
+    return "bg-danger-soft";
+  }
+  if (status === "leased_internal") {
+    return "bg-accent-soft";
+  }
+  return "bg-primary-soft";
+}
 
-function PropertyBoardView({
+function propertyCardTopBadge({
+  occupancy,
+  expiry,
+}: {
+  occupancy: PropertyOccupancy | undefined;
+  expiry: NextLeaseExpiry | undefined;
+}) {
+  if (occupancy?.status === "vacant") {
+    return {
+      label: "Vacant",
+      className: "bg-warning-soft text-warning-strong",
+    };
+  }
+  if (occupancy?.status === "partial") {
+    return {
+      label: "Partial",
+      className: "bg-danger-soft text-danger-strong",
+    };
+  }
+  if (expiry) {
+    return {
+      label: "Review due",
+      className: "bg-info-soft text-primary",
+    };
+  }
+  return null;
+}
+
+function PropertyCardsView({
   properties,
   occupancyByPropertyId,
   nextExpiryByPropertyId,
   selectedPropertyId,
+  selectedEntityName,
+  entityNameById,
+  ownershipPaletteByLabel,
+  monthlyRentByPropertyId,
+  isLoading,
+  isOwnerTagFiltered,
+  hasProperties,
+  canCreate,
+  rentDataAvailable,
   onSelect,
-}: PropertyBoardViewProps) {
-  const grouped = BOARD_COLUMNS.map((column) => ({
-    ...column,
-    properties: properties.filter((property) => {
-      const occupancy = occupancyByPropertyId.get(property.id);
-      const status = occupancy?.status ?? "unknown";
-      return status === column.status;
-    }),
-  })).filter((column) => column.properties.length > 0);
-
-  if (grouped.length === 0) {
+  onCreate,
+}: PropertyCardsViewProps) {
+  if (isLoading) {
     return (
-      <div className="rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-        No properties match the current filters.
+      <div className="rounded-[18px] border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+        Checking properties
+      </div>
+    );
+  }
+
+  if (!properties.length) {
+    return (
+      <div className="rounded-[18px] border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+        {isOwnerTagFiltered && hasProperties
+          ? "No properties match this ownership tag."
+          : "No active properties yet."}
       </div>
     );
   }
 
   return (
-    <div className="grid items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-      {grouped.map((column) => (
-        <section
-          key={column.status}
-          className="flex flex-col gap-2 self-start rounded-lg border border-border bg-white p-3"
-        >
-          <header className="flex items-center justify-between gap-2 border-b border-border pb-2">
-            <span
-              className={`inline-flex items-center gap-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${column.tone}`}
-            >
-              {column.label}
-              <span className="rounded-full bg-black/10 px-1.5 text-leasium-micro font-bold">
-                {column.properties.length}
-              </span>
-            </span>
-          </header>
-          <div className="grid gap-2">
-            {column.properties.map((property) => {
-              const image = propertyPrimaryImage(property);
-              const expiry = nextExpiryByPropertyId.get(property.id);
-              const isSelected = property.id === selectedPropertyId;
-              return (
-                <button
-                  key={property.id}
-                  type="button"
-                  onClick={() => onSelect(property.id)}
-                  className={`grid gap-1 rounded-md border p-2 text-left transition hover:bg-muted/50 ${
-                    isSelected
-                      ? "border-primary bg-primary/5"
-                      : "border-border bg-white"
-                  }`}
+    <div className="grid gap-3">
+      <ul
+        aria-label="Property cards"
+        className="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3"
+      >
+        {properties.map((property) => {
+          const image = propertyPrimaryImage(property);
+          const occupancy = occupancyByPropertyId.get(property.id);
+          const expiry = nextExpiryByPropertyId.get(property.id);
+          const badge = propertyCardTopBadge({ occupancy, expiry });
+          const ownerBadge =
+            propertyOwnershipBadges(
+              property,
+              selectedEntityName,
+              ownershipPaletteByLabel,
+            )[0] ?? null;
+          const isSelected = property.id === selectedPropertyId;
+          const monthlyRent = monthlyRentByPropertyId.get(property.id) ?? null;
+          const statusLine = expiry
+            ? `Expires ${formatDate(expiry.date)}`
+            : occupancy
+              ? occupancyBadgeLabel(occupancy)
+              : propertyTypeLabel(property.property_type);
+          const rentOrTypeLabel = rentDataAvailable
+            ? monthlyRent
+              ? `${formatMoney(monthlyRent)} / mo`
+              : "-"
+            : propertyTypeLabel(property.property_type);
+          const entityLabel = entityNameById?.get(property.entity_id);
+
+          return (
+            <li key={property.id} className="min-w-0">
+              <button
+                type="button"
+                aria-label={`Open property ${property.name}`}
+                onClick={() => onSelect(property.id)}
+                className={cn(
+                  "group flex h-full w-full min-w-0 flex-col overflow-hidden rounded-[18px] border bg-white text-left shadow-leasiumCard transition duration-200 ease-leasium hover:-translate-y-0.5 hover:shadow-leasiumMd focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                  isSelected ? "border-primary" : "border-border",
+                )}
+              >
+                <div
+                  className={cn(
+                    "relative h-[108px] w-full overflow-hidden",
+                    propertyCardWashClassName(occupancy?.status),
+                  )}
                 >
-                  <div className="flex items-start gap-2">
+                  {image ? (
                     <StoredPropertyImage
                       alt={`${property.name} property image`}
-                      className="h-12 w-16 shrink-0 rounded-md border border-border object-cover"
+                      className="h-full w-full object-cover"
                       image={image}
-                      placeholderClassName="grid h-12 w-16 shrink-0 place-items-center rounded-md border border-dashed border-border bg-muted/40 text-muted-foreground"
+                      placeholderClassName="h-full w-full"
                     />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-foreground">
-                        {property.name}
-                      </div>
-                      <div className="truncate text-leasium-micro text-muted-foreground">
-                        {property.street_address}, {property.suburb}{" "}
-                        {property.state}
-                      </div>
-                    </div>
-                  </div>
-                  {expiry ? (
-                    <div
-                      className={nextExpiryChipClassName(expiry.daysUntil)}
-                      title={`Earliest active lease expires ${expiry.date}.`}
-                    >
-                      {nextExpiryChipLabel(expiry)}
-                    </div>
                   ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+                  {badge ? (
+                    <span
+                      className={cn(
+                        "absolute right-3 top-3 rounded-full px-2.5 py-1 text-leasium-micro font-semibold",
+                        badge.className,
+                      )}
+                    >
+                      {badge.label}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="grid w-full min-w-0 gap-1.5 px-4 py-3.5">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-[15px] font-semibold leading-5 text-foreground">
+                      {property.name}
+                    </h3>
+                    <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">
+                      {[property.street_address, property.suburb, property.state]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </p>
+                    {entityLabel ? (
+                      <p className="mt-0.5 truncate text-leasium-micro uppercase text-muted-foreground">
+                        {entityLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex min-w-0 items-center gap-2 pt-1">
+                    {ownerBadge ? (
+                      <span
+                        title={ownerBadge.title ?? ownerBadge.label}
+                        className={`inline-flex max-w-[70%] items-center truncate rounded-full border px-2.5 py-1 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(ownerBadge.palette)}`}
+                      >
+                        <span className="truncate">{ownerBadge.label}</span>
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 flex-1" aria-hidden="true" />
+                    <span className="shrink-0 text-[13px] font-semibold leading-5 text-foreground">
+                      {rentOrTypeLabel}
+                    </span>
+                  </div>
+                  <p
+                    className={cn(
+                      "truncate text-[11px] font-semibold leading-4",
+                      occupancy?.status === "vacant"
+                        ? "text-warning-strong"
+                        : expiry
+                          ? "text-primary"
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {statusLine}
+                  </p>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+        <li className="min-w-0">
+          <button
+            type="button"
+            disabled={!canCreate}
+            onClick={onCreate}
+            className="grid h-full min-h-[248px] w-full place-items-center rounded-[18px] border border-dashed border-primary/30 bg-white/50 px-4 py-10 text-center transition duration-200 ease-leasium hover:border-primary hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="grid justify-items-center gap-2">
+              <Plus size={20} className="text-primary" />
+              <span className="text-[13px] font-semibold text-primary">
+                Add property
+              </span>
+              <span className="text-[10px] leading-4 text-muted-foreground">
+                or drop a purchase contract into Smart Intake
+              </span>
+            </span>
+          </button>
+        </li>
+      </ul>
+      <div className="flex justify-center">
+        <div className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-4 py-2 text-xs font-semibold text-leasium-teal-strong">
+          <ShieldCheck size={14} />
+          Nothing is applied until you approve it.
+        </div>
+      </div>
     </div>
   );
 }

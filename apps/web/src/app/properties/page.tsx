@@ -8,14 +8,18 @@ type PropertiesPageSearchParams = Promise<{
 function initialPropertyView(value: string | string[] | undefined) {
   const view = Array.isArray(value) ? value[0] : value;
   if (
+    view === "cards" ||
     view === "board" ||
     view === "table" ||
     view === "map" ||
     view === "calendar"
   ) {
+    if (view === "cards") {
+      return "board";
+    }
     return view;
   }
-  return "table";
+  return "board";
 }
 
 function initialPropertyAction(value: string | string[] | undefined) {

@@ -32,7 +32,7 @@ const TONE_FILL: Record<PropertyMapMarker["tone"], string> = {
 function markerHtml(tone: PropertyMapMarker["tone"], selected: boolean): string {
   const fill = TONE_FILL[tone];
   const ring = selected ? "var(--color-foreground, #0f172a)" : "#ffffff";
-  return `<span style="display:block;width:24px;height:24px;border-radius:9999px;background:${fill};border:3px solid ${ring};box-shadow:0 1px 3px rgba(15,23,42,0.35);"></span>`;
+  return `<span style="display:grid;width:44px;height:44px;place-items:center;border-radius:9999px;"><span style="display:block;width:24px;height:24px;border-radius:9999px;background:${fill};border:3px solid ${ring};box-shadow:0 1px 3px rgba(15,23,42,0.35);"></span></span>`;
 }
 
 // Client-only Leaflet canvas. Loaded through next/dynamic with ssr:false so
@@ -93,8 +93,8 @@ export default function PropertyLeafletMap({
       const icon = L.divIcon({
         className: "leasium-map-pin",
         html: markerHtml(tone, selected),
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
       });
       const marker = L.marker([location.lat, location.lng], {
         icon,

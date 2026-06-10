@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon Properties desktop v1:** implemented the approved
+  Figma Properties target (`PO2jOANgmqgZHfqWZXOZGU`, node `55:2`) on
+  `/properties`. Properties now defaults to the Horizon Cards frame with a live
+  portfolio summary, Cards/Table/Map/Calendar segmented switcher, three stat
+  cards, property card grid, dashed Add property tile, and review-first trust
+  pill. Existing Table, Map, Calendar, create/edit, image/evidence, document,
+  billing, and all-entities workflows remain reachable; property deep links and
+  card selections open the existing Table record workspace until the Property
+  detail frame (`58:627`) ships. Frontend-only presentation and routing work:
+  no API shape, provider send, Xero/Basiq, payment, reconciliation, or workflow
+  mutation path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon app shell v1:** implemented the approved Horizon
   Sidebar and mobile Bottom nav components from Figma (`PO2jOANgmqgZHfqWZXOZGU`,
   nodes `44:117` and `44:301`) in the shared operator shell. Desktop now uses

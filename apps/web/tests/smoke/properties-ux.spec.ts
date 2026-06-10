@@ -63,7 +63,7 @@ test("mobile properties default uses cards instead of a panning table", async ({
   await page.goto("/properties");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
   await expect(page.getByRole("table").first()).toBeHidden();
 
@@ -73,19 +73,78 @@ test("mobile properties default uses cards instead of a panning table", async ({
   const card = mobileList
     .getByRole("listitem")
     .filter({ hasText: "Queen Street Retail Centre" });
-  await expect(card).toContainText("12 Queen Street, Brisbane City QLD");
-  await expect(card).toContainText("Commercial retail");
-  await expect(card).toContainText("640 sqm");
-  await expect(card).toContainText("12 parks");
+  await expect(card).toContainText("12 Queen Street, Brisbane City, QLD");
+  await expect(card).toContainText("Queen Street Property Trust");
+  await expect(card).toContainText("$8,000 / mo");
 
   const selectButton = card.getByRole("button", {
     name: /Open property Queen Street Retail Centre/,
   });
-  const editButton = card.getByRole("button", {
-    name: "Edit Queen Street Retail Centre",
-  });
   await expectTouchTarget(selectButton);
-  await expectTouchTarget(editButton);
+});
+
+test("desktop Properties opens on the Horizon cards frame", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Properties" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Cards" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Table" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Map" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Calendar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New property" })).toBeVisible();
+
+  await expect(page.getByText("Occupancy")).toBeVisible();
+  await expect(page.getByText("2 of 5")).toBeVisible();
+  await expect(page.getByText("Rent roll", { exact: true })).toBeVisible();
+  await expect(page.getByText("$14,000 / mo")).toBeVisible();
+  await expect(page.getByText("Renewals · 90d")).toBeVisible();
+
+  const cards = page.getByRole("list", { name: "Property cards" });
+  await expect(cards).toBeVisible();
+  await expect(
+    cards.getByRole("button", { name: "Open property Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await expect(cards.getByText("Queen Street Property Trust").first()).toBeVisible();
+  await expect(cards.getByText("$8,000 / mo")).toBeVisible();
+  await expect(cards.getByRole("button", { name: /Add property/ })).toBeVisible();
+  await expect(
+    page.getByText("Nothing is applied until you approve it."),
+  ).toBeVisible();
+  await expect(page.getByRole("table").first()).toBeHidden();
+});
+
+test("desktop Properties cards keep portfolio metrics after billing filters", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/properties");
+
+  await expect(
+    page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
+  await page.getByRole("tab", { name: /Billing/ }).click();
+  const billingPropertyFilter = page.locator("select").filter({
+    has: page.getByRole("option", { name: "Queen Street Retail Centre" }),
+  });
+  await billingPropertyFilter.selectOption("property-1");
+
+  await page.getByRole("tab", { name: "Cards" }).click();
+  await expect(
+    page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
+  ).toBeVisible();
+  await expect(page.getByText("$14,000 / mo")).toBeVisible();
+  await expect(page.getByText("$8,000 / mo")).toBeVisible();
+  await expect(page.getByText("$6,000 / mo")).toBeVisible();
 });
 
 test("mobile properties calendar view keeps filters and review actions touch safe", async ({
@@ -95,7 +154,7 @@ test("mobile properties calendar view keeps filters and review actions touch saf
   await page.goto("/properties?view=calendar");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
   await expect(
     page.getByRole("tab", { name: "Calendar" }),
@@ -219,7 +278,7 @@ test("mobile properties map view keeps focus controls touch safe", async ({
   await page.goto("/properties?view=map");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Map" })).toHaveAttribute(
     "aria-selected",
@@ -261,8 +320,9 @@ test("properties table density controls stay touch safe", async ({ page }) => {
   await page.goto("/properties");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
 
   const densityGroup = page.getByRole("group", { name: "Table row density" });
   await expect(densityGroup).toBeVisible();
@@ -279,8 +339,9 @@ test("properties table row edit actions stay touch safe", async ({ page }) => {
   await page.goto("/properties");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
 
   await expectTouchTarget(
     page.getByRole("button", { name: "Edit Queen Street Retail Centre" }),
@@ -293,8 +354,9 @@ test("properties inline table editors and owner chips stay touch safe", async ({
   await page.goto("/properties");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
 
   const queenStreetRow = page.getByRole("row", {
     name: /Queen Street Retail Centre/,
@@ -318,8 +380,9 @@ test("properties image panel toggle stays touch safe", async ({ page }) => {
   await page.goto("/properties");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
 
   await expectTouchTarget(
     page.getByRole("button", { name: /Property images/ }).first(),
@@ -332,8 +395,9 @@ test("properties table density toggle trims row padding in compact mode", async 
   await page.goto("/properties");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
 
   const densityGroup = page.getByRole("group", { name: "Table row density" });
   await expect(densityGroup).toBeVisible();

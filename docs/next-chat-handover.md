@@ -2,7 +2,56 @@
 
 Last updated: 2026-06-10
 
-## Cowork continuation - 2026-06-10 (Horizon app shell v1 - latest)
+## Cowork continuation - 2026-06-10 (Horizon Properties desktop v1 - latest)
+
+Implemented the approved Horizon Properties desktop slice from Figma source of
+truth `PO2jOANgmqgZHfqWZXOZGU`, node `55:2`. 04 Concept remains out of scope;
+production source stays 01 Foundations / 02 Components / 03 Screens.
+
+Scope stayed Properties-only. `/properties` now defaults to Cards, with the
+Horizon title/subtitle, Cards/Table/Map/Calendar switcher, live stat strip,
+property card grid, dashed Add property tile, and review-first trust pill.
+Existing Table, Map, Calendar, create/edit, image/evidence, document, billing,
+and all-entities workflows remain reachable. Explicit `property_id` deep links
+and card selections open the existing Table record workspace until the Property
+detail frame (`58:627`) ships.
+
+No API shape, provider send, Xero/Basiq, payment, reconciliation, Smart Intake
+apply, property create/edit, billing, document, or workflow mutation path
+changed.
+
+Files touched:
+
+- `apps/web/src/app/properties/page.tsx` — default Properties to Cards while
+  preserving `view=table|map|calendar` and `view=cards` aliases.
+- `apps/web/src/components/property-workspace.tsx` — Horizon Cards header/stat
+  strip/card grid, portfolio rent-roll source split, active-lease metric fix,
+  all-entities unknown-data treatment, and Table fallback for selected records.
+- `apps/web/src/components/properties/PropertyLeafletMap.tsx` — 44px marker hit
+  target while preserving the visual marker size.
+- `apps/web/tests/smoke/properties-ux.spec.ts`,
+  `apps/web/tests/smoke/app-flows.spec.ts`, and
+  `apps/web/tests/smoke/appearance.spec.ts` — Horizon Cards default, deep-link,
+  all-entities, and heading expectations.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and this handover log
+  the slice as Remba-pending.
+
+Verification completed locally:
+
+- `npm exec -- eslint src/components/property-workspace.tsx src/components/properties/PropertyLeafletMap.tsx src/app/properties/page.tsx tests/smoke/properties-ux.spec.ts tests/smoke/app-flows.spec.ts tests/smoke/appearance.spec.ts`
+- `npm exec -- tsc --noEmit`
+- `npm run build`
+- `PORT=3045 npm run test:smoke -- tests/smoke/properties-ux.spec.ts --workers=1` (19/19)
+- `PORT=3046 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "Properties multi-view|property workspace shows the evidence source trail|properties All entities" --workers=1` (3/3)
+- `PORT=3047 npm run test:smoke -- tests/smoke/properties-map-calendar.spec.ts --workers=1` (10/10)
+- `PORT=3048 npm run test:smoke -- tests/smoke/appearance.spec.ts --workers=1` (9/9)
+- Final post-fix rerun: desktop/mobile Horizon Cards smokes (2/2) and
+  deep-link/all-entities smokes (2/2).
+
+Next Horizon slice per `docs/horizon-implementation-brief.md`: Property detail
+(`58:627`), then Smart Intake (`55:166`) / Document review (`58:352`).
+
+## Cowork continuation - 2026-06-10 (Horizon app shell v1)
 
 Implemented the approved Horizon app shell slice from Figma source of truth
 `PO2jOANgmqgZHfqWZXOZGU`, component nodes Sidebar `44:117` and Bottom nav

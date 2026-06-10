@@ -652,24 +652,28 @@ test("dashboard Leasium AI panel answers with cited record", async ({
   );
 });
 
-test("Properties multi-view toggles between table and board", async ({
+test("Properties multi-view toggles between cards and table", async ({
   page,
 }) => {
   await page.goto("/properties");
 
-  // Table is the default — table headers visible.
-  await expect(page.locator("table").first()).toBeVisible();
-
-  await page.getByRole("tab", { name: "Board" }).click();
-  // Switching to board hides the table headers; columns rendered by
-  // occupancy bucket appear instead.
+  // Cards are the Horizon default.
+  await expect(page.getByRole("tab", { name: "Cards" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.locator("table").first()).toBeHidden();
-  await expect(page.getByText("Queen Street Retail Centre")).toBeVisible();
-  await expect(page.getByText("No units").first()).toBeVisible();
-  await expect(page).toHaveURL(/[?&]view=board/);
+  await expect(
+    page.getByRole("list", { name: "Property cards" }),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: "Table" }).click();
   await expect(page.locator("table").first()).toBeVisible();
+  await expect(page).toHaveURL(/[?&]view=table/);
+
+  await page.getByRole("tab", { name: "Cards" }).click();
+  await expect(page.locator("table").first()).toBeHidden();
+  await expect(page).not.toHaveURL(/[?&]view=table/);
 });
 
 test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
@@ -3269,9 +3273,13 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await page.goto("/properties?entity_id=entity-1&property_id=property-1");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/property_id=property-1/);
+  await expect(page.getByRole("tab", { name: "Table" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(
     page.getByAltText("Queen Street Retail Centre primary image"),
   ).toBeVisible();
@@ -3363,43 +3371,44 @@ test("properties All entities view merges across entities and drops into one", a
   await page.goto("/properties?entity_id=entity-1");
 
   await expect(
-    page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
+    page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "All entities" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "All entities" }),
-  ).toBeVisible();
-  await expect(
     page.getByText("4 properties across 2 entities"),
   ).toBeVisible();
   await expect(page).toHaveURL(/entity_id=__all_entities__/);
+  await expect(page.getByRole("button", { name: "New property" })).toBeDisabled();
 
-  const allTable = page.getByRole("table").first();
-  const primaryRow = allTable.getByRole("row", {
-    name: /Queen Street Retail Centre/,
-  });
-  const secondaryRow = allTable.getByRole("row", {
-    name: /Rivergum Industrial Estate/,
-  });
-  await expect(primaryRow).toBeVisible();
-  await expect(secondaryRow).toBeVisible();
+  const cards = page.getByRole("list", { name: "Property cards" });
+  const primaryCard = cards
+    .getByRole("listitem")
+    .filter({ hasText: "Queen Street Retail Centre" });
+  const secondaryCard = cards
+    .getByRole("listitem")
+    .filter({ hasText: "Rivergum Industrial Estate" });
+  await expect(primaryCard).toBeVisible();
+  await expect(secondaryCard).toBeVisible();
   await expect(
-    primaryRow.getByText("Acme Holdings Pty Ltd"),
+    primaryCard.getByText("Acme Holdings Pty Ltd"),
   ).toBeVisible();
   await expect(
-    secondaryRow.getByText("Secondary Holdings Pty Ltd").first(),
+    secondaryCard.getByText("Secondary Holdings Pty Ltd").first(),
   ).toBeVisible();
+  await expect(primaryCard.getByText("$8,000 / mo")).toHaveCount(0);
+  await expect(primaryCard.getByText("No units")).toHaveCount(0);
+  await expect(secondaryCard.getByText("No units")).toHaveCount(0);
 
   // Selecting a property drops the workspace into that property's entity.
-  // Click the property name (the address cell is an inline-edit that stops
-  // row-click propagation).
-  await secondaryRow.getByText("Rivergum Industrial Estate").click();
+  await secondaryCard
+    .getByRole("button", { name: "Open property Rivergum Industrial Estate" })
+    .click();
   await expect(page.getByLabel("Entity")).toHaveValue("entity-2");
   await expect(page).toHaveURL(/property_id=property-secondary-1/);
   await expect(
-    page.getByRole("heading", { name: "Secondary Holdings Pty Ltd" }),
+    page.getByText("1 property · 0% occupied · $0 monthly rent roll"),
   ).toBeVisible();
 });
 
