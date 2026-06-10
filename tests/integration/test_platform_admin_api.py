@@ -162,6 +162,7 @@ def test_create_platform_organisation_invites_first_operator(
     body = response.json()
     assert body["organisation"]["name"] == "Riverside Holdings"
     assert body["organisation"]["is_active"] is True
+    assert body["organisation"]["operating_mode"] == "self_managed_owner"
     assert body["organisation"]["operator_count"] == 1
     assert body["operator"]["email"] == "owner@riverside.example"
     assert body["operator"]["access_status"] == "invited"

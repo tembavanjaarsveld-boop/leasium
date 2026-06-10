@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import AppUser, OperatorInviteStatus, Organisation
+from stewart.core.models import AppUser, OperatingMode, OperatorInviteStatus, Organisation
 from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import CurrentUser, get_session, require_platform_admin
@@ -146,6 +146,7 @@ def create_platform_organisation(
         name=organisation_name,
         country_code=payload.country_code.strip().upper() or "AU",
         timezone=payload.timezone.strip() or "Australia/Brisbane",
+        operating_mode=OperatingMode.self_managed_owner.value,
     )
     session.add(organisation)
     session.flush()
