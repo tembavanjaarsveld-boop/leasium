@@ -185,7 +185,7 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
   });
 
   const surfaces = [
-    { path: "/", heading: "Daily command center" },
+    { path: "/", heading: "Today's focus" },
     { path: "/intake", heading: "Smart Intake" },
     { path: "/properties", heading: "Acme Holdings Pty Ltd" },
     { path: "/people?tab=tenants", heading: "People" },

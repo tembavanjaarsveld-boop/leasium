@@ -1,26 +1,21 @@
 "use client";
 
 import {
+  ArrowRight,
   CheckCircle2,
-  ClipboardList,
   Loader2,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import type { KeyboardEvent, ReactNode } from "react";
 
-import {
-  EmptyState,
-  SectionPanel,
-  StatusBadge,
-  type StatusTone,
-} from "@/components/ui";
+import { StatusBadge, type StatusTone } from "@/components/ui";
 
 /**
  * DashboardCommandCenter — the daily first-viewport "what needs me
  * today" surface on the operator dashboard. Pure rendering: takes a
  * ranked, pre-sorted list of operator actions plus per-area counts,
- * and displays the top six items + a category summary aside.
+ * and renders the highest-value action as the Horizon focus hero.
  *
  * The parent Dashboard owns the work of BUILDING the items list and
  * counts (combining Smart Intake reviews, billing blockers, onboarding
@@ -58,46 +53,6 @@ export type CommandCenterCounts = {
   operations: number;
 };
 
-// Lightweight date buckets (B3). Purely presentational: groups the
-// already-ranked items under quiet headers by each item's own due
-// date. Item order (and the #N rank badge) within a bucket is
-// unchanged — items without a date fall into "Later".
-type DateBucketKey = "overdue" | "today" | "week" | "later";
-
-const DATE_BUCKET_LABEL: Record<DateBucketKey, string> = {
-  overdue: "Overdue",
-  today: "Today",
-  week: "This week",
-  later: "Later",
-};
-
-const DATE_BUCKET_ORDER: DateBucketKey[] = [
-  "overdue",
-  "today",
-  "week",
-  "later",
-];
-
-function dateBucketFor(date: string | null): DateBucketKey {
-  if (!date) {
-    return "later";
-  }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(`${date.slice(0, 10)}T00:00:00`);
-  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-  if (diffDays < 0) {
-    return "overdue";
-  }
-  if (diffDays === 0) {
-    return "today";
-  }
-  if (diffDays <= 7) {
-    return "week";
-  }
-  return "later";
-}
-
 export function DashboardCommandCenter({
   items,
   loading,
@@ -111,15 +66,18 @@ export function DashboardCommandCenter({
   counts: CommandCenterCounts;
   actions?: ReactNode;
 }) {
-  const shownItems = items.slice(0, 6);
+  const visibleItems = items.slice(0, 3);
+  const primaryItem = visibleItems[0] ?? null;
+  const nextItems = visibleItems.slice(1);
   const totalCount =
     counts.intake + counts.billing + counts.onboarding + counts.operations;
+  const focusTotal = Math.max(visibleItems.length, 1);
 
-  // Keyboard flow (Phase D): once focus is inside the ranked list, j / ArrowDown
-  // and k / ArrowUp move between rows; Enter activates the focused row natively
-  // (each row is an anchor). The handler lives on the list container, so it only
-  // fires when a row already has focus — it never hijacks global keystrokes, and
-  // Tab / click behaviour is unchanged.
+  // Keyboard flow (Phase D): once focus is inside the compact next-up links,
+  // j / ArrowDown and k / ArrowUp move between rows; Enter activates the
+  // focused row natively (each row is an anchor). The handler lives on the
+  // list container, so it only fires when a row already has focus — it never
+  // hijacks global keystrokes, and Tab / click behaviour is unchanged.
   function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
       return;
@@ -144,121 +102,117 @@ export function DashboardCommandCenter({
   }
 
   return (
-    <SectionPanel
-      title="Daily command center"
-      description="Ranked operator actions across reviews, billing, onboarding, and key dates."
-      icon={<ClipboardList size={17} className="text-primary" />}
-      actions={
-        <>
-          {actions}
-          <StatusBadge
-            tone={
-              loading
-                ? "neutral"
-                : totalCount
-                  ? (shownItems[0]?.tone ?? "warning")
-                  : "success"
-            }
-          >
-            {loading
-              ? "Checking"
-              : refreshing
-                ? "Updating"
-                : totalCount
-                  ? "Act today"
-                  : "Clear"}
-          </StatusBadge>
-        </>
-      }
-      className="border-primary/20"
+    <section
+      className="overflow-hidden rounded-[20px] border border-primary/15 bg-gradient-to-r from-leasium-hero-wash-from to-leasium-hero-wash-to shadow-[0_1px_3px_rgba(16,24,40,0.04)]"
+      aria-label="Today's focus"
+      aria-describedby="dashboard-focus-counts dashboard-focus-guardrail"
     >
-      <div>
-        <div className="divide-y divide-border" onKeyDown={handleListKeyDown}>
-          {loading && shownItems.length === 0 ? (
-            <EmptyState
-              icon={<Loader2 size={18} className="animate-spin" />}
-              title="Preparing today's command center"
-              description="Checking review queues, billing readiness, onboarding, and key dates."
-            />
-          ) : shownItems.length ? (
-            DATE_BUCKET_ORDER.flatMap((bucket) => {
-              const bucketItems = shownItems
-                .map((item, index) => ({ item, index }))
-                .filter(({ item }) => dateBucketFor(item.date) === bucket);
-              if (bucketItems.length === 0) {
-                return [];
-              }
-              return [
-                <div
-                  key={`cc-bucket-${bucket}`}
-                  className="bg-muted/30 px-4 py-1.5 text-leasium-micro font-semibold uppercase tracking-wide text-muted-foreground"
-                >
-                  {DATE_BUCKET_LABEL[bucket]}
-                </div>,
-                ...bucketItems.map(({ item, index }) => (
+      <p id="dashboard-focus-counts" className="sr-only">
+        Today&apos;s focus is ranked from {totalCount} open items across Smart
+        Intake, billing, onboarding, and operations.
+      </p>
+      <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        {loading && !primaryItem ? (
+          <div className="grid gap-3">
+            <h2 className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-primary">
+              Today&apos;s focus
+            </h2>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <Loader2 size={18} className="animate-spin text-primary" />
+              <span>Preparing today&apos;s focus.</span>
+            </div>
+          </div>
+        ) : primaryItem ? (
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="inline-flex min-h-6 items-center rounded-full bg-primary-soft px-2.5 text-leasium-micro font-semibold uppercase tracking-[0.04em] text-primary">
+                Today&apos;s focus
+              </h2>
+              <StatusBadge tone={primaryItem.tone}>{primaryItem.chip}</StatusBadge>
+              <StatusBadge tone="neutral">{primaryItem.dateLabel}</StatusBadge>
+            </div>
+            <h3 className="mt-3 text-xl font-bold leading-7 tracking-normal text-foreground sm:text-2xl">
+              {primaryItem.title}
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">
+              {primaryItem.why}
+            </p>
+            {nextItems.length ? (
+              <div
+                className="mt-3 flex flex-wrap gap-2 text-[11px] leading-4 text-muted-foreground"
+                onKeyDown={handleListKeyDown}
+              >
+                {nextItems.map((item) => (
                   <Link
                     key={item.id}
                     href={item.href}
                     data-cc-row
-                    className={[
-                      "group grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 transition duration-200 ease-leasium hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 md:grid-cols-[3.25rem_minmax(0,1fr)_auto] md:items-center",
-                      index === 0 ? "bg-primary-soft/35" : "",
-                    ].join(" ")}
+                    aria-label={`Next: ${item.area} - ${item.title}. ${item.nextStep}`}
+                    className="rounded-full border border-white/70 bg-white/65 px-3 py-1.5 font-medium transition duration-200 ease-leasium hover:border-primary/30 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   >
-                    <div className="flex justify-center self-center">
-                      <span className="inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-border bg-white px-2 text-xs font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium group-hover:border-primary/30 group-hover:text-primary">
-                        #{index + 1}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
-                        {item.title}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4 text-muted-foreground">
-                        <StatusBadge tone={item.tone}>{item.chip}</StatusBadge>
-                        <span>{item.area}</span>
-                        <span
-                          aria-hidden="true"
-                          className="hidden h-1 w-1 rounded-full bg-border sm:inline-block"
-                        />
-                        <span className="min-w-0 truncate">
-                          {item.dateLabel}
-                        </span>
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
-                        {item.why}
-                      </p>
-                    </div>
-                    <div className="col-start-2 flex min-w-0 items-center gap-2 md:col-start-auto md:justify-end md:self-center">
-                      <span className="truncate text-sm font-medium text-primary md:whitespace-nowrap">
-                        {item.nextStep}
-                      </span>
-                    </div>
+                    Next: {item.area}
                   </Link>
-                )),
-              ];
-            })
-          ) : (
-            <EmptyState
-              icon={<CheckCircle2 size={18} />}
-              title="No operator actions need attention."
-              description="Smart Intake, billing readiness, onboarding, and urgent dates are clear for now."
-            />
-          )}
-        </div>
-        <div className="flex items-start gap-2 border-t border-border bg-primary-soft/40 px-4 py-2.5 text-xs leading-5 text-primary-hover">
-          <ShieldCheck
-            size={14}
-            className="mt-0.5 shrink-0"
-            aria-hidden="true"
-          />
-          <span>
-            <span className="font-semibold">Review-first.</span> This surface
-            points to the next safe step; changes still stay inside reviewed
-            workflows.
-          </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/70 text-primary shadow-leasiumXs">
+              <CheckCircle2 size={18} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-primary">
+                Today&apos;s focus
+              </h2>
+              <p className="mt-1 text-lg font-bold leading-6 tracking-normal text-foreground">
+                Portfolio clear right now.
+              </p>
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
+                Smart Intake, billing readiness, onboarding, and urgent dates
+                are clear for now.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
+          {primaryItem ? (
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <div className="grid h-16 w-16 place-items-center rounded-full border-[6px] border-primary/15 bg-white/80 text-center shadow-leasiumXs">
+                <div className="text-xs font-bold leading-none text-foreground">
+                  1/{focusTotal}
+                </div>
+              </div>
+              <Link
+                href={primaryItem.href}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_4px_12px_rgba(36,91,255,0.32)] transition duration-200 ease-leasium hover:bg-primary-hover active:scale-[0.98]"
+              >
+                {primaryItem.nextStep}
+                <ArrowRight size={15} />
+              </Link>
+            </div>
+          ) : null}
+          {actions ? (
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              {actions}
+            </div>
+          ) : null}
+          {refreshing && !loading ? (
+            <StatusBadge tone="neutral">Updating</StatusBadge>
+          ) : null}
         </div>
       </div>
-    </SectionPanel>
+
+      <div className="flex items-center justify-center border-t border-white/50 px-4 py-3">
+        <div
+          id="dashboard-focus-guardrail"
+          className="inline-flex items-center gap-2 rounded-full bg-[var(--leasium-teal-soft)] px-4 py-2 text-xs font-semibold text-[var(--leasium-teal-strong)]"
+        >
+          <ShieldCheck size={14} aria-hidden="true" />
+          <span>Nothing is applied until you approve it.</span>
+        </div>
+      </div>
+    </section>
   );
 }

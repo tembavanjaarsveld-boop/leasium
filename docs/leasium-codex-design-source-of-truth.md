@@ -221,11 +221,11 @@ status meaning stays orthogonal to owner identity.
 ### App colour usage
 
 ```txt
-App Background:      #F6F8FB
+App Background:      #F7F9FC
 Surface:             #FFFFFF
 Elevated Surface:    #FFFFFF
 Sidebar:             #0B1020
-Border:              #E4E7EC
+Border:              #E7EBF0
 Strong Border:       #D0D5DD
 Text Primary:        #101828
 Text Secondary:      #475467
@@ -233,6 +233,29 @@ Text Muted:          #475467
 Text Inverse:        #FFFFFF
 Focus Ring:          #245BFF
 ```
+
+### Horizon additions
+
+Approved 2026-06-10 in Figma and used for Dashboard/Work uplifts.
+
+```txt
+Canvas:              #F7F9FC
+Card Border:         #E7EBF0
+Hero Wash:           #EAF0FF -> #E8FAF7
+Primary CTA Glow:    0 4px 12px rgba(36, 91, 255, 0.30-0.35)
+Card Shadow:         0 1px 3px rgba(16, 24, 40, 0.04)
+```
+
+Horizon bento cards use equal-height rows, 14px gutters, 18px card
+radius, and 20px hero radius. A screen should have one primary CTA:
+the focus action. Other controls are secondary buttons or text links.
+The review-first trust ribbon appears once per screen after the primary
+content, centered in a teal pill.
+
+Implementation tokens: `--leasium-card-border`,
+`--leasium-hero-wash-from`, `--leasium-hero-wash-to`, and
+`--leasium-teal-strong` back the Horizon-specific utilities. These must stay
+CSS-variable based so the same component classes remap in dark mode.
 
 ### Dark mode tokens
 
@@ -251,6 +274,7 @@ Blue Soft:           #182554
 Teal:                #42E3CF
 Teal Hover:          #84F0E3
 Teal Soft:           #0F3A37
+Teal Strong:         #84F0E3
 
 Navy 900:            #050814
 Navy 800:            #E6EAF3
@@ -268,6 +292,8 @@ App Background:      #0D1424
 Surface:             #121A2A
 Border:              #263247
 Strong Border:       #3A465B
+Horizon Card Border: #263247
+Horizon Hero Wash:   #111B35 -> #102B2A
 
 Success:             #32D583
 Success Soft:        #0F2F24

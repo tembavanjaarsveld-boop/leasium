@@ -117,7 +117,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Daily command center" }),
+    page.getByRole("heading", { name: "Today's focus" }),
   ).toBeVisible();
   await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
   await expect(

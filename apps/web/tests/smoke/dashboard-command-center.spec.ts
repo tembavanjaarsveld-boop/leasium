@@ -29,18 +29,16 @@ test("dashboard command center prepares work without raw loading counters", asyn
   const commandCenter = page
     .locator("section")
     .filter({
-      has: page.getByRole("heading", { name: "Daily command center" }),
+      has: page.getByRole("heading", { name: "Today's focus" }),
     })
     .first();
 
-  await expect(commandCenter).toContainText("Checking");
-  await expect(commandCenter).toContainText("Preparing today's command center");
+  await expect(commandCenter).toContainText("Today's focus");
+  await expect(commandCenter).toContainText("Preparing today's focus.");
   await expect(commandCenter.getByText("...")).toHaveCount(0);
   await expect(commandCenter).not.toContainText("Loading…");
   await expect(commandCenter).not.toContainText("Refreshing…");
-  await expect(commandCenter).not.toContainText(
-    "Loading today's command center.",
-  );
+  await expect(commandCenter).not.toContainText("Loading today's focus.");
   await expect(page.locator("body")).not.toContainText(
     /Loading live portfolio|Loading recent activity\.|Loading upcoming events\./,
   );
@@ -76,7 +74,7 @@ test("entity bootstrap stays warm across operator navigation", async ({
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Daily command center" }),
+    page.getByRole("heading", { name: "Today's focus" }),
   ).toBeVisible();
   await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
   await expect(
@@ -414,7 +412,7 @@ test("dashboard onboarding manage links action stays touch-safe", async ({
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Daily command center" }),
+    page.getByRole("heading", { name: "Today's focus" }),
   ).toBeVisible();
   await expectTouchTarget(page.getByRole("link", { name: "Manage links" }));
 });
@@ -455,14 +453,14 @@ test("dashboard overview clears first-paint loading before detailed fan-out sett
   const commandCenter = page
     .locator("section")
     .filter({
-      has: page.getByRole("heading", { name: "Daily command center" }),
+      has: page.getByRole("heading", { name: "Today's focus" }),
     })
     .first();
   try {
-    await expect(commandCenter.getByText("Act today")).toBeVisible();
-    await expect(commandCenter).not.toContainText(
-      "Preparing today's command center",
-    );
+    await expect(
+      commandCenter.getByRole("heading", { name: "Today's focus" }),
+    ).toBeVisible();
+    await expect(commandCenter).not.toContainText("Preparing today's focus.");
     const billingCard = page
       .locator("a")
       .filter({ has: page.getByText("Billing blockers", { exact: true }) })

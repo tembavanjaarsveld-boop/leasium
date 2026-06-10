@@ -153,19 +153,23 @@ export function DashboardMetricCard({
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-border bg-white p-4 shadow-leasiumCard transition duration-200 ease-leasium hover:border-primary/40 hover:shadow-leasiumMd"
+      className="group flex min-h-[128px] flex-col rounded-[18px] border border-leasium-card-border bg-white p-[18px] shadow-[0_1px_3px_rgba(16,24,40,0.04)] transition duration-200 ease-leasium hover:border-primary/40 hover:shadow-leasiumMd"
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-muted-foreground">
+        <span className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           {label}
         </span>
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary-soft text-primary transition group-hover:bg-primary group-hover:text-white">
+        <span className="grid h-7 w-7 place-items-center rounded-lg text-leasium-slate-400 transition group-hover:bg-primary-soft group-hover:text-primary">
           {icon}
         </span>
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
-        <div className="text-3xl font-semibold tracking-normal">{count}</div>
-        <StatusBadge tone={tone}>{chip}</StatusBadge>
+        <div className="text-2xl font-bold tracking-normal text-foreground">
+          {count}
+        </div>
+        <StatusBadge tone={tone} className="text-leasium-micro">
+          {chip}
+        </StatusBadge>
       </div>
       {/* A zero delta renders a dangling "· vs last week" next to a flat
           sparkline; only show the trend row when something actually moved. */}
@@ -183,7 +187,7 @@ export function DashboardMetricCard({
           />
         </div>
       ) : null}
-      <p className="mt-3 min-h-10 text-sm leading-5 text-muted-foreground">
+      <p className="mt-auto pt-3 text-[11px] leading-4 text-muted-foreground">
         {nextAction}
       </p>
     </Link>

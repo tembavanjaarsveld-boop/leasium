@@ -3721,7 +3721,7 @@ export function Dashboard({
   ].sort((a, b) => dueRank(a.date) - dueRank(b.date));
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-leasium-canvas">
       <AppHeader>
         <EntityPicker
           entities={entitiesQuery.data}
@@ -3732,7 +3732,7 @@ export function Dashboard({
         />
       </AppHeader>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
+      <div className="mx-auto grid max-w-none gap-[18px] px-5 py-5 lg:px-9 lg:py-7">
         {isIntakeWorkspace ? (
           <PageHeader
             title="Smart Intake"
@@ -3855,8 +3855,8 @@ export function Dashboard({
         <section
           className={
             isIntakeWorkspace
-              ? "grid gap-3 sm:grid-cols-2"
-              : "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+              ? "grid gap-[14px] sm:grid-cols-2"
+              : "grid gap-[14px] sm:grid-cols-2 lg:grid-cols-4"
           }
         >
           {!isIntakeWorkspace ? (
@@ -3964,7 +3964,7 @@ export function Dashboard({
           />
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-[430px_minmax(0,1fr)]">
+        <section className="grid gap-[18px] lg:grid-cols-[minmax(320px,430px)_minmax(0,1fr)]">
           <div className="grid gap-5">
             {/* The full drop-zone + review-queue panel lives on the intake
                 workspace; the dashboard shows a compact link card instead. */}

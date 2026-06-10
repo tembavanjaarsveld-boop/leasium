@@ -10,6 +10,7 @@
   --leasium-teal: #27d8c2;
   --leasium-teal-hover: #1ebeab;
   --leasium-teal-soft: #e8faf7;
+  --leasium-teal-strong: #0f766e;
   --leasium-navy-900: #0b1020;
   --leasium-navy-800: #101828;
   --leasium-slate-700: #1d2939;
@@ -19,12 +20,15 @@
   --leasium-slate-300: #98a2b3;
   --leasium-slate-200: #d0d5dd;
   --leasium-slate-150: #e4e7ec;
-  --leasium-slate-100: #e9edf3;
+  --leasium-slate-100: #f2f4f7;
   --leasium-slate-50: #f6f8fb;
-  --leasium-border: #e4e7ec;
+  --leasium-border: #e7ebf0;
+  --leasium-card-border: #e7ebf0;
   --leasium-border-strong: #d0d5dd;
-  --leasium-bg: #edf0f6;
+  --leasium-bg: #f7f9fc;
   --leasium-surface: #ffffff;
+  --leasium-hero-wash-from: #eaf0ff;
+  --leasium-hero-wash-to: #e8faf7;
   --leasium-success: #12b76a;
   --leasium-success-soft: #ecfdf3;
   --leasium-warning: #f79009;
@@ -69,6 +73,7 @@
   --leasium-teal: #42e3cf;
   --leasium-teal-hover: #84f0e3;
   --leasium-teal-soft: #0f3a37;
+  --leasium-teal-strong: #84f0e3;
   --leasium-navy-900: #050814;
   --leasium-navy-800: #e6eaf3;
   --leasium-slate-700: #d7deea;
@@ -81,9 +86,12 @@
   --leasium-slate-100: #182133;
   --leasium-slate-50: #0d1424;
   --leasium-border: #263247;
+  --leasium-card-border: #263247;
   --leasium-border-strong: #3a465b;
   --leasium-bg: #0d1424;
   --leasium-surface: #121a2a;
+  --leasium-hero-wash-from: #111b35;
+  --leasium-hero-wash-to: #102b2a;
   --leasium-success: #32d583;
   --leasium-success-soft: #0f2f24;
   --leasium-warning: #fdb022;

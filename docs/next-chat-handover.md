@@ -1,6 +1,48 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-09
+Last updated: 2026-06-10
+
+## Cowork continuation - 2026-06-10 (Horizon dashboard v1 - latest)
+
+Started the approved Horizon redesign implementation from Figma
+(`PO2jOANgmqgZHfqWZXOZGU`). Figma MCP connection works for direct nodes:
+Dashboard `45:2` and Work `45:168` both returned design context/screenshots,
+while top-level metadata only exposed `01 Foundations`; use the node IDs from
+`docs/design-governance.md` for now.
+
+First code slice is intentionally Dashboard-only plus shared tokens:
+
+- `apps/web/tailwind.config.ts` and `apps/web/src/app/globals.css` now expose
+  the Horizon canvas/card-border/hero-wash values (`#F7F9FC`, `#E7EBF0`,
+  `#EAF0FF -> #E8FAF7`) through CSS variables so dark mode remaps them.
+- `apps/web/src/components/dashboard/DashboardCommandCenter.tsx` now renders
+  the command center as a Horizon focus hero: one primary CTA, compact next-up
+  links, `1/N` focus counter, and the review-first trust ribbon.
+- `apps/web/src/components/dashboard/DashboardMetricCard.tsx` now uses the
+  bento card treatment: 18px radius, quiet uppercase label, compact icon, and
+  14px-grid rhythm.
+- `apps/web/src/components/dashboard.tsx` moves Dashboard onto the Horizon
+  canvas and spacing. Smart Intake mode still shares the component, so verify
+  `/intake` as well before shipping wider layout changes.
+- Dashboard smoke selectors now use the new accessible heading/copy
+  (`Today's focus`, `Preparing today's focus.`).
+
+No API shape, provider call, Smart Intake apply, email/SMS, Xero/Basiq, payment,
+reconciliation, or operations mutation path changed. App shell width/style was
+left unchanged after the scout review flagged its wider blast radius; treat
+Horizon shell/sidebar and Work `45:168` as separate follow-up slices.
+
+Verification so far: targeted eslint passed for touched source + smoke files;
+`npm exec -- tsc --noEmit` and `git diff --check` passed; targeted Playwright
+smoke passed (`PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npm exec -- playwright
+test tests/smoke/dashboard-command-center.spec.ts`, 10/10). Browser check after
+restarting the dev server: desktop 1280x900 has the 240px shell gutter, no
+horizontal overflow, and a 253px loaded focus hero; mobile 390x844 has no
+horizontal overflow; dark mode remaps the hero wash and bento card surfaces.
+Full `npm --prefix apps/web run lint` currently scans generated
+`apps/web/playwright-report/trace/*.js` assets and fails on minified React hook
+names; do not treat that as a source failure unless the generated report is
+cleaned or excluded.
 
 ## Cowork continuation - 2026-06-09 (platform-admin tier, Waves 1–4 — latest)
 

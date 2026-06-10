@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-08
+Last updated: 2026-06-10
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon Dashboard v1:** first implementation pass from the
+  approved Figma Horizon Dashboard target (`PO2jOANgmqgZHfqWZXOZGU`, node
+  `45:2`). Dashboard now uses the Horizon canvas tokens, a focus-first
+  command-center hero with one primary action, the review-first trust ribbon,
+  and bento-style metric cards with 18px radius / 14px gutter rhythm. This is
+  frontend-only presentation work over existing dashboard queries and links:
+  no API shape change, provider call, Smart Intake apply, email/SMS, Xero/Basiq,
+  payment, reconciliation, or queue mutation path changed. Work/Horizon shell
+  remain follow-up slices. Pending Remba review.
 - [~] **2026-06-10 "All entities" rollup pages (Dashboard/Insights/Billing-readiness):**
   Dashboard command center fans out its queries in all-mode, concatenates the
   ranked actions (entity-attributed) and sums the metric counts; non-additive
