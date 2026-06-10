@@ -2,6 +2,64 @@
 
 Last updated: 2026-06-11
 
+## Cowork continuation - 2026-06-11 (Horizon Notifications + Settings v1 - latest)
+
+Implemented the approved Horizon Notifications and Settings slice from Figma
+source of truth `PO2jOANgmqgZHfqWZXOZGU`, nodes `55:307` and `55:439`. 04
+Concept remains out of scope; production source stays 01 Foundations / 02
+Components / 03 Screens.
+
+Scope stayed inside `/notifications`, `/settings`, and their existing smoke
+coverage. Notifications now opens with channel health cards, a Needs You /
+Receipts split, retained receipt evidence and message preview disclosures, and
+a read-only trust ribbon. Settings now opens with four Horizon tab cards
+(Organisation, Security, Notifications, Connect), per-operator notification
+cards, ownership and appearance supporting panels, and a review-first provider
+guardrail ribbon.
+
+Existing explicit send/retry/update/provider actions remain behind their
+current operator-controlled paths. No API shape, provider send, email/SMS,
+Xero/Basiq, payment, reconciliation, or workflow mutation path changed.
+
+Files touched by the implementation slice:
+
+- `apps/web/src/app/notifications/page.tsx` — Horizon channel health cards,
+  Needs You / Receipts layout, retained evidence/preview controls, and
+  read-only trust ribbon over the existing notification-center handlers.
+- `apps/web/src/app/settings/page.tsx` — Horizon settings tab cards,
+  organisation-first layout, per-operator Work notification cards, ownership
+  tags, appearance panel, and review-first provider guardrail ribbon over the
+  existing settings/security/connect handlers.
+- `apps/web/tests/smoke/notifications.spec.ts` — Horizon notifications smoke
+  coverage for the new page hierarchy and no provider mutation during load.
+- `apps/web/tests/smoke/settings.spec.ts` — Horizon settings smoke coverage for
+  the new card layout, operator notification panels, supporting panels, and no
+  provider send/accounting mutation during load.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, this handover log,
+  and `docs/superpowers/plans/2026-06-11-horizon-notifications-settings.md`
+  record the slice as Remba-pending.
+
+Verification:
+
+- `./node_modules/.bin/eslint src/app/notifications/page.tsx src/app/settings/page.tsx tests/smoke/notifications.spec.ts tests/smoke/settings.spec.ts`
+- `./node_modules/.bin/tsc --noEmit`
+- `npx playwright test tests/smoke/notifications.spec.ts tests/smoke/settings.spec.ts --project=chromium`
+- `npx playwright test tests/smoke/nav-consolidation.spec.ts tests/smoke/appearance.spec.ts --project=chromium`
+- `npx playwright test tests/smoke/settings-xero-ux.spec.ts tests/smoke/settings-basiq-ux.spec.ts --project=chromium`
+- `npm run build`
+- Browser visual check via Playwright at 1280x900 and 390x844, light and dark,
+  for `/notifications` and `/settings`; no horizontal overflow and nonblank
+  headings confirmed.
+
+Commit/push and Vercel READY proof are still pending unless a later log proves
+otherwise.
+
+Known follow-ups:
+
+- Remba should review the split notification lane density, retained disclosure
+  hierarchy, settings card priority, and whether the ownership/appearance
+  supporting panels should stay on the default Organisation view.
+
 ## Cowork continuation - 2026-06-11 (Horizon Document review v1 - latest)
 
 Implemented the approved Horizon Document review slice from Figma source of

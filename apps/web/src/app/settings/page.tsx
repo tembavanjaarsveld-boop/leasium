@@ -146,7 +146,7 @@ const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
 
-type SettingsTab = "security" | "organisation" | "connect";
+type SettingsTab = "organisation" | "security" | "notifications" | "connect";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
   noticeKey: string;
@@ -204,11 +204,33 @@ type XeroCallbackFeedback =
 const settingsTabs: Array<{
   id: SettingsTab;
   label: string;
+  description: string;
   icon: ReactNode;
 }> = [
-  { id: "security", label: "Security", icon: <ShieldCheck size={15} /> },
-  { id: "organisation", label: "Organisation", icon: <Building2 size={15} /> },
-  { id: "connect", label: "Connect", icon: <PlugZap size={15} /> },
+  {
+    id: "organisation",
+    label: "Organisation",
+    description: "Entities, tags, profile",
+    icon: <Building2 size={15} />,
+  },
+  {
+    id: "security",
+    label: "Security",
+    description: "Operators and access",
+    icon: <ShieldCheck size={15} />,
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description: "Channels and templates",
+    icon: <Bell size={15} />,
+  },
+  {
+    id: "connect",
+    label: "Connect",
+    description: "Xero, SendGrid, Twilio",
+    icon: <PlugZap size={15} />,
+  },
 ];
 
 const ENTITY_TYPE_OPTIONS: EntityType[] = [
@@ -365,22 +387,28 @@ function SettingsAppearancePanel() {
   const activeLabel = labelAppearanceMode(mode);
 
   return (
-    <SectionPanel
-      title="Appearance"
-      description="Choose a workspace appearance or follow this device."
-      className="max-w-3xl"
-      icon={
-        mode === "dark" ? (
-          <Moon size={17} className="text-primary" />
-        ) : mode === "system" ? (
-          <Monitor size={17} className="text-primary" />
-        ) : (
-          <Sun size={17} className="text-primary" />
-        )
-      }
-      actions={<StatusBadge tone="neutral">{activeLabel} active</StatusBadge>}
-    >
-      <div className="flex flex-wrap items-center gap-2 p-3">
+    <section className="max-w-3xl overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {mode === "dark" ? (
+              <Moon size={17} className="text-primary" />
+            ) : mode === "system" ? (
+              <Monitor size={17} className="text-primary" />
+            ) : (
+              <Sun size={17} className="text-primary" />
+            )}
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Appearance
+            </h3>
+          </div>
+          <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">
+            Choose a workspace appearance or follow this device.
+          </p>
+        </div>
+        <StatusBadge tone="neutral">{activeLabel} active</StatusBadge>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 p-2">
         {options.map((option) => {
           const isActive = mode === option.mode;
           return (
@@ -404,7 +432,7 @@ function SettingsAppearancePanel() {
           );
         })}
       </div>
-    </SectionPanel>
+    </section>
   );
 }
 
@@ -2109,7 +2137,7 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
 
 function SettingsWorkspace() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("security");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("organisation");
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [xeroTenantId, setXeroTenantId] = useState("");
   const [xeroContactPreview, setXeroContactPreview] =
@@ -2199,8 +2227,12 @@ function SettingsWorkspace() {
     const hasXeroCallback =
       params.get("xero_connected") === "1" || params.has("xero_error");
     const requestedTab = params.get("tab");
-    if (requestedTab === "organisation") {
+    if (requestedTab === "security") {
+      setActiveTab("security");
+    } else if (requestedTab === "organisation") {
       setActiveTab("organisation");
+    } else if (requestedTab === "notifications") {
+      setActiveTab("notifications");
     } else if (
       requestedTab === "connect" ||
       requestedTab === "xero" ||
@@ -2344,7 +2376,10 @@ function SettingsWorkspace() {
   const notificationTemplateCatalogQuery = useQuery({
     queryKey: ["work-assignment-notification-templates"],
     queryFn: getWorkAssignmentNotificationTemplates,
-    enabled: activeTab === "security" || activeTab === "organisation",
+    enabled:
+      activeTab === "security" ||
+      activeTab === "organisation" ||
+      activeTab === "notifications",
   });
   const brandedTemplatesQuery = useQuery({
     queryKey: ["branded-communication-templates", selectedEntityId],
@@ -3261,6 +3296,36 @@ function SettingsWorkspace() {
     }
     scrollToPanel(xeroConnectionPanelRef);
   };
+  const showHorizonOverview =
+    activeTab === "organisation" || activeTab === "notifications";
+  const horizonCanManageSecurity =
+    Boolean(securityQuery.data?.can_manage_security) &&
+    !memberMutation.isPending;
+  const horizonOperatorRole = (member: SecurityMemberRecord) => {
+    const currentRole = roleForEntity(member, selectedEntityId);
+    if (member.roles.length > 1 && currentRole) {
+      return `${roleLabel(currentRole.role)} · all entities`;
+    }
+    if (currentRole) {
+      return `${roleLabel(currentRole.role)} · ${currentRole.entity_name}`;
+    }
+    return member.roles[0]
+      ? `${roleLabel(member.roles[0].role)} · ${member.roles[0].entity_name}`
+      : "No access";
+  };
+  const horizonDigestLabel = (member: SecurityMemberRecord) =>
+    `Digest · ${statusLabel(workAssignmentDigestCadence(member)).replace(/\b\w/g, (letter) => letter.toUpperCase())}`;
+  const horizonNoticeTemplateLabel = (member: SecurityMemberRecord) => {
+    const draft = normalisedTemplateDraft(workNotificationTemplateDraft(member));
+    const title = notificationTemplateTitle(draft.noticeKey);
+    const compactTitle =
+      title === "Standard work assignment" ? "Notice — Standard" : title;
+    return `${compactTitle} ${draft.noticeVersion}`.trim();
+  };
+  const horizonDigestTemplateLabel = (member: SecurityMemberRecord) => {
+    const draft = normalisedTemplateDraft(workNotificationTemplateDraft(member));
+    return `Digest ${draft.digestVersion}`.trim();
+  };
 
   return (
     <main className="min-h-screen">
@@ -3284,7 +3349,7 @@ function SettingsWorkspace() {
           title="Settings"
           description={
             selectedEntity
-              ? `${selectedEntity.name} access, organisation, and integration controls.`
+              ? `Access, organisation, notifications, and integrations for ${selectedEntity.name}.`
               : "Choose an entity to review access, organisation, and integration controls."
           }
           actions={
@@ -3303,18 +3368,17 @@ function SettingsWorkspace() {
           }
         />
 
-        <SettingsAppearancePanel />
-
         <div
           aria-label="Settings sections"
-          className="flex w-full flex-wrap gap-2 rounded-2xl border border-border bg-white p-1 shadow-leasiumXs md:w-fit"
+          className="grid gap-2 rounded-2xl border border-leasium-card-border bg-white p-1.5 shadow-leasiumCard md:grid-cols-4"
           role="tablist"
         >
           {settingsTabs.map((tab) => (
             <button
               key={tab.id}
+              aria-label={tab.label}
               aria-selected={activeTab === tab.id}
-              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition-shadow duration-200 ease-leasium ${
+              className={`flex min-h-[54px] items-center gap-2 rounded-xl px-4 py-3 text-left transition-shadow duration-200 ease-leasium ${
                 activeTab === tab.id
                   ? "bg-primary text-white shadow-leasiumXs"
                   : "text-leasium-slate-600 hover:bg-muted hover:text-foreground"
@@ -3323,8 +3387,21 @@ function SettingsWorkspace() {
               role="tab"
               type="button"
             >
-              {tab.icon}
-              {tab.label}
+              <span className="shrink-0">{tab.icon}</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">
+                  {tab.label}
+                </span>
+                <span
+                  className={`block text-xs font-medium ${
+                    activeTab === tab.id
+                      ? "text-white/85"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {tab.description}
+                </span>
+              </span>
             </button>
           ))}
         </div>
@@ -3459,6 +3536,204 @@ function SettingsWorkspace() {
               ? unlinkLoginMutation.error.message
               : "Could not unlink the operator login."}
           </div>
+        ) : null}
+
+        {showHorizonOverview ? (
+          <>
+            <SectionPanel
+              title="WORK NOTIFICATIONS — PER OPERATOR"
+              icon={<Bell size={17} className="text-primary" />}
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge tone="success">
+                    {workEmailEnabledCount} email on
+                  </StatusBadge>
+                  <StatusBadge tone={workSmsReadyCount ? "primary" : "neutral"}>
+                    {workSmsReadyCount} SMS ready
+                  </StatusBadge>
+                </div>
+              }
+            >
+              <div className="grid gap-3 p-4 xl:grid-cols-2">
+                {selectedEntityRoleMembers.map((member, index) => {
+                  const isUpdating =
+                    memberMutation.isPending &&
+                    memberMutation.variables?.memberId === member.id;
+                  const workEmailEnabled = workAssignmentEmailEnabled(member);
+                  const workSmsEnabled = workAssignmentSmsEnabled(member);
+                  const smsPhone = workAssignmentSmsPhone(member);
+                  return (
+                    <article
+                      key={`${member.id}-horizon-notifications`}
+                      className="grid gap-4 rounded-2xl border border-leasium-card-border bg-white p-4 text-sm shadow-leasiumXs"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold text-white ${
+                            index % 2 === 0 ? "bg-primary" : "bg-leasium-teal"
+                          }`}
+                        >
+                          {member.display_name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-foreground">
+                            {member.display_name}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {horizonOperatorRole(member)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <label className="flex min-h-8 items-center justify-between gap-3">
+                          <span className="flex items-center gap-2 font-medium text-foreground">
+                            <input
+                              aria-label={`${member.display_name} assignment email notifications`}
+                              checked={workEmailEnabled}
+                              className="h-4 w-4 accent-primary"
+                              disabled={!horizonCanManageSecurity || isUpdating}
+                              onChange={(event) =>
+                                memberMutation.mutate({
+                                  memberId: member.id,
+                                  payload: {
+                                    notification_preferences:
+                                      nextNotificationPreferences(member, {
+                                        work_assignment_email_enabled:
+                                          event.target.checked,
+                                      }),
+                                  },
+                                })
+                              }
+                              type="checkbox"
+                            />
+                            Assignment email
+                          </span>
+                          <StatusBadge tone="neutral">
+                            {horizonDigestLabel(member)}
+                          </StatusBadge>
+                        </label>
+
+                        <label className="flex min-h-8 items-center justify-between gap-3">
+                          <span className="flex items-center gap-2 font-medium text-foreground">
+                            <input
+                              aria-label={`${member.display_name} assignment SMS notifications`}
+                              checked={workSmsEnabled}
+                              className="h-4 w-4 accent-primary"
+                              disabled={!horizonCanManageSecurity || isUpdating}
+                              onChange={(event) =>
+                                memberMutation.mutate({
+                                  memberId: member.id,
+                                  payload: {
+                                    notification_preferences:
+                                      nextNotificationPreferences(member, {
+                                        work_assignment_sms_enabled:
+                                          event.target.checked,
+                                      }),
+                                  },
+                                })
+                              }
+                              type="checkbox"
+                            />
+                            Assignment SMS
+                          </span>
+                          <span className="flex flex-wrap justify-end gap-2">
+                            {smsPhone ? (
+                              <StatusBadge tone="primary">{smsPhone}</StatusBadge>
+                            ) : null}
+                            <StatusBadge tone={workSmsEnabled ? "success" : "neutral"}>
+                              {workSmsEnabled ? "Reviewed" : "Off"}
+                            </StatusBadge>
+                          </span>
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-semibold text-muted-foreground">
+                          Templates
+                        </span>
+                        <StatusBadge tone="neutral">
+                          {horizonNoticeTemplateLabel(member)}
+                        </StatusBadge>
+                        <StatusBadge tone="neutral">
+                          {horizonDigestTemplateLabel(member)}
+                        </StatusBadge>
+                        <StatusBadge tone="success">Managed</StatusBadge>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!securityQuery.isLoading &&
+                selectedEntityRoleMembers.length === 0 ? (
+                  <EmptyState
+                    icon={<UsersRound size={18} />}
+                    title="No operators yet"
+                    description="Invite an operator before setting Work notification preferences."
+                  />
+                ) : null}
+              </div>
+            </SectionPanel>
+
+            {activeTab === "organisation" ? (
+              <div className="grid items-start gap-4 lg:grid-cols-2">
+                <SectionPanel title="OWNERSHIP TAGS" icon={<Tags size={17} />}>
+                  <div className="divide-y divide-border px-4 py-2">
+                    {propertiesQuery.isLoading ? (
+                      <div className="py-3 text-sm text-muted-foreground">
+                        Checking ownership tags
+                      </div>
+                    ) : ownershipTags.length ? (
+                      ownershipTags.slice(0, 4).map((tag) => (
+                        <div
+                          key={`horizon-${tag.key}`}
+                          className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span
+                              className={`inline-flex max-w-44 items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(tag.palette)}`}
+                              title={tag.label}
+                            >
+                              {tag.label}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {tag.propertyCount}{" "}
+                              {tag.propertyCount === 1
+                                ? "property"
+                                : "properties"}
+                            </span>
+                          </div>
+                          <Link
+                            href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
+                            className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs font-semibold text-primary hover:text-primary-hover"
+                          >
+                            View <ChevronRight size={13} />
+                          </Link>
+                        </div>
+                      ))
+                    ) : (
+                      <EmptyState
+                        icon={<Tags size={18} />}
+                        title="No ownership tags yet"
+                        description="Import or edit property ownership and billing identity data to build this directory."
+                      />
+                    )}
+                  </div>
+                </SectionPanel>
+
+                <SettingsAppearancePanel />
+              </div>
+            ) : null}
+
+            <div className="flex justify-center">
+              <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-leasium-teal-strong">
+                <ShieldCheck size={16} />
+                <span>
+                  Provider changes are review-first — nothing connects or sends
+                  without you.
+                </span>
+              </div>
+            </div>
+          </>
         ) : null}
 
         {activeTab === "security" ? (

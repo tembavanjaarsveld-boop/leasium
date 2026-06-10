@@ -817,6 +817,73 @@ function ProviderSetupChecks({
   );
 }
 
+function HorizonChannelCards({
+  channels,
+}: {
+  channels: WorkAssignmentNotificationChannelRecord[];
+}) {
+  if (!channels.length) {
+    return null;
+  }
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {channels.map((channel) => {
+        const ready = channel.configured && channel.readiness !== "blocked";
+        const setupNeeded = channel.action_available && !channel.configured;
+        const statusLabel = ready
+          ? "Ready"
+          : setupNeeded
+            ? "Setup needed"
+            : channelReadinessLabel(channel.readiness);
+        return (
+          <article
+            key={channel.channel}
+            className="rounded-2xl border border-leasium-card-border bg-white px-4 py-4 shadow-leasiumCard"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  {channel.channel === "sms" ? (
+                    <Bell size={16} className="text-slate" />
+                  ) : channel.channel === "email" ? (
+                    <MailCheck size={16} className="text-slate" />
+                  ) : (
+                    <CheckCircle2 size={16} className="text-slate" />
+                  )}
+                  <span>{channel.label}</span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {channel.detail}
+                </p>
+                <p className="mt-1 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                  {channel.label}{" "}
+                  {channelReadinessLabel(channel.readiness).toLowerCase()}
+                </p>
+              </div>
+              <StatusBadge tone={channelReadinessTone(channel)}>
+                {statusLabel}
+              </StatusBadge>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function NotificationTrustRibbon() {
+  return (
+    <div className="flex justify-center">
+      <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-leasium-teal-strong">
+        <CheckCircle2 size={16} />
+        <span>
+          Notification center is read-only — sends need your explicit approval.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function providerReadinessCsv({
   channels,
   guardrails,
@@ -1390,14 +1457,6 @@ function NoticeRow({
   );
 }
 
-const countCardValueClass: Record<StatusTone, string> = {
-  neutral: "text-foreground",
-  primary: "text-primary",
-  success: "text-success-strong",
-  warning: "text-warning-strong",
-  danger: "text-danger-strong",
-};
-
 function NotificationsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
@@ -1763,42 +1822,6 @@ function NotificationsWorkspace() {
         : (center?.notice_count ?? 0),
     [allMode, center?.notice_count, centerFanOut.data],
   );
-  const countCards = useMemo(
-    () => [
-      {
-        label: "Unread",
-        value: countTotals.unread,
-        tone: "primary" as StatusTone,
-      },
-      {
-        label: "Attention",
-        value: countTotals.attention,
-        tone: "danger" as StatusTone,
-      },
-      {
-        label: "Ready",
-        value: countTotals.ready,
-        tone: "primary" as StatusTone,
-      },
-      {
-        label: "In flight",
-        value: countTotals.inFlight,
-        tone: "warning" as StatusTone,
-      },
-      {
-        label: "Delivered",
-        value: countTotals.done,
-        tone: "success" as StatusTone,
-      },
-      {
-        label: "Digest receipts",
-        value: countTotals.digestReceipts,
-        tone: "neutral" as StatusTone,
-      },
-    ],
-    [countTotals],
-  );
-
   return (
     <main className="min-h-screen">
       <AppHeader>
@@ -1815,9 +1838,9 @@ function NotificationsWorkspace() {
           title="Notifications"
           description={
             allMode
-              ? "Work notices and digest receipts across every entity."
+              ? `${noticeTotalCount} work notices and ${countTotals.digestReceipts} digest receipts across every entity.`
               : selectedEntity
-                ? `${selectedEntity.name} work notices and digest receipts.`
+                ? `Work notices and digest receipts — ${notices.length} need you, the rest are receipts.`
                 : "Choose an entity to review work notices and digest receipts."
           }
           actions={
@@ -1848,6 +1871,36 @@ function NotificationsWorkspace() {
                 <CheckCircle2 size={15} />
                 Mark reviewed
               </SecondaryButton>
+              {center && !allMode ? (
+                <ExportMenu
+                  actions={[
+                    {
+                      key: "copy-review-packet",
+                      label: "Copy review packet",
+                      icon: <ClipboardCopy size={14} />,
+                      onSelect: () => void copyReviewPacket(),
+                    },
+                    {
+                      key: "download-review-packet",
+                      label: "Download review packet CSV",
+                      icon: <Download size={14} />,
+                      onSelect: downloadReviewPacketCsv,
+                    },
+                    {
+                      key: "copy-readiness",
+                      label: "Copy readiness CSV",
+                      icon: <ClipboardCopy size={14} />,
+                      onSelect: () => void copyProviderReadinessCsv(),
+                    },
+                    {
+                      key: "download-readiness",
+                      label: "Download readiness CSV",
+                      icon: <Download size={14} />,
+                      onSelect: downloadProviderReadinessCsv,
+                    },
+                  ]}
+                />
+              ) : null}
               <SecondaryButton
                 type="button"
                 disabled={!selectedEntityId || centerFetching}
@@ -1865,88 +1918,49 @@ function NotificationsWorkspace() {
           }
         />
 
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {countCards.map((card) => (
-            <div
-              key={card.label}
-              className="rounded-xl border border-border bg-white p-3 shadow-leasiumXs"
-            >
-              <div className="text-xs font-semibold uppercase text-muted-foreground">
-                {card.label}
-              </div>
-              <div
-                className={cn(
-                  "mt-2 text-2xl font-semibold",
-                  countCardValueClass[card.tone],
-                )}
-              >
-                {card.value}
-              </div>
+        {reviewPacketCopied ? (
+          <div
+            role="status"
+            className="rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success"
+          >
+            Review packet copied
+          </div>
+        ) : null}
+        {providerReadinessCsvCopied ? (
+          <div
+            role="status"
+            className="rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success"
+          >
+            Readiness CSV copied
+          </div>
+        ) : null}
+
+        <section aria-label="Notification channel health" className="grid gap-3">
+          <HorizonChannelCards channels={centerChannels} />
+          {centerChannels.length ? (
+            <ProviderSetupChecks channels={centerChannels} />
+          ) : null}
+          {allMode ? (
+            <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-muted-foreground shadow-leasiumXs">
+              Channel readiness and provider setup are shown when a single
+              entity is selected.
             </div>
-          ))}
-        </div>
+          ) : null}
+        </section>
 
         <SectionPanel
-          title="Work notice center"
-          description="Assignment notices across maintenance, arrears, and critical dates."
+          title={`NEEDS YOU — ${filteredNotices.length}`}
+          description="Work notice center"
           icon={<Bell size={17} className="text-primary" />}
           actions={
             hasCenterData ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge tone="neutral">
-                  {noticeTotalCount}{" "}
-                  {noticeTotalCount === 1 ? "notice" : "notices"}
-                </StatusBadge>
-                {center && !allMode ? (
-                  <ExportMenu
-                    actions={[
-                      {
-                        key: "copy-review-packet",
-                        label: "Copy review packet",
-                        icon: <ClipboardCopy size={14} />,
-                        onSelect: () => void copyReviewPacket(),
-                      },
-                      {
-                        key: "download-review-packet",
-                        label: "Download review packet CSV",
-                        icon: <Download size={14} />,
-                        onSelect: downloadReviewPacketCsv,
-                      },
-                      {
-                        key: "copy-readiness",
-                        label: "Copy readiness CSV",
-                        icon: <ClipboardCopy size={14} />,
-                        onSelect: () => void copyProviderReadinessCsv(),
-                      },
-                      {
-                        key: "download-readiness",
-                        label: "Download readiness CSV",
-                        icon: <Download size={14} />,
-                        onSelect: downloadProviderReadinessCsv,
-                      },
-                    ]}
-                  />
-                ) : null}
-              </div>
+              <StatusBadge tone="neutral">
+                {noticeTotalCount}{" "}
+                {noticeTotalCount === 1 ? "notice" : "notices"}
+              </StatusBadge>
             ) : null
           }
         >
-          {reviewPacketCopied ? (
-            <div
-              role="status"
-              className="border-b border-border bg-success-soft px-4 py-2 text-xs font-semibold text-success"
-            >
-              Review packet copied
-            </div>
-          ) : null}
-          {providerReadinessCsvCopied ? (
-            <div
-              role="status"
-              className="border-b border-border bg-success-soft px-4 py-2 text-xs font-semibold text-success"
-            >
-              Readiness CSV copied
-            </div>
-          ) : null}
           {center?.guardrails.length ? (
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
               <span>{center.guardrails[0]}</span>
@@ -1955,46 +1969,6 @@ function NotificationsWorkspace() {
                   ? `Reviewed ${formatDateTime(center.last_read_at)}`
                 : "Not reviewed yet"}
               </span>
-            </div>
-          ) : null}
-          {centerChannels.length ? (
-            <div className="grid gap-2 border-b border-border px-4 py-3 md:grid-cols-3">
-              {centerChannels.map((channel) => (
-                <div
-                  key={channel.channel}
-                  className="rounded-xl border border-border bg-white p-3 text-xs"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-foreground">
-                      {channel.label}
-                    </span>
-                    <StatusBadge
-                      tone={channelReadinessTone(channel)}
-                    >
-                      {channel.label}{" "}
-                      {channelReadinessLabel(channel.readiness).toLowerCase()}
-                    </StatusBadge>
-                  </div>
-                  <div className="mt-2 leading-5 text-muted-foreground">
-                    {channel.detail}
-                  </div>
-                  {channel.next_action ? (
-                    <div className="mt-2 leading-5 text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        Next:
-                      </span>{" "}
-                      {channel.next_action}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              <ProviderSetupChecks channels={centerChannels} />
-            </div>
-          ) : null}
-          {allMode ? (
-            <div className="border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-              Channel readiness and provider setup are shown when a single
-              entity is selected.
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
@@ -2062,8 +2036,8 @@ function NotificationsWorkspace() {
         </SectionPanel>
 
         <SectionPanel
-          title="Digest history"
-          description="Receipts from manually generated, scheduled, or approved Work digest emails."
+          title="RECEIPTS — QUIET"
+          description="Digest history and provider receipts that do not need an operator action."
           icon={<MailCheck size={17} className="text-primary" />}
           actions={
             hasCenterData ? (
@@ -2213,6 +2187,8 @@ function NotificationsWorkspace() {
             ) : null}
           </div>
         </SectionPanel>
+
+        <NotificationTrustRibbon />
 
         <div className="flex justify-end">
           <Link

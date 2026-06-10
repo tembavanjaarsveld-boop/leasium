@@ -7,6 +7,53 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("notifications render the Horizon review queue without provider mutation on load", async ({
+  page,
+}) => {
+  const forbiddenCalls: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const unsafeMethod = request.method() !== "GET";
+    const providerPath =
+      /sendgrid|twilio|provider|notification|digests\/run|comms|xero|basiq/i.test(
+        path,
+      );
+    if (unsafeMethod && providerPath) {
+      forbiddenCalls.push(`${request.method()} ${path}`);
+    }
+  });
+
+  await page.goto("/notifications");
+
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Work notices and digest receipts/i),
+  ).toBeVisible();
+  for (const channel of ["Email", "SMS", "In-app"]) {
+    await expect(
+      page
+        .locator("section, article, div")
+        .filter({ has: page.getByText(channel, { exact: true }) })
+        .first(),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByRole("heading", { name: /NEEDS YOU/i }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "RECEIPTS — QUIET" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Notification center is read-only — sends need your explicit approval.",
+    ),
+  ).toBeVisible();
+  expect(forbiddenCalls).toEqual([]);
+});
+
 async function expectTouchTarget(control: Locator, minSize = 44) {
   await control.scrollIntoViewIfNeeded();
   const box = await control.boundingBox();

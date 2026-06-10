@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -98,6 +98,8 @@ map for agents:
 | 03 Screens / Property detail 58:627 | `apps/web/src/components/property-workspace.tsx` — Horizon Property detail v1 |
 | 03 Screens / Smart Intake 55:166 | `apps/web/src/components/dashboard.tsx` via `/intake` (`Dashboard mode="intake"`) — Horizon Smart Intake desktop v1 |
 | 03 Screens / Document review 58:352 | `apps/web/src/components/dashboard.tsx` (`DocumentIntakeReviewPanel`) — Horizon Document review v1 |
+| 03 Screens / Notifications 55:307 | `apps/web/src/app/notifications/page.tsx` — Horizon Notifications v1 |
+| 03 Screens / Settings 55:439 | `apps/web/src/app/settings/page.tsx` — Horizon Settings v1 |
 | 03 Screens / AI Mailbox Intake 82:2 | not implemented — concept frame for ai@leasium.ai mailbox intake (queue + quarantine), awaiting Temba sign-off; design doc `docs/ai-mailbox-intake-design.md` |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
@@ -111,8 +113,8 @@ Workflow: new design-facing slices get a frame in this file first (duplicate
 the nearest screen, modify, then implement). Figma frame review can stand in
 for the pre-implementation half of the Remba gate; code review of the shipped
 surface remains the second half. Screens not yet captured in Figma
-(Settings, Notifications, People, Money, Insights, tenant portal) are
-back-filled when first touched by a design-facing slice.
+(People, Money, Insights, tenant portal) are back-filled when first touched by
+a design-facing slice.
 
 ## Remba Review Gate
 
@@ -229,6 +231,20 @@ back-filled when first touched by a design-facing slice.
   treatment versus a future true PDF renderer, low-confidence row prominence,
   mobile stacking, and whether the retained detailed editor sections should be
   progressively disclosed before this is marked `[x]`.
+- **Horizon Notifications + Settings v1 (2026-06-11, Remba pending):**
+  production implementation from the approved Figma Notifications and Settings
+  targets (`55:307`, `55:439`) on `/notifications` and `/settings`.
+  Notifications now presents channel health cards, Needs You / Receipts lanes,
+  retained receipt evidence and message previews, and a read-only trust ribbon.
+  Settings now presents four Horizon tab cards (Organisation, Security,
+  Notifications, Connect), per-operator notification cards, ownership and
+  appearance supporting panels, and a review-first provider guardrail ribbon.
+  Existing send/retry/update/provider actions remain explicit operator actions;
+  no API shape, provider send, email/SMS, payment, reconciliation, Xero/Basiq,
+  or workflow mutation path changed. Remba should review whether the split
+  notification lanes, retained evidence disclosures, settings card priority,
+  and supporting ownership/appearance panels match the approved Horizon density
+  before this is marked `[x]`.
 - **Horizon shell polish v1 (2026-06-10, Remba pending):** Temba review of the
   shipped shell removed the extra visible chrome that diverged from the approved
   Horizon sidebar. The entity switcher keeps `All entities` as a native dropdown

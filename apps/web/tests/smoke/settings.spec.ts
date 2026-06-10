@@ -7,6 +7,68 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("settings render the Horizon operator controls without provider mutation on load", async ({
+  page,
+}) => {
+  const forbiddenCalls: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const unsafeMethod = request.method() !== "GET";
+    const providerPath =
+      /sendgrid|twilio|provider|notification|digests\/run|comms|xero|basiq|payment|reconciliation/i.test(
+        path,
+      );
+    if (unsafeMethod && providerPath) {
+      forbiddenCalls.push(`${request.method()} ${path}`);
+    }
+  });
+
+  await page.goto("/settings");
+
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  for (const section of [
+    "Organisation",
+    "Security",
+    "Notifications",
+    "Connect",
+  ]) {
+    await expect(page.getByRole("tab", { name: section })).toBeVisible();
+  }
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
+  await expect(page.getByText("Assignment email").first()).toBeVisible();
+  await expect(page.getByText("Assignment SMS").first()).toBeVisible();
+  await expect(page.getByText("Managed").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OWNERSHIP TAGS" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Provider changes are review-first — nothing connects or sends without you.",
+    ),
+  ).toBeVisible();
+  expect(forbiddenCalls).toEqual([]);
+});
+
+test("settings notifications tab opens the Horizon operator controls directly", async ({
+  page,
+}) => {
+  await page.goto("/settings?tab=notifications");
+
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Notifications" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
+  await expect(page.getByText("Assignment email").first()).toBeVisible();
+  await expect(page.getByText("Assignment SMS").first()).toBeVisible();
+  await expect(
+    page.getByText(
+      "Provider changes are review-first — nothing connects or sends without you.",
+    ),
+  ).toBeVisible();
+});
+
 test("settings security loading state avoids raw access placeholders", async ({
   page,
 }) => {
@@ -30,7 +92,7 @@ test("settings security loading state avoids raw access placeholders", async ({
     },
   );
 
-  await page.goto("/settings");
+  await page.goto("/settings?tab=security");
 
   const securityPanel = page
     .locator("main")
@@ -97,7 +159,7 @@ test("settings organisation loading states use contextual labels", async ({
     await route.fallback();
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings?tab=security");
   await page.getByRole("tab", { name: "Organisation" }).click();
 
   await expect(page.getByText("Checking organisation")).toBeVisible();
@@ -119,7 +181,7 @@ test("settings organisation loading states use contextual labels", async ({
 
 test("mobile settings users and roles use readable cards", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/settings");
+  await page.goto("/settings?tab=security");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
@@ -252,7 +314,7 @@ test("settings Work notification preferences stay inside the desktop viewport", 
       }),
     });
   });
-  await page.goto("/settings");
+  await page.goto("/settings?tab=security");
 
   const workNotifications = page
     .locator("section")

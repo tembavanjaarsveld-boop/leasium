@@ -8,6 +8,18 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Notifications + Settings v1:** implemented the
+  approved Figma Notifications and Settings targets (`PO2jOANgmqgZHfqWZXOZGU`,
+  nodes `55:307` and `55:439`) on `/notifications` and `/settings`.
+  Notifications now has channel health cards, Needs You / Receipts lanes,
+  retained receipt evidence and message previews, and a read-only trust ribbon.
+  Settings now has four Horizon tab cards (Organisation, Security,
+  Notifications, Connect), per-operator notification cards, ownership and
+  appearance supporting panels, and a review-first provider guardrail ribbon.
+  Existing explicit send/retry/update/provider actions remain behind their
+  current operator-controlled paths: no API shape, provider send, email/SMS,
+  Xero/Basiq, payment, reconciliation, or workflow mutation path changed.
+  Pending Remba review.
 - [~] **2026-06-11 Horizon Document review v1:** implemented the approved
   Figma Document review target (`PO2jOANgmqgZHfqWZXOZGU`, node `58:352`) inside
   `/intake?review=...`. The focused review now has the Horizon breadcrumb/title,
