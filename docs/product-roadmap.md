@@ -8,9 +8,19 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon app shell v1:** implemented the approved Horizon
+  Sidebar and mobile Bottom nav components from Figma (`PO2jOANgmqgZHfqWZXOZGU`,
+  nodes `44:117` and `44:301`) in the shared operator shell. Desktop now uses
+  the 232px dark Horizon rail with the entity switcher card, teal active rail,
+  seven primary hubs plus Settings, keyboard shortcut affordance, and operator
+  card/sign-in fallback; mobile now uses Home / Properties / Smart Intake FAB /
+  Work / Money with the full drawer still available. The top utility bar keeps
+  search, shortcuts, notifications, and appearance only. Frontend shell-only:
+  no API shape, provider send, Xero/Basiq, payment, reconciliation, or workflow
+  mutation path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon Work desktop v1:** implemented the approved Figma Work
-  target (`PO2jOANgmqgZHfqWZXOZGU`, node `45:168`) on `/operations` without the
-  wider Horizon shell slice. The queue landing view now uses the `Work` title,
+  target (`PO2jOANgmqgZHfqWZXOZGU`, node `45:168`) on `/operations`. The queue
+  landing view now uses the `Work` title,
   Today/This week/All segmented range, Figma-style Act now/Scheduled/Waiting
   lanes with severity rails, compact Horizon work cards, team-workload and
   compliance right rail, Evening Digest card, and review-first trust ribbon.
@@ -26,8 +36,9 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   and bento-style metric cards with 18px radius / 14px gutter rhythm. This is
   frontend-only presentation work over existing dashboard queries and links:
   no API shape change, provider call, Smart Intake apply, email/SMS, Xero/Basiq,
-  payment, reconciliation, or queue mutation path changed. Work/Horizon shell
-  remain follow-up slices. Pending Remba review.
+  payment, reconciliation, or queue mutation path changed. Dashboard hero/bento
+  polish and remaining Horizon surfaces remain follow-up slices. Pending Remba
+  review.
 - [~] **2026-06-10 "All entities" rollup pages (Dashboard/Insights/Billing-readiness):**
   Dashboard command center fans out its queries in all-mode, concatenates the
   ranked actions (entity-attributed) and sums the metric counts; non-additive
@@ -520,7 +531,9 @@ Equifax/illion; RTBA/state RTAs).
   the new `/money` hub, Comms is treated as **Work**, and hub alias redirects preserve
   moved-route entry points. 2026-06-02 mobile follow-up lifted Money hub tabs plus
   the active panel action to the 44px tap-target baseline with matching 390px smoke
-  coverage. Honours the §10.5.1 seven-item sidebar cap.
+  coverage. 2026-06-10 Horizon shell follow-up keeps the same IA inside the
+  approved 232px Horizon sidebar and mobile FAB bottom nav. Honours the §10.5.1
+  seven-item sidebar cap.
 - [~] **Account operating mode gate (self-managed owner vs managing agent).** SHIPPED pending Remba — `cb4704f` (backend: `operating_mode` on Organisation, default `self_managed_owner`, owner/admin PATCH) + `1996aa7`/`ce271e1` (frontend: People→Owners hub hidden for self-managed, Settings mode toggle + a "Your entities & trusts" fallback keeping owner-entity CRUD reachable, owner-statement palette/shortcut gating with provider-call guard tests) + `add20ac` (Money/Statements dispatch deep gate: self-managed sees Entity statements/local reports only; dispatch queues/drafts/send + dispatch receipt reads are agent/hybrid-only) + `147eae1` (owner-portal deep gate: self-managed cannot open operator portal previews, create/claim owner portal invites, read linked owner account sessions/status, or download owner-visible account documents; hybrid stays enabled). Remaining follow-up: gate deeper disbursement/trust-accounting entry points once those routes exist. Background: the shipped
   People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are the
   *managing-agent* framing. A self-managed owner-operator (SKJ, and most 2–20-property owners)

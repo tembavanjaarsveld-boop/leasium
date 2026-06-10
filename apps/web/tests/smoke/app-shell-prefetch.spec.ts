@@ -8,17 +8,23 @@ test("app shell disables automatic route prefetch for persistent navigation link
   const source = await readFile(appShellPath, "utf8");
 
   expect(source).toContain("const shellLinkProps = { prefetch: false }");
-  expect(source).toContain(
-    '<Link\n        {...shellLinkProps}\n        href="/"',
-  );
-  expect(source).toContain(
-    "<Link\n              {...shellLinkProps}\n              key={item.href}",
+  expect(source).toMatch(
+    /const renderSidebarLink[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,
   );
   expect(source).toMatch(
-    /mobileBottomNavItems\.map[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,
+    /mobileBottomNavItems\.slice\(0, 2\)\.map[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,
+  );
+  expect(source).toMatch(
+    /href="\/intake"[\s\S]*aria-label="Smart Intake"/,
+  );
+  expect(source).toMatch(
+    /mobileBottomNavItems\.slice\(2\)\.map[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,
   );
   expect(source).toContain(
     '<Link\n              {...shellLinkProps}\n              href="/notifications"',
+  );
+  expect(source).toContain(
+    '<Link\n        {...shellLinkProps}\n        href="/sign-in"',
   );
   expect(source).toContain(
     "<Link\n                          {...shellLinkProps}\n                          href={action.href}",

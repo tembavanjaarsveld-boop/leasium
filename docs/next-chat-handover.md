@@ -2,7 +2,61 @@
 
 Last updated: 2026-06-10
 
-## Cowork continuation - 2026-06-10 (Horizon Work desktop v1 - latest)
+## Cowork continuation - 2026-06-10 (Horizon app shell v1 - latest)
+
+Implemented the approved Horizon app shell slice from Figma source of truth
+`PO2jOANgmqgZHfqWZXOZGU`, component nodes Sidebar `44:117` and Bottom nav
+`44:301`. 04 Concept remains out of scope; production source stays 01
+Foundations / 02 Components / 03 Screens.
+
+Scope stayed shell-only. `AppHeader` now owns the 232px Horizon desktop rail,
+the top entity switcher card, seven primary hubs plus Settings, teal active
+rail, keyboard shortcut affordance, operator card/sign-in fallback, and the
+mobile Home / Properties / Smart Intake FAB / Work / Money bottom nav. The
+mobile drawer reuses the same Horizon sidebar content. The top utility bar now
+keeps search, shortcuts, notifications, and appearance only; page-owned entity
+pickers move into the sidebar/drawer. Routes without a page-owned picker show
+the selected workspace as static context rather than a fake switch control.
+
+No API shape, provider send, Xero/Basiq, payment, reconciliation, Smart Intake
+apply, work assignment, comms, or queue mutation path changed.
+
+Files touched:
+
+- `apps/web/src/components/app-shell.tsx` — Horizon sidebar, utility toolbar,
+  mobile bottom nav/FAB, operator card, entity-card fallback, active route
+  styling, and preserved command/search/shortcut behavior.
+- `apps/web/src/app/globals.css` — shell body gutter now matches the 232px
+  Horizon rail and mobile bottom spacing.
+- `apps/web/tests/smoke/mobile-bottom-nav.spec.ts` — Horizon desktop sidebar,
+  mobile bottom nav, drawer, and overlay spacing coverage.
+- `apps/web/tests/smoke/app-flows.spec.ts` — entity picker now asserted in the
+  sidebar; stale client Settings integration-card assertions removed after that
+  surface moved to `/admin`.
+- `apps/web/tests/smoke/app-shell-prefetch.spec.ts` — source guard updated for
+  the new sidebar and mobile-FAB link layout.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and this handover
+  log the shell slice as Remba-pending.
+
+Verification completed locally:
+
+- `npm exec -- eslint src/components/app-shell.tsx tests/smoke/mobile-bottom-nav.spec.ts tests/smoke/app-flows.spec.ts tests/smoke/app-shell-prefetch.spec.ts`
+- `npm exec -- tsc --noEmit`
+- `npm run build`
+- `PORT=3041 npm run test:smoke -- tests/smoke/mobile-bottom-nav.spec.ts --workers=1` (6/6)
+- `PORT=3042 npm run test:smoke -- tests/smoke/nav-consolidation.spec.ts --workers=1` (7/7)
+- `PORT=3043 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "dashboard shows the mocked portfolio|mobile header keeps utility touch targets|settings shows Xero readiness|All entities" --workers=1` (6/6)
+- `PORT=3044 npm run test:smoke -- tests/smoke/app-shell-prefetch.spec.ts --workers=1` (1/1)
+- In-app browser check at `http://127.0.0.1:3030/operations`: desktop shell
+  shows Work active, no mobile nav, no horizontal overflow; mobile 390x844 shows
+  Work plus Home / Properties / Smart Intake / Work / Money; system-dark desktop
+  shows dark canvas/sidebar with no overflow. The local 3030 dev server was
+  restarted after clearing generated `.next` cache and is running.
+
+Next Horizon slice per `docs/horizon-implementation-brief.md`: Properties
+desktop (`55:2`), followed by Property detail (`58:627`).
+
+## Cowork continuation - 2026-06-10 (Horizon Work desktop v1)
 
 Implemented the approved Horizon Work desktop slice from Figma source of truth
 `PO2jOANgmqgZHfqWZXOZGU`, node `45:168`. 04 Concept was not used; production
@@ -44,9 +98,9 @@ Verification completed locally:
 - Temporary visual QA spec captured desktop/mobile light/dark screenshots at
   `output/playwright/work-horizon/` and asserted no horizontal overflow.
 
-Next Horizon slice per `docs/horizon-implementation-brief.md`: Horizon app shell
-(`44:117`) as its own wide-blast-radius slice. Verify every route plus mobile
-drawer/bottom nav after that shell change.
+Then-current next Horizon slice was the app shell (`44:117`, `44:301`); it is
+now shipped in the latest section above. Continue with Properties desktop
+(`55:2`) next.
 
 ## Cowork continuation - 2026-06-10 (Horizon dashboard v1)
 
@@ -75,8 +129,9 @@ First code slice is intentionally Dashboard-only plus shared tokens:
 
 No API shape, provider call, Smart Intake apply, email/SMS, Xero/Basiq, payment,
 reconciliation, or operations mutation path changed. App shell width/style was
-left unchanged after the scout review flagged its wider blast radius; treat
-Horizon shell/sidebar and Work `45:168` as separate follow-up slices.
+left unchanged in this dashboard slice after the scout review flagged its wider
+blast radius; Work `45:168` and the app shell have since shipped as separate
+Remba-pending slices.
 
 Verification so far: targeted eslint passed for touched source + smoke files;
 `npm exec -- tsc --noEmit` and `git diff --check` passed; targeted Playwright

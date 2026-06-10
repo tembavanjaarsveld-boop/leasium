@@ -450,21 +450,15 @@ textarea {
    Breakpoints (Tailwind defaults):
    - sub-md (<768px): sidebar hidden, hamburger drawer; bottom nav
      visible, so the body reserves a bottom gutter.
-   - md (768-1023px): sidebar collapsed to icon-only at 64px.
-   - lg+ (≥1024px): sidebar expanded to full 240px.
+   - md+ (≥768px): Horizon sidebar fixed at 232px.
    Pending Remba review (2026-05-23 external review §8.1). */
 body.app-shell-active {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }
 @media (min-width: 768px) {
   body.app-shell-active {
-    padding-left: 64px;
+    padding-left: 232px;
     padding-bottom: 0;
-  }
-}
-@media (min-width: 1024px) {
-  body.app-shell-active {
-    padding-left: 240px;
   }
 }
 

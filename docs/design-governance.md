@@ -83,7 +83,7 @@ map for agents:
 
 | Figma component | Code location |
 |---|---|
-| Leasium/Horizon/Sidebar 44:117 | `apps/web/src/components/app-shell.tsx` (sidebar) — Horizon variant not yet implemented |
+| Leasium/Horizon/Sidebar 44:117 | `apps/web/src/components/app-shell.tsx` (desktop sidebar + mobile drawer) — Horizon app shell v1 |
 | Leasium/Horizon/Command bar 44:155 | `apps/web/src/components/app-shell.tsx` (command palette trigger) — new |
 | Leasium/Horizon/Hero focus card 44:179 | new component, target `apps/web/src/components/dashboard/` |
 | Leasium/Horizon/Bento metric card 44:193 | replaces dashboard metric cards |
@@ -152,7 +152,7 @@ back-filled when first touched by a design-facing slice.
   dashboard density match the approved Figma intent before this is marked `[x]`.
 - **Horizon Work desktop v1 (2026-06-10, Remba pending):** first production
   implementation from the approved Figma Work target (`45:168`) on `/operations`,
-  scoped to the queue landing area and not the wider Horizon shell. The page now
+  scoped to the queue landing area. The page now
   presents Work as the primary title with a Today/This week/All segmented control,
   Act now/Scheduled/Waiting triage lanes, severity-rail work cards, team-workload
   and compliance right rail, Evening Digest card, and review-first trust ribbon.
@@ -162,6 +162,16 @@ back-filled when first touched by a design-facing slice.
   lane density, the default Today distribution with current demo data, and whether
   the saved-view/tab controls are quiet enough above the board before this is
   marked `[x]`.
+- **Horizon app shell v1 (2026-06-10, Remba pending):** production
+  implementation from the approved Figma Sidebar and Bottom nav components
+  (`44:117`, `44:301`). `AppHeader` now renders the 232px Horizon rail with the
+  entity switcher card, seven primary hubs plus Settings, teal active rail,
+  keyboard shortcut affordance, and operator card/sign-in fallback; the mobile
+  shell now uses Home / Properties / Smart Intake FAB / Work / Money while the
+  drawer keeps the full nav. Search, shortcuts, notifications, and appearance
+  stay in the top utility bar. No provider, payment, reconciliation, Xero/Basiq,
+  or workflow mutation path changed. Remba should review the entity switcher
+  density, active rail contrast, mobile FAB placement, and operator-card fallback.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
   the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,

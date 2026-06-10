@@ -34,7 +34,7 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
-test("mobile bottom navigation exposes the field-operator hubs", async ({
+test("mobile bottom navigation exposes the Horizon field-operator hubs", async ({
   page,
 }) => {
   const forbiddenProviderRequests = watchForbiddenProviderRequests(page);
@@ -52,13 +52,13 @@ test("mobile bottom navigation exposes the field-operator hubs", async ({
   const links = mobileNav.getByRole("link");
   await expect(links).toHaveCount(5);
 
-  for (const label of ["Dashboard", "Properties", "People", "Work", "Money"]) {
+  for (const label of ["Home", "Properties", "Smart Intake", "Work", "Money"]) {
     await expect(mobileNav.getByRole("link", { name: label })).toBeVisible();
     await expectMobileTouchTarget(mobileNav.getByRole("link", { name: label }));
   }
 
   await expect(
-    mobileNav.getByRole("link", { name: "Smart Intake" }),
+    mobileNav.getByRole("link", { name: "People" }),
   ).toHaveCount(0);
   await expect(mobileNav.getByRole("link", { name: "Insights" })).toHaveCount(
     0,
@@ -120,6 +120,14 @@ test("mobile bottom navigation exposes the field-operator hubs", async ({
   await expect(
     fullMobileNav.getByRole("link", { name: /^Settings/ }),
   ).toBeVisible();
+  const mobileDrawer = page.getByRole("complementary", {
+    name: "Primary navigation",
+  });
+  await expect(
+    mobileDrawer
+      .getByRole("group", { name: "Workspace switcher" })
+      .getByLabel("Entity"),
+  ).toBeVisible();
   await fullMobileNav.getByRole("link", { name: /^People/ }).click();
   await expect(page).toHaveURL(/\/people$/);
   await expect(
@@ -130,6 +138,55 @@ test("mobile bottom navigation exposes the field-operator hubs", async ({
   await expect(page).toHaveURL(/\/money$/);
   await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
   expect(forbiddenProviderRequests).toEqual([]);
+});
+
+test("desktop Horizon sidebar exposes the entity switcher and operator card", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/operations");
+
+  const sidebar = page.getByRole("complementary", {
+    name: "Primary navigation",
+  });
+  await expect(sidebar).toBeVisible();
+
+  const switcher = sidebar.getByRole("group", { name: "Workspace switcher" });
+  await expect(switcher).toBeVisible();
+  await expect(switcher.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(switcher.getByText("2 entities - switch")).toBeVisible();
+
+  const primaryNav = sidebar.getByRole("navigation", { name: "Primary" });
+  await expect(primaryNav.getByRole("link")).toHaveCount(8);
+  for (const label of [
+    "Dashboard",
+    "Smart Intake",
+    "Properties",
+    "People",
+    "Work",
+    "Money",
+    "Insights",
+    "Settings",
+  ]) {
+    await expect(
+      primaryNav.getByRole("link", { name: new RegExp(`^${label}`) }),
+    ).toBeVisible();
+  }
+  await expect(primaryNav.getByRole("link", { name: /^Work/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
+  const operatorCard = sidebar.getByTestId("horizon-sidebar-user");
+  await expect(operatorCard).toContainText("Owner Operator");
+  await expect(operatorCard).toContainText("Owner - operator");
+
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
 });
 
 test("desktop keeps the bottom navigation out of the shell", async ({

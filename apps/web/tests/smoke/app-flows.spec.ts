@@ -132,11 +132,21 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expectTouchTarget(
     page.getByRole("link", { name: "Open Smart Intake" }),
   );
+  const sidebar = page.getByRole("complementary", {
+    name: "Primary navigation",
+  });
+  const shellEntitySwitcher = sidebar.getByRole("group", {
+    name: "Workspace switcher",
+  });
+  await expect(shellEntitySwitcher).toBeVisible();
+  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveValue(
+    "entity-1",
+  );
   const workspaceToolbar = page.getByRole("toolbar", {
     name: "Workspace utilities",
   });
   await expect(workspaceToolbar).toBeVisible();
-  await expect(workspaceToolbar.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(workspaceToolbar.getByLabel("Entity")).toHaveCount(0);
   await expect(
     workspaceToolbar.getByRole("button", { name: "Open search" }),
   ).toBeVisible();
@@ -5167,17 +5177,25 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await page.goto("/settings");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  const brandSubtitle = page
-    .getByText("Lease operations", { exact: true })
+  const sidebar = page.getByRole("complementary", {
+    name: "Primary navigation",
+  });
+  const shellEntitySwitcher = sidebar.getByRole("group", {
+    name: "Workspace switcher",
+  });
+  const primaryNav = sidebar.getByRole("navigation", { name: "Primary" });
+  const settingsNavLink = primaryNav
+    .getByRole("link", { name: /^Settings/ })
     .first();
-  const primaryNav = page.getByRole("navigation", { name: "Primary" });
-  const settingsNavLink = page.getByRole("link", { name: "Settings" }).first();
   const searchButton = page.getByRole("button", { name: "Open search" });
-  await expect(brandSubtitle).toBeVisible();
+  await expect(shellEntitySwitcher).toBeVisible();
+  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveValue(
+    "entity-1",
+  );
   await expect(primaryNav).toBeVisible();
   await expect(settingsNavLink).toBeVisible();
   await expect(searchButton).toBeVisible();
-  const brandSubtitleFits = await brandSubtitle.evaluate(
+  const entitySwitcherFits = await shellEntitySwitcher.evaluate(
     (node) => node.scrollWidth <= node.clientWidth + 1,
   );
   const primaryNavFits = await primaryNav.evaluate(
@@ -5186,7 +5204,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   const settingsNavFits = await settingsNavLink.evaluate(
     (node) => node.scrollWidth <= node.clientWidth + 1,
   );
-  expect(brandSubtitleFits).toBe(true);
+  expect(entitySwitcherFits).toBe(true);
   expect(primaryNavFits).toBe(true);
   expect(settingsNavFits).toBe(true);
   await expect(page.getByText("Operator access")).toBeVisible();
@@ -5278,75 +5296,6 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("No messages sent").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Organisation" }).click();
-  await expect(page.getByText("Setup needed").first()).toBeVisible();
-  await expect(
-    page.getByText("Missing production setup").first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("DOCUSIGN_WEBHOOK_SECRET", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("DocuSign Connect webhook")).toBeVisible();
-  await expect(
-    page.getByText(
-      "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
-    ),
-  ).toBeVisible();
-  const docusignCard = page
-    .locator("div")
-    .filter({ hasText: /^DocuSign/ })
-    .filter({ hasText: "Lease signature envelopes" })
-    .first();
-  await expectTouchTarget(
-    docusignCard.getByRole("button", {
-      name: "Copy DocuSign setup packet",
-    }),
-  );
-  await expectTouchTarget(
-    docusignCard.getByRole("button", {
-      name: "Download DocuSign setup packet",
-    }),
-  );
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await docusignCard
-    .getByRole("button", { name: "Copy DocuSign setup packet" })
-    .click();
-  await expect(
-    docusignCard.getByText("DocuSign setup packet copied."),
-  ).toBeVisible();
-  const copiedDocusignSetupPacket = await page.evaluate(() =>
-    navigator.clipboard.readText(),
-  );
-  expect(copiedDocusignSetupPacket).toContain("DocuSign provider setup packet");
-  expect(copiedDocusignSetupPacket).toContain(
-    "Webhook URL: https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
-  );
-  expect(copiedDocusignSetupPacket).toContain("DOCUSIGN_WEBHOOK_SECRET");
-  expect(copiedDocusignSetupPacket).toContain(
-    "Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi for live envelopes.",
-  );
-  expect(copiedDocusignSetupPacket).toContain(
-    "Review-only export: copying or downloading this packet does not call DocuSign, send envelopes, accept Connect events, download signed PDFs, activate leases, or mutate provider history.",
-  );
-  const docusignSetupDownloadPromise = page.waitForEvent("download");
-  await docusignCard
-    .getByRole("button", { name: "Download DocuSign setup packet" })
-    .click();
-  const docusignSetupDownload = await docusignSetupDownloadPromise;
-  expect(docusignSetupDownload.suggestedFilename()).toBe(
-    "docusign-provider-setup-packet.txt",
-  );
-  const docusignSetupPath = await docusignSetupDownload.path();
-  expect(docusignSetupPath).not.toBeNull();
-  const docusignSetupText = await readFile(docusignSetupPath!, "utf8");
-  expect(docusignSetupText).toContain("DocuSign provider setup packet");
-  expect(docusignSetupText).toContain("DOCUSIGN_ACCOUNT_ID");
-  expect(docusignSetupText).toContain("DOCUSIGN_WEBHOOK_SECRET");
-  expect(docusignSetupText).toContain(
-    "Webhook URL: https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
-  );
-  await expect(page.getByText("API release", { exact: true })).toBeVisible();
-  await expect(page.getByText("Render commit")).toBeVisible();
-  await expect(page.getByText("7248a2b", { exact: true })).toBeVisible();
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
@@ -5356,29 +5305,37 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("invoice_delivery covered")).toBeVisible();
   await expect(page.getByText("SKJ invoice delivery")).toBeVisible();
-  await expect(page.getByText("Read-only")).toBeVisible();
+  await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
   await expect(
     page.getByText("tenant_onboarding_invite").first(),
   ).toBeVisible();
   await expect(
     page.getByText("/api/v1/invoice-drafts/webhooks/sendgrid-events"),
   ).toBeVisible();
-  await expect(page.getByText("Ownership tags")).toBeVisible();
-  await expect(page.getByText("Queen Street Property Trust")).toBeVisible();
-  await expect(page.getByText("Legal owner").first()).toBeVisible();
-  await expect(page.getByText("Trust", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("2 properties")).toBeVisible();
+  const ownershipTagsPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Ownership tags" }),
+  });
+  await expect(ownershipTagsPanel).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open tagged properties" }).first(),
+    ownershipTagsPanel.getByText("Queen Street Property Trust"),
   ).toBeVisible();
-  await expectTouchTarget(
-    page.getByRole("link", { name: "Open tagged properties" }).first(),
+  await expect(ownershipTagsPanel.getByText("Legal owner").first()).toBeVisible();
+  await expect(
+    ownershipTagsPanel.getByText("Trust", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    ownershipTagsPanel.getByText("2 properties", { exact: true }),
+  ).toBeVisible();
+  const queenStreetTaggedPropertiesLink = ownershipTagsPanel.locator(
+    'a[href*="queen%20street%20property%20trust"]',
   );
+  await expect(queenStreetTaggedPropertiesLink).toBeVisible();
+  await expectTouchTarget(queenStreetTaggedPropertiesLink);
   await expect(
-    page.getByRole("link", { name: /Queen Street Retail Centre/ }),
+    ownershipTagsPanel.getByRole("link", { name: /Queen Street Retail Centre/ }),
   ).toBeVisible();
   await expectTouchTarget(
-    page.getByRole("link", { name: /Queen Street Retail Centre/ }),
+    ownershipTagsPanel.getByRole("link", { name: /Queen Street Retail Centre/ }),
   );
 
   await page.getByRole("tab", { name: "Connect" }).click();

@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
+  ChevronDown,
   Command,
+  FileUp,
   FileSpreadsheet,
   Home,
   Keyboard,
@@ -41,8 +43,14 @@ import {
   type AppearanceMode,
   type ResolvedAppearance,
 } from "@/lib/appearance";
-import { getCommsQueueCounts } from "@/lib/api";
+import {
+  getCommsQueueCounts,
+  getCurrentOperator,
+  listEntities,
+} from "@/lib/api";
+import type { SecurityMeRecord } from "@/lib/api";
 import { clerkUserButtonTouchTargetAppearance } from "@/lib/clerk-appearance";
+import { isAllEntities } from "@/lib/entity-selection";
 import { useOperatingMode } from "@/lib/use-operating-mode";
 import { usePlatformAdmin } from "@/lib/use-platform-admin";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
@@ -180,7 +188,6 @@ const platformAdminNavItem: NavItem = {
 const mobileBottomNavHrefs = [
   "/",
   "/properties",
-  "/people",
   "/operations",
   "/money",
 ];
@@ -366,6 +373,67 @@ function OperatorUserControl() {
   );
 }
 
+function initialsForName(name: string) {
+  const parts = name
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const first = parts[0]?.[0] ?? "O";
+  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] : "";
+  return `${first}${second}`.toUpperCase();
+}
+
+function HorizonOperatorCard({
+  currentOperator,
+}: {
+  currentOperator?: SecurityMeRecord | null;
+}) {
+  const operatorName =
+    currentOperator?.current_user.display_name ||
+    currentOperator?.current_user.email ||
+    "Operator";
+  const roleName =
+    currentOperator?.roles.find((role) => role.role)?.role ?? "operator";
+  const roleLabel =
+    roleName === "owner"
+      ? "Owner - operator"
+      : `${roleName.replaceAll("_", " ")} - operator`;
+
+  if (!currentOperator) {
+    return (
+      <Link
+        {...shellLinkProps}
+        href="/sign-in"
+        className="flex min-h-12 w-full items-center gap-2 rounded-xl bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white transition duration-200 ease-leasium hover:bg-white/[0.1]"
+      >
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent-soft text-[11px] font-bold text-leasium-teal-strong">
+          L
+        </span>
+        <span className="min-w-0 truncate">Sign in</span>
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      data-testid="horizon-sidebar-user"
+      className="flex min-h-12 w-full items-center gap-2 overflow-hidden rounded-xl bg-white/[0.06] px-3 py-2 text-white"
+    >
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-leasium-teal text-[11px] font-bold text-leasium-navy-900">
+        {initialsForName(operatorName)}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-semibold leading-4">
+          {operatorName}
+        </span>
+        <span className="block truncate text-[10px] leading-3 text-leasium-slate-300">
+          {roleLabel}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function AppearanceToggle() {
   const [mode, setMode] = useState<AppearanceMode>("system");
   const [resolved, setResolved] = useState<ResolvedAppearance>("light");
@@ -452,6 +520,17 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const commsBadge = useCommsBadge();
   const { operatingMode } = useOperatingMode();
   const { isPlatformAdmin } = usePlatformAdmin();
+  const currentOperatorQuery = useQuery({
+    queryKey: ["current-operator"],
+    queryFn: () => getCurrentOperator(),
+    staleTime: 300_000,
+  });
+  const entitiesQuery = useQuery({
+    queryKey: ["entities"],
+    queryFn: () => listEntities(),
+    staleTime: 300_000,
+  });
+  const [shellEntityId, setShellEntityId] = useState<string | null>(null);
   const shortcutTimeoutRef = useRef<number | null>(null);
 
   // Client operators never see the /admin entry; platform admins get it as an
@@ -487,6 +566,40 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     () => gatedShortcutNav.map((entry) => entry.key.toUpperCase()).join("/"),
     [gatedShortcutNav],
   );
+  const sidebarTopNavItems = useMemo(
+    () =>
+      visibleNavItems.filter(
+        (item) => item.href !== "/settings" && item.href !== "/admin",
+      ),
+    [visibleNavItems],
+  );
+  const sidebarUtilityNavItems = useMemo(
+    () =>
+      visibleNavItems.filter(
+        (item) => item.href === "/settings" || item.href === "/admin",
+      ),
+    [visibleNavItems],
+  );
+  const shellEntity = useMemo(
+    () =>
+      entitiesQuery.data?.find((entity) => entity.id === shellEntityId) ??
+      null,
+    [entitiesQuery.data, shellEntityId],
+  );
+  const shellEntityLabel =
+    isAllEntities(shellEntityId)
+      ? "All entities"
+      : shellEntity?.name ??
+        currentOperatorQuery.data?.organisation.name ??
+        "Leasium";
+  const entityCount = entitiesQuery.data?.length ?? 0;
+  const entityCountLabel = entitiesQuery.isLoading
+    ? "Checking entities"
+    : entityCount > 0
+      ? `${entityCount} ${entityCount === 1 ? "entity" : "entities"}${
+          children ? " - switch" : ""
+        }`
+      : "Workspace switcher";
 
   const filteredActions = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -518,6 +631,25 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         window.clearTimeout(shortcutTimeoutRef.current);
         shortcutTimeoutRef.current = null;
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function syncEntityId() {
+      setShellEntityId(window.localStorage.getItem(COMMS_BADGE_ENTITY_KEY));
+    }
+    syncEntityId();
+    function onStorage(event: StorageEvent) {
+      if (event.key === COMMS_BADGE_ENTITY_KEY) {
+        setShellEntityId(event.newValue);
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(ENTITY_CHANGED_EVENT, syncEntityId);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(ENTITY_CHANGED_EVENT, syncEntityId);
     };
   }, []);
 
@@ -611,112 +743,97 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     );
   }
 
-  // Sidebar content is shared between the fixed desktop sidebar (`md` and
-  // `lg+`) and the mobile drawer (sub-`md`). At `md` the fixed sidebar
-  // collapses to a 64px icon-only rail, so brand text + nav labels +
-  // shortcuts label hide at `md` and reappear at `lg`; the Work comms
-  // badge stays visible as a compact corner count.
-  // The mobile drawer is sub-`md` only (the hamburger is hidden at `md+`),
-  // so when the drawer opens it never hits the `md` media query and
-  // labels stay visible inside it. Pending Remba review (2026-05-23
-  // external review §8.1 — sidebar collapse at md instead of disappearing
-  // at lg).
-  const sidebarContent = (
-    <>
+  const renderSidebarLink = (item: NavItem) => {
+    const active = isNavActive(item);
+    const Icon = item.icon;
+    const showCommsBadge =
+      item.href === "/operations" &&
+      commsBadge !== null &&
+      commsBadge.total > 0;
+    const commsBadgeLabel =
+      showCommsBadge && commsBadge
+        ? `${commsBadge.total} drafts in the comms queue, ${commsBadge.urgent} urgent`
+        : null;
+    const navLabel = commsBadgeLabel
+      ? `${item.label}, ${commsBadgeLabel}`
+      : item.label;
+    return (
       <Link
         {...shellLinkProps}
-        href="/"
+        key={item.href}
+        href={item.href}
         onClick={() => setMobileNavOpen(false)}
-        className="flex min-w-0 items-center gap-3 px-4 py-5 md:justify-center md:px-2 lg:justify-start lg:px-4"
-        title="Leasium"
+        onMouseEnter={() => router.prefetch(item.href)}
+        onFocus={() => router.prefetch(item.href)}
+        title={navLabel}
+        aria-label={navLabel}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "group relative flex min-h-11 items-center gap-3 rounded-[10px] px-3 py-2 text-[13px] font-medium text-leasium-slate-300 transition duration-200 ease-leasium hover:bg-white/[0.06] hover:text-white",
+          active &&
+            "bg-white/[0.1] pl-6 font-semibold text-white before:absolute before:left-3 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-sm before:bg-leasium-teal",
+        )}
       >
-        <LeasiumMark className="h-10 w-10" />
-        <div className="min-w-0 md:hidden lg:block">
-          <h1 className="truncate text-base font-semibold leading-5 tracking-normal text-white">
-            Leasium
-          </h1>
-          <p className="truncate whitespace-nowrap text-xs leading-4 text-leasium-slate-300">
-            Lease operations
+        <Icon key="icon" size={16} className="shrink-0" />
+        <span key="label" className="min-w-0 flex-1 truncate">
+          {item.label}
+        </span>
+        {showCommsBadge ? (
+          <span
+            key="comms-badge"
+            aria-hidden="true"
+            className={cn(
+              "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none",
+              commsBadge!.urgent > 0
+                ? "bg-danger-strong text-white"
+                : "bg-white/15 text-white",
+            )}
+          >
+            {commsBadge!.urgent > 0 ? commsBadge!.urgent : commsBadge!.total}
+          </span>
+        ) : null}
+      </Link>
+    );
+  };
+
+  // Sidebar content is shared between the fixed desktop sidebar and the mobile
+  // drawer. The approved Horizon shell keeps the full 232px rail at tablet and
+  // desktop sizes, with the page-owned entity picker housed in the top card.
+  const sidebarContent = (
+    <>
+      <div
+        role="group"
+        aria-label="Workspace switcher"
+        className="mx-3 mt-4 grid min-h-[50px] grid-cols-[28px_minmax(0,1fr)_12px] items-center gap-2 overflow-hidden rounded-xl bg-white/[0.06] px-3 py-2 text-white"
+      >
+        <LeasiumMark className="h-7 w-7 rounded-lg" />
+        <div className="min-w-0">
+          {children ? (
+            <div className="min-w-0 [&>div]:min-w-0 [&>div]:gap-1.5 [&_button]:min-h-7 [&_button]:rounded-md [&_button]:border-white/10 [&_button]:bg-white/10 [&_button]:px-2 [&_button]:text-[10px] [&_button]:font-semibold [&_button]:text-white [&_button_svg]:hidden [&_select]:min-h-7 [&_select]:min-w-0 [&_select]:rounded-none [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-0 [&_select]:py-0 [&_select]:text-[13px] [&_select]:font-semibold [&_select]:leading-4 [&_select]:text-white [&_select]:shadow-none [&_select]:focus-visible:ring-0 [&_option]:bg-white [&_option]:text-foreground">
+              {children}
+            </div>
+          ) : (
+            <p className="truncate text-[13px] font-semibold leading-4">
+              {shellEntityLabel}
+            </p>
+          )}
+          <p className="truncate text-[10px] leading-3 text-leasium-slate-300">
+            {entityCountLabel}
           </p>
         </div>
-      </Link>
+        {children ? (
+          <ChevronDown size={12} className="text-leasium-slate-300" />
+        ) : null}
+      </div>
       <nav
         aria-label="Primary"
-        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
+        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pt-4"
       >
-        {visibleNavItems.map((item) => {
-          const active = isNavActive(item);
-          const Icon = item.icon;
-          const showCommsBadge =
-            item.href === "/operations" &&
-            commsBadge !== null &&
-            commsBadge.total > 0;
-          const commsBadgeLabel =
-            showCommsBadge && commsBadge
-              ? `${commsBadge.total} drafts in the comms queue, ${commsBadge.urgent} urgent`
-              : null;
-          const navLabel = commsBadgeLabel
-            ? `${item.label}, ${commsBadgeLabel}`
-            : item.label;
-          return (
-            <Link
-              {...shellLinkProps}
-              key={item.href}
-              href={item.href}
-              onClick={() => setMobileNavOpen(false)}
-              // Intent-based prefetch: warm the route bundle when the operator
-              // hovers or focuses a nav item, so the click feels instant. This
-              // is deliberately narrower than Next's default prefetch-on-render
-              // (disabled via shellLinkProps) — we only fetch the one
-              // destination the cursor is telegraphing, not every sidebar link
-              // on every page. router.prefetch is idempotent/cached, so
-              // repeated hovers are cheap.
-              onMouseEnter={() => router.prefetch(item.href)}
-              onFocus={() => router.prefetch(item.href)}
-              // `title` provides a hover tooltip when the sidebar is
-              // collapsed to icon-only at `md`. Labels still render at
-              // sub-`md` (drawer) and `lg+` (full sidebar).
-              title={navLabel}
-              aria-label={navLabel}
-              className={cn(
-                // Hover state uses a subtle white tint so the row reads
-                // as "row under cursor" against the navy-900 sidebar.
-                "group relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-leasium-slate-300 transition hover:bg-white/[0.06] hover:text-white md:justify-center md:gap-0 md:px-0 lg:justify-start lg:gap-3 lg:px-3",
-                // Active state — was bg-primary-soft/10 (EAF0FF at
-                // 10% opacity, effectively invisible on navy-900). Now
-                // bg-white/[0.12] gives a real surface tone so operators
-                // can see which item is current without relying purely
-                // on the 2px left rail. Pending Remba review
-                // (2026-05-23 external review §2.1).
-                active &&
-                  "border-l-2 border-primary bg-white/[0.12] pl-[10px] text-white md:border-l-0 md:pl-0 lg:border-l-2 lg:pl-[10px]",
-              )}
-            >
-              <Icon key="icon" size={16} className="shrink-0" />
-              <span key="label" className="flex-1 truncate md:hidden lg:inline">
-                {item.label}
-              </span>
-              {showCommsBadge ? (
-                <span
-                  key="comms-badge"
-                  aria-hidden="true"
-                  className={cn(
-                    "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-leasium-micro font-semibold leading-none md:absolute md:right-0.5 md:top-1 md:h-4 md:min-w-4 md:px-1 md:text-[9px] lg:static lg:h-5 lg:min-w-5 lg:px-1.5 lg:text-leasium-micro",
-                    commsBadge!.urgent > 0
-                      ? "bg-danger-strong text-white"
-                      : "bg-white/15 text-white",
-                  )}
-                >
-                  {commsBadge!.urgent > 0
-                    ? commsBadge!.urgent
-                    : commsBadge!.total}
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
+        {sidebarTopNavItems.map(renderSidebarLink)}
+        <div className="min-h-4 flex-1" aria-hidden="true" />
+        {sidebarUtilityNavItems.map(renderSidebarLink)}
       </nav>
-      <div className="border-t border-white/5 px-3 py-3 text-xs text-leasium-slate-300">
+      <div className="px-3 pb-4 pt-2 text-xs text-leasium-slate-300">
         <button
           type="button"
           onClick={() => {
@@ -724,26 +841,25 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             setMobileNavOpen(false);
           }}
           title="Keyboard shortcuts"
-          className="flex min-h-[44px] w-full items-center justify-between rounded-md px-2 transition hover:bg-white/5 hover:text-white md:justify-center"
+          className="mb-2 flex min-h-11 w-full items-center justify-between rounded-[10px] px-3 transition duration-200 ease-leasium hover:bg-white/[0.06] hover:text-white"
         >
-          <span className="md:hidden lg:inline">Keyboard shortcuts</span>
+          <span>Keyboard shortcuts</span>
           <kbd className="rounded border border-white/10 px-1 py-0.5 text-leasium-micro font-medium">
             ?
           </kbd>
         </button>
+        <HorizonOperatorCard currentOperator={currentOperatorQuery.data} />
       </div>
     </>
   );
 
   return (
     <>
-      {/* Desktop sidebar — fixed on md+. Collapses to icon-only (w-16) at
-          md, expands to full (w-60) at lg+. globals.css adjusts the body
-          padding-left to match. Below md the sidebar is hidden and the
-          hamburger opens a full-width drawer instead. */}
+      {/* Desktop sidebar — fixed on md+ at the approved Horizon width.
+          Below md the sidebar is hidden and the hamburger opens the drawer. */}
       <aside
         aria-label="Primary navigation"
-        className="hidden md:flex md:fixed md:inset-y-0 md:left-0 md:z-30 md:w-16 md:flex-col md:bg-leasium-navy-900 md:text-white md:shadow-leasiumSm lg:w-60"
+        className="hidden md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:w-[232px] md:flex-col md:bg-leasium-navy-900 md:text-white md:shadow-leasiumSm"
       >
         {sidebarContent}
       </aside>
@@ -764,7 +880,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           <aside
             aria-label="Primary navigation"
             className={cn(
-              "absolute inset-y-0 left-0 flex w-60 flex-col bg-leasium-navy-900 text-white shadow-leasiumLg",
+              "absolute inset-y-0 left-0 flex w-[284px] max-w-[86vw] flex-col bg-leasium-navy-900 text-white shadow-leasiumLg",
               mobileNavRender.isClosing
                 ? "animate-leasium-drawer-out-left"
                 : "animate-leasium-drawer-in-left",
@@ -787,13 +903,60 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
 
       <nav
         aria-label="Mobile primary"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 px-1 pt-1 shadow-[0_-8px_24px_rgba(16,24,40,0.08)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-leasium-card-border bg-white/95 px-3 pt-3 shadow-[0_-8px_24px_rgba(16,24,40,0.08)] backdrop-blur md:hidden"
         style={{
-          paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))",
+          paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
         }}
       >
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-0.5">
-          {mobileBottomNavItems.map((item) => {
+        <div className="mx-auto grid h-[56px] max-w-md grid-cols-5 items-start gap-0.5">
+          {mobileBottomNavItems.slice(0, 2).map((item) => {
+            const active = isNavActive(item);
+            const Icon = item.icon;
+            const label = item.href === "/" ? "Home" : item.label;
+            return (
+              <Link
+                {...shellLinkProps}
+                key={item.href}
+                href={item.href}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                onMouseEnter={() => router.prefetch(item.href)}
+                onFocus={() => router.prefetch(item.href)}
+                className={cn(
+                  "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-semibold leading-none text-leasium-slate-500 transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+                  active && "text-primary",
+                )}
+              >
+                <Icon
+                  key="icon"
+                  size={18}
+                  aria-hidden="true"
+                  className="shrink-0"
+                />
+                <span key="label" className="max-w-full truncate">
+                  {label}
+                </span>
+                {active ? (
+                  <span
+                    key="active-dot"
+                    className="h-1 w-1 rounded-full bg-leasium-teal"
+                  />
+                ) : null}
+              </Link>
+            );
+          })}
+          <Link
+            {...shellLinkProps}
+            href="/intake"
+            aria-label="Smart Intake"
+            aria-current={isNavActive(navItems[1]) ? "page" : undefined}
+            onMouseEnter={() => router.prefetch("/intake")}
+            onFocus={() => router.prefetch("/intake")}
+            className="mx-auto -mt-6 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-b from-primary to-leasium-teal text-white shadow-[0_10px_24px_rgba(36,91,255,0.35)] transition duration-200 ease-leasium hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
+          >
+            <FileUp size={22} aria-hidden="true" />
+          </Link>
+          {mobileBottomNavItems.slice(2).map((item) => {
             const active = isNavActive(item);
             const Icon = item.icon;
             return (
@@ -806,19 +969,25 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 onMouseEnter={() => router.prefetch(item.href)}
                 onFocus={() => router.prefetch(item.href)}
                 className={cn(
-                  "flex min-h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[11px] font-semibold leading-none text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
-                  active && "bg-primary-soft text-primary hover:bg-primary-soft",
+                  "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-semibold leading-none text-leasium-slate-500 transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+                  active && "text-primary",
                 )}
               >
                 <Icon
                   key="icon"
-                  size={17}
+                  size={18}
                   aria-hidden="true"
                   className="shrink-0"
                 />
                 <span key="label" className="max-w-full truncate">
                   {item.label}
                 </span>
+                {active ? (
+                  <span
+                    key="active-dot"
+                    className="h-1 w-1 rounded-full bg-leasium-teal"
+                  />
+                ) : null}
               </Link>
             );
           })}
@@ -840,11 +1009,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             aria-label="Workspace utilities"
             className="ml-auto flex min-w-0 max-w-full items-center justify-end gap-1 rounded-xl border border-border bg-white/90 p-1 shadow-leasiumXs"
           >
-            {children ? (
-              <div className="min-w-0 max-w-[44vw] border-r border-border pr-1 sm:max-w-xs sm:min-w-44 [&_select]:h-11 [&_select]:min-h-11 [&_select]:truncate [&_select]:rounded-lg [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-2 [&_select]:text-sm [&_select]:font-medium [&_select]:shadow-none [&_select]:focus-visible:ring-0">
-                {children}
-              </div>
-            ) : null}
             <button
               type="button"
               onClick={() => {
