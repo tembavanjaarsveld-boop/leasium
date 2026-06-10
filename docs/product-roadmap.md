@@ -8,6 +8,16 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon Smart Intake desktop v1:** implemented the approved
+  Figma Smart Intake target (`PO2jOANgmqgZHfqWZXOZGU`, node `55:166`) as the
+  `/intake` landing/workspace. The page now opens with the Horizon header, hero
+  upload band, review queue, recently applied provenance panel, and review-first
+  ribbon while preserving review filters, queue CSV copy/download, quick-add
+  links, deep links, upload, clear, and selected-document review behavior. The
+  focused per-document editor remains the separate Document review frame
+  (`58:352`) for the next slice. Frontend-only presentation work: no API shape,
+  provider send, email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake
+  apply, or workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon Property detail v1:** implemented the approved
   Figma Property detail target (`PO2jOANgmqgZHfqWZXOZGU`, node `58:627`) as the
   selected-property state inside `/properties`. Property cards and explicit

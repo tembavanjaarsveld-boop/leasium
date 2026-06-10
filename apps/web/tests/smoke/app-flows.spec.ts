@@ -448,6 +448,56 @@ test("smart intake review filter keeps a 44px touch target", async ({
   await expectTouchTarget(page.getByLabel("Review filter"));
 });
 
+test("smart intake shows Horizon review-first landing", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/intake");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Drop a document. Review what Leasium found. Apply only what you approve.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Drop anything — lease, invoice, contract, rent roll",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Leasium reads it, shows you every extracted field with confidence and source, and waits for your approval.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("or email documents to intake@leasium.ai"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /Review queue/i }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Recently applied — full provenance",
+    }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("review-intake-intake-1")
+      .getByText("bright-cafe-lease.pdf"),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("smart-intake-applied-panel")
+      .getByText("bright-cafe-insurance.pdf"),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Extraction is review-first — fields wait for your approval.",
+    ),
+  ).toBeVisible();
+});
+
 test("billing readiness mobile actions keep 44px touch targets", async ({
   page,
 }) => {

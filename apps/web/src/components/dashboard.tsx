@@ -1161,6 +1161,49 @@ function smartIntakeReviewQueueCsv(intakes: DocumentIntakeRecord[]) {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function smartIntakeAppliedChips(intake: DocumentIntakeRecord) {
+  const reviewData = intake.review_data;
+  const applied = isRecord(reviewData.applied) ? reviewData.applied : {};
+  const chips: string[] = [];
+  const obligationCount =
+    fieldNumber(applied.obligation_count) ??
+    (fieldText(applied.obligation_id) ? 1 : null);
+  const billingDraftCount = fieldNumber(applied.billing_draft_count);
+  const leaseCount = fieldNumber(applied.created_lease_count);
+  const chargeRuleCount = fieldNumber(applied.created_charge_rule_count);
+  const workOrderCount = fieldNumber(applied.work_order_count);
+
+  if (billingDraftCount) {
+    chips.push(countLabel(billingDraftCount, "invoice draft"));
+  }
+  if (obligationCount) {
+    chips.push(countLabel(obligationCount, "obligation"));
+  }
+  if (leaseCount) {
+    chips.push(countLabel(leaseCount, "lease update"));
+  }
+  if (chargeRuleCount) {
+    chips.push(countLabel(chargeRuleCount, "charge rule"));
+  }
+  if (workOrderCount) {
+    chips.push(countLabel(workOrderCount, "task"));
+  }
+
+  if (chips.length === 0) {
+    if (intake.document_type === "insurance_certificate") {
+      chips.push("1 obligation");
+    } else if (intake.document_type === "lease") {
+      chips.push("1 lease update");
+    } else if (intake.document_type === "inspection_report") {
+      chips.push("1 task");
+    } else {
+      chips.push(documentTypeLabel(intake.document_type));
+    }
+  }
+
+  return chips.slice(0, 3);
+}
+
 function intakeReviewHref(entityId: string, intakeId: string) {
   const params = new URLSearchParams({
     entity_id: entityId,
@@ -3626,6 +3669,14 @@ export function Dashboard({
     demoMode || allMode || documentIntakesQuery.data
       ? failedIntakeCount
       : overviewDocumentFailedCount;
+  const recentlyAppliedIntakes = documentIntakes
+    .filter((item) => item.status === "applied")
+    .sort((a, b) =>
+      (b.applied_at ?? b.updated_at ?? b.created_at).localeCompare(
+        a.applied_at ?? a.updated_at ?? a.created_at,
+      ),
+    )
+    .slice(0, 3);
 
   function uploadSmartIntake(file: File | null | undefined) {
     if (!file || !selectedEntityId || documentIntakeMutation.isPending) {
@@ -3850,15 +3901,11 @@ export function Dashboard({
             already links to both. The four operational cards (Operations,
             Billing blockers, Needs review, Blocked docs) all answer
             "what needs me right now?" which is what the metric strip is for.
-            The intake workspace keeps only the two intake-relevant cards.
+            The intake workspace now carries those counts inside the Horizon
+            review queue instead of a separate metric strip.
             Pending Remba review. */}
-        <section
-          className={
-            isIntakeWorkspace
-              ? "grid gap-[14px] sm:grid-cols-2"
-              : "grid gap-[14px] sm:grid-cols-2 lg:grid-cols-4"
-          }
-        >
+        {!isIntakeWorkspace ? (
+        <section className="grid gap-[14px] sm:grid-cols-2 lg:grid-cols-4">
           {!isIntakeWorkspace ? (
             <>
               <DashboardMetricCard
@@ -3963,81 +4010,80 @@ export function Dashboard({
             icon={<FileText size={17} />}
           />
         </section>
+        ) : null}
 
-        <section className="grid gap-[18px] lg:grid-cols-[minmax(320px,430px)_minmax(0,1fr)]">
-          <div className="grid gap-5">
-            {/* The full drop-zone + review-queue panel lives on the intake
-                workspace; the dashboard shows a compact link card instead. */}
-            {isIntakeWorkspace ? (
-            <SectionPanel
-              title="Smart Intake"
-              description="Upload. Review. Automate. Every change stays under your control."
-              icon={<Sparkles size={17} className="text-primary" />}
+        {isIntakeWorkspace ? (
+          <section className="grid gap-4">
+            <section
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragActive(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragActive(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+                uploadSmartIntake(event.dataTransfer.files[0]);
+              }}
+              className={[
+                "grid min-h-[232px] place-items-center overflow-hidden rounded-2xl border border-dashed px-5 py-8 text-center shadow-leasiumCard transition md:px-8",
+                dragActive
+                  ? "border-primary bg-primary/10"
+                  : "border-primary/30 bg-gradient-to-br from-primary/10 via-white to-success/10",
+                !selectedEntityId || documentIntakeMutation.isPending
+                  ? "opacity-75"
+                  : "",
+              ].join(" ")}
             >
-              <div className="grid gap-4 p-4">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={(event) => {
-                    event.preventDefault();
-                    setDragActive(false);
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setDragActive(false);
-                    uploadSmartIntake(event.dataTransfer.files[0]);
-                  }}
-                  disabled={
-                    !selectedEntityId || documentIntakeMutation.isPending
-                  }
-                  className={[
-                    "grid min-h-32 place-items-center rounded-xl border border-dashed p-4 text-center transition",
-                    dragActive
-                      ? "border-primary bg-primary/5"
-                      : "border-primary/25 bg-primary-soft/25 hover:border-primary/50 hover:bg-primary/5",
-                    !selectedEntityId || documentIntakeMutation.isPending
-                      ? "cursor-not-allowed opacity-60"
-                      : "",
-                  ].join(" ")}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.docx,.txt,.md,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    onChange={(event) => {
-                      uploadSmartIntake(event.target.files?.[0]);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                  <span className="grid justify-items-center gap-2">
-                    {documentIntakeMutation.isPending ? (
-                      <Loader2
-                        size={24}
-                        className="animate-spin text-primary"
-                      />
-                    ) : (
-                      <FileUp size={24} className="text-primary" />
-                    )}
-                    <span className="text-leasium-body-compact font-semibold leading-5">
-                      {documentIntakeMutation.isPending
-                        ? "Uploading document"
-                        : "Drop a document here"}
-                    </span>
-                    <span className="max-w-sm text-sm leading-5 text-muted-foreground">
-                      Lease, purchase contract, tenancy schedule, invoice,
-                      certificate, handover file, or tenant document
-                    </span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.docx,.txt,.md,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) => {
+                  uploadSmartIntake(event.target.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <div className="grid max-w-3xl justify-items-center gap-4">
+                <div className="grid h-[52px] w-[52px] place-items-center rounded-2xl border border-primary/15 bg-white text-primary shadow-leasiumXs">
+                  {documentIntakeMutation.isPending ? (
+                    <Loader2 size={24} className="animate-spin" />
+                  ) : (
+                    <FileUp size={24} />
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <h2 className="text-xl font-semibold leading-7 text-foreground">
+                    Drop anything — lease, invoice, contract, rent roll
+                  </h2>
+                  <p className="text-sm leading-5 text-muted-foreground">
+                    Leasium reads it, shows you every extracted field with
+                    confidence and source, and waits for your approval.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={
+                      !selectedEntityId || documentIntakeMutation.isPending
+                    }
+                  >
+                    <FileUp size={15} />
+                    Browse files
+                  </Button>
+                  <span className="text-sm leading-5 text-muted-foreground">
+                    or email documents to intake@leasium.ai
                   </span>
-                </button>
+                </div>
                 {documentIntakeMutation.isPending ? (
                   <div className="rounded-md bg-primary/5 px-3 py-2 text-sm text-primary">
                     Reading document and preparing review.
@@ -4053,135 +4099,138 @@ export function Dashboard({
                     {intakeNotice}
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    href="/properties?action=new"
-                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
-                  >
-                    <Layers3 size={16} />
-                    Add property
-                  </Link>
-                  <Link
-                    href="/tenants?action=invite"
-                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
-                  >
-                    <UserRound size={16} />
-                    Add tenant
-                  </Link>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-border">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-3 py-2.5">
-                    <span className="text-sm font-semibold leading-5">
-                      Review queue
-                    </span>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <Select
-                        aria-label="Review filter"
-                        className="h-11 min-h-11 w-52 rounded-md"
-                        value={reviewQueueFilter}
-                        onChange={(event) => {
-                          setReviewQueueFilter(
-                            event.target.value as ReviewQueueFilter,
-                          );
-                          setReviewIntakeId(null);
-                          setRequestedReviewId(null);
-                        }}
-                      >
-                        <option value="all">All reviews</option>
-                        <option value="tenant_portal">
-                          Tenant portal uploads
-                        </option>
-                        <option value="inbound_email_attachment">
-                          Inbound email attachments
-                        </option>
-                        <option value="lease_match">Lease matches</option>
-                        <option value="insurance_certificate">Insurance</option>
-                        <option value="inspection_report">Inspections</option>
-                        <option value="lease">Leases</option>
-                      </Select>
-                      <SecondaryButton
-                        type="button"
-                        className="h-9"
-                        onClick={() => {
-                          void copyReviewQueueCsv();
-                        }}
-                        disabled={
-                          documentIntakesLoading ||
-                          filteredReviewIntakes.length === 0
-                        }
-                      >
-                        <Copy size={15} />
-                        Copy review queue CSV
-                      </SecondaryButton>
-                      <SecondaryButton
-                        type="button"
-                        className="h-9"
-                        onClick={downloadReviewQueueCsv}
-                        disabled={
-                          documentIntakesLoading ||
-                          filteredReviewIntakes.length === 0
-                        }
-                      >
-                        <Download size={15} />
-                        Download queue CSV
-                      </SecondaryButton>
-                      <StatusBadge
-                        tone={needsReviewCount ? "primary" : "neutral"}
-                      >
-                        {documentIntakesLoading
-                          ? "Preparing"
-                          : `${needsReviewCount} waiting`}
-                      </StatusBadge>
-                    </div>
+              </div>
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-2">
+              <div
+                data-testid="smart-intake-review-panel"
+                className="overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+                  <div>
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Review queue —{" "}
+                      {documentIntakesLoading
+                        ? "preparing"
+                        : filteredReviewIntakes.length}
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      Open a document to approve, edit, or ignore extracted
+                      fields before anything changes.
+                    </p>
                   </div>
-                  <div className="divide-y divide-border">
-                    {filteredReviewIntakes.slice(0, 5).map((item) => {
-                      const propertyName = firstField(
-                        item.extracted_data.properties,
-                        "name",
+                  <StatusBadge tone={needsReviewCount ? "primary" : "neutral"}>
+                    {documentIntakesLoading
+                      ? "Preparing"
+                      : `${needsReviewCount} waiting`}
+                  </StatusBadge>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-4 py-3">
+                  <Select
+                    aria-label="Review filter"
+                    className="h-11 min-h-11 w-full rounded-md sm:w-56"
+                    value={reviewQueueFilter}
+                    onChange={(event) => {
+                      setReviewQueueFilter(
+                        event.target.value as ReviewQueueFilter,
                       );
-                      const tenantName =
-                        firstField(item.extracted_data.parties, "name") ??
-                        fieldText(
-                          item.extracted_data.suggested_links?.tenant_name,
-                        );
-                      const sourceInfo = intakeSourceInfo(item);
-                      return (
+                      setReviewIntakeId(null);
+                      setRequestedReviewId(null);
+                    }}
+                  >
+                    <option value="all">All reviews</option>
+                    <option value="tenant_portal">Tenant portal uploads</option>
+                    <option value="inbound_email_attachment">
+                      Inbound email attachments
+                    </option>
+                    <option value="lease_match">Lease matches</option>
+                    <option value="insurance_certificate">Insurance</option>
+                    <option value="inspection_report">Inspections</option>
+                    <option value="lease">Leases</option>
+                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    <SecondaryButton
+                      type="button"
+                      className="h-11"
+                      onClick={() => {
+                        void copyReviewQueueCsv();
+                      }}
+                      disabled={
+                        documentIntakesLoading ||
+                        filteredReviewIntakes.length === 0
+                      }
+                    >
+                      <Copy size={15} />
+                      Copy review queue CSV
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="h-11"
+                      onClick={downloadReviewQueueCsv}
+                      disabled={
+                        documentIntakesLoading ||
+                        filteredReviewIntakes.length === 0
+                      }
+                    >
+                      <Download size={15} />
+                      Download queue CSV
+                    </SecondaryButton>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {filteredReviewIntakes.slice(0, 3).map((item) => {
+                    const propertyName = firstField(
+                      item.extracted_data.properties,
+                      "name",
+                    );
+                    const tenantName =
+                      firstField(item.extracted_data.parties, "name") ??
+                      fieldText(item.extracted_data.suggested_links?.tenant_name);
+                    const sourceInfo = intakeSourceInfo(item);
+                    return (
+                      <div
+                        key={item.id}
+                        data-testid={`review-intake-${item.id}`}
+                        className="grid gap-3 px-4 py-3 text-sm sm:grid-cols-[3px_minmax(0,1fr)_auto] sm:items-start"
+                      >
                         <div
-                          key={item.id}
-                          data-testid={`review-intake-${item.id}`}
-                          className="grid gap-2 px-3 py-3 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {item.filename}
-                              </div>
-                              <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                <span>
-                                  {documentTypeLabel(item.document_type)}
-                                </span>
-                                <span>{formatDateTime(item.created_at)}</span>
-                              </div>
-                            </div>
+                          className={[
+                            "hidden h-full min-h-14 rounded-full sm:block",
+                            item.status === "needs_attention"
+                              ? "bg-warning"
+                              : item.status === "failed"
+                                ? "bg-danger"
+                                : "bg-primary",
+                          ].join(" ")}
+                        />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-start justify-between gap-2 sm:hidden">
                             <StatusBadge tone={intakeStatusTone(item.status)}>
                               {intakeStatusLabel(item.status)}
                             </StatusBadge>
                           </div>
+                          <div className="truncate font-semibold text-foreground">
+                            {item.filename}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>{documentTypeLabel(item.document_type)}</span>
+                            <span>{formatDateTime(item.created_at)}</span>
+                          </div>
                           {item.status === "reading" ||
                           item.status === "uploaded" ? (
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                               <Loader2 size={13} className="animate-spin" />
                               Reading document and preparing review.
                             </div>
                           ) : null}
                           {item.summary ? (
-                            <p className="line-clamp-2 text-sm text-muted-foreground">
+                            <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">
                               {item.summary}
                             </p>
                           ) : null}
                           {sourceInfo ? (
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                               <StatusBadge tone="primary">
                                 {sourceInfo.label}
                               </StatusBadge>
@@ -4190,81 +4239,292 @@ export function Dashboard({
                               </span>
                             </div>
                           ) : null}
-                          <div className="flex flex-wrap gap-2 text-xs">
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
                             {propertyName ? (
-                              <span className="rounded bg-muted px-2 py-1">
+                              <span className="rounded-md bg-muted px-2 py-1">
                                 {propertyName}
                               </span>
                             ) : null}
                             {tenantName ? (
-                              <span className="rounded bg-muted px-2 py-1">
+                              <span className="rounded-md bg-muted px-2 py-1">
                                 {tenantName}
                               </span>
                             ) : null}
-                            <span className="rounded bg-muted px-2 py-1">
+                            <span className="rounded-md bg-muted px-2 py-1">
                               {confidenceLabel(item.confidence)}
                             </span>
                           </div>
-                          <div className="flex justify-end gap-2">
-                            {isIntakeWorkspace ? (
-                              <SecondaryButton
-                                type="button"
-                                className="min-h-11"
-                                onClick={() => setReviewIntakeId(item.id)}
-                              >
-                                Review
-                              </SecondaryButton>
-                            ) : (
-                              <Link
-                                href={intakeReviewHref(item.entity_id, item.id)}
-                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
-                              >
-                                Review
-                              </Link>
-                            )}
-                            <SecondaryButton
-                              type="button"
-                              className="min-h-11"
-                              title={
-                                intakeIsActive(item)
-                                  ? "Stop reviewing and clear"
-                                  : "Clear"
-                              }
-                              onClick={() =>
-                                deleteDocumentIntakeMutation.mutate(item.id)
-                              }
-                              disabled={
-                                item.id.startsWith("demo-") ||
-                                deleteDocumentIntakeMutation.isPending
-                              }
-                            >
-                              <X size={14} />
-                              Clear
-                            </SecondaryButton>
-                          </div>
                         </div>
-                      );
-                    })}
-                    {documentIntakesLoading ? (
-                      <SkeletonRows rows={3} />
-                    ) : reviewIntakes.length === 0 ? (
-                      <EmptyState
-                        icon={<CheckCircle2 size={18} />}
-                        title="No documents waiting for review."
-                        description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
-                      />
-                    ) : filteredReviewIntakes.length === 0 ? (
-                      <EmptyState
-                        icon={<CheckCircle2 size={18} />}
-                        title="No matching reviews."
-                        description="Change the review filter to see other waiting documents."
-                      />
-                    ) : null}
-                  </div>
+                        <div className="flex flex-wrap justify-end gap-2 sm:flex-col sm:items-end">
+                          <StatusBadge
+                            tone={intakeStatusTone(item.status)}
+                            className="hidden sm:inline-flex"
+                          >
+                            {intakeStatusLabel(item.status)}
+                          </StatusBadge>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11"
+                            onClick={() => setReviewIntakeId(item.id)}
+                          >
+                            Review
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            className="min-h-11"
+                            title={
+                              intakeIsActive(item)
+                                ? "Stop reviewing and clear"
+                                : "Clear"
+                            }
+                            onClick={() =>
+                              deleteDocumentIntakeMutation.mutate(item.id)
+                            }
+                            disabled={
+                              item.id.startsWith("demo-") ||
+                              deleteDocumentIntakeMutation.isPending
+                            }
+                          >
+                            <X size={14} />
+                            Clear
+                          </SecondaryButton>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {documentIntakesLoading ? (
+                    <SkeletonRows rows={3} />
+                  ) : reviewIntakes.length === 0 ? (
+                    <EmptyState
+                      icon={<CheckCircle2 size={18} />}
+                      title="No documents waiting for review."
+                      description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
+                    />
+                  ) : filteredReviewIntakes.length === 0 ? (
+                    <EmptyState
+                      icon={<CheckCircle2 size={18} />}
+                      title="No matching reviews."
+                      description="Change the review filter to see other waiting documents."
+                    />
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2 border-t border-border bg-muted/25 px-4 py-3">
+                  <Link
+                    href="/properties?action=new"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-medium shadow-leasiumXs transition hover:bg-muted"
+                  >
+                    <Layers3 size={16} />
+                    Add property
+                  </Link>
+                  <Link
+                    href="/tenants?action=invite"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-medium shadow-leasiumXs transition hover:bg-muted"
+                  >
+                    <UserRound size={16} />
+                    Add tenant
+                  </Link>
                 </div>
               </div>
-            </SectionPanel>
-            ) : (
+
+              <div
+                data-testid="smart-intake-applied-panel"
+                className="overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard"
+              >
+                <div className="border-b border-border px-4 py-3">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    Recently applied — full provenance
+                  </h2>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    Approved documents stay visible with the workflow evidence
+                    they created.
+                  </p>
+                </div>
+                <div className="divide-y divide-border">
+                  {recentlyAppliedIntakes.map((item) => (
+                    <div
+                      key={item.id}
+                      className="grid gap-2 px-4 py-4 text-sm"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-success" />
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-foreground">
+                            {item.filename}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatDateTime(
+                              item.applied_at ??
+                                item.reviewed_at ??
+                                item.updated_at,
+                            )}{" "}
+                            · approved by operator
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pl-5 text-xs">
+                        {smartIntakeAppliedChips(item).map((chip) => (
+                          <span
+                            key={chip}
+                            className="rounded-md bg-success/10 px-2 py-1 text-success"
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {documentIntakesLoading ? (
+                    <SkeletonRows rows={3} />
+                  ) : recentlyAppliedIntakes.length === 0 ? (
+                    <EmptyState
+                      icon={<Clock3 size={18} />}
+                      title="No recently applied documents."
+                      description="Approved reviews will appear here with source-backed provenance."
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </section>
+
+            <div className="flex min-h-9 items-center justify-center rounded-2xl border border-primary/20 bg-white px-4 py-2 text-center text-sm font-medium text-foreground shadow-leasiumXs">
+              Extraction is review-first — fields wait for your approval.
+            </div>
+
+            <section className="mt-12 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)]">
+              <div className="grid gap-5">
+                {lastApplyOutcome ? (
+                  <DocumentIntakeApplyOutcomeCard
+                    outcome={lastApplyOutcome}
+                    onDismiss={() => setLastApplyOutcome(null)}
+                  />
+                ) : null}
+                {selectedReviewIntake && reviewDraft ? (
+                  <DocumentIntakeReviewPanel
+                    intake={selectedReviewIntake}
+                    draft={reviewDraft}
+                    included={includedGroups}
+                    applyTarget={reviewApplyTarget}
+                    properties={propertiesQuery.data ?? []}
+                    tenancyUnits={reviewTenancyUnitsQuery.data ?? []}
+                    tenants={tenantsQuery.data ?? []}
+                    leases={reviewLeasesQuery.data ?? []}
+                    onDraftChange={setReviewDraft}
+                    onIncludedChange={(group, checked) =>
+                      setIncludedGroups((current) => ({
+                        ...current,
+                        [group]: checked,
+                      }))
+                    }
+                    onApplyTargetChange={setReviewApplyTarget}
+                    onSave={() =>
+                      reviewDocumentIntakeMutation.mutate({
+                        intakeId: selectedReviewIntake.id,
+                        reviewData: buildIncludedReviewData(
+                          reviewDraft,
+                          includedGroups,
+                        ),
+                      })
+                    }
+                    onApply={() => {
+                      const reviewData = buildIncludedReviewData(
+                        reviewDraft,
+                        includedGroups,
+                      );
+                      const workflowType = documentWorkflowType(
+                        reviewDraft,
+                        selectedReviewIntake,
+                      );
+                      applyDocumentIntakeMutation.mutate({
+                        intakeId: selectedReviewIntake.id,
+                        reviewData,
+                        target: reviewApplyTarget,
+                        outcome: {
+                          documentName: selectedReviewIntake.filename,
+                          workflowType,
+                          obligationCount: applicableObligationCount(
+                            reviewData,
+                            workflowType,
+                          ),
+                          workOrderCount:
+                            workflowType === "inspection_report"
+                              ? applicableObligationCount(
+                                  reviewData,
+                                  workflowType,
+                                )
+                              : undefined,
+                          targetLabel:
+                            workflowType === "lease"
+                              ? reviewedLeaseTargetLabel(
+                                  reviewData,
+                                  reviewApplyTarget,
+                                  propertiesQuery.data ?? [],
+                                  reviewTenancyUnitsQuery.data ?? [],
+                                  tenantsQuery.data ?? [],
+                                )
+                              : workflowType === "purchase_contract"
+                                ? reviewedPropertyTargetLabel(
+                                    reviewData,
+                                    reviewApplyTarget,
+                                    propertiesQuery.data ?? [],
+                                    reviewTenancyUnitsQuery.data ?? [],
+                                  )
+                                : applyTargetLabel(
+                                    reviewApplyTarget,
+                                    propertiesQuery.data ?? [],
+                                    reviewTenancyUnitsQuery.data ?? [],
+                                    reviewLeasesQuery.data ?? [],
+                                  ),
+                          dueDate: firstApplicableDueDate(
+                            reviewData,
+                            workflowType,
+                          ),
+                          ignoredCount: ignoredReviewItemCount(
+                            reviewDraft,
+                            includedGroups,
+                          ),
+                        },
+                      });
+                    }}
+                    onAcceptLeaseMatch={() => {
+                      acceptLeaseMatchMutation.mutate(selectedReviewIntake.id);
+                    }}
+                    onClear={() =>
+                      deleteDocumentIntakeMutation.mutate(
+                        selectedReviewIntake.id,
+                      )
+                    }
+                    saving={reviewDocumentIntakeMutation.isPending}
+                    applying={applyDocumentIntakeMutation.isPending}
+                    acceptingLeaseMatch={acceptLeaseMatchMutation.isPending}
+                    clearing={deleteDocumentIntakeMutation.isPending}
+                    demo={selectedReviewIntake.id.startsWith("demo-")}
+                  />
+                ) : null}
+                {!selectedReviewIntake ? (
+                  <SectionPanel
+                    title="Review document"
+                    description="Extracted terms, dates, parties, and obligations will wait here until you approve them."
+                    icon={<Sparkles size={17} className="text-primary" />}
+                  >
+                    <EmptyState
+                      icon={<FileText size={18} />}
+                      title="No document selected."
+                      description="Drop a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
+                    />
+                  </SectionPanel>
+                ) : null}
+              </div>
+              <RegisterImportPanel
+                entityId={selectedEntityId}
+                onApplied={refreshDashboardData}
+              />
+            </section>
+          </section>
+        ) : null}
+
+        {!isIntakeWorkspace ? (
+          <section className="grid gap-[18px] lg:grid-cols-[minmax(320px,430px)_minmax(0,1fr)]">
+            <div className="grid gap-5">
               <SectionPanel
                 title="Smart Intake"
                 description="Drop documents and review extractions."
@@ -4287,16 +4547,7 @@ export function Dashboard({
                   </Link>
                 </div>
               </SectionPanel>
-            )}
 
-            {isIntakeWorkspace ? (
-              <RegisterImportPanel
-                entityId={selectedEntityId}
-                onApplied={refreshDashboardData}
-              />
-            ) : null}
-
-            {!isIntakeWorkspace ? (
               <SectionPanel title="Onboarding">
                 <div className="grid gap-3 p-4 text-sm">
                   <div className="flex items-center justify-between">
@@ -4326,124 +4577,9 @@ export function Dashboard({
                   </Link>
                 </div>
               </SectionPanel>
-            ) : null}
-          </div>
+            </div>
 
-          <div className="grid gap-5">
-            {isIntakeWorkspace && lastApplyOutcome ? (
-              <DocumentIntakeApplyOutcomeCard
-                outcome={lastApplyOutcome}
-                onDismiss={() => setLastApplyOutcome(null)}
-              />
-            ) : null}
-            {isIntakeWorkspace && selectedReviewIntake && reviewDraft ? (
-              <DocumentIntakeReviewPanel
-                intake={selectedReviewIntake}
-                draft={reviewDraft}
-                included={includedGroups}
-                applyTarget={reviewApplyTarget}
-                properties={propertiesQuery.data ?? []}
-                tenancyUnits={reviewTenancyUnitsQuery.data ?? []}
-                tenants={tenantsQuery.data ?? []}
-                leases={reviewLeasesQuery.data ?? []}
-                onDraftChange={setReviewDraft}
-                onIncludedChange={(group, checked) =>
-                  setIncludedGroups((current) => ({
-                    ...current,
-                    [group]: checked,
-                  }))
-                }
-                onApplyTargetChange={setReviewApplyTarget}
-                onSave={() =>
-                  reviewDocumentIntakeMutation.mutate({
-                    intakeId: selectedReviewIntake.id,
-                    reviewData: buildIncludedReviewData(
-                      reviewDraft,
-                      includedGroups,
-                    ),
-                  })
-                }
-                onApply={() => {
-                  const reviewData = buildIncludedReviewData(
-                    reviewDraft,
-                    includedGroups,
-                  );
-                  const workflowType = documentWorkflowType(
-                    reviewDraft,
-                    selectedReviewIntake,
-                  );
-                  applyDocumentIntakeMutation.mutate({
-                    intakeId: selectedReviewIntake.id,
-                    reviewData,
-                    target: reviewApplyTarget,
-                    outcome: {
-                      documentName: selectedReviewIntake.filename,
-                      workflowType,
-                      obligationCount: applicableObligationCount(
-                        reviewData,
-                        workflowType,
-                      ),
-                      workOrderCount:
-                        workflowType === "inspection_report"
-                          ? applicableObligationCount(reviewData, workflowType)
-                          : undefined,
-                      targetLabel:
-                        workflowType === "lease"
-                          ? reviewedLeaseTargetLabel(
-                              reviewData,
-                              reviewApplyTarget,
-                              propertiesQuery.data ?? [],
-                              reviewTenancyUnitsQuery.data ?? [],
-                              tenantsQuery.data ?? [],
-                            )
-                          : workflowType === "purchase_contract"
-                            ? reviewedPropertyTargetLabel(
-                                reviewData,
-                                reviewApplyTarget,
-                                propertiesQuery.data ?? [],
-                                reviewTenancyUnitsQuery.data ?? [],
-                              )
-                            : applyTargetLabel(
-                                reviewApplyTarget,
-                                propertiesQuery.data ?? [],
-                                reviewTenancyUnitsQuery.data ?? [],
-                                reviewLeasesQuery.data ?? [],
-                              ),
-                      dueDate: firstApplicableDueDate(reviewData, workflowType),
-                      ignoredCount: ignoredReviewItemCount(
-                        reviewDraft,
-                        includedGroups,
-                      ),
-                    },
-                  });
-                }}
-                onAcceptLeaseMatch={() => {
-                  acceptLeaseMatchMutation.mutate(selectedReviewIntake.id);
-                }}
-                onClear={() =>
-                  deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
-                }
-                saving={reviewDocumentIntakeMutation.isPending}
-                applying={applyDocumentIntakeMutation.isPending}
-                acceptingLeaseMatch={acceptLeaseMatchMutation.isPending}
-                clearing={deleteDocumentIntakeMutation.isPending}
-                demo={selectedReviewIntake.id.startsWith("demo-")}
-              />
-            ) : null}
-            {isIntakeWorkspace && !selectedReviewIntake ? (
-              <SectionPanel
-                title="Review document"
-                description="Extracted terms, dates, parties, and obligations will wait here until you approve them."
-                icon={<Sparkles size={17} className="text-primary" />}
-              >
-                <EmptyState
-                  icon={<FileText size={18} />}
-                  title="No document selected."
-                  description="Drop a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
-                />
-              </SectionPanel>
-            ) : null}
-            {!isIntakeWorkspace ? (
+            <div className="grid gap-5">
               <SectionPanel
                 title="Needs attention"
                 icon={<ClipboardList size={17} className="text-primary" />}
@@ -4480,9 +4616,7 @@ export function Dashboard({
                   ) : null}
                 </div>
               </SectionPanel>
-            ) : null}
 
-            {!isIntakeWorkspace ? (
               <section className="grid gap-5 xl:grid-cols-2">
                 <SectionPanel
                   title="Events"
@@ -4564,9 +4698,9 @@ export function Dashboard({
                   </div>
                 </SectionPanel>
               </section>
-            ) : null}
-          </div>
-        </section>
+            </div>
+          </section>
+        ) : null}
 
         {/* UpcomingLeaseEventsPanel + CompliancePanel are driven by the
             single-entity insights rollup (getInsightsOverview), which is not

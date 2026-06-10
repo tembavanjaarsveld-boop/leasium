@@ -2,7 +2,66 @@
 
 Last updated: 2026-06-10
 
-## Cowork continuation - 2026-06-10 (Horizon Property detail v1 - latest)
+## Cowork continuation - 2026-06-10 (Horizon Smart Intake desktop v1 - latest)
+
+Implemented the approved Horizon Smart Intake desktop slice from Figma source
+of truth `PO2jOANgmqgZHfqWZXOZGU`, node `55:166`. 04 Concept remains out of
+scope; production source stays 01 Foundations / 02 Components / 03 Screens.
+
+Scope stayed inside `/intake` and the landing/workspace frame. Smart Intake now
+opens with the Horizon title/subtitle, hero upload band, review queue, recently
+applied provenance panel, and review-first ribbon. Existing review filters,
+queue CSV copy/download, quick-add links, deep links, upload, clear, selected
+document review, and apply/accept-match behavior remain on their existing
+operator-controlled paths. The focused per-document editor remains the separate
+Document review frame (`58:352`) for the next Horizon slice.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, document review apply, or workflow mutation path changed.
+
+Files touched:
+
+- `apps/web/src/components/dashboard.tsx` — Horizon Smart Intake landing,
+  recently applied provenance chips from existing intake records, and cleanup of
+  the old unreachable intake branch under the dashboard layout.
+- `apps/web/tests/smoke/app-flows.spec.ts` — red/green Horizon landing smoke,
+  alongside existing Smart Intake guardrail and workflow coverage.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and this handover log
+  the slice as Remba-pending.
+- `docs/superpowers/plans/2026-06-10-horizon-smart-intake.md` records the
+  implementation plan, TDD loop, and verification commands.
+
+Verification completed locally:
+
+- Red run: `PORT=3071 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "smart intake shows Horizon review-first landing" --workers=1` failed on the missing Horizon hero before implementation.
+- Green run: `PORT=3071 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "smart intake shows Horizon review-first landing" --workers=1` (1/1)
+- `npm exec -- eslint src/components/dashboard.tsx tests/smoke/app-flows.spec.ts tests/smoke/smart-intake-export-parity.spec.ts tests/smoke/appearance.spec.ts`
+- `npm exec -- tsc --noEmit`
+- `PORT=3075 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "smart intake" --workers=1` (8/8)
+- `PORT=3073 npm run test:smoke -- tests/smoke/smart-intake-export-parity.spec.ts --workers=1` (1/1)
+- `PORT=3076 npm run test:smoke -- tests/smoke/appearance.spec.ts --workers=1` (9/9)
+- `npm run build`
+- `git diff --check`
+- In-app browser check at `http://127.0.0.1:3077/intake` confirmed the
+  Horizon header, hero, queue/provenance panels, trust ribbon, review placeholder,
+  and mobile 390px section presence. The live local API was not hydrated, so the
+  mocked Playwright smokes remain the authoritative evidence for populated queue
+  rows and review/export guardrails.
+
+Known follow-ups:
+
+- Document review remains next (`58:352`): source preview plus field approval
+  flow should stay a separate slice.
+- Recently applied chips are derived from existing intake `review_data`; richer
+  applied counts can come from a later backend/product pass if Remba wants more
+  exact provenance.
+- Remba should review desktop hero density, queue/provenance hierarchy, retained
+  export/quick-add controls, and mobile stacking before this is marked complete.
+
+Next Horizon slice per `docs/horizon-implementation-brief.md`: Document review
+(`58:352`), then Notifications/Settings.
+
+## Cowork continuation - 2026-06-10 (Horizon Property detail v1)
 
 Implemented the approved Horizon Property detail slice from Figma source of
 truth `PO2jOANgmqgZHfqWZXOZGU`, node `58:627`. 04 Concept remains out of
@@ -62,8 +121,8 @@ Known follow-ups:
 - Remba should review desktop density, tab semantics, mobile behavior, and the
   record-page data hierarchy before this is marked complete.
 
-Next Horizon slice per `docs/horizon-implementation-brief.md`: Smart Intake
-(`55:166`), then Document review (`58:352`).
+Next Horizon slice note superseded: Smart Intake (`55:166`) has now shipped;
+Document review (`58:352`) is next.
 
 ## Cowork continuation - 2026-06-10 (Horizon Properties desktop v1 - latest)
 

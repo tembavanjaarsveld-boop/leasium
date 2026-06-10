@@ -96,6 +96,7 @@ map for agents:
 | Leasium/Horizon/Empty state 50:163 | `apps/web/src/components/ui.tsx` EmptyState |
 | 03 Screens / Properties 55:2 | `apps/web/src/components/property-workspace.tsx` — Horizon Properties Cards v1 |
 | 03 Screens / Property detail 58:627 | `apps/web/src/components/property-workspace.tsx` — Horizon Property detail v1 |
+| 03 Screens / Smart Intake 55:166 | `apps/web/src/components/dashboard.tsx` via `/intake` (`Dashboard mode="intake"`) — Horizon Smart Intake desktop v1 |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -199,6 +200,19 @@ back-filled when first touched by a design-facing slice.
   semantics, mobile behavior, the synthesized activity summary, and whether
   arrears/readiness needs a property-specific backend source before this is
   marked `[x]`.
+- **Horizon Smart Intake desktop v1 (2026-06-10, Remba pending):** production
+  implementation from the approved Figma Smart Intake target (`55:166`) on
+  `/intake`, scoped to the landing/workspace frame only. The page now presents
+  the Horizon header, hero upload band, review queue, recently applied
+  provenance panel, and review-first ribbon over the existing Smart Intake data.
+  Review filters, queue CSV copy/download, quick-add links, deep links, upload,
+  clear, and selected-document review behavior remain on their existing paths;
+  the focused per-document editor remains the separate Document review frame
+  (`58:352`). No API shape, provider send, email/SMS, payment, reconciliation,
+  Xero/Basiq, Smart Intake apply, or workflow mutation path changed. Remba should
+  review hero density, queue/provenance hierarchy, the retained export/quick-add
+  controls inside the Figma landing frame, mobile stacking, and whether applied
+  provenance chips need richer backend counts before this is marked `[x]`.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
   the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,
