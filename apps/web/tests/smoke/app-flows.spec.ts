@@ -515,6 +515,86 @@ test("smart intake shows Horizon review-first landing", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("smart intake Horizon document review keeps source preview beside extracted fields without mutations", async ({
+  page,
+}) => {
+  const forbiddenRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const smartIntakeMutation =
+      request.method() !== "GET" &&
+      /\/document-intakes\/[^/]+\/(apply|review|accept-lease-match)$/.test(
+        path,
+      );
+    const providerMutation =
+      request.method() !== "GET" &&
+      (path.includes("/xero/") ||
+        path.includes("/sendgrid/") ||
+        path.includes("/twilio/") ||
+        path.includes("/payments/") ||
+        path.includes("/reconciliation"));
+    if (smartIntakeMutation || providerMutation) {
+      forbiddenRequests.push(`${request.method()} ${url.toString()}`);
+    }
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("link", { name: "Smart Intake" }),
+  ).toBeVisible();
+  await expect(
+    review.getByRole("heading", { name: "bright-cafe-lease.pdf" }),
+  ).toBeVisible();
+  await expect(review.getByText("In review")).toBeVisible();
+  await expect(review.getByText(/\d+ fields extracted/)).toBeVisible();
+
+  const sourcePreview = page.getByTestId("document-review-source-preview");
+  await expect(sourcePreview.getByText(/SOURCE.*PAGE 3 OF 24/)).toBeVisible();
+  await expect(
+    sourcePreview.getByText("Highlight follows the selected field"),
+  ).toBeVisible();
+
+  const fieldsPanel = page.getByTestId("document-review-fields");
+  await expect(
+    fieldsPanel.getByRole("heading", { name: "EXTRACTED FIELDS" }),
+  ).toBeVisible();
+  await expect(fieldsPanel.getByText("approved")).toBeVisible();
+  await expect(fieldsPanel.getByText("to decide")).toBeVisible();
+
+  await expect(
+    page.getByTestId("document-review-field-parties-0").getByText("Tenant"),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("document-review-field-parties-0")
+      .getByText("Bright Cafe Pty Ltd"),
+  ).toBeVisible();
+
+  const optionRow = page.getByTestId("document-review-field-obligations-0");
+  await expect(optionRow.getByText("Option")).toBeVisible();
+  await expect(
+    optionRow.getByText("1 x 3 years - exercise by 28 Jun 2026"),
+  ).toBeVisible();
+  await expect(optionRow.getByText("71%")).toBeVisible();
+  await expect(optionRow.getByRole("button", { name: "Approve" })).toBeVisible();
+  await expect(optionRow.getByRole("button", { name: "Edit" })).toBeVisible();
+
+  await optionRow.click();
+  await expect(sourcePreview.getByText(/PAGE 11 OF 24/)).toBeVisible();
+  await expect(sourcePreview.getByText("Option exercise notice")).toBeVisible();
+  await expect(
+    page.getByText("Nothing is applied until you approve."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Apply .*approved fields/ }),
+  ).toBeVisible();
+  expect(forbiddenRequests).toEqual([]);
+});
+
 test("billing readiness mobile actions keep 44px touch targets", async ({
   page,
 }) => {

@@ -1,6 +1,60 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
+
+## Cowork continuation - 2026-06-11 (Horizon Document review v1 - latest)
+
+Implemented the approved Horizon Document review slice from Figma source of
+truth `PO2jOANgmqgZHfqWZXOZGU`, node `58:352`. 04 Concept remains out of
+scope; production source stays 01 Foundations / 02 Components / 03 Screens.
+
+Scope stayed inside `/intake?review=...` and `DocumentIntakeReviewPanel`.
+The focused review now opens with the Horizon breadcrumb/title, status summary,
+source preview, extracted-field approval list, confidence percentages,
+selected-field source highlighting, and sticky review-first apply bar. The
+existing summary editor, warnings, lease-match acceptance, apply target plan,
+approve/edit/ignore draft state, detailed field inputs, save review, and apply
+reviewed items paths remain wired to the same handlers.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, or workflow mutation path changed.
+
+Files touched:
+
+- `apps/web/src/components/dashboard.tsx` — Horizon two-pane document review
+  frame, local source-preview selection, extracted-field rows, and sticky
+  review-first apply bar over the existing Smart Intake review handlers.
+- `apps/web/tests/smoke/api-mocks.ts` — richer mocked lease source metadata for
+  page/citation/confidence coverage.
+- `apps/web/tests/smoke/app-flows.spec.ts` — red/green Horizon document review
+  smoke asserting source preview, low-confidence controls, and no unintended
+  review/apply/provider mutation while browsing fields.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and this handover log
+  the slice as Remba-pending.
+- `docs/superpowers/plans/2026-06-11-horizon-document-review.md` records the
+  implementation plan, TDD loop, and verification commands.
+
+Verification completed locally so far:
+
+- Red run: `PORT=3075 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "Horizon document review" --workers=1` failed on the missing Horizon review frame before implementation.
+- Green run: `PORT=3075 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "Horizon document review" --workers=1` (1/1)
+- `npm exec -- eslint src/components/dashboard.tsx tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts`
+- `npm exec -- tsc --noEmit`
+- `PORT=3080 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "smart intake" --workers=1` (9/9)
+- `PORT=3081 npm run test:smoke -- tests/smoke/smart-intake-export-parity.spec.ts --workers=1` (1/1)
+- `npm run build`
+- `git diff --check`
+- Temporary mocked browser visual check:
+  `PORT=3082 npm run test:smoke -- tests/smoke/.tmp-horizon-document-review-visual.spec.ts --workers=1` (1/1), with screenshots reviewed at 1280x900 desktop, 390x844 mobile, and 390x844 mobile dark. The temporary spec was deleted before commit.
+
+Known follow-ups:
+
+- The source preview is a lightweight evidence shell from extraction metadata,
+  not a true PDF page renderer. Remba should decide whether the next pass needs
+  real document page rendering/coordinates.
+- Detailed apply target and field editor sections remain visible below the new
+  extracted-field pane for workflow continuity; Remba should review whether they
+  should collapse by default.
 
 ## Cowork continuation - 2026-06-10 (Horizon shell polish v1 - latest)
 

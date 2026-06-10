@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Document review v1:** implemented the approved
+  Figma Document review target (`PO2jOANgmqgZHfqWZXOZGU`, node `58:352`) inside
+  `/intake?review=...`. The focused review now has the Horizon breadcrumb/title,
+  status summary, source preview panel, extracted-field approval list,
+  confidence percentages, selected-field source highlighting, and sticky
+  review-first apply bar while preserving the existing summary editor, apply
+  targets, lease-match acceptance, approve/edit/ignore draft controls, queue
+  filters, CSV exports, and explicit save/apply mutations. Frontend-only
+  presentation work plus smoke fixtures: no API shape, provider send, email/SMS,
+  Xero/Basiq, payment, reconciliation, Smart Intake apply, or workflow mutation
+  path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon shell polish v1:** tightened the shared operator
   shell after Temba review. The entity switcher now keeps `All entities` as a
   dropdown option only (no separate visible toggle), the sidebar footer removes

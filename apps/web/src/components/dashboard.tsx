@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   AlertTriangle,
   Building2,
   CalendarClock,
@@ -729,6 +730,89 @@ function itemSource(item: Record<string, unknown>) {
     fieldText(item.clause) ??
     page
   );
+}
+
+function reviewTitleCase(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function reviewFieldLabel(
+  groupKey: ReviewGroupKey,
+  item: Record<string, unknown>,
+) {
+  if (groupKey === "parties") {
+    return reviewTitleCase(fieldText(item.role) ?? "Party");
+  }
+  if (groupKey === "properties") {
+    return "Premises";
+  }
+  return (
+    fieldText(item.label) ??
+    fieldText(item.title) ??
+    reviewTitleCase(groupKey.replace(/s$/, ""))
+  );
+}
+
+function reviewMoneyValue(item: Record<string, unknown>) {
+  const amount = fieldNumber(item.amount);
+  const amountText =
+    amount === null
+      ? fieldText(item.amount)
+      : new Intl.NumberFormat("en-AU", {
+          style: "currency",
+          currency: safeCurrency(item.currency),
+          maximumFractionDigits: 0,
+        }).format(amount);
+  const frequency = fieldText(item.frequency);
+  return [amountText, frequency ? `/ ${frequency}` : null]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function reviewFieldValue(
+  groupKey: ReviewGroupKey,
+  item: Record<string, unknown>,
+) {
+  if (groupKey === "parties") {
+    return fieldText(item.name) ?? fieldText(item.contact) ?? "Check details";
+  }
+  if (groupKey === "properties") {
+    return [fieldText(item.name), fieldText(item.unit_label)]
+      .filter(Boolean)
+      .join(" - ");
+  }
+  if (groupKey === "key_dates") {
+    const date = fieldText(item.date);
+    return date ? formatDate(date) : "Check date";
+  }
+  if (groupKey === "money_amounts") {
+    return reviewMoneyValue(item) || "Check amount";
+  }
+  if (groupKey === "inspection_findings") {
+    return fieldText(item.description) ?? fieldText(item.location) ?? "Review finding";
+  }
+  return (
+    fieldText(item.summary) ??
+    fieldText(item.description) ??
+    fieldText(item.due_date) ??
+    fieldText(item.category) ??
+    "Review source"
+  );
+}
+
+function reviewConfidencePercent(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return `${Math.round(value * 100)}%`;
+}
+
+function reviewSourcePreviewRecord(draft: DocumentIntakeExtraction) {
+  return isRecord(draft.source_preview) ? draft.source_preview : null;
 }
 
 function intakeIsActive(item: DocumentIntakeRecord) {
@@ -2047,6 +2131,57 @@ function DocumentIntakeReviewPanel({
             group.key === "inspection_findings"
           ? "Work order drafts"
           : group.title;
+  const [selectedSourceRowId, setSelectedSourceRowId] = useState("");
+  const reviewRows = visibleGroups.flatMap((group) =>
+    groupItems(draft, group.key).map((item, index) => {
+      const confidence = itemConfidence(item, intake.confidence);
+      return {
+        id: `${group.key}-${index}`,
+        groupKey: group.key,
+        itemIndex: index,
+        item,
+        groupLabel: groupTitle(group),
+        label: reviewFieldLabel(group.key, item),
+        value: reviewFieldValue(group.key, item),
+        confidence,
+        confidencePercent: reviewConfidencePercent(confidence),
+        source: itemSource(item),
+        page: fieldNumber(item.page),
+        pageCount: fieldNumber(item.page_count),
+        citation: fieldText(item.citation),
+        action: itemReviewAction(item),
+      };
+    }),
+  );
+  const selectedSourceRow =
+    reviewRows.find((row) => row.id === selectedSourceRowId) ??
+    reviewRows[0] ??
+    null;
+  const sourcePreview = reviewSourcePreviewRecord(draft);
+  const sourcePage =
+    selectedSourceRow?.page ?? fieldNumber(sourcePreview?.page) ?? 1;
+  const sourcePageCount =
+    selectedSourceRow?.pageCount ??
+    fieldNumber(sourcePreview?.page_count) ??
+    sourcePage;
+  const sourceCitation =
+    selectedSourceRow?.citation ??
+    fieldText(sourcePreview?.citation) ??
+    selectedSourceRow?.source ??
+    "Selected source";
+  const sourceHighlight =
+    fieldText(selectedSourceRow?.item.highlight_text) ??
+    fieldText(selectedSourceRow?.item.summary) ??
+    fieldText(sourcePreview?.highlight_text) ??
+    fieldText(draft.summary) ??
+    "Select a field to inspect the source evidence Leasium used.";
+  const toDecideCount = reviewRows.filter(
+    (row) =>
+      row.action !== "approve" ||
+      (row.confidence !== null &&
+        row.confidence !== undefined &&
+        row.confidence < 0.8),
+  ).length;
   const canSelectLease = workflowType !== "lease";
   const scopedLeases = applyTarget.tenancyUnitId
     ? leases.filter(
@@ -2120,40 +2255,224 @@ function DocumentIntakeReviewPanel({
       : [];
   return (
     <SectionPanel
-      title="Review document"
-      description="Confirm suggested details before Leasium creates work from this document."
-      icon={<Sparkles size={17} className="text-primary" />}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge tone={intakeStatusTone(intake.status)}>
-            {intakeStatusLabel(intake.status)}
-          </StatusBadge>
-          <SecondaryButton
-            type="button"
-            className="h-8"
-            onClick={onClear}
-            disabled={demo || clearing}
-          >
-            <X size={14} />
-            Clear
-          </SecondaryButton>
-        </div>
-      }
+      data-testid="horizon-document-review"
+      className="border-primary/10 bg-white"
     >
-      <div className="grid gap-4 p-4">
+      <div className="grid gap-5 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="font-semibold">{intake.filename}</div>
-            <div className="text-xs text-muted-foreground">
-              {documentTypeLabel(intake.document_type)} -{" "}
-              {confidenceLabel(intake.confidence)}
+            <Link
+              href="/intake"
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm font-semibold text-primary transition hover:text-primary-hover"
+            >
+              <ArrowLeft size={15} />
+              Smart Intake
+            </Link>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Review document
+              </h2>
+              <StatusBadge tone={intakeStatusTone(intake.status)}>
+                {intake.status === "ready_for_review"
+                  ? "In review"
+                  : intakeStatusLabel(intake.status)}
+              </StatusBadge>
+            </div>
+            <h1 className="mt-1 break-words text-2xl font-semibold tracking-normal text-foreground">
+              {intake.filename}
+            </h1>
+            <div className="mt-1 text-sm text-muted-foreground">
+              {reviewRows.length} fields extracted - {approvedCount} approved -{" "}
+              {toDecideCount} to decide
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StatusBadge tone="primary">{approvedCount} to apply</StatusBadge>
+            <StatusBadge tone="primary">
+              {documentTypeLabel(intake.document_type)}
+            </StatusBadge>
             {ignoredCount ? (
               <StatusBadge tone="neutral">{ignoredCount} ignored</StatusBadge>
             ) : null}
+            <SecondaryButton
+              type="button"
+              className="h-10"
+              onClick={onClear}
+              disabled={demo || clearing}
+            >
+              <X size={14} />
+              Ignore document
+            </SecondaryButton>
+          </div>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+          <div
+            data-testid="document-review-source-preview"
+            className="grid gap-4 rounded-2xl border border-border bg-muted/20 p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                SOURCE - PAGE {sourcePage} OF {sourcePageCount}
+              </div>
+              {sourceInfo ? (
+                <StatusBadge tone="primary">Source routed</StatusBadge>
+              ) : (
+                <StatusBadge tone="neutral">
+                  {intake.content_type ?? "Source file"}
+                </StatusBadge>
+              )}
+            </div>
+            <div className="relative min-h-[360px] overflow-hidden rounded-xl border border-border bg-white p-5 shadow-leasiumXs">
+              <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <FileText size={15} />
+                {intake.filename}
+              </div>
+              <div className="grid gap-3 text-sm leading-6 text-muted-foreground">
+                <div className="h-2 w-4/5 rounded-full bg-muted" />
+                <div className="h-2 w-3/5 rounded-full bg-muted" />
+                <div className="h-2 w-5/6 rounded-full bg-muted" />
+              </div>
+              <div className="mt-8 rounded-2xl border border-primary/25 bg-primary-soft p-4 text-sm leading-6 text-primary-hover">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                  Selected source
+                </div>
+                {sourceHighlight}
+              </div>
+              <div className="mt-6 grid gap-2 text-sm">
+                <div className="font-semibold text-foreground">
+                  {selectedSourceRow?.label ?? "Source evidence"}
+                </div>
+                <div className="text-muted-foreground">
+                  {selectedSourceRow?.value ??
+                    "Select a field to inspect source."}
+                </div>
+                <div className="rounded-xl bg-muted/60 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  {sourceCitation}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-primary/15 bg-white px-3 py-2 text-sm text-muted-foreground shadow-leasiumXs">
+              Highlight follows the selected field - every value shows its
+              source.
+            </div>
+          </div>
+
+          <div
+            data-testid="document-review-fields"
+            className="grid gap-3 rounded-2xl border border-border bg-white p-4 shadow-leasiumXs"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  EXTRACTED FIELDS
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Approve, edit, or ignore each source-backed value.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge tone="success">
+                  {approvedCount} approved
+                </StatusBadge>
+                <StatusBadge tone={toDecideCount ? "warning" : "neutral"}>
+                  {toDecideCount} to decide
+                </StatusBadge>
+              </div>
+            </div>
+            <div className="grid max-h-[620px] gap-2 overflow-y-auto pr-1">
+              {reviewRows.map((row) => {
+                const isSelected = selectedSourceRow?.id === row.id;
+                const ignored = row.action === "ignore";
+                return (
+                  <div
+                    key={row.id}
+                    data-testid={`document-review-field-${row.id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedSourceRowId(row.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedSourceRowId(row.id);
+                      }
+                    }}
+                    className={[
+                      "grid gap-3 rounded-xl border p-3 text-left transition",
+                      isSelected
+                        ? "border-primary/35 bg-primary-soft/50"
+                        : "border-border bg-muted/20 hover:border-primary/25 hover:bg-white",
+                      ignored ? "opacity-60" : "",
+                    ].join(" ")}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-semibold text-foreground">
+                            {row.label}
+                          </div>
+                          <StatusBadge
+                            tone={
+                              row.confidence && row.confidence >= 0.8
+                                ? "success"
+                                : "warning"
+                            }
+                          >
+                            {row.confidencePercent ??
+                              confidenceLabel(row.confidence)}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-1 break-words text-sm leading-5 text-muted-foreground">
+                          {row.value}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-md bg-white px-2 py-1 font-semibold text-muted-foreground">
+                            Review group
+                          </span>
+                          {row.source ? (
+                            <span className="rounded-md bg-white px-2 py-1 text-muted-foreground">
+                              {row.source}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-white p-1">
+                        {(
+                          ["approve", "edit", "ignore"] as ReviewItemAction[]
+                        ).map((nextAction) => (
+                          <button
+                            key={nextAction}
+                            type="button"
+                            onClick={() => {
+                              onIncludedChange(row.groupKey, true);
+                              onDraftChange(
+                                setGroupItemAction(
+                                  draft,
+                                  row.groupKey,
+                                  row.itemIndex,
+                                  nextAction,
+                                ),
+                              );
+                              setSelectedSourceRowId(row.id);
+                            }}
+                            disabled={!included[row.groupKey]}
+                            className={[
+                              "min-h-8 rounded-lg px-2 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50",
+                              row.action === nextAction
+                                ? nextAction === "ignore"
+                                  ? "bg-danger-soft text-danger"
+                                  : "bg-primary text-white"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            ].join(" ")}
+                          >
+                            {reviewTitleCase(nextAction)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -2172,8 +2491,8 @@ function DocumentIntakeReviewPanel({
         ) : null}
 
         <div className="rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
-          Nothing is applied until you approve the items below and press Apply.
-          Ignored items stay out of the reviewed data sent to the workflow.
+          Review-first guardrail: ignored items stay out of the reviewed data
+          sent to the workflow.
         </div>
 
         <Field label="Summary">
@@ -2683,9 +3002,19 @@ function DocumentIntakeReviewPanel({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+        <div className="sticky bottom-0 z-10 flex flex-col items-stretch justify-between gap-3 rounded-2xl border border-border bg-white/95 p-3 shadow-leasiumCard backdrop-blur sm:flex-row sm:items-center">
+          <div className="text-sm">
+            <div className="font-semibold text-foreground">
+              Nothing is applied until you approve.
+            </div>
+            <div className="text-muted-foreground">
+              {approvedCount} approved fields, {toDecideCount} to decide.
+            </div>
+          </div>
+          <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
           <SecondaryButton
             type="button"
+            className="w-full sm:w-auto"
             onClick={onSave}
             disabled={demo || saving || applying}
           >
@@ -2698,6 +3027,8 @@ function DocumentIntakeReviewPanel({
           </SecondaryButton>
           <Button
             type="button"
+            className="w-full sm:w-auto"
+            aria-label={`Apply reviewed items - ${approvedCount} approved fields`}
             onClick={onApply}
             disabled={
               applying ||
@@ -2715,6 +3046,7 @@ function DocumentIntakeReviewPanel({
             )}
             Apply reviewed items
           </Button>
+          </div>
         </div>
       </div>
     </SectionPanel>
@@ -3766,6 +4098,101 @@ export function Dashboard({
     }
   }, [reviewDraftId, selectedReviewIntake]);
 
+  const selectedDocumentReviewPanel =
+    selectedReviewIntake && reviewDraft ? (
+      <div className="grid gap-5">
+        <DocumentIntakeReviewPanel
+          intake={selectedReviewIntake}
+          draft={reviewDraft}
+          included={includedGroups}
+          applyTarget={reviewApplyTarget}
+          properties={propertiesQuery.data ?? []}
+          tenancyUnits={reviewTenancyUnitsQuery.data ?? []}
+          tenants={tenantsQuery.data ?? []}
+          leases={reviewLeasesQuery.data ?? []}
+          onDraftChange={setReviewDraft}
+          onIncludedChange={(group, checked) =>
+            setIncludedGroups((current) => ({
+              ...current,
+              [group]: checked,
+            }))
+          }
+          onApplyTargetChange={setReviewApplyTarget}
+          onSave={() =>
+            reviewDocumentIntakeMutation.mutate({
+              intakeId: selectedReviewIntake.id,
+              reviewData: buildIncludedReviewData(reviewDraft, includedGroups),
+            })
+          }
+          onApply={() => {
+            const reviewData = buildIncludedReviewData(
+              reviewDraft,
+              includedGroups,
+            );
+            const workflowType = documentWorkflowType(
+              reviewDraft,
+              selectedReviewIntake,
+            );
+            applyDocumentIntakeMutation.mutate({
+              intakeId: selectedReviewIntake.id,
+              reviewData,
+              target: reviewApplyTarget,
+              outcome: {
+                documentName: selectedReviewIntake.filename,
+                workflowType,
+                obligationCount: applicableObligationCount(
+                  reviewData,
+                  workflowType,
+                ),
+                workOrderCount:
+                  workflowType === "inspection_report"
+                    ? applicableObligationCount(reviewData, workflowType)
+                    : undefined,
+                targetLabel:
+                  workflowType === "lease"
+                    ? reviewedLeaseTargetLabel(
+                        reviewData,
+                        reviewApplyTarget,
+                        propertiesQuery.data ?? [],
+                        reviewTenancyUnitsQuery.data ?? [],
+                        tenantsQuery.data ?? [],
+                      )
+                    : workflowType === "purchase_contract"
+                      ? reviewedPropertyTargetLabel(
+                          reviewData,
+                          reviewApplyTarget,
+                          propertiesQuery.data ?? [],
+                          reviewTenancyUnitsQuery.data ?? [],
+                        )
+                      : applyTargetLabel(
+                          reviewApplyTarget,
+                          propertiesQuery.data ?? [],
+                          reviewTenancyUnitsQuery.data ?? [],
+                          reviewLeasesQuery.data ?? [],
+                        ),
+                dueDate: firstApplicableDueDate(reviewData, workflowType),
+                ignoredCount: ignoredReviewItemCount(
+                  reviewDraft,
+                  includedGroups,
+                ),
+              },
+            });
+          }}
+          onAcceptLeaseMatch={() => {
+            acceptLeaseMatchMutation.mutate(selectedReviewIntake.id);
+          }}
+          onClear={() =>
+            deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
+          }
+          saving={reviewDocumentIntakeMutation.isPending}
+          applying={applyDocumentIntakeMutation.isPending}
+          acceptingLeaseMatch={acceptLeaseMatchMutation.isPending}
+          clearing={deleteDocumentIntakeMutation.isPending}
+          demo={selectedReviewIntake.id.startsWith("demo-")}
+        />
+      </div>
+    ) : null;
+
   const upcomingEvents = [
     ...openObligations.slice(0, 5).map((item) => ({
       id: item.id,
@@ -4083,6 +4510,14 @@ export function Dashboard({
 
         {isIntakeWorkspace ? (
           <section className="grid gap-4">
+            {lastApplyOutcome ? (
+              <DocumentIntakeApplyOutcomeCard
+                outcome={lastApplyOutcome}
+                onDismiss={() => setLastApplyOutcome(null)}
+              />
+            ) : null}
+            {selectedDocumentReviewPanel}
+
             <section
               onDragEnter={(event) => {
                 event.preventDefault();
@@ -4459,117 +4894,9 @@ export function Dashboard({
               Extraction is review-first — fields wait for your approval.
             </div>
 
-            <section className="mt-12 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)]">
-              <div className="grid gap-5">
-                {lastApplyOutcome ? (
-                  <DocumentIntakeApplyOutcomeCard
-                    outcome={lastApplyOutcome}
-                    onDismiss={() => setLastApplyOutcome(null)}
-                  />
-                ) : null}
-                {selectedReviewIntake && reviewDraft ? (
-                  <DocumentIntakeReviewPanel
-                    intake={selectedReviewIntake}
-                    draft={reviewDraft}
-                    included={includedGroups}
-                    applyTarget={reviewApplyTarget}
-                    properties={propertiesQuery.data ?? []}
-                    tenancyUnits={reviewTenancyUnitsQuery.data ?? []}
-                    tenants={tenantsQuery.data ?? []}
-                    leases={reviewLeasesQuery.data ?? []}
-                    onDraftChange={setReviewDraft}
-                    onIncludedChange={(group, checked) =>
-                      setIncludedGroups((current) => ({
-                        ...current,
-                        [group]: checked,
-                      }))
-                    }
-                    onApplyTargetChange={setReviewApplyTarget}
-                    onSave={() =>
-                      reviewDocumentIntakeMutation.mutate({
-                        intakeId: selectedReviewIntake.id,
-                        reviewData: buildIncludedReviewData(
-                          reviewDraft,
-                          includedGroups,
-                        ),
-                      })
-                    }
-                    onApply={() => {
-                      const reviewData = buildIncludedReviewData(
-                        reviewDraft,
-                        includedGroups,
-                      );
-                      const workflowType = documentWorkflowType(
-                        reviewDraft,
-                        selectedReviewIntake,
-                      );
-                      applyDocumentIntakeMutation.mutate({
-                        intakeId: selectedReviewIntake.id,
-                        reviewData,
-                        target: reviewApplyTarget,
-                        outcome: {
-                          documentName: selectedReviewIntake.filename,
-                          workflowType,
-                          obligationCount: applicableObligationCount(
-                            reviewData,
-                            workflowType,
-                          ),
-                          workOrderCount:
-                            workflowType === "inspection_report"
-                              ? applicableObligationCount(
-                                  reviewData,
-                                  workflowType,
-                                )
-                              : undefined,
-                          targetLabel:
-                            workflowType === "lease"
-                              ? reviewedLeaseTargetLabel(
-                                  reviewData,
-                                  reviewApplyTarget,
-                                  propertiesQuery.data ?? [],
-                                  reviewTenancyUnitsQuery.data ?? [],
-                                  tenantsQuery.data ?? [],
-                                )
-                              : workflowType === "purchase_contract"
-                                ? reviewedPropertyTargetLabel(
-                                    reviewData,
-                                    reviewApplyTarget,
-                                    propertiesQuery.data ?? [],
-                                    reviewTenancyUnitsQuery.data ?? [],
-                                  )
-                                : applyTargetLabel(
-                                    reviewApplyTarget,
-                                    propertiesQuery.data ?? [],
-                                    reviewTenancyUnitsQuery.data ?? [],
-                                    reviewLeasesQuery.data ?? [],
-                                  ),
-                          dueDate: firstApplicableDueDate(
-                            reviewData,
-                            workflowType,
-                          ),
-                          ignoredCount: ignoredReviewItemCount(
-                            reviewDraft,
-                            includedGroups,
-                          ),
-                        },
-                      });
-                    }}
-                    onAcceptLeaseMatch={() => {
-                      acceptLeaseMatchMutation.mutate(selectedReviewIntake.id);
-                    }}
-                    onClear={() =>
-                      deleteDocumentIntakeMutation.mutate(
-                        selectedReviewIntake.id,
-                      )
-                    }
-                    saving={reviewDocumentIntakeMutation.isPending}
-                    applying={applyDocumentIntakeMutation.isPending}
-                    acceptingLeaseMatch={acceptLeaseMatchMutation.isPending}
-                    clearing={deleteDocumentIntakeMutation.isPending}
-                    demo={selectedReviewIntake.id.startsWith("demo-")}
-                  />
-                ) : null}
-                {!selectedReviewIntake ? (
+            {!selectedDocumentReviewPanel ? (
+              <section className="mt-12 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)]">
+                <div className="grid gap-5">
                   <SectionPanel
                     title="Review document"
                     description="Extracted terms, dates, parties, and obligations will wait here until you approve them."
@@ -4581,13 +4908,13 @@ export function Dashboard({
                       description="Drop a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
                     />
                   </SectionPanel>
-                ) : null}
-              </div>
-              <RegisterImportPanel
-                entityId={selectedEntityId}
-                onApplied={refreshDashboardData}
-              />
-            </section>
+                </div>
+                <RegisterImportPanel
+                  entityId={selectedEntityId}
+                  onApplied={refreshDashboardData}
+                />
+              </section>
+            ) : null}
           </section>
         ) : null}
 

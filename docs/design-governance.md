@@ -97,6 +97,7 @@ map for agents:
 | 03 Screens / Properties 55:2 | `apps/web/src/components/property-workspace.tsx` — Horizon Properties Cards v1 |
 | 03 Screens / Property detail 58:627 | `apps/web/src/components/property-workspace.tsx` — Horizon Property detail v1 |
 | 03 Screens / Smart Intake 55:166 | `apps/web/src/components/dashboard.tsx` via `/intake` (`Dashboard mode="intake"`) — Horizon Smart Intake desktop v1 |
+| 03 Screens / Document review 58:352 | `apps/web/src/components/dashboard.tsx` (`DocumentIntakeReviewPanel`) — Horizon Document review v1 |
 | 03 Screens / AI Mailbox Intake 82:2 | not implemented — concept frame for ai@leasium.ai mailbox intake (queue + quarantine), awaiting Temba sign-off; design doc `docs/ai-mailbox-intake-design.md` |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
@@ -215,6 +216,19 @@ back-filled when first touched by a design-facing slice.
   review hero density, queue/provenance hierarchy, the retained export/quick-add
   controls inside the Figma landing frame, mobile stacking, and whether applied
   provenance chips need richer backend counts before this is marked `[x]`.
+- **Horizon Document review v1 (2026-06-11, Remba pending):** production
+  implementation from the approved Figma Document review target (`58:352`)
+  inside `/intake?review=...`. The focused editor now presents the Horizon
+  breadcrumb/title, status summary, source preview, extracted-field approval
+  list, confidence percentages, selected-field source highlight, and sticky
+  review-first apply bar while retaining the existing summary editor, apply
+  targets, lease-match acceptance, approve/edit/ignore draft controls, queue CSV
+  exports, and explicit save/apply mutations. No API shape, provider send,
+  email/SMS, payment, reconciliation, Xero/Basiq, Smart Intake apply, or workflow
+  mutation path changed. Remba should review the lightweight source-preview
+  treatment versus a future true PDF renderer, low-confidence row prominence,
+  mobile stacking, and whether the retained detailed editor sections should be
+  progressively disclosed before this is marked `[x]`.
 - **Horizon shell polish v1 (2026-06-10, Remba pending):** Temba review of the
   shipped shell removed the extra visible chrome that diverged from the approved
   Horizon sidebar. The entity switcher keeps `All entities` as a native dropdown
