@@ -39,16 +39,15 @@ the core design. It has been promoted into the canonical pages:
 - **02 Components** has the approved Horizon components: Sidebar 44:117, Command bar
   44:155, Hero focus card 44:179, Bento metric card 44:193, Work card 44:238, Trust
   ribbon 44:274, Segmented control 44:282, Bottom nav mobile 44:301.
-- **03 Screens** now shows the approved target design for Dashboard 45:2, Work
-  45:168, Dashboard·Mobile 45:371, Work·Mobile 45:461. Properties, Smart Intake,
-  Settings, Notifications remain as-built and adopt Horizon when next touched.
+- **03 Screens** now shows the approved Horizon target design for ALL core
+  screens: Dashboard 45:2, Work 45:168, Dashboard·Mobile 45:371, Work·Mobile
+  45:461, and (approved + promoted 2026-06-10) Properties 55:2, Smart Intake
+  55:166, Notifications 55:307, Settings 55:439. All desktop screens share the
+  Horizon shell (sidebar with entity switcher + user card).
 - **04 Concept — Horizon** is kept as the design archive with the rationale card.
-  It also carries the Horizon extension frames **awaiting Temba's sign-off**
-  (2026-06-10, built in Geist): Properties 48:140 (card grid + stat strip),
-  Smart Intake 48:464 (hero dropzone + provenance trail), Notifications 49:249
-  (channel health + needs-you/receipts split), Settings 49:524 (tab cards +
-  per-operator notification cards). Once approved they promote to 03 Screens
-  like Dashboard/Work did.
+  The Horizon extension frames (Properties, Smart Intake, Notifications,
+  Settings) were approved by Temba and promoted to 03 Screens on 2026-06-10;
+  the 04 copies remain as archive.
 
 Figma infrastructure (2026-06-10): the **Leasium Color** variable collection
 holds 27 core tokens with Light + Dark modes (read programmatically via the
