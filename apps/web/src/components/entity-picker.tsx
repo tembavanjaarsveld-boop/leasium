@@ -28,6 +28,12 @@ export function EntityPicker({
 }: EntityPickerProps) {
   const hasMultiple = (entities?.length ?? 0) > 1;
   const showAllEntities = allowAllEntities && hasMultiple;
+  const isEmpty = !loading && (entities?.length ?? 0) === 0;
+  const placeholder = loading
+    ? "Checking entities"
+    : isEmpty
+      ? "No entities yet"
+      : "Select entity";
 
   return (
     <div className="flex items-center gap-2">
@@ -36,9 +42,7 @@ export function EntityPicker({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">
-          {loading ? "Checking entities" : "Select entity"}
-        </option>
+        <option value="">{placeholder}</option>
         {showAllEntities ? (
           <option value={ALL_ENTITIES_VALUE}>All entities</option>
         ) : null}

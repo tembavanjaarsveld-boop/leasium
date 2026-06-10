@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Building2,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -2815,8 +2816,19 @@ export function Dashboard({
     const selectionValid =
       (!isIntakeWorkspace && isAllEntities(selectedEntityId)) ||
       accessibleIds.has(selectedEntityId);
-    if (next && (!selectedEntityId || !selectionValid)) {
-      setSelectedEntityId(next);
+    if (next) {
+      if (!selectedEntityId || !selectionValid) {
+        setSelectedEntityId(next);
+      }
+    } else if (selectedEntityId && !selectionValid) {
+      // No accessible entity to fall back to and the stored selection is not
+      // valid for this account — e.g. a brand-new account with no entities, or
+      // one switched from a different login in the same browser (the entity id
+      // is persisted in a shared localStorage key). Clear it so entity-scoped
+      // queries stay disabled and we never query an entity this account cannot
+      // access (which would 403 as "you do not have access to this entity").
+      setSelectedEntityId("");
+      window.localStorage.removeItem(ENTITY_STORAGE_KEY);
     }
   }, [entitiesQuery.data, isIntakeWorkspace, selectedEntityId]);
 
@@ -3770,6 +3782,63 @@ export function Dashboard({
       tone: "primary" as StatusTone,
     })),
   ].sort((a, b) => dueRank(a.date) - dueRank(b.date));
+
+  // Brand-new account (no entities/properties yet): show a friendly onboarding
+  // welcome instead of firing entity-scoped queries and surfacing a red error.
+  const zeroEntities =
+    !demoMode &&
+    !isIntakeWorkspace &&
+    Boolean(entitiesQuery.data) &&
+    (entitiesQuery.data?.length ?? 0) === 0;
+
+  if (zeroEntities) {
+    return (
+      <main className="min-h-screen bg-leasium-canvas">
+        <AppHeader>
+          <EntityPicker
+            entities={entitiesQuery.data}
+            loading={entitiesQuery.isLoading}
+            value={selectedEntityId}
+            onChange={setSelectedEntityId}
+            allowAllEntities={false}
+          />
+        </AppHeader>
+        <div className="mx-auto grid max-w-none gap-[18px] px-5 py-5 lg:px-9 lg:py-7">
+          <h1 className="sr-only">Dashboard</h1>
+          <SectionPanel
+            title="Welcome to Leasium"
+            description="This workspace doesn't have any properties yet."
+            icon={<Sparkles size={17} className="text-primary" />}
+          >
+            <div className="grid gap-4 p-5">
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                Add your first property to get started — you can create its
+                owning entity (a trust or company) in the same step. Or drop a
+                lease, rent roll, or purchase contract into Smart Intake and let
+                Leasium extract the details for your review.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  onClick={() => window.location.assign("/properties")}
+                >
+                  <Building2 size={15} />
+                  Add a property
+                </Button>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => window.location.assign("/intake")}
+                >
+                  <FileUp size={15} />
+                  Open Smart Intake
+                </SecondaryButton>
+              </div>
+            </div>
+          </SectionPanel>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-leasium-canvas">

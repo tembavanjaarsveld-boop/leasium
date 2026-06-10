@@ -596,6 +596,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       : shellEntity?.name ??
         currentOperatorQuery.data?.organisation.name ??
         "Leasium";
+  const orgName = currentOperatorQuery.data?.organisation.name ?? "Leasium";
   const entityCount = entitiesQuery.data?.length ?? 0;
   const entityCountLabel = entitiesQuery.isLoading
     ? "Checking entities"
@@ -813,17 +814,24 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         <LeasiumMark className="h-7 w-7 rounded-lg" />
         <div className="min-w-0">
           {children ? (
-            <div className="min-w-0 [&>div]:min-w-0 [&>div]:gap-1.5 [&_button]:min-h-7 [&_button]:rounded-md [&_button]:border-white/10 [&_button]:bg-white/10 [&_button]:px-2 [&_button]:text-[10px] [&_button]:font-semibold [&_button]:text-white [&_button_svg]:hidden [&_select]:min-h-7 [&_select]:min-w-0 [&_select]:rounded-none [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-0 [&_select]:py-0 [&_select]:text-[13px] [&_select]:font-semibold [&_select]:leading-4 [&_select]:text-white [&_select]:shadow-none [&_select]:focus-visible:ring-0 [&_option]:bg-white [&_option]:text-foreground">
-              {children}
-            </div>
+            <>
+              <p className="truncate text-[12px] font-semibold leading-4">
+                {orgName}
+              </p>
+              <div className="-ml-px min-w-0 [&>div]:min-w-0 [&>div]:gap-1.5 [&_button]:min-h-6 [&_button]:rounded-md [&_button]:border-white/10 [&_button]:bg-white/10 [&_button]:px-2 [&_button]:text-[10px] [&_button]:font-semibold [&_button]:text-white [&_button_svg]:hidden [&_select]:min-h-6 [&_select]:min-w-0 [&_select]:rounded-none [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-0 [&_select]:py-0 [&_select]:text-[11px] [&_select]:font-medium [&_select]:leading-4 [&_select]:text-leasium-slate-300 [&_select]:shadow-none [&_select]:focus-visible:ring-0 [&_option]:bg-white [&_option]:text-foreground">
+                {children}
+              </div>
+            </>
           ) : (
-            <p className="truncate text-[13px] font-semibold leading-4">
-              {shellEntityLabel}
-            </p>
+            <>
+              <p className="truncate text-[13px] font-semibold leading-4">
+                {shellEntityLabel}
+              </p>
+              <p className="truncate text-[10px] leading-3 text-leasium-slate-300">
+                {entityCountLabel}
+              </p>
+            </>
           )}
-          <p className="truncate text-[10px] leading-3 text-leasium-slate-300">
-            {entityCountLabel}
-          </p>
         </div>
         {children ? (
           <ChevronDown size={12} className="text-leasium-slate-300" />
