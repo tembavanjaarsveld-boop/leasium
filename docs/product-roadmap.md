@@ -8,6 +8,16 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-10 Horizon Property detail v1:** implemented the approved
+  Figma Property detail target (`PO2jOANgmqgZHfqWZXOZGU`, node `58:627`) as the
+  selected-property state inside `/properties`. Property cards and explicit
+  `property_id` deep links now open a record frame with the Horizon header,
+  Overview/Lease/Billing/Documents/Activity tabs, bento metrics, current lease
+  panel, and activity summary while preserving the existing edit, lease/unit,
+  billing, image, evidence, and document workflows behind their current explicit
+  operator actions. Frontend-only presentation/routing work: no API shape,
+  provider send, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
+  workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon Properties desktop v1:** implemented the approved
   Figma Properties target (`PO2jOANgmqgZHfqWZXOZGU`, node `55:2`) on
   `/properties`. Properties now defaults to the Horizon Cards frame with a live
@@ -15,8 +25,8 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   cards, property card grid, dashed Add property tile, and review-first trust
   pill. Existing Table, Map, Calendar, create/edit, image/evidence, document,
   billing, and all-entities workflows remain reachable; property deep links and
-  card selections open the existing Table record workspace until the Property
-  detail frame (`58:627`) ships. Frontend-only presentation and routing work:
+  card selections now hand off to the Horizon Property detail frame. Frontend-only
+  presentation and routing work:
   no API shape, provider send, Xero/Basiq, payment, reconciliation, or workflow
   mutation path changed. Pending Remba review.
 - [~] **2026-06-10 Horizon app shell v1:** implemented the approved Horizon

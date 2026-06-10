@@ -188,6 +188,10 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
     { path: "/", heading: "Today's focus" },
     { path: "/intake", heading: "Smart Intake" },
     { path: "/properties", heading: "Properties" },
+    {
+      path: "/properties?entity_id=entity-1&property_id=property-1",
+      heading: "Queen Street Retail Centre",
+    },
     { path: "/people?tab=tenants", heading: "People" },
     { path: "/operations", heading: "Work" },
     { path: "/notifications", heading: "Notifications" },

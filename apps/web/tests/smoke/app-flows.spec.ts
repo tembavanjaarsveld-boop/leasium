@@ -3273,19 +3273,19 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await page.goto("/properties?entity_id=entity-1&property_id=property-1");
 
   await expect(
-    page.getByRole("heading", { name: "Properties" }),
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
   ).toBeVisible();
   await expect(page).toHaveURL(/property_id=property-1/);
-  await expect(page.getByRole("tab", { name: "Table" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(
-    page.getByAltText("Queen Street Retail Centre primary image"),
-  ).toBeVisible();
-  await expect(
-    page.getByAltText("Queen Street Retail Centre primary image"),
-  ).toHaveAttribute("src", /.+/);
+  await page.getByRole("tab", { name: "Documents" }).click();
+  const primaryPropertyImage = page
+    .getByAltText("Queen Street Retail Centre primary image")
+    .first();
+  await expect(primaryPropertyImage).toBeVisible();
+  await expect(primaryPropertyImage).toHaveAttribute("src", /.+/);
   await page.getByRole("button", { name: "Find property images" }).click();
   await expect(page.getByText("Queen Street awning frontage")).toBeVisible();
   await expect(
@@ -3301,6 +3301,9 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(page.getByTestId("selected-property-image")).toHaveClass(
     /object-cover/,
   );
+
+  await page.getByRole("link", { name: "Back to Properties" }).click();
+  await page.getByRole("tab", { name: "Table" }).click();
   const propertyTable = page.getByRole("table").first();
   await expect(
     propertyTable.getByRole("row", { name: /Queen Street Warehouse/ }),
@@ -3318,7 +3321,6 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
   await expect(page).toHaveURL(
     /owner_tag=queen(?:\+|%20)street(?:\+|%20)property(?:\+|%20)trust/,
   );
-  await expect(page).toHaveURL(/property_id=property-1/);
   await expect(
     page.getByText("2 properties tagged Queen Street Property Trust"),
   ).toBeVisible();
@@ -3345,8 +3347,7 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
     filteredPropertyTable.getByText("Queen Street Property Trust").first(),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Documents/ }).click();
-
+  await page.getByRole("tab", { name: "Documents" }).click();
   await expect(
     page.getByRole("heading", { name: "Evidence drawer" }),
   ).toBeVisible();
@@ -3408,7 +3409,7 @@ test("properties All entities view merges across entities and drops into one", a
   await expect(page.getByLabel("Entity")).toHaveValue("entity-2");
   await expect(page).toHaveURL(/property_id=property-secondary-1/);
   await expect(
-    page.getByText("1 property · 0% occupied · $0 monthly rent roll"),
+    page.getByRole("heading", { name: "Rivergum Industrial Estate" }),
   ).toBeVisible();
 });
 

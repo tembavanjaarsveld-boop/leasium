@@ -2,6 +2,69 @@
 
 Last updated: 2026-06-10
 
+## Cowork continuation - 2026-06-10 (Horizon Property detail v1 - latest)
+
+Implemented the approved Horizon Property detail slice from Figma source of
+truth `PO2jOANgmqgZHfqWZXOZGU`, node `58:627`. 04 Concept remains out of
+scope; production source stays 01 Foundations / 02 Components / 03 Screens.
+
+Scope stayed inside `/properties`. Property cards and explicit
+`property_id` deep links now open a selected-property record frame with the
+Horizon image/header block, owner/entity and occupancy chips, Overview/Lease/
+Billing/Documents/Activity tabs, bento metrics, current lease panel, and
+activity summary. The detail tabs hand off to the existing lease/unit,
+billing-readiness, document/image, evidence, and source-history workflows; the
+`Work order` action is a navigation handoff into Work, not a prefilled creation
+mutation.
+
+No API shape, provider send, Xero/Basiq, payment, reconciliation, Smart Intake
+apply, property create/edit, billing, document, or workflow mutation path
+changed.
+
+Files touched:
+
+- `apps/web/src/components/property-workspace.tsx` — explicit property-detail
+  mode, detail tab routing, Horizon record header/bento/current lease/activity
+  panels, compact Documents-tab image review panel, and filtered deep-link
+  fallback.
+- `apps/web/tests/smoke/properties-ux.spec.ts` — selected-property detail
+  smoke plus existing Properties multi-view coverage.
+- `apps/web/tests/smoke/app-flows.spec.ts` — evidence/source-trail and
+  all-entities flows updated for the detail frame.
+- `apps/web/tests/smoke/appearance.spec.ts` — dark-mode route coverage for the
+  detail frame.
+- `docs/product-roadmap.md`, `docs/design-governance.md`, and this handover log
+  the slice as Remba-pending.
+- `docs/superpowers/plans/2026-06-10-horizon-property-detail.md` records the
+  implementation plan and known follow-ups.
+
+Verification completed locally:
+
+- `npm exec -- eslint src/components/property-workspace.tsx tests/smoke/properties-ux.spec.ts tests/smoke/app-flows.spec.ts tests/smoke/appearance.spec.ts`
+- `npm exec -- tsc --noEmit`
+- `PORT=3063 npm run test:smoke -- tests/smoke/properties-ux.spec.ts --workers=1` (20/20)
+- `PORT=3065 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "Properties multi-view|property workspace shows the evidence source trail|properties All entities" --workers=1` (3/3)
+- `PORT=3066 npm run test:smoke -- tests/smoke/appearance.spec.ts --workers=1` (9/9)
+- `npm run build`
+- `git diff --check`
+- In-app browser was attempted at
+  `http://127.0.0.1:3070/properties?entity_id=entity-1&property_id=property-1`
+  at 1280x900, but the live API could not hydrate because local Postgres on
+  `127.0.0.1:5432` was down. Treat the mocked Playwright smokes above as the
+  authoritative local UI evidence for this slice.
+
+Known follow-ups:
+
+- Activity is synthesized from already-loaded property data, not a dedicated
+  backend property timeline.
+- The arrears/readiness bento metric uses existing readiness data; a truly
+  property-specific arrears source remains a future product/backend slice.
+- Remba should review desktop density, tab semantics, mobile behavior, and the
+  record-page data hierarchy before this is marked complete.
+
+Next Horizon slice per `docs/horizon-implementation-brief.md`: Smart Intake
+(`55:166`), then Document review (`58:352`).
+
 ## Cowork continuation - 2026-06-10 (Horizon Properties desktop v1 - latest)
 
 Implemented the approved Horizon Properties desktop slice from Figma source of

@@ -241,6 +241,12 @@ type PropertyWorkspaceTab =
   | "billing"
   | "documents";
 type PropertyPortfolioView = "table" | "board" | "map" | "calendar";
+type PropertyDetailTab =
+  | "overview"
+  | "lease"
+  | "billing"
+  | "documents"
+  | "activity";
 type PropertyWorkspaceInitialAction = "new";
 
 const propertyWorkspaceTabs: Array<{
@@ -268,6 +274,14 @@ const propertyWorkspaceTabs: Array<{
     label: "Documents",
     description: "Upload and sources",
   },
+];
+
+const propertyDetailTabs: Array<{ id: PropertyDetailTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "lease", label: "Lease" },
+  { id: "billing", label: "Billing" },
+  { id: "documents", label: "Documents" },
+  { id: "activity", label: "Activity" },
 ];
 
 const unitSchema = z.object({
@@ -553,6 +567,29 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(dateValue));
 }
 
+function formatDetailDate(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+  const dateValue = value.length === 10 ? `${value}T00:00:00` : value;
+  const date = new Date(dateValue);
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 function dateOnly(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -712,6 +749,70 @@ function ownershipStructureLabel(value: string | null | undefined) {
 function propertyTypeLabel(value: string) {
   const label = value.replaceAll("_", " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function propertyAddressLine(property: PropertyRecord) {
+  const locality = [property.suburb, property.state, property.postcode]
+    .filter(Boolean)
+    .join(" ");
+  return [property.street_address, locality].filter(Boolean).join(", ");
+}
+
+function propertyDetailSummary(property: PropertyRecord, unitCount: number) {
+  const unitLabel = `${unitCount} unit${unitCount === 1 ? "" : "s"}`;
+  return [
+    propertyAddressLine(property),
+    propertyTypeLabel(property.property_type),
+    unitLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function activeLeaseForDetail(leases: LeaseRecord[] | undefined) {
+  return (
+    leases?.find((lease) => lease.status === "active") ??
+    leases?.find((lease) => lease.status === "holding_over") ??
+    leases?.find((lease) => lease.status === "pending") ??
+    leases?.[0] ??
+    null
+  );
+}
+
+function leaseTermSummary(lease: LeaseRecord | null) {
+  if (!lease?.commencement_date || !lease.expiry_date) {
+    return lease?.status ? lease.status.replaceAll("_", " ") : "-";
+  }
+  const start = new Date(`${lease.commencement_date}T00:00:00`);
+  const end = new Date(`${lease.expiry_date}T00:00:00`);
+  const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86_400_000);
+  const totalYears = Math.max(1, Math.round(totalDays / 365));
+  const elapsedDays = Math.max(0, (Date.now() - start.getTime()) / 86_400_000);
+  const currentYear = Math.min(
+    totalYears,
+    Math.max(1, Math.floor(elapsedDays / 365) + 1),
+  );
+  return `Year ${currentYear} of ${totalYears}`;
+}
+
+function leaseProgressPercent(lease: LeaseRecord | null) {
+  if (!lease?.commencement_date || !lease.expiry_date) {
+    return 0;
+  }
+  const start = new Date(`${lease.commencement_date}T00:00:00`).getTime();
+  const end = new Date(`${lease.expiry_date}T00:00:00`).getTime();
+  if (end <= start) {
+    return 0;
+  }
+  const raw = ((Date.now() - start) / (end - start)) * 100;
+  return Math.max(4, Math.min(100, Math.round(raw)));
+}
+
+function rentFrequencyLabel(value: string | null | undefined) {
+  if (!value) {
+    return "rent";
+  }
+  return value.replaceAll("_", " ");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -2012,6 +2113,11 @@ function Workspace({
   );
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
     useState<PropertyWorkspaceTab>("portfolio");
+  const [activePropertyDetailTab, setActivePropertyDetailTab] =
+    useState<PropertyDetailTab>("overview");
+  const [propertyRecordMode, setPropertyRecordMode] = useState<
+    "index" | "detail"
+  >("index");
   const [editing, setEditing] = useState<PropertyRecord | null>(null);
   const [propertyEditorOpen, setPropertyEditorOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<TenancyUnitRecord | null>(
@@ -2252,6 +2358,11 @@ function Workspace({
       setOccupancyFilter(occupancy);
     }
     const viewFromUrl = propertyPortfolioViewFromSearch();
+    if (propertyIdFromUrl) {
+      setPropertyRecordMode("detail");
+      setActiveWorkspaceTab("portfolio");
+      setActivePropertyDetailTab("overview");
+    }
     setPropertyView(
       propertyIdFromUrl && viewFromUrl === "board" ? "table" : viewFromUrl,
     );
@@ -2342,6 +2453,7 @@ function Workspace({
     setPropertyImageWarnings([]);
     setApplyingPropertyImageUrl("");
     setFailedPropertyImageCandidateUrls(new Set());
+    setActivePropertyDetailTab("overview");
   }, [selectedPropertyId]);
 
   const selectedEntity = useMemo(
@@ -2782,6 +2894,106 @@ function Workspace({
     [tenantOnboardingsQuery.data],
   );
 
+  const selectedPropertyUnitCount = tenancyUnitsQuery.data?.length ?? 0;
+  const selectedPropertyCurrentLease = useMemo(
+    () => activeLeaseForDetail(leasesQuery.data),
+    [leasesQuery.data],
+  );
+  const selectedPropertyLeaseUnit = selectedPropertyCurrentLease
+    ? unitsById.get(selectedPropertyCurrentLease.tenancy_unit_id)
+    : undefined;
+  const selectedPropertyTenant = selectedPropertyCurrentLease
+    ? tenantsById.get(selectedPropertyCurrentLease.tenant_id)
+    : undefined;
+  const selectedPropertyRentRows = useMemo(
+    () =>
+      selectedProperty
+        ? rentRollRows.filter((row) => row.property_id === selectedProperty.id)
+        : [],
+    [rentRollRows, selectedProperty],
+  );
+  const selectedPropertyMonthlyRentCents = selectedProperty
+    ? (monthlyRentByPropertyId.get(selectedProperty.id) ?? 0)
+    : 0;
+  const selectedPropertyReadinessBlockers = useMemo(
+    () => selectedPropertyRentRows.flatMap((row) => readinessBlockers(row)),
+    [selectedPropertyRentRows],
+  );
+  const selectedPropertyComplianceObligations = useMemo(
+    () =>
+      selectedProperty
+        ? activeObligations.filter(
+            (obligation) => obligation.property_id === selectedProperty.id,
+          )
+        : [],
+    [activeObligations, selectedProperty],
+  );
+  const selectedPropertyActivity = useMemo(() => {
+    const rows: Array<{ id: string; label: string; meta: string }> = [];
+    for (const obligation of selectedPropertyComplianceObligations.slice(0, 2)) {
+      rows.push({
+        id: `obligation-${obligation.id}`,
+        label: obligation.title,
+        meta: dueStatus(obligation.due_date).label,
+      });
+    }
+    if (selectedPropertyMonthlyRentCents > 0) {
+      rows.push({
+        id: "rent-roll-active",
+        label: `Rent roll active · ${formatMoney(
+          selectedPropertyMonthlyRentCents,
+        )}`,
+        meta: "Monthly",
+      });
+    }
+    if (selectedPropertyImage) {
+      rows.push({
+        id: "property-image",
+        label: "Reviewed property image saved",
+        meta: confidencePercent(selectedPropertyImage.confidence) ?? "Image",
+      });
+    }
+    if (latestPropertyApply) {
+      rows.push({
+        id: "latest-property-apply",
+        label: "Lease applied from Smart Intake",
+        meta:
+          shortId(latestPropertyApply.document_intake_id) ??
+          propertyDocumentTypeLabel(latestPropertyApply.document_type),
+      });
+    }
+    if (!rows.length) {
+      rows.push({
+        id: "activity-empty",
+        label: "No recent property activity yet",
+        meta: "Ready",
+      });
+    }
+    return rows.slice(0, 4);
+  }, [
+    latestPropertyApply,
+    selectedPropertyComplianceObligations,
+    selectedPropertyImage,
+    selectedPropertyMonthlyRentCents,
+  ]);
+  const selectedPropertyOwnerBadges = useMemo(
+    () =>
+      selectedProperty
+        ? propertyOwnershipBadges(
+            selectedProperty,
+            selectedEntity?.name,
+            ownershipPaletteByLabel,
+          )
+        : [],
+    [ownershipPaletteByLabel, selectedEntity?.name, selectedProperty],
+  );
+  const propertyDetailOpen = Boolean(
+    selectedProperty &&
+      propertyRecordMode === "detail" &&
+      propertyView === "table" &&
+      !requestedPropertyRecordBlocked,
+  );
+
   const attentionCounts = useMemo(
     () =>
       activeObligations.reduce(
@@ -2916,6 +3128,11 @@ function Workspace({
         properties.find((property) => property.id === fromUrl)?.id ??
         properties.find((property) => property.id === stored)?.id ??
         properties[0].id;
+      if (fromUrl && !properties.some((property) => property.id === fromUrl)) {
+        setPropertyRecordMode("index");
+        setActivePropertyDetailTab("overview");
+        setActiveWorkspaceTab("portfolio");
+      }
       setSelectedPropertyId(next);
       setRequestedPropertyId(next);
       window.localStorage.setItem(PROPERTY_STORAGE_KEY, next);
@@ -3430,7 +3647,10 @@ function Workspace({
     }
   }
 
-  function selectProperty(propertyId: string) {
+  function selectProperty(
+    propertyId: string,
+    options: { openDetail?: boolean } = {},
+  ) {
     // In the cross-entity "All entities" view, selecting a property drops the
     // workspace into that property's own entity context so the entity-scoped
     // panels (tenants, leases, obligations, charge rules) load correctly.
@@ -3444,6 +3664,11 @@ function Workspace({
     }
     setSelectedPropertyId(propertyId);
     setRequestedPropertyId(propertyId);
+    if (options.openDetail) {
+      setPropertyRecordMode("detail");
+      setActiveWorkspaceTab("portfolio");
+      setActivePropertyDetailTab("overview");
+    }
     window.localStorage.setItem(PROPERTY_STORAGE_KEY, propertyId);
     const url = new URL(window.location.href);
     url.searchParams.set("property_id", propertyId);
@@ -3456,6 +3681,35 @@ function Workspace({
     leaseForm.reset(defaultLeaseFormValues);
     chargeRuleForm.reset(defaultChargeRuleFormValues);
     obligationForm.setValue("lease_id", "");
+  }
+
+  function openPropertyDetailTab(tab: PropertyDetailTab) {
+    setPropertyRecordMode("detail");
+    setActivePropertyDetailTab(tab);
+    if (tab === "lease") {
+      setActiveWorkspaceTab("operations");
+      return;
+    }
+    if (tab === "billing") {
+      setActiveWorkspaceTab("billing");
+      return;
+    }
+    if (tab === "documents") {
+      setActiveWorkspaceTab("documents");
+      return;
+    }
+    setActiveWorkspaceTab("portfolio");
+  }
+
+  function closePropertyDetail() {
+    setPropertyRecordMode("index");
+    setActivePropertyDetailTab("overview");
+    setActiveWorkspaceTab("portfolio");
+    setPropertyView("board");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("property_id");
+    url.searchParams.delete("view");
+    window.history.replaceState(null, "", url);
   }
 
   function clearOwnerTagFilter() {
@@ -3914,6 +4168,7 @@ function Workspace({
 
       <div className="mx-auto grid max-w-[1208px] gap-4 px-5 py-5 md:px-9 md:py-7">
         <section className="min-w-0">
+          {!propertyDetailOpen ? (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold leading-8 tracking-tight text-foreground">
@@ -3940,6 +4195,7 @@ function Workspace({
               </Button>
             </div>
           </div>
+          ) : null}
 
           {propertyWorkspaceError ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
@@ -4048,6 +4304,7 @@ function Workspace({
           ) : null}
 
           {!requestedPropertyRecordBlocked &&
+          !propertyDetailOpen &&
           (propertyView === "table" || activeWorkspaceTab !== "portfolio") ? (
             <div
               className="mb-4 grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
@@ -4081,6 +4338,37 @@ function Workspace({
                 );
               })}
             </div>
+          ) : null}
+
+          {propertyDetailOpen && selectedProperty ? (
+            <PropertyDetailOverview
+              property={selectedProperty}
+              image={selectedPropertyImage}
+              entityName={selectedEntity?.name}
+              unitCount={selectedPropertyUnitCount}
+              occupancy={occupancyByPropertyId.get(selectedProperty.id)}
+              ownerBadges={selectedPropertyOwnerBadges}
+              activeTab={activePropertyDetailTab}
+              currentLease={selectedPropertyCurrentLease}
+              currentLeaseUnit={selectedPropertyLeaseUnit}
+              currentTenant={selectedPropertyTenant}
+              monthlyRentCents={selectedPropertyMonthlyRentCents}
+              readinessBlockers={selectedPropertyReadinessBlockers}
+              complianceObligations={selectedPropertyComplianceObligations}
+              latestPropertyApply={latestPropertyApply}
+              activityItems={selectedPropertyActivity}
+              onBack={closePropertyDetail}
+              onEdit={() => startEdit(selectedProperty)}
+              onTabChange={openPropertyDetailTab}
+              onWorkOrder={() => {
+                const params = new URLSearchParams();
+                if (selectedEntityId) {
+                  params.set("entity_id", selectedEntityId);
+                }
+                params.set("tab", "maintenance");
+                router.push(`/operations?${params.toString()}`);
+              }}
+            />
           ) : null}
 
           {!requestedPropertyRecordBlocked &&
@@ -4130,6 +4418,204 @@ function Workspace({
                       </Link>
                     </div>
                   </div>
+                  {selectedProperty ? (
+                    <section className="overflow-hidden rounded-2xl border border-border bg-muted/25">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-white px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setImagesPanelOpen((open) => !open)
+                          }
+                          aria-expanded={imagesPanelOpen}
+                          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <div className="grid h-10 w-14 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-muted/40">
+                            <StoredPropertyImage
+                              alt={`${selectedProperty.name} primary image`}
+                              className="h-full w-full object-cover"
+                              image={selectedPropertyImage}
+                              placeholderClassName="grid h-full w-full place-items-center text-muted-foreground"
+                              iconSize={14}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="flex items-center gap-1 text-sm font-semibold">
+                              <ImageIcon size={14} className="text-primary" />
+                              Property images
+                              {imagesPanelOpen ? (
+                                <ChevronUp
+                                  size={14}
+                                  className="text-muted-foreground"
+                                />
+                              ) : (
+                                <ChevronDown
+                                  size={14}
+                                  className="text-muted-foreground"
+                                />
+                              )}
+                            </h3>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {selectedPropertyImage
+                                ? "Reviewed image saved"
+                                : "No reviewed image saved yet."}
+                            </p>
+                          </div>
+                        </button>
+                        <SecondaryButton
+                          type="button"
+                          className="h-9"
+                          disabled={
+                            !selectedPropertyId ||
+                            previewPropertyImagesMutation.isPending
+                          }
+                          onClick={() => {
+                            setImagesPanelOpen(true);
+                            previewPropertyImagesMutation.mutate();
+                          }}
+                        >
+                          {previewPropertyImagesMutation.isPending ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Sparkles size={14} />
+                          )}
+                          Find property images
+                        </SecondaryButton>
+                      </div>
+                      {imagesPanelOpen ? (
+                        <div className="grid gap-4 p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+                          <div className="min-w-0">
+                            <div className="aspect-video overflow-hidden rounded-md border border-border bg-white">
+                              <StoredPropertyImage
+                                alt={`${selectedProperty.name} primary image`}
+                                className="h-full w-full object-cover"
+                                image={selectedPropertyImage}
+                                placeholderClassName="grid h-full place-items-center text-muted-foreground"
+                                iconSize={22}
+                                testId="selected-property-image"
+                              />
+                            </div>
+                            {selectedPropertyImage ? (
+                              <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                                <div className="truncate font-medium text-foreground">
+                                  {selectedPropertyImage.title}
+                                </div>
+                                <div>
+                                  {confidencePercent(
+                                    selectedPropertyImage.confidence,
+                                  ) ?? "Reviewed image"}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                No reviewed image saved.
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            {propertyImageCandidates.length ? (
+                              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                {propertyImageCandidates.map((candidate) => (
+                                  <div
+                                    key={candidate.image_url}
+                                    className="overflow-hidden rounded-md border border-border bg-white"
+                                  >
+                                    <div className="aspect-video bg-muted/40">
+                                      {failedPropertyImageCandidateUrls.has(
+                                        candidate.image_url,
+                                      ) ? (
+                                        <div
+                                          className="grid h-full place-items-center text-muted-foreground"
+                                          data-testid="property-image-candidate-fallback"
+                                        >
+                                          <ImageIcon size={18} />
+                                        </div>
+                                      ) : (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          alt={candidate.title}
+                                          className="h-full w-full object-cover"
+                                          data-testid="property-image-candidate-preview"
+                                          onError={() =>
+                                            setFailedPropertyImageCandidateUrls(
+                                              (failedUrls) =>
+                                                new Set(failedUrls).add(
+                                                  candidate.image_url,
+                                                ),
+                                            )
+                                          }
+                                          referrerPolicy="no-referrer"
+                                          src={candidate.image_url}
+                                        />
+                                      )}
+                                    </div>
+                                    <div className="grid gap-2 p-3 text-xs">
+                                      <div className="font-semibold text-foreground">
+                                        {candidate.title}
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        {candidate.source.source_hint} -{" "}
+                                        {candidate.source.citation}
+                                      </div>
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <StatusBadge tone="neutral">
+                                          {confidencePercent(
+                                            candidate.confidence,
+                                          )}
+                                        </StatusBadge>
+                                        <Button
+                                          type="button"
+                                          className="h-8 px-2.5 text-xs"
+                                          disabled={
+                                            applyPropertyImageMutation.isPending
+                                          }
+                                          onClick={() =>
+                                            applyPropertyImageMutation.mutate(
+                                              candidate,
+                                            )
+                                          }
+                                        >
+                                          {applyingPropertyImageUrl ===
+                                          candidate.image_url ? (
+                                            <Loader2
+                                              size={13}
+                                              className="animate-spin"
+                                            />
+                                          ) : (
+                                            <Check size={13} />
+                                          )}
+                                          Apply image
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="rounded-md border border-dashed border-border bg-white px-3 py-4 text-sm text-muted-foreground">
+                                Image candidates will appear here for review.
+                              </div>
+                            )}
+                            {propertyImageWarnings.length ? (
+                              <div className="mt-3 grid gap-1 text-xs text-warning">
+                                {propertyImageWarnings.map((warning) => (
+                                  <div key={warning}>{warning}</div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {previewPropertyImagesMutation.error ||
+                            applyPropertyImageMutation.error ? (
+                              <div className="mt-3 text-xs text-danger">
+                                {friendlyError(
+                                  previewPropertyImagesMutation.error ??
+                                    applyPropertyImageMutation.error,
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
                   <label
                     htmlFor="property-document-file"
                     onDragEnter={(event) => {
@@ -5528,7 +6014,8 @@ function Workspace({
           ) : null}
 
           {!requestedPropertyRecordBlocked &&
-          activeWorkspaceTab === "portfolio" ? (
+          activeWorkspaceTab === "portfolio" &&
+          !propertyDetailOpen ? (
             <div className="grid gap-3">
               {ownerTagFilter ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
@@ -5983,7 +6470,11 @@ function Workspace({
                               className={`cursor-pointer border-t border-border transition hover:bg-muted/70 ${
                                 isSelected ? "bg-primary/5" : ""
                               }`}
-                              onClick={() => selectProperty(property.id)}
+                              onClick={() =>
+                                selectProperty(property.id, {
+                                  openDetail: true,
+                                })
+                              }
                             >
                               <td className={rowCellPadding}>
                                 <StoredPropertyImage
@@ -6212,7 +6703,7 @@ function Workspace({
                   canCreate={Boolean(selectedEntityId && !isAllEntities)}
                   rentDataAvailable={portfolioRentRollReady}
                   onSelect={(propertyId) => {
-                    selectProperty(propertyId);
+                    selectProperty(propertyId, { openDetail: true });
                     setPropertyView("table");
                   }}
                   onCreate={startPropertyCreate}
@@ -7543,6 +8034,297 @@ type PropertyCardsViewProps = PropertyBoardViewProps & {
   rentDataAvailable: boolean;
   onCreate: () => void;
 };
+
+function PropertyDetailOverview({
+  property,
+  image,
+  entityName,
+  unitCount,
+  occupancy,
+  ownerBadges,
+  activeTab,
+  currentLease,
+  currentLeaseUnit,
+  currentTenant,
+  monthlyRentCents,
+  readinessBlockers,
+  complianceObligations,
+  latestPropertyApply,
+  activityItems,
+  onBack,
+  onEdit,
+  onTabChange,
+  onWorkOrder,
+}: {
+  property: PropertyRecord;
+  image: PropertyPrimaryImage | null;
+  entityName?: string | null;
+  unitCount: number;
+  occupancy?: PropertyOccupancy;
+  ownerBadges: ReturnType<typeof propertyOwnershipBadges>;
+  activeTab: PropertyDetailTab;
+  currentLease: LeaseRecord | null;
+  currentLeaseUnit?: TenancyUnitRecord;
+  currentTenant?: TenantRecord;
+  monthlyRentCents: number;
+  readinessBlockers: string[];
+  complianceObligations: ObligationRecord[];
+  latestPropertyApply: PropertyApplyHistoryEntry | null;
+  activityItems: Array<{ id: string; label: string; meta: string }>;
+  onBack: () => void;
+  onEdit: () => void;
+  onTabChange: (tab: PropertyDetailTab) => void;
+  onWorkOrder: () => void;
+}) {
+  const primaryOwner = ownerBadges[0]?.label ?? entityName ?? "Current entity";
+  const leaseReviewCopy = currentLease?.next_review_date
+    ? `Fixed review · ${formatDetailDate(currentLease.next_review_date)}`
+    : "No review date recorded";
+  const leaseSourceCopy = latestPropertyApply
+    ? `${propertyDocumentTypeLabel(latestPropertyApply.document_type)} · ${
+        shortId(latestPropertyApply.document_intake_id) ?? "source saved"
+      }`
+    : "No source evidence recorded";
+  const complianceCopy = complianceObligations.length
+    ? `${complianceObligations.length} open`
+    : "All current";
+  const blockerCopy = readinessBlockers.length
+    ? `${readinessBlockers.length} billing blocker${
+        readinessBlockers.length === 1 ? "" : "s"
+      }`
+    : "$0";
+
+  return (
+    <section
+      aria-labelledby="property-detail-title"
+      className="grid gap-[14px]"
+    >
+      <Link
+        href="/properties"
+        onClick={(event) => {
+          event.preventDefault();
+          onBack();
+        }}
+        className="inline-flex min-h-11 w-fit items-center text-[12px] font-medium text-primary hover:text-primary-hover"
+      >
+        Back to Properties
+      </Link>
+
+      <div className="flex flex-wrap items-center gap-[14px]">
+        <div className="grid h-[52px] w-[72px] shrink-0 place-items-center overflow-hidden rounded-[10px] bg-primary-soft">
+          <StoredPropertyImage
+            alt={`${property.name} primary image`}
+            className="h-full w-full object-cover"
+            image={image}
+            placeholderClassName="grid h-full w-full place-items-center text-primary"
+            iconSize={18}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1
+              id="property-detail-title"
+              className="text-[22px] font-bold leading-7 text-foreground"
+            >
+              {property.name}
+            </h1>
+            <span className="inline-flex max-w-[18rem] items-center truncate rounded-full bg-primary-soft px-[10px] py-[3px] text-[11px] font-semibold text-primary">
+              <span className="truncate">{primaryOwner}</span>
+            </span>
+            {occupancy ? (
+              <span className={occupancyBadgeClassName(occupancy.status)}>
+                {occupancyBadgeLabel(occupancy)}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+            {propertyDetailSummary(property, unitCount)}
+          </p>
+        </div>
+        <SecondaryButton type="button" className="h-9" onClick={onEdit}>
+          Edit
+        </SecondaryButton>
+        <Button type="button" className="h-9" onClick={onWorkOrder}>
+          <Plus size={13} />
+          Work order
+        </Button>
+      </div>
+
+      <div
+        role="tablist"
+        aria-label="Property detail sections"
+        className="inline-flex w-fit flex-wrap items-center gap-0.5 rounded-full border border-border bg-white p-0.5 text-[12px] font-medium shadow-leasiumXs"
+      >
+        {propertyDetailTabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onTabChange(tab.id)}
+              className={cn(
+                "inline-flex min-h-9 items-center rounded-full px-[14px] transition",
+                isActive
+                  ? "bg-leasium-navy-800 text-white"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "overview" || activeTab === "activity" ? (
+        <>
+          <div className="grid gap-[14px] md:grid-cols-4">
+            <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+              <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                Rent
+              </div>
+              <div className="mt-2 text-[20px] font-bold leading-7 text-foreground">
+                {formatMoney(monthlyRentCents)} / mo
+              </div>
+              <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                {currentLease
+                  ? `${rentFrequencyLabel(currentLease.rent_frequency)} charges`
+                  : "No active rent recorded"}
+              </div>
+            </section>
+            <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+              <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                Lease term
+              </div>
+              <div className="mt-2 text-[20px] font-bold leading-7 text-foreground">
+                {leaseTermSummary(currentLease)}
+              </div>
+              <div className="mt-2 h-[6px] overflow-hidden rounded-full bg-primary-soft">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{
+                    width: `${leaseProgressPercent(currentLease)}%`,
+                  }}
+                />
+              </div>
+              <div className="mt-1 text-[11px] font-semibold leading-4 text-warning">
+                {leaseReviewCopy}
+              </div>
+            </section>
+            <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+              <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                Arrears
+              </div>
+              <div className="mt-2 text-[20px] font-bold leading-7 text-foreground">
+                {blockerCopy}
+              </div>
+              <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                {readinessBlockers[0] ?? "No billing readiness blockers"}
+              </div>
+            </section>
+            <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+              <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                Compliance
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-full border-4 border-leasium-teal text-leasium-teal">
+                  <ShieldCheck size={18} />
+                </div>
+                <div className="text-[13px] font-semibold text-foreground">
+                  {complianceCopy}
+                </div>
+              </div>
+              <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                {complianceObligations[0]?.title ?? "No open compliance items"}
+              </div>
+            </section>
+          </div>
+
+          <div className="grid gap-[14px] lg:grid-cols-2">
+            <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+              <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                Current lease
+              </div>
+              <div className="mt-3 flex items-start gap-3">
+                <FileText size={16} className="mt-0.5 text-muted-foreground" />
+                <div className="min-w-0">
+                  <div className="font-semibold text-foreground">
+                    {currentTenant?.legal_name ??
+                      tenantDisplayName(currentTenant)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {currentLease
+                      ? `${formatDetailDate(
+                          currentLease.commencement_date,
+                        )} - ${formatDetailDate(
+                          currentLease.expiry_date,
+                        )} · ${
+                          currentLeaseUnit?.unit_label ?? "Unit not set"
+                        } · ${
+                          currentLease.security_summary ??
+                          currentLease.option_summary ??
+                          "Security not recorded"
+                        }`
+                      : "No current lease recorded"}
+                  </div>
+                </div>
+              </div>
+              <dl className="mt-4 grid gap-0 text-[12px]">
+                <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 border-t border-border py-2">
+                  <dt className="font-semibold text-muted-foreground">
+                    Rent review
+                  </dt>
+                  <dd className="text-foreground">{leaseReviewCopy}</dd>
+                </div>
+                <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 border-t border-border py-2">
+                  <dt className="font-semibold text-muted-foreground">
+                    Outgoings
+                  </dt>
+                  <dd className="text-foreground">
+                    {currentLease?.outgoings_recoverable
+                      ? "Recoverable from tenant"
+                      : "Not marked recoverable"}
+                  </dd>
+                </div>
+                <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-3 border-t border-border py-2">
+                  <dt className="font-semibold text-muted-foreground">
+                    Source
+                  </dt>
+                  <dd className="truncate text-foreground">
+                    {leaseSourceCopy}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+              <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                Activity
+              </div>
+              <div className="mt-3 grid gap-1">
+                {activityItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex min-h-8 items-center gap-2 text-[12px]"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-leasium-teal" />
+                    <span className="min-w-0 flex-1 truncate text-foreground">
+                      {item.label}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      {item.meta}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
 
 function PropertyMobileListView({
   properties,

@@ -122,6 +122,55 @@ test("desktop Properties opens on the Horizon cards frame", async ({ page }) => 
   await expect(page.getByRole("table").first()).toBeHidden();
 });
 
+test("desktop selected property opens on the Horizon detail frame", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+
+  await expect(
+    page.getByRole("link", { name: "Back to Properties" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "12 Queen Street, Brisbane City QLD 4000 · Commercial retail · 1 unit",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Work order" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Lease" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Billing" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Documents" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Activity" })).toBeVisible();
+
+  await expect(page.getByText("Rent", { exact: true })).toBeVisible();
+  await expect(page.getByText("$8,000 / mo")).toBeVisible();
+  await expect(page.getByText("Lease term")).toBeVisible();
+  await expect(page.getByText("Year 1 of 3")).toBeVisible();
+  await expect(page.getByText("Arrears", { exact: true })).toBeVisible();
+  await expect(page.getByText("Compliance", { exact: true })).toBeVisible();
+  await expect(page.getByText("Current lease")).toBeVisible();
+  await expect(page.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+  await expect(
+    page.getByText("Fixed review · 1 Jul 2026").first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Activity", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("Lease applied from Smart Intake")).toBeVisible();
+  await expect(
+    page.getByText("Insurance certificate renewal").first(),
+  ).toBeVisible();
+  await expect(page.getByRole("table").first()).toBeHidden();
+});
+
 test("desktop Properties cards keep portfolio metrics after billing filters", async ({
   page,
 }) => {

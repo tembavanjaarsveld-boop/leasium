@@ -95,6 +95,7 @@ map for agents:
 | Leasium/Horizon/Skeleton row 50:157 | `apps/web/src/components/ui.tsx` SkeletonRows |
 | Leasium/Horizon/Empty state 50:163 | `apps/web/src/components/ui.tsx` EmptyState |
 | 03 Screens / Properties 55:2 | `apps/web/src/components/property-workspace.tsx` — Horizon Properties Cards v1 |
+| 03 Screens / Property detail 58:627 | `apps/web/src/components/property-workspace.tsx` — Horizon Property detail v1 |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -179,13 +180,25 @@ back-filled when first touched by a design-facing slice.
   Cards/Table/Map/Calendar switcher, live stat strip, property card grid, dashed
   Add property tile, and review-first trust pill. Existing Table, Map, Calendar,
   create/edit, image/evidence, billing, document, and all-entities flows remain
-  in place; explicit `property_id` deep links and card selections move into the
-  existing Table record workspace until the Property detail screen (`58:627`)
-  ships. No API, provider, payment, reconciliation, Xero/Basiq, or workflow
-  mutation path changed. Remba should review card density, the live summary/stat
-  calculations with demo data, unknown rent/occupancy treatment in all-entities
-  mode, and the remaining top utility bar difference against the exact Figma
-  crop before this is marked `[x]`.
+  in place; explicit `property_id` deep links and card selections now hand off
+  to the Horizon Property detail screen. No API, provider, payment,
+  reconciliation, Xero/Basiq, or workflow mutation path changed. Remba should
+  review card density, the live summary/stat calculations with demo data,
+  unknown rent/occupancy treatment in all-entities mode, and the remaining top
+  utility bar difference against the exact Figma crop before this is marked `[x]`.
+- **Horizon Property detail v1 (2026-06-10, Remba pending):** production
+  implementation from the approved Figma Property detail target (`58:627`) as the
+  selected-property state inside `/properties`. The frame adds the property
+  header, owner/entity and occupancy chips, Overview/Lease/Billing/Documents/
+  Activity tabs, bento metrics, current lease panel, and activity summary. Tabs
+  reuse the existing lease/unit, billing-readiness, document/image, evidence, and
+  source-history workflows rather than creating new write paths; `Work order`
+  is a navigation handoff into Work, not a prefilled creation mutation. No API,
+  provider send, payment, reconciliation, Xero/Basiq, Smart Intake apply, or
+  workflow mutation path changed. Remba should review record-page density, tab
+  semantics, mobile behavior, the synthesized activity summary, and whether
+  arrears/readiness needs a property-specific backend source before this is
+  marked `[x]`.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
   the shared `EntityPicker` (dropdown + always-visible toggle) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,
