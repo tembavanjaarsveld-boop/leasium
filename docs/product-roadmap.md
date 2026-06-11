@@ -8,6 +8,16 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Notifications mobile first-viewport follow-up:**
+  tightened mobile `/notifications` against the approved Notifications mobile
+  frame (`PO2jOANgmqgZHfqWZXOZGU`, node `59:594`). Phones now open with the
+  compact Horizon heading, readiness chips, Needs You action cards, and digest
+  receipt cards above the fixed bottom nav; desktop keeps the full notification
+  console with provider setup checks, filters, exports, evidence disclosures,
+  and review packet actions. Frontend-only presentation and smoke coverage:
+  no API shape, provider send, email/SMS, digest run, mark-reviewed,
+  Xero/Basiq, payment, reconciliation, provider refresh/history, Comms, or
+  workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Settings mobile tab-rail follow-up:** tightened
   mobile `/settings` against the approved Settings mobile frame
   (`PO2jOANgmqgZHfqWZXOZGU`, node `59:677`). Phones now show the locked

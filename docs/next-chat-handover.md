@@ -2,6 +2,57 @@
 
 Last updated: 2026-06-11
 
+## Cowork continuation - 2026-06-11 (Horizon Notifications mobile first viewport - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Notifications mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `59:594`; 04 Concept stayed out of scope.
+
+Scope stayed inside `/notifications` presentation and smoke coverage. Phones now
+open with the compact Horizon title/subtitle, mobile readiness chips, two
+Needs You cards, and digest receipt cards above the fixed bottom nav. The
+desktop notification console remains the full operator workspace with provider
+setup checks, filters, exports, evidence disclosures, trust ribbon, and Open
+Work handoff.
+
+No API shape, provider send, email/SMS, digest run, mark-reviewed, Xero/Basiq,
+payment, reconciliation, provider refresh/history, Comms, or workflow mutation
+path changed.
+
+Verification recorded so far:
+
+- Figma source of truth pulled with `get_design_context` for Notifications
+  mobile `59:594`.
+- Read-only agent audit confirmed the test impact: mobile filters/header
+  actions needed to be hidden from phones, while export/provider/evidence checks
+  remain desktop.
+- Targeted ESLint passed for `apps/web/src/app/notifications/page.tsx`,
+  `apps/web/tests/smoke/notifications.spec.ts`, and
+  `apps/web/tests/smoke/app-flows.spec.ts`.
+- `npm exec -- tsc --noEmit --pretty false` passed.
+- Focused Notifications mobile/export smokes passed **2/2**:
+  `tests/smoke/notifications.spec.ts --grep "notifications mobile matches|notifications exports provider readiness"`.
+- Shared mobile Notifications action smoke passed **1/1**:
+  `tests/smoke/app-flows.spec.ts --grep "notifications mobile actions keep intended touch targets"`.
+- Full Notifications smoke passed **6/6**:
+  `tests/smoke/notifications.spec.ts`.
+- Mobile production route sweep initially hit a local dev-server port collision
+  when run beside another Playwright job, then passed **1/1** when rerun
+  sequentially:
+  `tests/smoke/mobile-bottom-nav.spec.ts --grep "mobile production routes keep headings and bottom navigation in frame"`.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3030/notifications` passed for
+  responsive chrome: 390x844 showed the compact mobile summary container,
+  hidden desktop Export/filter rails, visible mobile nav, and horizontal
+  overflow 0; 1280x900 hid the mobile summary and bottom nav with horizontal
+  overflow 0. The local browser did not have the mocked notification-center
+  payload, so seeded card-copy fidelity remains covered by Playwright smokes.
+
+Design-facing status: pending Remba review, not `[x]` complete.
+
+Next likely scoped polish: continue through locked 03 Screens gaps; avoid
+`04 Concept — Horizon` unless Temba explicitly signs off a new production frame.
+
 ## Cowork continuation - 2026-06-11 (Horizon Settings mobile tab rail - latest)
 
 Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.

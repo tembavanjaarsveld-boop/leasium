@@ -1,8 +1,8 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Tenant portal mobile v1 is
-Remba-pending; this brief covers the remaining Horizon
-implementation.
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Notifications mobile
+first-viewport follow-up is Remba-pending; this brief covers the remaining
+Horizon implementation.
 
 ## The one rule
 
@@ -54,11 +54,12 @@ extend the same pattern, never hardcode hex in components.
 5. **Notifications** (55:307) + **Settings** (55:439).
 6. **Mobile polish pass v1** against the 03 Screens mobile frames — shipped
    pending Remba review for Work tabs/range targets, Notifications compact
-   channel chips/send-retry target guards, Settings compact tabs/touch targets
-   plus the `59:677` three-tab mobile rail, Document review source/action/bottom
-   nav safety, Properties default compact mobile board fidelity, and Smart
-   Intake landing-first mobile fidelity. Work mobile toast bottom-nav clearance
-   is included as a follow-up under the same Remba-pending polish umbrella.
+   channel chips/send-retry target guards plus the `59:594` compact
+   first-viewport stack, Settings compact tabs/touch targets plus the `59:677`
+   three-tab mobile rail, Document review source/action/bottom nav safety,
+   Properties default compact mobile board fidelity, and Smart Intake
+   landing-first mobile fidelity. Work mobile toast bottom-nav clearance is
+   included as a follow-up under the same Remba-pending polish umbrella.
 7. **Dark mode token alignment v1** — shipped pending Remba review. The dark
    Leasium Color values from Dashboard · Dark `62:696` are wired through the
    existing `data-theme="dark"` CSS layer; next dark work should be visual

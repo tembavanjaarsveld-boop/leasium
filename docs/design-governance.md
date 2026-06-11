@@ -330,11 +330,16 @@ back-filled in Figma before code.
   workflow mutation path changed. Follow-up Settings mobile polish matches
   `59:677` by keeping the phone tab rail to Organisation, Security, and Connect
   while preserving desktop Notifications and direct `?tab=notifications`
-  rendering. Verified locally with targeted ESLint, `tsc --noEmit`,
-  mobile/Horizon Playwright smokes, production build, and browser QA before
-  push; Vercel proof is recorded per shipped follow-up. Remba should review the
-  mobile density, first-viewport hierarchy, compact Properties row treatment,
-  Smart Intake landing-first behavior, Settings three-tab rail, and bottom-nav
+  rendering. Follow-up Notifications mobile polish matches `59:594` more
+  closely: phones now hide the desktop filter/export rails from the first
+  viewport and show compact readiness chips, Needs You action cards, and digest
+  receipt cards above the fixed bottom nav while preserving the desktop
+  provider-console workflow. Verified locally with targeted ESLint,
+  `tsc --noEmit`, mobile/Horizon Playwright smokes, production build, and
+  browser QA before push; Vercel proof is recorded per shipped follow-up. Remba
+  should review the mobile density, first-viewport hierarchy, compact
+  Properties row treatment, Smart Intake landing-first behavior, Settings
+  three-tab rail, Notifications compact card hierarchy, and bottom-nav
   clearance before this is marked `[x]`.
 - **Horizon Tenant portal mobile v1 (2026-06-11, Remba pending):** production
   implementation from the approved Figma Tenant portal·Mobile target

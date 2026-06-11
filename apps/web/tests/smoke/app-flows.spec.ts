@@ -868,58 +868,34 @@ test("notifications mobile actions keep intended touch targets", async ({
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  const workNoticeCenter = page.locator("section").filter({
-    has: page.getByRole("heading", { name: /NEEDS YOU/i }),
-  });
-  for (const filterName of [
-    /^All 2$/,
-    /^Attention 1$/,
-    /^In flight 1$/,
-    /^Ready 0$/,
-    /^Follow-up due 1$/,
-    /^Failed email 1$/,
-    /^All channels 2$/,
-    /^Email 2$/,
-    /^SMS 2$/,
-    /^In-app 0$/,
-  ]) {
-    await expectTouchTarget(
-      workNoticeCenter.getByRole("button", { name: filterName }),
-    );
-  }
-  const digestHistory = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "RECEIPTS — QUIET" }),
-  });
-  for (const filterName of [
-    /^All 1$/,
-    /^Needs send 1$/,
-    /^Sent 0$/,
-    /^Failed 0$/,
-    /^Skipped 0$/,
-    /^Recovery 0$/,
-    /^All channels 1$/,
-    /^Email 0$/,
-    /^SMS 0$/,
-    /^Preview only 1$/,
-  ]) {
-    await expectTouchTarget(
-      digestHistory.getByRole("button", { name: filterName }),
-    );
-  }
-  await expectTouchTarget(
-    page.getByRole("link", { name: "Open work" }).first(),
-  );
-  await expectTouchTarget(
+  await expect(page.getByText("2 need you · rest are receipts")).toBeVisible();
+  const mobileSummary = page.getByTestId("notifications-mobile-first-viewport");
+  await expect(mobileSummary).toBeVisible();
+  await expect(mobileSummary.getByText("Air conditioning fault")).toBeVisible();
+  await expect(mobileSummary.getByText("Bright Cafe arrears")).toBeVisible();
+  await expect(
+    mobileSummary.getByText("Daily digest — Owner Operator"),
+  ).toBeVisible();
+
+  await expect(page.getByRole("button", { name: /^All 2$/ })).toHaveCount(0);
+  await expect(
     page.getByRole("link", { exact: true, name: "Open Work" }),
-  );
+  ).toHaveCount(0);
   for (const actionName of ["Retry notice", "Send SMS", "Send digest"]) {
-    const controls = page.getByRole("button", { name: actionName });
-    const count = await controls.count();
-    expect(count).toBeGreaterThan(0);
-    for (let index = 0; index < count; index += 1) {
-      await expectTouchTarget(controls.nth(index));
-    }
+    await expectTouchTarget(
+      mobileSummary.getByRole("button", { name: actionName }),
+    );
   }
+
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await expect(mobileNav).toBeVisible();
+  await expectTouchTarget(mobileNav.getByRole("link", { name: "Smart Intake" }));
+  const summaryBox = await mobileSummary.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(summaryBox).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(summaryBox!.y + summaryBox!.height).toBeLessThan(navBox!.y);
+  await expectNoHorizontalOverflow(page);
 });
 
 test("dashboard Leasium AI panel answers with cited record", async ({

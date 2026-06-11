@@ -1,4 +1,4 @@
-import { expect, type Locator, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
@@ -64,6 +64,80 @@ async function expectTouchTarget(control: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
+test("notifications mobile matches the Horizon compact first viewport without provider mutation on load", async ({
+  page,
+}) => {
+  const forbiddenCalls: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const unsafeMethod = request.method() !== "GET";
+    const providerPath =
+      /sendgrid|twilio|provider|notification|digests\/run|comms|xero|basiq/i.test(
+        path,
+      );
+    if (unsafeMethod && providerPath) {
+      forbiddenCalls.push(`${request.method()} ${path}`);
+    }
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/notifications");
+
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(page.getByText("2 need you · rest are receipts")).toBeVisible();
+  for (const chip of ["Email setup", "SMS setup", "In-app ready"]) {
+    await expect(page.getByText(chip, { exact: true })).toBeVisible();
+  }
+
+  const mobileSummary = page.getByTestId("notifications-mobile-first-viewport");
+  await expect(mobileSummary).toBeVisible();
+  await expect(mobileSummary.getByText("Needs you")).toBeVisible();
+  await expect(mobileSummary.getByText("Air conditioning fault")).toBeVisible();
+  await expect(
+    mobileSummary.getByText("Assignment notification email was queued."),
+  ).toBeVisible();
+  await expect(mobileSummary.getByText("Bright Cafe arrears")).toBeVisible();
+  await expect(
+    mobileSummary.getByText("Assignment notification email failed."),
+  ).toBeVisible();
+  await expect(mobileSummary.getByText("Receipts")).toBeVisible();
+  await expect(
+    mobileSummary.getByText("Daily digest — Owner Operator"),
+  ).toBeVisible();
+  await expect(mobileSummary.getByText(/4 items/)).toBeVisible();
+
+  for (const actionName of ["Send SMS", "Retry notice", "Send digest"]) {
+    await expectTouchTarget(
+      mobileSummary.getByRole("button", { name: actionName }),
+    );
+  }
+
+  await expect(
+    page.getByRole("button", { name: "Export", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Mark reviewed" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^All 2$/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Mobile primary" }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  expect(forbiddenCalls).toEqual([]);
+});
+
 test("notifications message preview action links stay touch-safe", async ({
   page,
 }) => {
@@ -94,7 +168,7 @@ test("notifications provider and receipt disclosures stay touch-safe", async ({
 });
 
 test("notifications exports provider readiness review CSV", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,

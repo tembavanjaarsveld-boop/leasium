@@ -23,7 +23,7 @@ import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
-  PageHeader,
+  PageTitle,
   SecondaryButton,
   SectionPanel,
   StatusBadge,
@@ -156,6 +156,18 @@ function formatDate(value: string | null | undefined) {
     month: "short",
     year: "numeric",
   }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
+}
+
+function formatTime(value: string | null | undefined) {
+  if (!value) {
+    return "No time";
+  }
+  return new Intl.DateTimeFormat("en-AU", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
+    .format(new Date(value))
+    .toLowerCase();
 }
 
 function label(value: string) {
@@ -782,7 +794,7 @@ function ProviderSetupChecks({
   }
   const issueCount = checks.filter((check) => check.status !== "ready").length;
   return (
-    <details className="rounded-lg border border-border bg-muted/20 text-xs md:col-span-3">
+    <details className="hidden rounded-lg border border-border bg-muted/20 text-xs md:col-span-3 md:block">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-semibold text-foreground">
         <span>Provider setup checks</span>
         <StatusBadge tone={issueCount ? "warning" : "success"}>
@@ -827,7 +839,7 @@ function HorizonChannelCards({
     return null;
   }
   return (
-    <div className="flex flex-wrap gap-2 md:grid md:grid-cols-3 md:gap-3">
+    <div className="hidden md:grid md:grid-cols-3 md:gap-3">
       {channels.map((channel) => {
         const ready = channel.configured && channel.readiness !== "blocked";
         const setupNeeded = channel.action_available && !channel.configured;
@@ -868,6 +880,61 @@ function HorizonChannelCards({
           </article>
         );
       })}
+    </div>
+  );
+}
+
+function mobileChannelChipClass(
+  channel: WorkAssignmentNotificationChannelRecord,
+) {
+  const ready =
+    channel.configured &&
+    (channel.readiness === "actionable" || channel.readiness === "read_only");
+  if (ready || channel.readiness === "read_only") {
+    return "bg-accent-soft text-leasium-teal-strong";
+  }
+  if (channel.readiness === "blocked") {
+    return "bg-danger-soft text-danger-strong";
+  }
+  return "bg-warning-soft text-warning-strong";
+}
+
+function mobileChannelStatusLabel(
+  channel: WorkAssignmentNotificationChannelRecord,
+) {
+  const ready =
+    channel.configured &&
+    (channel.readiness === "actionable" || channel.readiness === "read_only");
+  if (ready || channel.readiness === "read_only") {
+    return "ready";
+  }
+  if (channel.action_available && !channel.configured) {
+    return "setup";
+  }
+  return channelReadinessLabel(channel.readiness).toLowerCase();
+}
+
+function MobileChannelChips({
+  channels,
+}: {
+  channels: WorkAssignmentNotificationChannelRecord[];
+}) {
+  if (!channels.length) {
+    return null;
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5 md:hidden">
+      {channels.map((channel) => (
+        <span
+          key={channel.channel}
+          className={cn(
+            "inline-flex min-h-6 items-center rounded-full px-2.5 text-[11px] font-semibold leading-none",
+            mobileChannelChipClass(channel),
+          )}
+        >
+          {channel.label} {mobileChannelStatusLabel(channel)}
+        </span>
+      ))}
     </div>
   );
 }
@@ -1458,6 +1525,246 @@ function NoticeRow({
   );
 }
 
+function mobileNoticeRailClass(
+  notice: WorkAssignmentNotificationCenterItemRecord,
+) {
+  if (
+    notice.group === "attention" ||
+    notice.notification_status === "failed"
+  ) {
+    return "bg-danger";
+  }
+  if (
+    notice.group === "ready" ||
+    notice.group === "in_flight" ||
+    notice.follow_up_due
+  ) {
+    return "bg-warning";
+  }
+  if (notice.group === "done") {
+    return "bg-success";
+  }
+  return "bg-primary";
+}
+
+function MobileNoticeCard({
+  allMode,
+  entityName,
+  isSending,
+  isSendingSms,
+  notice,
+  onSend,
+  onSendSms,
+}: {
+  allMode: boolean;
+  entityName?: string | null;
+  isSending: boolean;
+  isSendingSms: boolean;
+  notice: TaggedNotice;
+  onSend: (notice: TaggedNotice) => void;
+  onSendSms: (notice: TaggedNotice) => void;
+}) {
+  const href = workHref(notice.work_url);
+  const summary =
+    notice.summary ?? notice.notification_detail ?? "Assignment notice updated.";
+  return (
+    <article
+      data-testid={`notifications-mobile-notice-${notice.target_id}`}
+      className="flex overflow-hidden rounded-[14px] border border-leasium-card-border bg-white shadow-leasiumXs"
+    >
+      <div className={cn("w-1 shrink-0", mobileNoticeRailClass(notice))} />
+      <div className="grid min-w-0 flex-1 gap-1.5 px-3.5 py-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold leading-5 text-foreground">
+            {notice.title}
+          </h2>
+          {entityName ? (
+            <p className="mt-0.5 truncate text-[10px] font-semibold uppercase leading-4 text-muted-foreground">
+              {entityName}
+            </p>
+          ) : null}
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+            {summary}
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 pt-0.5">
+          {canSendNotice(notice) ? (
+            <SecondaryButton
+              type="button"
+              className="min-h-11 rounded-[10px] border-transparent bg-primary px-3 text-xs text-primary-foreground hover:bg-primary-hover"
+              disabled={isSending || allMode}
+              title={allMode ? "Select a single entity to send" : undefined}
+              onClick={() => onSend(notice)}
+            >
+              {isSending ? "Sending…" : noticeRecoveryLabel(notice)}
+            </SecondaryButton>
+          ) : canSendSmsNotice(notice) ? (
+            <SecondaryButton
+              type="button"
+              className="min-h-11 rounded-[10px] border-transparent bg-primary px-3 text-xs text-primary-foreground hover:bg-primary-hover"
+              disabled={isSendingSms || allMode}
+              title={allMode ? "Select a single entity to send" : undefined}
+              onClick={() => onSendSms(notice)}
+            >
+              {isSendingSms ? "Sending…" : smsNoticeRecoveryLabel(notice)}
+            </SecondaryButton>
+          ) : (
+            <Link
+              href={href}
+              className="inline-flex min-h-11 items-center justify-center rounded-[10px] border border-border-strong bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+            >
+              Open work
+            </Link>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MobileReceiptCard({
+  allMode,
+  isSendingDigest,
+  receipt,
+  onRetryDigest,
+}: {
+  allMode: boolean;
+  isSendingDigest: boolean;
+  receipt: TaggedDigestReceipt;
+  onRetryDigest: (receipt: TaggedDigestReceipt) => void;
+}) {
+  return (
+    <article
+      data-testid={`notifications-mobile-receipt-${receipt.assignee_user_id}`}
+      className="grid gap-1.5 rounded-[14px] border border-leasium-card-border bg-white px-3.5 py-3 shadow-leasiumXs"
+    >
+      <h2 className="truncate text-sm font-semibold leading-5 text-foreground">
+        {label(receipt.cadence)} digest — {receipt.assignee_name}
+      </h2>
+      <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+        {receipt.delivery_detail ??
+          `${receipt.message_sent ? "Sent" : "Generated"} ${formatTime(
+            receipt.generated_at,
+          )} · ${receipt.item_count} ${
+            receipt.item_count === 1 ? "item" : "items"
+          }`}
+      </p>
+      <div className="flex items-center justify-end gap-2 pt-0.5">
+        <StatusBadge tone={digestReceiptTone(receipt)}>
+          {digestReceiptLabel(receipt)}
+        </StatusBadge>
+        {!receipt.message_sent ? (
+          <SecondaryButton
+            type="button"
+            className="min-h-11 rounded-[10px] border-transparent bg-primary px-3 text-xs text-primary-foreground hover:bg-primary-hover"
+            disabled={isSendingDigest || allMode}
+            title={allMode ? "Select a single entity to send" : undefined}
+            onClick={() => onRetryDigest(receipt)}
+          >
+            {isSendingDigest ? "Sending…" : digestRecoveryLabel(receipt)}
+          </SecondaryButton>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function NotificationsMobileSummary({
+  allMode,
+  centerLoading,
+  entityNameById,
+  filteredDigestReceipts,
+  filteredNotices,
+  hasCenterData,
+  retryDigestMutationPending,
+  retryDigestVariables,
+  sendNoticeMutationPending,
+  sendNoticeVariables,
+  sendSmsNoticeMutationPending,
+  sendSmsNoticeVariables,
+  onRetryDigest,
+  onSend,
+  onSendSms,
+}: {
+  allMode: boolean;
+  centerLoading: boolean;
+  entityNameById: Map<string, string>;
+  filteredDigestReceipts: TaggedDigestReceipt[];
+  filteredNotices: TaggedNotice[];
+  hasCenterData: boolean;
+  retryDigestMutationPending: boolean;
+  retryDigestVariables?: WorkAssignmentNotificationCenterDigestRecord;
+  sendNoticeMutationPending: boolean;
+  sendNoticeVariables?: WorkAssignmentNotificationCenterItemRecord;
+  sendSmsNoticeMutationPending: boolean;
+  sendSmsNoticeVariables?: WorkAssignmentNotificationCenterItemRecord;
+  onRetryDigest: (receipt: TaggedDigestReceipt) => void;
+  onSend: (notice: TaggedNotice) => void;
+  onSendSms: (notice: TaggedNotice) => void;
+}) {
+  return (
+    <section
+      aria-label="Notifications mobile review"
+      data-testid="notifications-mobile-first-viewport"
+      className="grid gap-3 md:hidden"
+    >
+      <p className="text-[10px] font-semibold uppercase leading-4 text-muted-foreground">
+        Needs you
+      </p>
+      {filteredNotices.slice(0, 2).map((notice) => (
+        <MobileNoticeCard
+          key={`${notice.__entityId ?? ""}-${notice.target_type}-${notice.target_id}`}
+          allMode={allMode}
+          entityName={
+            notice.__entityId ? entityNameById.get(notice.__entityId) : null
+          }
+          isSending={
+            sendNoticeMutationPending &&
+            sendNoticeVariables?.target_id === notice.target_id
+          }
+          isSendingSms={
+            sendSmsNoticeMutationPending &&
+            sendSmsNoticeVariables?.target_id === notice.target_id
+          }
+          notice={notice}
+          onSend={onSend}
+          onSendSms={onSendSms}
+        />
+      ))}
+      {!centerLoading && hasCenterData && filteredNotices.length === 0 ? (
+        <EmptyState
+          icon={<Bell size={18} />}
+          title="No matching work notices"
+          description="Change the notice filter on desktop to review another receipt state."
+        />
+      ) : null}
+
+      <p className="mt-0.5 text-[10px] font-semibold uppercase leading-4 text-muted-foreground">
+        Receipts
+      </p>
+      {filteredDigestReceipts.slice(0, 2).map((receipt) => (
+        <MobileReceiptCard
+          key={`${receipt.__entityId ?? ""}-${receipt.assignee_user_id}-${receipt.generated_at}`}
+          allMode={allMode}
+          isSendingDigest={
+            retryDigestMutationPending &&
+            retryDigestVariables?.generated_at === receipt.generated_at
+          }
+          receipt={receipt}
+          onRetryDigest={onRetryDigest}
+        />
+      ))}
+      {!centerLoading && hasCenterData && filteredDigestReceipts.length === 0 ? (
+        <EmptyState
+          icon={<MailCheck size={18} />}
+          title="No matching digest receipts"
+          description="Change the receipt filter on desktop to review another delivery state."
+        />
+      ) : null}
+    </section>
+  );
+}
+
 function NotificationsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
@@ -1822,6 +2129,81 @@ function NotificationsWorkspace() {
         : (center?.notice_count ?? 0),
     [allMode, center?.notice_count, centerFanOut.data],
   );
+  const desktopDescription = allMode
+    ? `${noticeTotalCount} work notices and ${countTotals.digestReceipts} digest receipts across every entity.`
+    : selectedEntity
+      ? `Work notices and digest receipts — ${notices.length} need you, the rest are receipts.`
+      : "Choose an entity to review work notices and digest receipts.";
+  const mobileDescription = selectedEntity
+    ? `${noticeTotalCount} ${
+        noticeTotalCount === 1 ? "needs you" : "need you"
+      } · rest are receipts`
+    : "Choose an entity to review receipts";
+  const headerActions = (
+    <>
+      {hasCenterData ? (
+        <StatusBadge tone={countTotals.unread ? "primary" : "neutral"}>
+          {countTotals.unread} unread
+        </StatusBadge>
+      ) : null}
+      <SecondaryButton
+        type="button"
+        disabled={
+          !scopedEntityId ||
+          !center ||
+          center.unread_count === 0 ||
+          markReadMutation.isPending ||
+          allMode
+        }
+        title={allMode ? "Select a single entity to mark reviewed" : undefined}
+        onClick={() => markReadMutation.mutate()}
+      >
+        <CheckCircle2 size={15} />
+        Mark reviewed
+      </SecondaryButton>
+      {center && !allMode ? (
+        <ExportMenu
+          actions={[
+            {
+              key: "copy-review-packet",
+              label: "Copy review packet",
+              icon: <ClipboardCopy size={14} />,
+              onSelect: () => void copyReviewPacket(),
+            },
+            {
+              key: "download-review-packet",
+              label: "Download review packet CSV",
+              icon: <Download size={14} />,
+              onSelect: downloadReviewPacketCsv,
+            },
+            {
+              key: "copy-readiness",
+              label: "Copy readiness CSV",
+              icon: <ClipboardCopy size={14} />,
+              onSelect: () => void copyProviderReadinessCsv(),
+            },
+            {
+              key: "download-readiness",
+              label: "Download readiness CSV",
+              icon: <Download size={14} />,
+              onSelect: downloadProviderReadinessCsv,
+            },
+          ]}
+        />
+      ) : null}
+      <SecondaryButton
+        type="button"
+        disabled={!selectedEntityId || centerFetching}
+        onClick={() => (allMode ? centerFanOut.refetch() : centerQuery.refetch())}
+      >
+        <RefreshCw
+          size={15}
+          className={centerFetching ? "animate-spin" : ""}
+        />
+        Refresh
+      </SecondaryButton>
+    </>
+  );
   return (
     <main className="min-h-screen">
       <AppHeader>
@@ -1834,94 +2216,25 @@ function NotificationsWorkspace() {
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
-        <PageHeader
-          title="Notifications"
-          description={
-            allMode
-              ? `${noticeTotalCount} work notices and ${countTotals.digestReceipts} digest receipts across every entity.`
-              : selectedEntity
-                ? `Work notices and digest receipts — ${notices.length} need you, the rest are receipts.`
-                : "Choose an entity to review work notices and digest receipts."
-          }
-          actions={
-            <>
-              {hasCenterData ? (
-                <StatusBadge
-                  tone={countTotals.unread ? "primary" : "neutral"}
-                >
-                  {countTotals.unread} unread
-                </StatusBadge>
-              ) : null}
-              <SecondaryButton
-                type="button"
-                disabled={
-                  !scopedEntityId ||
-                  !center ||
-                  center.unread_count === 0 ||
-                  markReadMutation.isPending ||
-                  allMode
-                }
-                title={
-                  allMode
-                    ? "Select a single entity to mark reviewed"
-                    : undefined
-                }
-                onClick={() => markReadMutation.mutate()}
-              >
-                <CheckCircle2 size={15} />
-                Mark reviewed
-              </SecondaryButton>
-              {center && !allMode ? (
-                <ExportMenu
-                  actions={[
-                    {
-                      key: "copy-review-packet",
-                      label: "Copy review packet",
-                      icon: <ClipboardCopy size={14} />,
-                      onSelect: () => void copyReviewPacket(),
-                    },
-                    {
-                      key: "download-review-packet",
-                      label: "Download review packet CSV",
-                      icon: <Download size={14} />,
-                      onSelect: downloadReviewPacketCsv,
-                    },
-                    {
-                      key: "copy-readiness",
-                      label: "Copy readiness CSV",
-                      icon: <ClipboardCopy size={14} />,
-                      onSelect: () => void copyProviderReadinessCsv(),
-                    },
-                    {
-                      key: "download-readiness",
-                      label: "Download readiness CSV",
-                      icon: <Download size={14} />,
-                      onSelect: downloadProviderReadinessCsv,
-                    },
-                  ]}
-                />
-              ) : null}
-              <SecondaryButton
-                type="button"
-                disabled={!selectedEntityId || centerFetching}
-                onClick={() =>
-                  allMode ? centerFanOut.refetch() : centerQuery.refetch()
-                }
-              >
-                <RefreshCw
-                  size={15}
-                  className={centerFetching ? "animate-spin" : ""}
-                />
-                Refresh
-              </SecondaryButton>
-            </>
-          }
-        />
+        <section className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <PageTitle className="text-[21px] leading-7 md:text-3xl md:leading-9">
+              Notifications
+            </PageTitle>
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground md:mt-1.5 md:text-sm">
+              <span className="md:hidden">{mobileDescription}</span>
+              <span className="hidden md:inline">{desktopDescription}</span>
+            </p>
+          </div>
+          <div className="hidden flex-wrap items-center gap-2 md:flex">
+            {headerActions}
+          </div>
+        </section>
 
         {reviewPacketCopied ? (
           <div
             role="status"
-            className="rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success"
+            className="rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success md:w-fit"
           >
             Review packet copied
           </div>
@@ -1929,26 +2242,46 @@ function NotificationsWorkspace() {
         {providerReadinessCsvCopied ? (
           <div
             role="status"
-            className="rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success"
+            className="rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-success md:w-fit"
           >
             Readiness CSV copied
           </div>
         ) : null}
 
         <section aria-label="Notification channel health" className="grid gap-3">
+          <MobileChannelChips channels={centerChannels} />
           <HorizonChannelCards channels={centerChannels} />
           {centerChannels.length ? (
             <ProviderSetupChecks channels={centerChannels} />
           ) : null}
           {allMode ? (
-            <div className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-muted-foreground shadow-leasiumXs">
+            <div className="hidden rounded-2xl border border-border bg-white px-4 py-3 text-sm text-muted-foreground shadow-leasiumXs md:block">
               Channel readiness and provider setup are shown when a single
               entity is selected.
             </div>
           ) : null}
         </section>
 
+        <NotificationsMobileSummary
+          allMode={allMode}
+          centerLoading={centerLoading}
+          entityNameById={entityNameById}
+          filteredDigestReceipts={filteredDigestReceipts}
+          filteredNotices={filteredNotices}
+          hasCenterData={hasCenterData}
+          retryDigestMutationPending={retryDigestMutation.isPending}
+          retryDigestVariables={retryDigestMutation.variables}
+          sendNoticeMutationPending={sendNoticeMutation.isPending}
+          sendNoticeVariables={sendNoticeMutation.variables}
+          sendSmsNoticeMutationPending={sendSmsNoticeMutation.isPending}
+          sendSmsNoticeVariables={sendSmsNoticeMutation.variables}
+          onRetryDigest={(receipt) => retryDigestMutation.mutate(receipt)}
+          onSend={(notice) => sendNoticeMutation.mutate(notice)}
+          onSendSms={(notice) => sendSmsNoticeMutation.mutate(notice)}
+        />
+
         <SectionPanel
+          className="hidden md:block"
           title={`NEEDS YOU — ${filteredNotices.length}`}
           description="Work notice center"
           icon={<Bell size={17} className="text-primary" />}
@@ -2036,6 +2369,7 @@ function NotificationsWorkspace() {
         </SectionPanel>
 
         <SectionPanel
+          className="hidden md:block"
           title="RECEIPTS — QUIET"
           description="Digest history and provider receipts that do not need an operator action."
           icon={<MailCheck size={17} className="text-primary" />}
@@ -2188,9 +2522,11 @@ function NotificationsWorkspace() {
           </div>
         </SectionPanel>
 
-        <NotificationTrustRibbon />
+        <div className="hidden md:block">
+          <NotificationTrustRibbon />
+        </div>
 
-        <div className="flex justify-end">
+        <div className="hidden justify-end md:flex">
           <Link
             href="/operations"
             className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
