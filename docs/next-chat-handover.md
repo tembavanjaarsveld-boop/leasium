@@ -34,7 +34,10 @@ Verification recorded so far:
 - Browser QA passed at 1280x900 and 390x844 on `http://127.0.0.1:3030/people`:
   heading/actions/tabs visible, 44px controls, no horizontal overflow.
 
-Remaining before ship: commit, push, and Vercel READY proof.
+Shipped to production: commit `09b9bfd` deployed as Vercel
+`dpl_H1JD2k5pFkcu1W1Ch7tVHucRiWy4`, state `READY`, aliases attached
+(`leasium.ai`, `www.leasium.ai`, `leasium.vercel.app`). HTTP checks returned
+200 for `https://leasium.ai/` and `https://leasium.ai/people`.
 
 ## Cowork continuation - 2026-06-11 (Horizon Dashboard hero/bento polish v2)
 

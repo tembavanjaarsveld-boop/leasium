@@ -86,6 +86,10 @@ Run targeted ESLint for the changed route/test, `tsc --noEmit`, the People smoke
 
 Check `/people` at 1280×900 and 390×844 for visible People header/cards, no horizontal overflow, and no top-level overlap.
 
-- [ ] **Step 3: Commit, push, deploy**
+- [x] **Step 3: Commit, push, deploy**
 
 Stage only People v1 files and docs, commit with the Gmail identity, push `main`, and confirm Vercel READY.
+
+Commit `09b9bfd` deployed as Vercel `dpl_H1JD2k5pFkcu1W1Ch7tVHucRiWy4`, state
+`READY`; `https://leasium.ai/` and `https://leasium.ai/people` returned HTTP
+200.
