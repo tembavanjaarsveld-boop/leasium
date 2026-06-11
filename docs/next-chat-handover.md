@@ -47,6 +47,12 @@ Verification recorded so far:
   filter/export controls, no mobile nav, and no horizontal overflow. The local
   browser could not hydrate live intake rows outside the mocked smoke harness
   (`Failed to fetch`), so seeded row fidelity remains covered by Playwright.
+- Implementation commit `fe8bde3` pushed to `main`; Vercel production
+  deployment `dpl_J4ofTMgWfybQEcet5dsh4m2VEaje` reached **READY** and attached
+  `https://leasium.ai`, `https://www.leasium.ai`, and
+  `https://leasium.vercel.app`.
+- Live production HTTP checks returned 200 for `/intake`, `/properties`,
+  `/notifications`, and `/`.
 
 Design-facing status: pending Remba review, not `[x]` complete.
 

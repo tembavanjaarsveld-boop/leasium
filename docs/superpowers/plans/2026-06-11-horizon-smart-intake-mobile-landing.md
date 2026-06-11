@@ -86,8 +86,17 @@ horizontal overflow, and no bare-route review auto-open. Local browser data
 fetch failed outside the mocked smoke harness, so seeded row fidelity remains
 covered by Playwright mocks.
 
-- [ ] **Step 3: Commit, push, and Vercel**
+- [x] **Step 3: Commit, push, and Vercel**
 
 Stage only slice files, commit with the Gmail identity, push `main`, and
 confirm the production Vercel deployment is READY. Do not mark this complete
 without command/deploy evidence from the current implementation context.
+
+Observed after commit:
+- Implementation commit `fe8bde3` pushed to `main`.
+- Vercel production deployment
+  `dpl_J4ofTMgWfybQEcet5dsh4m2VEaje` reached **READY** with aliases attached to
+  `https://leasium.ai`, `https://www.leasium.ai`, and
+  `https://leasium.vercel.app`.
+- Live HTTP checks returned 200 for `/intake`, `/properties`,
+  `/notifications`, and `/`.
