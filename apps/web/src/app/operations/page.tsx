@@ -202,9 +202,9 @@ const escalationStatuses: ArrearsEscalationStatus[] = [
 type OperationsTab = (typeof tabs)[number]["id"];
 
 const workRanges = [
-  { id: "today", label: "Today" },
-  { id: "week", label: "This week" },
-  { id: "all", label: "All" },
+  { id: "today", label: "Today", mobileLabel: "Today" },
+  { id: "week", label: "This week", mobileLabel: "Week" },
+  { id: "all", label: "All", mobileLabel: "All" },
 ] as const;
 
 type WorkRange = (typeof workRanges)[number]["id"];
@@ -2692,6 +2692,7 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-obligations"],
     queryFn: (entityId) => listObligations({ entity_id: entityId }),
+    orgWideQueryFn: () => listObligations({}),
   });
   const complianceChecksFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -2704,12 +2705,14 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-onboarding"],
     queryFn: listTenantOnboardings,
+    orgWideQueryFn: () => listTenantOnboardings(),
   });
   const documentIntakesFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["operations-document-intakes"],
     queryFn: listDocumentIntakes,
+    orgWideQueryFn: () => listDocumentIntakes(),
   });
   const maintenanceFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -3186,6 +3189,9 @@ function OperationsWorkspace() {
       (item) => horizonWorkLaneId(item) === lane.id,
     ),
   }));
+  const mobileHorizonWorkItems = horizonWorkLaneRows
+    .flatMap((lane) => lane.items.map((item) => ({ item, lane })))
+    .slice(0, 3);
   const readyNotificationItems = filteredOpenQueueItems
     .filter(isAssignableQueueItem)
     .filter((item) =>
@@ -3989,6 +3995,108 @@ function OperationsWorkspace() {
     );
   };
 
+  const renderMobileHorizonWorkAction = (item: QueueItem) => {
+    const actionClassName =
+      "inline-flex min-h-11 items-center justify-center rounded-[10px] border border-border-strong bg-white px-4 text-xs font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
+
+    if (item.kind === "obligation") {
+      return (
+        <button
+          type="button"
+          className={cn(actionClassName, "border-primary bg-primary text-white hover:bg-primary-hover")}
+          onClick={() =>
+            updateObligationMutation.mutate({
+              obligation: item.record,
+              status: "completed",
+            })
+          }
+          disabled={updateObligationMutation.isPending || allMode}
+        >
+          Complete
+        </button>
+      );
+    }
+
+    if (item.kind === "maintenance") {
+      return (
+        <Link
+          href={`/operations/maintenance/${encodeURIComponent(item.record.id)}`}
+          className={actionClassName}
+        >
+          View
+        </Link>
+      );
+    }
+
+    if (item.kind === "arrears") {
+      return (
+        <Link href="/operations?tab=arrears" className={actionClassName}>
+          Review
+        </Link>
+      );
+    }
+
+    return (
+      <Link href={item.href} className={actionClassName}>
+        Review
+      </Link>
+    );
+  };
+
+  const renderMobileHorizonWorkCard = ({
+    item,
+    lane,
+  }: {
+    item: QueueItem;
+    lane: (typeof horizonWorkLanes)[number];
+  }) => {
+    const context = item.description.split(" - ").filter(Boolean);
+    const contextLabel =
+      item.kind === "arrears" ? (context[1] ?? context[0]) : context[0];
+    const chip = queueUrgencyChip(item);
+
+    return (
+      <article
+        key={item.id}
+        data-testid="work-mobile-horizon-card"
+        className="relative overflow-hidden rounded-[14px] bg-white p-3 pl-4 shadow-[0_1px_3px_rgba(16,24,40,0.05)]"
+      >
+        <span
+          className={cn("absolute inset-y-0 left-0 w-1", lane.railClassName)}
+          aria-hidden="true"
+        />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+          <div className="grid min-w-0 gap-1">
+            <Link
+              href={item.href}
+              data-ops-row
+              className="min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            >
+              <h2 className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">
+                {item.title}
+              </h2>
+            </Link>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {contextLabel ? (
+                <span className="truncate text-[11px] leading-4 text-muted-foreground">
+                  {contextLabel}
+                </span>
+              ) : null}
+              <StatusBadge tone={chip.tone} className="text-[11px]">
+                {chip.label}
+              </StatusBadge>
+            </div>
+            <span
+              className="mt-1 size-[22px] rounded-full bg-primary"
+              aria-hidden="true"
+            />
+          </div>
+          <div className="flex items-center">{renderMobileHorizonWorkAction(item)}</div>
+        </div>
+      </article>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-leasium-canvas">
       <AppHeader>
@@ -4004,7 +4112,7 @@ function OperationsWorkspace() {
         <section className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <PageTitle>Work</PageTitle>
-            <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
+            <p className="mt-1.5 hidden text-sm leading-5 text-muted-foreground md:block">
               Triage by urgency - clear the red lane and the day is done.
             </p>
           </div>
@@ -4029,36 +4137,39 @@ function OperationsWorkspace() {
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    {range.label}
+                    <span className="md:hidden">{range.mobileLabel}</span>
+                    <span className="hidden md:inline">{range.label}</span>
                   </button>
                 );
               })}
             </div>
-            <SecondaryButton
-              type="button"
-              onClick={refresh}
-              disabled={!selectedEntityId}
-              aria-label="Refresh work"
-            >
-              <RefreshCw size={15} />
-              Refresh
-            </SecondaryButton>
-            <Button
-              type="button"
-              onClick={() => {
-                setActiveTab("maintenance");
-                setMaintenanceFormOpen((open) => !open);
-              }}
-              disabled={!scopedEntityId}
-              title={
-                allMode
-                  ? "Select a single entity to create a work order"
-                  : undefined
-              }
-            >
-              <Plus size={15} />
-              New work
-            </Button>
+            <div className="hidden items-center gap-2 md:flex">
+              <SecondaryButton
+                type="button"
+                onClick={refresh}
+                disabled={!selectedEntityId}
+                aria-label="Refresh work"
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </SecondaryButton>
+              <Button
+                type="button"
+                onClick={() => {
+                  setActiveTab("maintenance");
+                  setMaintenanceFormOpen((open) => !open);
+                }}
+                disabled={!scopedEntityId}
+                title={
+                  allMode
+                    ? "Select a single entity to create a work order"
+                    : undefined
+                }
+              >
+                <Plus size={15} />
+                New work
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -4109,6 +4220,86 @@ function OperationsWorkspace() {
 
         {selectedEntityId ? (
           <>
+            {activeTab === "queue" ? (
+              <section className="grid gap-3 md:hidden" aria-label="Work mobile Horizon summary">
+                <div
+                  data-testid="work-mobile-horizon-summary"
+                  className="flex min-w-0 gap-2 overflow-x-auto pb-0.5"
+                  aria-label="Work mobile lane summary"
+                >
+                  {horizonWorkLaneRows.map((lane) => (
+                    <div
+                      key={lane.id}
+                      className={cn(
+                        "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-xs font-semibold",
+                        lane.id === "act_now"
+                          ? "border border-danger bg-danger-soft text-danger-strong"
+                          : lane.id === "scheduled"
+                            ? "bg-info-soft text-info-strong"
+                            : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <span>{lane.label}</span>
+                      <span>{lane.items.length}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-2">
+                  {mobileHorizonWorkItems.map(renderMobileHorizonWorkCard)}
+                  {!operationsLoading && mobileHorizonWorkItems.length === 0 ? (
+                    <div className="rounded-[14px] border border-dashed border-border bg-white p-4 text-sm text-muted-foreground">
+                      No work in this view.
+                    </div>
+                  ) : null}
+                </div>
+
+                <section
+                  data-testid="work-mobile-team-load"
+                  className="rounded-[14px] border border-leasium-card-border bg-white p-3 shadow-leasiumXs"
+                >
+                  <h2 className="text-[9px] font-semibold uppercase tracking-[0.36px] text-muted-foreground">
+                    TEAM WORKLOAD
+                  </h2>
+                  <div className="mt-2 grid gap-2">
+                    {teamWorkloadRows.map((row) => (
+                      <button
+                        key={row.id}
+                        type="button"
+                        onClick={() => {
+                          if (row.id === "unassigned") {
+                            setAssigneeFilter("unassigned");
+                          } else if (row.id === currentUser?.id) {
+                            setAssigneeFilter("me");
+                          } else {
+                            setAssigneeFilter(memberAssigneeFilter(row.id));
+                          }
+                        }}
+                        className="grid min-h-11 grid-cols-[minmax(72px,1fr)_90px_auto] items-center gap-2 text-left text-[11px] font-medium text-foreground"
+                      >
+                        <span className="truncate">{row.label}</span>
+                        <span className="h-[5px] overflow-hidden rounded-full bg-muted">
+                          <span
+                            className="block h-full rounded-full bg-primary"
+                            style={{
+                              width: `${Math.max(
+                                8,
+                                (row.count / maxTeamWorkloadCount) * 100,
+                              )}%`,
+                            }}
+                          />
+                        </span>
+                        <span className="text-[10px] font-semibold text-muted-foreground">
+                          {row.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+              </section>
+            ) : null}
+
             <div
               className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-4 md:gap-2 md:rounded-[12px]"
               role="tablist"
@@ -4142,6 +4333,37 @@ function OperationsWorkspace() {
                   </button>
                 );
               })}
+            </div>
+
+            <div
+              className="grid grid-cols-2 gap-2 md:hidden"
+              aria-label="Work mobile actions"
+            >
+              <SecondaryButton
+                type="button"
+                onClick={refresh}
+                disabled={!selectedEntityId}
+                aria-label="Refresh work"
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </SecondaryButton>
+              <Button
+                type="button"
+                onClick={() => {
+                  setActiveTab("maintenance");
+                  setMaintenanceFormOpen((open) => !open);
+                }}
+                disabled={!scopedEntityId}
+                title={
+                  allMode
+                    ? "Select a single entity to create a work order"
+                    : undefined
+                }
+              >
+                <Plus size={15} />
+                New work
+              </Button>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2">

@@ -3504,33 +3504,38 @@ export function Dashboard({
       query.state.data?.some(intakeIsActive) ? 2500 : false,
   });
 
-  // Per-entity fan-out for the all-entities command center. These share the
-  // single-entity cache shape (same keyPrefix) and only run when allMode is on.
-  // The command center re-builds from these merged lists; not-safely-additive
-  // panels (overview-derived events/compliance, demo mode) are scoped off below.
+  // All-entities command center reads. Each uses one org-wide request (the
+  // API scopes a missing entity_id to every readable entity) instead of a
+  // per-entity fan-out. The command center re-builds from these merged lists;
+  // not-safely-additive panels (overview-derived events/compliance, demo
+  // mode) are scoped off below.
   const obligationsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode && !demoMode,
     keyPrefix: ["dashboard-obligations"],
     queryFn: (entityId) => listObligations({ entity_id: entityId }),
+    orgWideQueryFn: () => listObligations({}),
   });
   const rentRollFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode && !demoMode,
     keyPrefix: ["dashboard-rent-roll", asOf],
     queryFn: (entityId) => listRentRoll({ entity_id: entityId, as_of: asOf }),
+    orgWideQueryFn: () => listRentRoll({ as_of: asOf }),
   });
   const onboardingFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode && !demoMode,
     keyPrefix: ["dashboard-onboarding"],
     queryFn: listTenantOnboardings,
+    orgWideQueryFn: () => listTenantOnboardings(),
   });
   const documentIntakesFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode && !demoMode,
     keyPrefix: ["dashboard-document-intakes"],
     queryFn: listDocumentIntakes,
+    orgWideQueryFn: () => listDocumentIntakes(),
   });
   const reviewTenancyUnitsQuery = useQuery({
     queryKey: ["dashboard-review-tenancy-units", reviewApplyTarget.propertyId],

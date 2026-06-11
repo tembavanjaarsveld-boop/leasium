@@ -4243,10 +4243,12 @@ export function deleteLease(leaseId: string) {
   });
 }
 
-export function listTenantOnboardings(entityId: string) {
-  const params = new URLSearchParams({ entity_id: entityId });
+export function listTenantOnboardings(entityId?: string) {
+  // No entityId = org-wide: the API scopes to every readable entity.
   return request<TenantOnboardingRecord[]>(
-    `/tenant-onboarding?${params.toString()}`,
+    entityId
+      ? `/tenant-onboarding?entity_id=${entityId}`
+      : "/tenant-onboarding",
   );
 }
 
@@ -4427,10 +4429,14 @@ export function submitPublicTenantOnboarding(
 }
 
 export function listObligations(filters: {
-  entity_id: string;
+  // No scope filters = org-wide: the API scopes to every readable entity.
+  entity_id?: string;
   property_id?: string;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.property_id) {
     params.set("property_id", filters.property_id);
   }
@@ -5367,9 +5373,10 @@ export async function downloadTenantPortalAccountDocument(
   return response.blob();
 }
 
-export function listDocumentIntakes(entityId: string) {
+export function listDocumentIntakes(entityId?: string) {
+  // No entityId = org-wide: the API scopes to every readable entity.
   return request<DocumentIntakeRecord[]>(
-    `/document-intakes?entity_id=${entityId}`,
+    entityId ? `/document-intakes?entity_id=${entityId}` : "/document-intakes",
   );
 }
 
@@ -5503,11 +5510,15 @@ export function deleteDocumentIntake(intakeId: string) {
 }
 
 export function listRentRoll(filters: {
-  entity_id: string;
+  // No entity_id = org-wide: the API scopes to every readable entity.
+  entity_id?: string;
   property_id?: string;
   as_of?: string;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.property_id) {
     params.set("property_id", filters.property_id);
   }

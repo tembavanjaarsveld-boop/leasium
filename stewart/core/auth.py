@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from stewart.core.db import get_session, utcnow
 from stewart.core.models import (
     AppUser,
+    Entity,
     OperatorInviteStatus,
     Organisation,
     UserEntityRole,
@@ -305,6 +306,32 @@ def assert_entity_role(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have access to this entity.",
         )
+
+
+def readable_entity_ids(
+    session: Session,
+    user: CurrentUser,
+    allowed_roles: set[UserRole],
+) -> list[UUID]:
+    """IDs of live entities in the user's organisation where they hold an allowed role.
+
+    Used by org-wide list endpoints (no entity_id filter) so all-entities views
+    can read across the portfolio in one request instead of fanning out per
+    entity. Mirrors assert_entity_role semantics per entity.
+    """
+
+    return list(
+        session.scalars(
+            select(UserEntityRole.entity_id)
+            .join(Entity, Entity.id == UserEntityRole.entity_id)
+            .where(
+                UserEntityRole.user_id == user.id,
+                UserEntityRole.role.in_(allowed_roles),
+                Entity.organisation_id == user.organisation_id,
+                Entity.deleted_at.is_(None),
+            )
+        )
+    )
 
 
 def require_platform_admin(

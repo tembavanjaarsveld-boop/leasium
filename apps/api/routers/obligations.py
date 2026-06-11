@@ -25,7 +25,13 @@ from stewart.core.models import (
 from stewart.core.settings import get_settings
 from stewart.integrations.communications import send_work_assignment_email
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.register import (
     LeaseEventFollowUpRunCreate,
     LeaseEventFollowUpRunRead,
@@ -168,13 +174,12 @@ def list_obligations(
     category: ObligationCategory | None = None,
     include_deleted: bool = False,
 ) -> list[Obligation]:
-    if entity_id is None and property_id is None and tenancy_unit_id is None and lease_id is None:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail="Provide an entity, property, tenancy unit, or lease scope.",
-        )
-
     statement = select(Obligation)
+    if entity_id is None and property_id is None and tenancy_unit_id is None and lease_id is None:
+        # Org-wide scope: every entity the user can read, for all-entities views.
+        statement = statement.where(
+            Obligation.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if entity_id is not None:
         assert_entity_role(session, user, entity_id, READ_ROLES)
         statement = statement.where(Obligation.entity_id == entity_id)

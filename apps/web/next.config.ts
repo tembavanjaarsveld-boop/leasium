@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
         destination: "/intake",
         permanent: true,
       },
+      {
+        // The operator dashboard lives at the root route.
+        source: "/dashboard",
+        destination: "/",
+        permanent: false,
+      },
     ];
   },
 };

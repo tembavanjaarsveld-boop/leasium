@@ -306,12 +306,14 @@ function TenantWorkspace() {
     enabled: allMode,
     keyPrefix: ["tenant-onboardings"],
     queryFn: listTenantOnboardings,
+    orgWideQueryFn: () => listTenantOnboardings(),
   });
   const rentRollFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["rent-roll"],
     queryFn: (entityId) => listRentRoll({ entity_id: entityId }),
+    orgWideQueryFn: () => listRentRoll({}),
   });
 
   // Merged views the UI reads regardless of single- vs all-entity mode.

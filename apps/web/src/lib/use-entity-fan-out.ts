@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import type { Entity } from "@/lib/api";
@@ -41,6 +41,11 @@ type FanOutOptions<T> = {
   // single-entity query of the same shape.
   keyPrefix: readonly unknown[];
   queryFn: (entityId: string) => Promise<T[]>;
+  // When provided, all-entities mode issues ONE org-wide request instead of
+  // fanning out per entity. Only use for endpoints that scope a missing
+  // entity_id to every readable entity server-side (rent-roll, obligations,
+  // tenant-onboarding, document-intakes).
+  orgWideQueryFn?: () => Promise<T[]>;
 };
 
 export type FanOutResult<T> = {
@@ -62,25 +67,52 @@ export function useEntityFanOut<T>({
   enabled,
   keyPrefix,
   queryFn,
+  orgWideQueryFn,
 }: FanOutOptions<T>): FanOutResult<T> {
+  const orgWide = orgWideQueryFn !== undefined;
+
+  const orgWideQuery = useQuery({
+    queryKey: [...keyPrefix, "org-wide"],
+    queryFn: () => orgWideQueryFn!(),
+    enabled: enabled && orgWide,
+  });
+
   const entityIds = useMemo(
     () => (entities ?? []).map((entity) => entity.id),
     [entities],
   );
 
   const results = useQueries({
-    queries: enabled
-      ? entityIds.map((entityId) => ({
-          queryKey: [...keyPrefix, entityId],
-          queryFn: () => withFanOutSlot(() => queryFn(entityId)),
-        }))
-      : [],
+    queries:
+      enabled && !orgWide
+        ? entityIds.map((entityId) => ({
+            queryKey: [...keyPrefix, entityId],
+            queryFn: () => withFanOutSlot(() => queryFn(entityId)),
+          }))
+        : [],
   });
 
-  const data = useMemo(
-    () => (enabled ? results.flatMap((result) => result.data ?? []) : EMPTY),
-    [enabled, results],
-  );
+  const data = useMemo(() => {
+    if (!enabled) {
+      return EMPTY;
+    }
+    if (orgWide) {
+      return orgWideQuery.data ?? EMPTY;
+    }
+    return results.flatMap((result) => result.data ?? []);
+  }, [enabled, orgWide, orgWideQuery.data, results]);
+
+  if (orgWide) {
+    return {
+      data,
+      isLoading: enabled && orgWideQuery.isLoading,
+      isFetching: enabled && orgWideQuery.isFetching,
+      error: enabled ? (orgWideQuery.error ?? null) : null,
+      refetch: () => {
+        void orgWideQuery.refetch();
+      },
+    };
+  }
 
   return {
     data,

@@ -37,7 +37,13 @@ from stewart.integrations.communications import (
 )
 
 from apps.api import webhook_auth
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.register import (
     BillingDraftBatchRead,
     BillingDraftBatchSkippedRead,
@@ -2250,14 +2256,15 @@ def delete_charge_rule(
 def rent_roll(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: Annotated[UUID | None, Query()] = None,
     property_id: UUID | None = None,
     as_of: date | None = None,
 ) -> list[RentRollRowRead]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
     if property_id is not None:
         prop = _property_for_access(property_id, user, session, READ_ROLES)
-        if prop.entity_id != entity_id:
+        if entity_id is not None and prop.entity_id != entity_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Property must belong to the selected entity.",
@@ -2282,7 +2289,12 @@ def rent_roll(
         .outerjoin(Lease, and_(*active_lease_join))
         .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
         .where(
-            Entity.id == entity_id,
+            (
+                Entity.id == entity_id
+                if entity_id is not None
+                # Org-wide scope: every entity the user can read.
+                else Entity.id.in_(readable_entity_ids(session, user, READ_ROLES))
+            ),
             Entity.deleted_at.is_(None),
             Property.deleted_at.is_(None),
             TenancyUnit.deleted_at.is_(None),

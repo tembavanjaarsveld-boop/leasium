@@ -52,7 +52,13 @@ from stewart.core.models import (
 )
 from stewart.core.settings import get_settings
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.routers.lease_intakes import _apply_lease_records
 from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.document_intake import (
@@ -2708,12 +2714,19 @@ def _get_intake(
 def list_document_intakes(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: UUID,
+    entity_id: UUID | None = None,
 ) -> list[DocumentIntakeRead]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        entity_scope = DocumentIntake.entity_id == entity_id
+    else:
+        # Org-wide scope: every entity the user can read, for all-entities views.
+        entity_scope = DocumentIntake.entity_id.in_(
+            readable_entity_ids(session, user, READ_ROLES)
+        )
     intakes = session.scalars(
         select(DocumentIntake)
-        .where(DocumentIntake.entity_id == entity_id, DocumentIntake.deleted_at.is_(None))
+        .where(entity_scope, DocumentIntake.deleted_at.is_(None))
         .order_by(DocumentIntake.created_at.desc())
     ).all()
     return [_read_intake(intake) for intake in intakes]

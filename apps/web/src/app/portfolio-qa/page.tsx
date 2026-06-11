@@ -4221,24 +4221,28 @@ function PortfolioQaWorkspace() {
     enabled: allMode,
     keyPrefix: ["rent-roll"],
     queryFn: (entityId) => listRentRoll({ entity_id: entityId }),
+    orgWideQueryFn: () => listRentRoll({}),
   });
   const obligationsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["obligations"],
     queryFn: (entityId) => listObligations({ entity_id: entityId }),
+    orgWideQueryFn: () => listObligations({}),
   });
   const intakesFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["document-intakes"],
     queryFn: listDocumentIntakes,
+    orgWideQueryFn: () => listDocumentIntakes(),
   });
   const onboardingsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["tenant-onboardings"],
     queryFn: listTenantOnboardings,
+    orgWideQueryFn: () => listTenantOnboardings(),
   });
   const billingDraftsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
