@@ -9,6 +9,29 @@ import type { Entity } from "@/lib/api";
 // all-entities mode (avoids needless downstream recompute).
 const EMPTY: never[] = [];
 
+// Global cap on in-flight fan-out requests. Without it, an all-entities page
+// load fires (entities × hooks) simultaneous API calls — ~70+ at 17 entities —
+// which queue server-side behind the API's DB pool and push tail latency past
+// 30s (2026-06-11 slow-dashboard investigation). Capped, the same load drains
+// in a few seconds. The limit spans every fan-out hook on the page.
+const MAX_CONCURRENT_FAN_OUT_REQUESTS = 6;
+
+let activeFanOutRequests = 0;
+const fanOutWaiters: (() => void)[] = [];
+
+async function withFanOutSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activeFanOutRequests >= MAX_CONCURRENT_FAN_OUT_REQUESTS) {
+    await new Promise<void>((resolve) => fanOutWaiters.push(resolve));
+  }
+  activeFanOutRequests += 1;
+  try {
+    return await run();
+  } finally {
+    activeFanOutRequests -= 1;
+    fanOutWaiters.shift()?.();
+  }
+}
+
 type FanOutOptions<T> = {
   entities: Entity[] | undefined;
   // Only fan out when true (i.e. the picker is on the All-entities sentinel).
@@ -49,7 +72,7 @@ export function useEntityFanOut<T>({
     queries: enabled
       ? entityIds.map((entityId) => ({
           queryKey: [...keyPrefix, entityId],
-          queryFn: () => queryFn(entityId),
+          queryFn: () => withFanOutSlot(() => queryFn(entityId)),
         }))
       : [],
   });
