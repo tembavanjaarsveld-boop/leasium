@@ -265,6 +265,21 @@ a design-facing slice.
   browser QA before push; Vercel proof is recorded in the shipping chat. Remba
   should review the mobile density, first-viewport hierarchy, and bottom-nav
   clearance before this is marked `[x]`.
+- **Horizon Dark Mode Token Alignment v1 (2026-06-11, Remba pending):**
+  production token alignment against Dashboard·Dark `62:696` and the Figma
+  Leasium Color dark values. Scope stayed inside the existing
+  `data-theme="dark"` CSS layer plus smoke coverage: `bg-primary`,
+  `text-primary`, `text-primary-hover`, `border-primary`, `bg-accent-soft`,
+  `text-leasium-teal-strong`, `bg-leasium-navy-900`, `bg-white/50`,
+  `bg-white/65`, `hover:bg-white`, `hover:bg-primary-soft`, and
+  `group-hover:bg-primary-soft` now resolve through the dark token system.
+  Settings inactive tabs now use tokenized muted text and Properties card media
+  gets a dark-mode scrim so loaded imagery cannot become a bright slab on the
+  dark canvas. The Dashboard/route components were not rewritten wholesale and
+  no API shape, provider send, email/SMS, payment, reconciliation, Xero/Basiq,
+  Smart Intake apply, or workflow mutation path changed. Remba should review
+  the Dashboard · Dark visual match, especially the hero wash and
+  primary-button contrast, before this is marked `[x]`.
 - **Horizon shell polish v1 (2026-06-10, Remba pending):** Temba review of the
   shipped shell removed the extra visible chrome that diverged from the approved
   Horizon sidebar. The entity switcher keeps `All entities` as a native dropdown

@@ -61,6 +61,7 @@ import {
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { defaultEntitySelection } from "@/lib/entity-selection";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn, friendlyError as baseFriendlyError } from "@/lib/utils";
 import {
@@ -8621,6 +8622,7 @@ function PropertyCardsView({
                 )}
               >
                 <div
+                  data-testid="property-card-media"
                   className={cn(
                     "relative h-[108px] w-full overflow-hidden",
                     propertyCardWashClassName(occupancy?.status),
@@ -8629,11 +8631,16 @@ function PropertyCardsView({
                   {image ? (
                     <StoredPropertyImage
                       alt={`${property.name} property image`}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover dark:opacity-70 dark:saturate-75"
                       image={image}
                       placeholderClassName="h-full w-full"
                     />
                   ) : null}
+                  <span
+                    aria-hidden="true"
+                    data-testid="property-card-media-scrim"
+                    className="pointer-events-none absolute inset-0 bg-leasium-navy-900/35 opacity-0 transition-opacity duration-200 ease-leasium dark:opacity-100"
+                  />
                   {badge ? (
                     <span
                       className={cn(

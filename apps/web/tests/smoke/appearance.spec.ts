@@ -56,6 +56,26 @@ async function expectRootAppearance(
   }
 }
 
+async function probeUtilityClasses(
+  page: import("@playwright/test").Page,
+  className: string,
+) {
+  return page.evaluate((classes) => {
+    const probe = document.createElement("div");
+    probe.className = classes;
+    probe.textContent = "Token probe";
+    document.body.appendChild(probe);
+    const style = getComputedStyle(probe);
+    const colors = {
+      background: style.backgroundColor,
+      border: style.borderTopColor,
+      color: style.color,
+    };
+    probe.remove();
+    return colors;
+  }, className);
+}
+
 test("appearance defaults to system and follows dark OS", async ({ page }) => {
   await page.goto("/");
 
@@ -177,6 +197,78 @@ test("settings appearance can choose light, dark, and system", async ({
   expect(appearanceButtonBoxes.every((height) => height >= 44)).toBe(true);
 });
 
+test("dark Horizon utility tokens match the Figma Dashboard Dark frame", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.appearance", "dark");
+  });
+  await page.goto("/");
+  await expectAppearance(page, "dark", "dark");
+
+  const rootTokens = await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      accent: style.getPropertyValue("--leasium-teal").trim(),
+      accentSoft: style.getPropertyValue("--leasium-teal-soft").trim(),
+      borderCard: style.getPropertyValue("--leasium-card-border").trim(),
+      canvas: style.getPropertyValue("--leasium-bg").trim(),
+      primary: style.getPropertyValue("--leasium-blue").trim(),
+      primarySoft: style.getPropertyValue("--leasium-blue-soft").trim(),
+      sidebar: style.getPropertyValue("--leasium-navy-900").trim(),
+      surface: style.getPropertyValue("--leasium-surface").trim(),
+      textPrimary: style.getPropertyValue("--leasium-navy-800").trim(),
+      textSecondary: style.getPropertyValue("--leasium-slate-500").trim(),
+    };
+  });
+  expect(rootTokens).toEqual({
+    accent: "#42e3cf",
+    accentSoft: "#0f3a37",
+    borderCard: "#263247",
+    canvas: "#0d1424",
+    primary: "#8ea5ff",
+    primarySoft: "#182554",
+    sidebar: "#050814",
+    surface: "#121a2a",
+    textPrimary: "#e6eaf3",
+    textSecondary: "#aab5c8",
+  });
+
+  await expect(
+    probeUtilityClasses(page, "bg-primary border border-primary text-white"),
+  ).resolves.toMatchObject({
+    background: "rgb(142, 165, 255)",
+    border: "rgb(142, 165, 255)",
+    color: "rgb(255, 255, 255)",
+  });
+  await expect(
+    probeUtilityClasses(page, "bg-accent-soft text-leasium-teal-strong"),
+  ).resolves.toMatchObject({
+    background: "rgb(15, 58, 55)",
+    color: "rgb(66, 227, 207)",
+  });
+  await expect(probeUtilityClasses(page, "text-primary")).resolves.toMatchObject(
+    {
+      color: "rgb(142, 165, 255)",
+    },
+  );
+  await expect(
+    probeUtilityClasses(page, "text-primary-hover"),
+  ).resolves.toMatchObject({
+    color: "rgb(183, 197, 255)",
+  });
+  await expect(
+    probeUtilityClasses(page, "bg-primary-soft"),
+  ).resolves.toMatchObject({
+    background: "rgb(24, 37, 84)",
+  });
+  await expect(
+    probeUtilityClasses(page, "bg-leasium-navy-900"),
+  ).resolves.toMatchObject({
+    background: "rgb(5, 8, 20)",
+  });
+});
+
 test("dark mode renders the core operator surfaces on desktop and mobile", async ({
   page,
 }) => {
@@ -234,6 +326,46 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
       expect(colors.toolbarBackground).not.toBe("rgb(255, 255, 255)");
     }
   }
+});
+
+test("dark Horizon route polish avoids low-contrast tabs and bright property media", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.appearance", "dark");
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/settings");
+  await expectAppearance(page, "dark", "dark");
+  const securityTab = page.getByRole("tab", { name: "Security" });
+  await expect(securityTab).toBeVisible();
+  await expect
+    .poll(() =>
+      securityTab.evaluate((tab) => getComputedStyle(tab).color),
+    )
+    .toBe("rgb(170, 181, 200)");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/properties");
+  await expectAppearance(page, "dark", "dark");
+  const mediaSlots = page.getByTestId("property-card-media");
+  const mediaSlotCount = await mediaSlots.count();
+  expect(mediaSlotCount).toBeGreaterThan(0);
+  const firstMediaSlot = mediaSlots.first();
+  await expect(firstMediaSlot).toBeVisible();
+  await expect
+    .poll(() =>
+      firstMediaSlot.evaluate((slot) => getComputedStyle(slot).backgroundColor),
+    )
+    .not.toBe("rgb(255, 255, 255)");
+  await expect
+    .poll(() =>
+      firstMediaSlot
+        .getByTestId("property-card-media-scrim")
+        .evaluate((scrim) => getComputedStyle(scrim).opacity),
+    )
+    .toBe("1");
 });
 
 test("neutral chip soft tone keeps readable text in dark", async ({

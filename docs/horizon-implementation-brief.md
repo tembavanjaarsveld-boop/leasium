@@ -1,7 +1,8 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Mobile Polish v1 is
-Remba-pending; this brief covers the remaining Horizon implementation.
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Dark Mode Token
+Alignment v1 is Remba-pending; this brief covers the remaining Horizon
+implementation.
 
 ## The one rule
 
@@ -55,8 +56,10 @@ extend the same pattern, never hardcode hex in components.
    pending Remba review for Work tabs/range targets, Notifications compact
    channel chips, Settings compact tabs/touch targets, and Document review
    source/action/bottom-nav safety.
-7. **Dark mode** — wire the dark token values from the design SoT doc through the
-   existing `data-theme="dark"` CSS variables; check against 62:696.
+7. **Dark mode token alignment v1** — shipped pending Remba review. The dark
+   Leasium Color values from Dashboard · Dark `62:696` are wired through the
+   existing `data-theme="dark"` CSS layer; next dark work should be visual
+   polish only if Remba finds frame-match gaps.
 
 ## Non-negotiable guardrails (from CLAUDE.md)
 

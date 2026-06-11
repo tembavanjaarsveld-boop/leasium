@@ -274,7 +274,7 @@ Blue Soft:           #182554
 Teal:                #42E3CF
 Teal Hover:          #84F0E3
 Teal Soft:           #0F3A37
-Teal Strong:         #84F0E3
+Teal Strong:         #42E3CF
 
 Navy 900:            #050814
 Navy 800:            #E6EAF3
@@ -307,6 +307,12 @@ Info Soft:           #102A43
 
 Dark-mode mapping notes:
 
+- Horizon Dark Mode Token Alignment v1 (2026-06-11) maps the approved
+  Dashboard · Dark frame (`62:696`) through the existing CSS layer.
+  `bg-primary`, `text-primary`, `text-primary-hover`, `border-primary`,
+  `bg-accent-soft`, `text-leasium-teal-strong`, `bg-leasium-navy-900`,
+  and the relevant white-alpha/hover utilities must stay token-driven in
+  dark mode.
 - `-strong` text tokens (`text-success-strong`, `text-warning-strong`,
   `text-danger-strong`) map to the base state colour in dark. The
   `-strong` shades are darkened for light soft fills; on the dark soft
@@ -563,6 +569,7 @@ Drop this into the global CSS file.
   --leasium-teal: #42E3CF;
   --leasium-teal-hover: #84F0E3;
   --leasium-teal-soft: #0F3A37;
+  --leasium-teal-strong: #42E3CF;
 
   --leasium-navy-900: #050814;
   --leasium-navy-800: #E6EAF3;

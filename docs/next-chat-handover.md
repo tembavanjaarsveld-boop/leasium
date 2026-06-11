@@ -2,6 +2,66 @@
 
 Last updated: 2026-06-11
 
+## Cowork continuation - 2026-06-11 (Horizon Dark Mode Token Alignment v1 - latest)
+
+Implemented the Horizon dark-mode token alignment slice against Figma source of
+truth `PO2jOANgmqgZHfqWZXOZGU`, Dashboard · Dark node `62:696`, plus the
+Leasium Color dark variable definitions returned by Figma. The design-facing
+work remains Remba-pending.
+
+Scope stayed mostly in the global theme layer: the existing
+`data-theme="dark"` CSS variables and utility remaps now align primary,
+accent-soft, teal-strong, sidebar, primary borders, white-alpha surfaces,
+hover-white, and primary-soft hover utilities to the Figma dark tokens. The
+visual QA sidecar found two dark-mode blockers, so the slice also includes
+small targeted route fixes: Settings inactive tabs use tokenized muted text,
+and Properties card media gets a dark-mode scrim so loaded images cannot become
+a bright slab on the dark canvas.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, or workflow mutation path changed.
+
+Files touched by the implementation slice:
+
+- `apps/web/src/app/globals.css` — dark token/utility remaps for Horizon
+  primary, accent, sidebar, white-alpha, and hover states.
+- `apps/web/src/app/settings/page.tsx` — inactive Settings tabs now use
+  tokenized muted text in dark mode.
+- `apps/web/src/components/property-workspace.tsx` — Properties card media has
+  a dark-mode scrim over loaded imagery.
+- `apps/web/tests/smoke/appearance.spec.ts` — Figma-token utility probes,
+  Settings tab contrast guard, Properties media guard, and existing
+  desktop/mobile dark route coverage.
+- `docs/product-roadmap.md`, `docs/design-governance.md`,
+  `docs/horizon-implementation-brief.md`,
+  `docs/leasium-codex-design-source-of-truth.md`, and this handover log record
+  the slice as Remba-pending.
+- `docs/superpowers/plans/2026-06-11-horizon-dark-mode-token-alignment.md`
+  records the implementation plan and verification status.
+
+Verification recorded in the implementation context:
+
+- Targeted ESLint passed for the changed app/test files.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- `git diff --check` passed for the dark-mode slice files.
+- Playwright appearance/settings/properties smoke sweep passed: 40 checks.
+- Production build passed.
+- In-app browser sanity covered `/settings` and `/properties` at 1280x900 and
+  390x844 in light and dark; headings rendered, themes applied, and horizontal
+  overflow stayed false.
+- Dark visual QA sidecar captured `/properties`, `/settings`, and `/` at
+  1280x900 and 390x844; Settings inactive tabs, Properties media scrim,
+  navigation visibility, and horizontal overflow passed. Screenshot folder:
+  `/tmp/leasium-dark-visual-qa-20260611-101742/`.
+
+One combined Playwright run on port 3116 hit a transient Next dev-server stale
+chunk/404 while loading `/settings`; the isolated dark route sweep passed, a
+fresh full 40-check rerun passed, and the diagnostic sidecar found no `/settings`
+route regression.
+
+Commit, push, and Vercel READY proof are the remaining closure steps for this
+slice.
+
 ## Cowork continuation - 2026-06-11 (Horizon Mobile Polish v1 - latest)
 
 Implemented Horizon Mobile Polish v1 against the approved 03 Screens mobile

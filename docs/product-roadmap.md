@@ -8,6 +8,19 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Dark Mode Token Alignment v1:** aligned the shipped
+  operator dark theme with the approved Figma Dashboard · Dark reference
+  (`PO2jOANgmqgZHfqWZXOZGU`, node `62:696`) by wiring the dark Leasium Color
+  tokens through the existing `data-theme="dark"` CSS layer. Primary,
+  accent-soft, teal-strong, sidebar, white-alpha, hover-white, and primary
+  border utilities now resolve to the dark token values instead of light static
+  utility colors. Visual QA blocker fixes keep Settings inactive tabs readable
+  and darken loaded Properties card media with a tokenized scrim. Added smoke
+  coverage that probes the real utility classes against the Figma dark values
+  and keeps the existing desktop/mobile dark route sweep. Frontend presentation
+  work only: no API shape, provider send, email/SMS, Xero/Basiq, payment,
+  reconciliation, Smart Intake apply, or workflow mutation path changed. Pending
+  Remba review.
 - [~] **2026-06-11 Horizon Mobile Polish v1:** shipped the first mobile polish
   pass against the approved 03 Screens mobile targets (`PO2jOANgmqgZHfqWZXOZGU`:
   Dashboard `45:371`, Work `45:461`, Properties `59:427`, Smart Intake

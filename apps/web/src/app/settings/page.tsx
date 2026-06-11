@@ -3381,7 +3381,7 @@ function SettingsWorkspace() {
               className={`flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 py-2 text-left transition-shadow duration-200 ease-leasium md:min-h-[54px] md:rounded-xl md:py-3 ${
                 activeTab === tab.id
                   ? "bg-primary text-white shadow-leasiumXs"
-                  : "text-leasium-slate-600 hover:bg-muted hover:text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
               onClick={() => setActiveTab(tab.id)}
               role="tab"
