@@ -44,12 +44,17 @@ Verification recorded so far:
   `/settings?tab=notifications` at the same width still rendered Work
   notifications while keeping the three-tab rail visible. Desktop 1280x900 kept
   all four tabs visible with no horizontal overflow.
+- Implementation commit `5ad3737` pushed to `main`; Vercel production
+  deployment `dpl_4dvqSXuPv1v1KjoYeAMXwGAnqV6V` reached **READY** and attached
+  `https://leasium.ai`, `https://www.leasium.ai`, and
+  `https://leasium.vercel.app`.
+- Live production HTTP checks returned 200 for `/settings`,
+  `/settings?tab=notifications`, `/intake`, and `/`.
 
 Design-facing status: pending Remba review, not `[x]` complete.
 
-Next likely scoped polish: commit/push and Vercel proof for this Settings
-follow-up; after that, continue through the next locked 03 Screens gap rather
-than 04 Concept.
+Next likely scoped polish: continue through the next locked 03 Screens gap
+rather than 04 Concept.
 
 ## Cowork continuation - 2026-06-11 (Horizon Smart Intake mobile landing)
 

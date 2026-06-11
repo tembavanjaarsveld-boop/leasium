@@ -95,8 +95,17 @@ Observed before commit:
 - In-app browser QA at 1280x900 confirmed desktop shows Organisation, Security,
   Notifications, and Connect with no horizontal overflow.
 
-- [ ] **Step 3: Commit, push, and Vercel**
+- [x] **Step 3: Commit, push, and Vercel**
 
 Stage only slice files, commit with the Gmail identity, push `main`, and
 confirm the production Vercel deployment is READY. Do not mark this complete
 without command/deploy evidence from the current implementation context.
+
+Observed after commit:
+- Implementation commit `5ad3737` pushed to `main`.
+- Vercel production deployment
+  `dpl_4dvqSXuPv1v1KjoYeAMXwGAnqV6V` reached **READY** with aliases attached to
+  `https://leasium.ai`, `https://www.leasium.ai`, and
+  `https://leasium.vercel.app`.
+- Live HTTP checks returned 200 for `/settings`,
+  `/settings?tab=notifications`, `/intake`, and `/`.
