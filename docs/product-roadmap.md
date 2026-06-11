@@ -8,6 +8,18 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Properties mobile compact board follow-up:**
+  tightened the default mobile `/properties` board against the approved
+  Properties mobile frame (`PO2jOANgmqgZHfqWZXOZGU`, node `59:427`). Mobile
+  board mode now opens with a compact portfolio subtitle, two first-viewport
+  stats (Rent roll and Renewals), and dense property rows with occupancy rails,
+  ownership context, and rent summary instead of the old image-heavy cards.
+  Desktop cards and direct mobile Map/Calendar URLs keep their existing
+  controls. Added a Notifications mobile guard proving Retry notice, Send SMS,
+  and Send digest actions keep touch-safe targets. Frontend-only presentation
+  and smoke coverage: no API shape, provider send, email/SMS, Xero/Basiq,
+  payment, reconciliation, Smart Intake apply, or workflow mutation path
+  changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Tenant portal mobile v1:** implemented the approved
   Figma Tenant portal mobile target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:1251`)
   inside the authenticated tenant portal full account view. Mobile tenants now

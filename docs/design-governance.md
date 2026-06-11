@@ -317,13 +317,18 @@ back-filled in Figma before code.
   review-first action bar above the fixed bottom nav. Follow-up Work mobile
   toast polish keeps the inline undo, obligation, and compliance status toasts
   above the fixed bottom nav with the same safe-area clearance pattern used by
-  the shell. No API shape, provider send, email/SMS, payment, reconciliation,
-  Xero/Basiq, Smart Intake apply, or workflow mutation path changed. Verified
-  with targeted ESLint, `tsc --noEmit`, mobile/Horizon Playwright smokes,
-  production build, and 390x844 light/dark browser QA before push; Vercel proof
-  is recorded in the shipping chat. Remba should review the mobile density,
-  first-viewport hierarchy, and bottom-nav clearance before this is marked
-  `[x]`.
+  the shell. Follow-up Properties mobile polish matches `59:427` more closely:
+  the default mobile board now uses compact property rows instead of image-heavy
+  cards, shows only the Rent roll and Renewals stat cards in the first mobile
+  viewport, and hides board-only controls while keeping direct Map/Calendar
+  mobile tabs visible. Notifications send/retry controls now have explicit
+  mobile smoke coverage for the 44px touch floor. No API shape, provider send,
+  email/SMS, payment, reconciliation, Xero/Basiq, Smart Intake apply, or
+  workflow mutation path changed. Verified with targeted ESLint, `tsc
+  --noEmit`, mobile/Horizon Playwright smokes, production build, and browser QA
+  before push; Vercel proof is recorded in the shipping chat. Remba should
+  review the mobile density, first-viewport hierarchy, compact Properties row
+  treatment, and bottom-nav clearance before this is marked `[x]`.
 - **Horizon Tenant portal mobile v1 (2026-06-11, Remba pending):** production
   implementation from the approved Figma Tenant portal·Mobile target
   (`61:1251`) inside the authenticated tenant portal full account view. Mobile

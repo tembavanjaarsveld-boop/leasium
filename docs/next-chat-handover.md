@@ -2,7 +2,54 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Work mobile toast clearance - latest)
+## Cowork continuation - 2026-06-11 (Horizon Properties mobile compact board - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Properties mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `59:427`; 04 Concept stayed out of scope.
+
+Scope stayed inside `/properties` presentation and smoke coverage, with one
+Notifications smoke guard from the same mobile touch-target audit. The default
+mobile Properties board now uses compact property rows with occupancy rails,
+suburb/state + ownership context, and rent summary instead of the old image
+cards. Mobile board mode also hides the board action/view-control row and shows
+only the Figma-visible Rent roll and Renewals stat cards; direct mobile
+`?view=map` and `?view=calendar` URLs keep the segmented view switcher visible.
+Desktop Properties cards remain the existing Horizon image-card grid.
+
+The Notifications mobile smoke now explicitly proves Retry notice, Send SMS,
+and Send digest controls keep the 44px touch floor.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, property create/edit, notification send/retry, or workflow
+mutation path changed.
+
+Verification recorded so far:
+
+- Figma source of truth pulled for Properties mobile `59:427`.
+- RED Properties mobile smoke failed before implementation because visible
+  mobile board cards still exposed the old image-card media.
+- Focused Properties mobile smokes passed **3/3**:
+  `tests/smoke/properties-ux.spec.ts --grep "mobile properties default uses cards instead of a panning table|mobile properties calendar view keeps filters and review actions touch safe|mobile properties map view keeps focus controls touch safe" --workers=1`.
+- Focused app-flow smokes passed **2/2**:
+  `tests/smoke/app-flows.spec.ts --grep "notifications mobile actions keep intended touch targets|Properties multi-view toggles between cards and table" --workers=1`.
+- Targeted ESLint passed for `apps/web/src/components/property-workspace.tsx`,
+  `apps/web/tests/smoke/properties-ux.spec.ts`, and
+  `apps/web/tests/smoke/app-flows.spec.ts`.
+- `./node_modules/.bin/tsc --noEmit --pretty false` passed.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3030/properties` passed at 390x844
+  and 1280x900 for heading visibility, no horizontal overflow, mobile
+  Map/Calendar tab preservation, desktop controls visibility, and no visible
+  mobile image-card media. A dark mobile pass also confirmed the heading,
+  mobile nav, no visible image-card media, and no horizontal overflow. The
+  local browser could not hydrate portfolio data outside the mocked smoke
+  harness (`Failed to fetch`), so seeded row fidelity remains covered by the
+  Playwright mocks above.
+
+Design-facing status: pending Remba review, not `[x]` complete.
+
+## Cowork continuation - 2026-06-11 (Horizon Work mobile toast clearance)
 
 Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
 Figma source of truth was the approved Work mobile frame

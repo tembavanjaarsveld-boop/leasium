@@ -70,11 +70,19 @@ test("mobile properties default uses cards instead of a panning table", async ({
 
   const mobileList = page.getByRole("list", { name: "Property cards" });
   await expect(mobileList).toBeVisible();
+  await expect(
+    page.locator('[data-testid="property-card-media"]:visible'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-testid="properties-occupancy-stat"]:visible'),
+  ).toHaveCount(0);
+  await expect(page.getByText("Rent roll", { exact: true })).toBeVisible();
+  await expect(page.getByText("Renewals · 90d")).toBeVisible();
 
   const card = mobileList
     .getByRole("listitem")
     .filter({ hasText: "Queen Street Retail Centre" });
-  await expect(card).toContainText("12 Queen Street, Brisbane City, QLD");
+  await expect(card).toContainText("Brisbane City QLD");
   await expect(card).toContainText("Queen Street Property Trust");
   await expect(card).toContainText("$8,000 / mo");
 

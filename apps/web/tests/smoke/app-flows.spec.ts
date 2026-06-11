@@ -847,6 +847,14 @@ test("notifications mobile actions keep intended touch targets", async ({
   await expectTouchTarget(
     page.getByRole("link", { exact: true, name: "Open Work" }),
   );
+  for (const actionName of ["Retry notice", "Send SMS", "Send digest"]) {
+    const controls = page.getByRole("button", { name: actionName });
+    const count = await controls.count();
+    expect(count).toBeGreaterThan(0);
+    for (let index = 0; index < count; index += 1) {
+      await expectTouchTarget(controls.nth(index));
+    }
+  }
 });
 
 test("dashboard Leasium AI panel answers with cited record", async ({

@@ -2777,6 +2777,19 @@ function Workspace({
                   ? "occupancy pending"
                   : `${portfolioOccupancyPercent}% occupied`
               } · ${formatMoney(portfolioMonthlyRentCents)} monthly rent roll`;
+  const portfolioMobileSummaryText =
+    (isAllEntities ? allPropertiesError : propertiesQuery.error) ||
+    propertiesLoading ||
+    ownerTagFilter ||
+    isAllEntities
+      ? portfolioSummaryText
+      : `${propertyRecords.length} ${
+          propertyRecords.length === 1 ? "property" : "properties"
+        } · ${
+          portfolioOccupancyPercent === null
+            ? "occupancy pending"
+            : `${portfolioOccupancyPercent}% occupied`
+        }`;
   const requestedPropertyNotFound =
     requestedPropertyMissingFromList &&
     isNotFoundError(requestedPropertyQuery.error);
@@ -4154,10 +4167,20 @@ function Workspace({
                 Properties
               </h1>
               <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
-                {portfolioSummaryText}
+                <span className="md:hidden">
+                  {propertyView === "board"
+                    ? portfolioMobileSummaryText
+                    : portfolioSummaryText}
+                </span>
+                <span className="hidden md:inline">{portfolioSummaryText}</span>
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div
+              className={cn(
+                "flex flex-wrap items-center justify-end gap-2",
+                propertyView === "board" && "hidden md:flex",
+              )}
+            >
               {propertyViewSwitcher}
               <Button
                 type="button"
@@ -6031,8 +6054,11 @@ function Workspace({
               ) : null}
 
               {propertyView === "board" && portfolioRentRollReady ? (
-                <div className="grid gap-3 md:grid-cols-3">
-                  <section className="flex items-center gap-3 rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                  <section
+                    data-testid="properties-occupancy-stat"
+                    className="hidden items-center gap-3 rounded-[18px] border border-border bg-white p-[18px] shadow-leasiumCard md:flex"
+                  >
                     <div
                       aria-hidden="true"
                       className="grid h-12 w-12 shrink-0 place-items-center rounded-full"
@@ -6066,7 +6092,7 @@ function Workspace({
                     <div className="mt-2 text-[22px] font-bold leading-7 tracking-tight text-foreground">
                       {formatMoney(portfolioMonthlyRentCents)} / mo
                     </div>
-                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                    <div className="mt-1 hidden text-[11px] leading-4 text-muted-foreground md:block">
                       Active lease charges only.
                     </div>
                   </section>
@@ -6084,7 +6110,7 @@ function Workspace({
                       {renewalsWithin90Days}{" "}
                       {renewalsWithin90Days === 1 ? "lease" : "leases"}
                     </div>
-                    <div className="mt-1 text-[11px] font-semibold leading-4 text-primary">
+                    <div className="mt-1 hidden text-[11px] font-semibold leading-4 text-primary md:block">
                       {renewalsWithin90Days
                         ? "Review windows are ready."
                         : "No renewal action inside 90 days."}
@@ -8583,9 +8609,75 @@ function PropertyCardsView({
 
   return (
     <div className="grid gap-3">
+      <ul aria-label="Property cards" className="grid gap-3 md:hidden">
+        {properties.map((property) => {
+          const occupancy = occupancyByPropertyId.get(property.id);
+          const ownerBadge =
+            propertyOwnershipBadges(
+              property,
+              selectedEntityName,
+              ownershipPaletteByLabel,
+            )[0] ?? null;
+          const isSelected = property.id === selectedPropertyId;
+          const monthlyRent = monthlyRentByPropertyId.get(property.id) ?? null;
+          const entityLabel = entityNameById?.get(property.entity_id);
+          const locationLabel = [property.suburb, property.state]
+            .filter(Boolean)
+            .join(" ");
+          const secondaryLabel = [locationLabel, ownerBadge?.label ?? entityLabel]
+            .filter(Boolean)
+            .join(" · ");
+          const rentOrTypeLabel = rentDataAvailable
+            ? monthlyRent
+              ? `${formatMoney(monthlyRent)} / mo`
+              : "-"
+            : propertyTypeLabel(property.property_type);
+          const railClassName =
+            occupancy?.status === "partial"
+              ? "bg-danger"
+              : occupancy?.status === "vacant"
+                ? "bg-warning"
+                : "";
+
+          return (
+            <li key={property.id} className="min-w-0">
+              <button
+                type="button"
+                aria-label={`Open property ${property.name}`}
+                onClick={() => onSelect(property.id)}
+                className={cn(
+                  "flex min-h-[86px] w-full min-w-0 overflow-hidden rounded-[14px] border bg-white text-left shadow-leasiumCard transition duration-200 ease-leasium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                  isSelected ? "border-primary" : "border-border",
+                )}
+              >
+                {railClassName ? (
+                  <span
+                    aria-hidden="true"
+                    className={cn("w-1 shrink-0", railClassName)}
+                  />
+                ) : null}
+                <span className="grid min-w-0 flex-1 gap-1 px-[14px] py-3">
+                  <span className="truncate text-[14px] font-semibold leading-5 text-foreground">
+                    {property.name}
+                  </span>
+                  <span className="truncate text-[11px] leading-4 text-muted-foreground">
+                    {secondaryLabel || propertyTypeLabel(property.property_type)}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-3 pt-1">
+                    <span className="min-w-0 flex-1" aria-hidden="true" />
+                    <span className="shrink-0 text-[13px] font-semibold leading-5 text-foreground">
+                      {rentOrTypeLabel}
+                    </span>
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
       <ul
         aria-label="Property cards"
-        className="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3"
+        className="hidden items-stretch gap-3 md:grid md:grid-cols-2 xl:grid-cols-3"
       >
         {properties.map((property) => {
           const image = propertyPrimaryImage(property);
