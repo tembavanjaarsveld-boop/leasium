@@ -160,6 +160,17 @@ a design-facing slice.
   navigation links, and provider/write guardrails are unchanged. Remba should
   review whether the focus counter (`1/N`), compact next-up chips, and lower
   dashboard density match the approved Figma intent before this is marked `[x]`.
+- **Horizon Dashboard hero/bento polish v2 (2026-06-11, Remba pending):**
+  follow-up implementation against the same approved Dashboard frame (`45:2`).
+  The dashboard first screen now matches the Figma hierarchy more closely:
+  hero first, a live four-card bento strip (Occupancy, Arrears, Work queue,
+  Billing), a lower Lease horizon / Onboarding / Smart Intake row, then the
+  centered trust ribbon. The duplicate legacy Dashboard-only stack was removed
+  from the first screen; `/intake`, document review/apply/upload behavior,
+  existing route handoffs, and provider/write guardrails are unchanged. Remba
+  should review live data density, all-entities single-entity notes, the
+  truncated Lease horizon titles, and whether the lower dedicated panels should
+  remain visible below the first Horizon frame before this is marked `[x]`.
 - **Horizon Work desktop v1 (2026-06-10, Remba pending):** first production
   implementation from the approved Figma Work target (`45:168`) on `/operations`,
   scoped to the queue landing area. The page now

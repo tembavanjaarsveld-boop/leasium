@@ -2,6 +2,59 @@
 
 Last updated: 2026-06-11
 
+## Cowork continuation - 2026-06-11 (Horizon Dashboard hero/bento polish v2 - latest)
+
+Implemented the Dashboard hero/bento polish follow-up against the approved
+Figma source of truth `PO2jOANgmqgZHfqWZXOZGU`, Dashboard node `45:2`. The
+design-facing work remains Remba-pending.
+
+Scope stayed in normal Dashboard mode (`/`) and its smoke coverage. The
+Dashboard first screen now follows the locked Figma hierarchy: Today's focus
+hero, four live bento cards (Occupancy, Arrears, Work queue, Billing), the
+lower Lease horizon / Onboarding / Smart Intake row, and the centered
+review-first trust ribbon. The previous duplicate Dashboard-only first-screen
+stack (Smart Intake / Onboarding / Needs attention / Events / Billing updates)
+was removed from `/`, while `/intake` and the dedicated lower Dashboard panels
+for lease events, compliance, Ask Leasium, and recent activity remain intact.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, upload, or review mutation path changed. Cards and CTAs are
+navigation-only handoffs into existing explicit operator workflows.
+
+Files touched by the implementation slice:
+
+- `apps/web/src/components/dashboard/DashboardCommandCenter.tsx` — removes the
+  trust ribbon from inside the hero so the page-level first screen can place it
+  like Figma.
+- `apps/web/src/components/dashboard.tsx` — adds the Horizon bento components
+  and live first-screen composition for Dashboard mode only.
+- `apps/web/tests/smoke/dashboard-command-center.spec.ts` — updates loading
+  expectations and adds a no-provider-write Horizon bento regression.
+- `docs/product-roadmap.md`, `docs/design-governance.md`,
+  `docs/horizon-implementation-brief.md`, this handover, and
+  `docs/superpowers/plans/2026-06-11-horizon-dashboard-hero-bento-polish-v2.md`
+  record the slice as Remba-pending.
+
+Verification recorded so far:
+
+- Targeted ESLint passed for the changed app/test files.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Dashboard command-center smoke passed **11/11**. One earlier retry saw the
+  Next dev server drop after the first test (`ERR_EMPTY_RESPONSE` /
+  connection refused), but the new bento smoke passed in isolation and the full
+  Dashboard file passed on a fresh server.
+- Dashboard app-flow happy path passed **1/1**.
+- Appearance + mobile bottom-nav smoke batch passed **18/18**.
+- `git diff --check` passed.
+- Production build passed.
+- In-app browser QA at `http://127.0.0.1:3030/` passed at 1280x900 and
+  390x844: Today's focus, the four bento cards, lower Horizon row, and trust
+  ribbon were present, with no horizontal overflow. The local API was not
+  running, so the browser check used the rendered shell/empty-data state; live
+  data behavior is covered by mocked Playwright smokes.
+
+Remaining before ship: commit, push, and Vercel READY proof.
+
 ## Cowork continuation - 2026-06-11 (All Entities Fresh Default v1 - latest)
 
 Implemented the all-entities fresh-default follow-up. Fresh multi-entity

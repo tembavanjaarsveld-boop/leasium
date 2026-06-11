@@ -43,17 +43,67 @@ test("dashboard command center prepares work without raw loading counters", asyn
     /Loading live portfolio|Loading recent activity\.|Loading upcoming events\./,
   );
 
-  const metricStrip = page
+  const bentoStrip = page.getByTestId("dashboard-horizon-bento");
+  await expect(bentoStrip).toContainText("Occupancy");
+  await expect(bentoStrip).toContainText("Arrears");
+  await expect(bentoStrip).toContainText("Work queue");
+  await expect(bentoStrip).toContainText("Billing");
+  await expect(bentoStrip).toContainText("Checking");
+  await expect(bentoStrip.getByText("...", { exact: true })).toHaveCount(0);
+  await expect(bentoStrip).not.toContainText("Loading…");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("dashboard renders Horizon bento frame without provider writes", async ({
+  page,
+}) => {
+  const forbiddenRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(
+      request.method(),
+    );
+    const apiPath = url.pathname.startsWith("/api/v1/");
+    const providerPath = /xero|sendgrid|twilio|payment|reconciliation/i.test(
+      url.pathname,
+    );
+    if ((apiPath && unsafeMethod) || providerPath) {
+      forbiddenRequests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "Today's focus" }),
+  ).toBeVisible();
+  const bentoStrip = page.getByTestId("dashboard-horizon-bento");
+  await expect(bentoStrip.getByText("Occupancy")).toBeVisible();
+  await expect(bentoStrip.getByText("2 of 5")).toBeVisible();
+  await expect(bentoStrip.getByText("Arrears")).toBeVisible();
+  await expect(bentoStrip.getByText("Work queue")).toBeVisible();
+  await expect(bentoStrip.getByText("Insurance certificate renewal")).toBeVisible();
+  await expect(bentoStrip.getByText("Billing")).toBeVisible();
+  await expect(bentoStrip.getByText(/\d+ blockers/)).toBeVisible();
+
+  const leaseHorizon = page
     .locator("section")
     .filter({
-      has: page.getByText("Operations", { exact: true }),
+      has: page.getByRole("heading", {
+        name: "Lease horizon - next 120 days",
+      }),
     })
     .first();
-  await expect(metricStrip).toContainText("Checking");
-  await expect(metricStrip).toContainText("Preparing");
-  await expect(metricStrip.getByText("...", { exact: true })).toHaveCount(0);
-  await expect(metricStrip).not.toContainText("Loading…");
-  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await expect(leaseHorizon).toContainText("Bright Cafe Pty Ltd rent review");
+  await expect(page.getByText("Nothing is applied until you approve it.")).toBeVisible();
+  await expectTouchTarget(page.getByRole("link", { name: "Manage links" }));
+  await expectTouchTarget(page.getByRole("link", { name: "Open Smart Intake" }));
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("entity bootstrap stays warm across operator navigation", async ({
@@ -463,9 +513,9 @@ test("dashboard overview clears first-paint loading before detailed fan-out sett
     await expect(commandCenter).not.toContainText("Preparing today's focus.");
     const billingCard = page
       .locator("a")
-      .filter({ has: page.getByText("Billing blockers", { exact: true }) })
+      .filter({ has: page.getByText("Billing", { exact: true }) })
       .first();
-    await expect(billingCard).toContainText(/Billing blockers\s*5\s*Blocked/);
+    await expect(billingCard).toContainText(/Billing\s*5 blockers/);
   } finally {
     releaseDetailed?.();
     await page.unrouteAll({ behavior: "ignoreErrors" });

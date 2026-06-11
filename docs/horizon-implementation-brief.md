@@ -1,7 +1,7 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Dark Mode Token
-Alignment v1 is Remba-pending; this brief covers the remaining Horizon
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Dashboard hero/bento
+polish v2 is Remba-pending; this brief covers the remaining Horizon
 implementation.
 
 ## The one rule
@@ -16,7 +16,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 
 | Surface | Node ID | Notes |
 |---|---|---|
-| Dashboard | 45:2 | v1 shipped; hero/bento polish remains |
+| Dashboard | 45:2 | v2 hero/bento polish shipped; Remba review remains |
 | Work | 45:168 | triage lanes, severity rails, right rail |
 | Properties | 55:2 | card grid, stat strip, view switcher |
 | Smart Intake | 55:166 | hero dropzone, queue rails, provenance |
@@ -60,6 +60,10 @@ extend the same pattern, never hardcode hex in components.
    Leasium Color values from Dashboard · Dark `62:696` are wired through the
    existing `data-theme="dark"` CSS layer; next dark work should be visual
    polish only if Remba finds frame-match gaps.
+8. **Dashboard hero/bento polish v2** — shipped pending Remba review. The
+   Dashboard `45:2` first screen now uses the approved hero, four live bento
+   cards, lower Lease horizon / Onboarding / Smart Intake row, and centered
+   trust ribbon.
 
 ## Non-negotiable guardrails (from CLAUDE.md)
 

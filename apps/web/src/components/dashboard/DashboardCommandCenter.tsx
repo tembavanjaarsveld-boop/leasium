@@ -4,7 +4,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
-  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import type { KeyboardEvent, ReactNode } from "react";
@@ -105,7 +104,7 @@ export function DashboardCommandCenter({
     <section
       className="overflow-hidden rounded-[20px] border border-primary/15 bg-gradient-to-r from-leasium-hero-wash-from to-leasium-hero-wash-to shadow-[0_1px_3px_rgba(16,24,40,0.04)]"
       aria-label="Today's focus"
-      aria-describedby="dashboard-focus-counts dashboard-focus-guardrail"
+      aria-describedby="dashboard-focus-counts"
     >
       <p id="dashboard-focus-counts" className="sr-only">
         Today&apos;s focus is ranked from {totalCount} open items across Smart
@@ -204,15 +203,6 @@ export function DashboardCommandCenter({
         </div>
       </div>
 
-      <div className="flex items-center justify-center border-t border-white/50 px-4 py-3">
-        <div
-          id="dashboard-focus-guardrail"
-          className="inline-flex items-center gap-2 rounded-full bg-[var(--leasium-teal-soft)] px-4 py-2 text-xs font-semibold text-[var(--leasium-teal-strong)]"
-        >
-          <ShieldCheck size={14} aria-hidden="true" />
-          <span>Nothing is applied until you approve it.</span>
-        </div>
-      </div>
     </section>
   );
 }

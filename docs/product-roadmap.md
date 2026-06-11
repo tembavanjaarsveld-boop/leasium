@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Dashboard hero/bento polish v2:** tightened `/`
+  against the approved Figma Dashboard target (`PO2jOANgmqgZHfqWZXOZGU`, node
+  `45:2`). The hero now hands off to a Figma-shaped first screen: four live
+  bento cards for Occupancy, Arrears, Work queue, and Billing; a lower Lease
+  horizon / Onboarding / Smart Intake row; and the centered review-first trust
+  ribbon. The duplicate legacy first-screen stack was removed from Dashboard
+  mode while keeping `/intake`, Smart Intake review/apply/upload paths,
+  dedicated lease/compliance/activity panels, and all existing links guarded.
+  Frontend-only presentation work plus smoke coverage: no API shape, provider
+  send, email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
+  workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-11 All entities fresh default v1:** fresh multi-entity
   operator sessions now land on the cross-entity `All entities` view by
   default across the workspaces that already support portfolio-wide fan-out:

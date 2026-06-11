@@ -15,10 +15,10 @@ import {
   FileText,
   FileUp,
   Layers3,
-  Link2,
   Loader2,
   ReceiptText,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
   UserRound,
   X,
@@ -36,11 +36,6 @@ import {
   type CommandCenterItem,
   DashboardCommandCenter,
 } from "@/components/dashboard/DashboardCommandCenter";
-import {
-  computeOpenObligationTrend,
-  DashboardMetricCard,
-  type DashboardMetricTrend,
-} from "@/components/dashboard/DashboardMetricCard";
 import { UpcomingLeaseEventsPanel } from "@/components/dashboard/UpcomingLeaseEventsPanel";
 import { RegisterImportPanel } from "@/app/intake/register-import-panel";
 import { csvCell } from "@/lib/csv";
@@ -3057,6 +3052,207 @@ function DocumentIntakeReviewPanel({
   );
 }
 
+type HorizonDashboardEvent = {
+  id: string;
+  title: string;
+  detail: string;
+  date: string | null;
+  href: string;
+  tone: StatusTone;
+};
+
+function eventToneFromDueDate(date: string | null): StatusTone {
+  const days = dueRank(date);
+  if (days < 0) {
+    return "danger";
+  }
+  if (days <= 14) {
+    return "warning";
+  }
+  return "primary";
+}
+
+function compactEntityDetail(parts: Array<string | null | undefined>) {
+  return parts.filter(Boolean).join(" · ");
+}
+
+function dashboardCardLabelId(label: string) {
+  return `dashboard-bento-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function DashboardBentoCard({
+  label,
+  icon,
+  href,
+  children,
+  dashed = false,
+  className = "",
+}: {
+  label: string;
+  icon: ReactNode;
+  href?: string;
+  children: ReactNode;
+  dashed?: boolean;
+  className?: string;
+}) {
+  const labelId = dashboardCardLabelId(label);
+  const cardClass = [
+    "group flex min-h-[128px] flex-col overflow-hidden rounded-[18px] border bg-white p-[18px] shadow-[0_1px_3px_rgba(16,24,40,0.04)] transition duration-200 ease-leasium",
+    dashed
+      ? "border-dashed border-primary/70 hover:border-primary"
+      : "border-leasium-card-border hover:border-primary/40 hover:shadow-leasiumMd",
+    className,
+  ].join(" ");
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <span
+          id={labelId}
+          className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+        >
+          {label}
+        </span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg text-leasium-slate-400 transition group-hover:bg-primary-soft group-hover:text-primary">
+          {icon}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-1 flex-col">{children}</div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} aria-labelledby={labelId} className={cardClass}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <section aria-labelledby={labelId} className={cardClass}>
+      {content}
+    </section>
+  );
+}
+
+function DashboardOccupancyRing({ percent }: { percent: number }) {
+  return (
+    <div
+      className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full"
+      aria-label={`${percent}% occupied`}
+      style={{
+        background: `conic-gradient(var(--leasium-teal) ${percent}%, var(--leasium-slate-150) 0)`,
+      }}
+    >
+      <div className="grid h-[40px] w-[40px] place-items-center rounded-full bg-white text-[11px] font-bold text-foreground">
+        {percent}%
+      </div>
+    </div>
+  );
+}
+
+function DashboardSegmentBar({
+  segments,
+}: {
+  segments: Array<{ label: string; value: number; className: string }>;
+}) {
+  const hasSignal = segments.some((segment) => segment.value > 0);
+  return (
+    <div className="flex h-2 w-full max-w-[220px] gap-[3px] overflow-hidden rounded-full">
+      {hasSignal ? (
+        segments.map((segment) =>
+          segment.value > 0 ? (
+            <span
+              key={segment.label}
+              aria-label={`${segment.label}: ${segment.value}`}
+              className={`h-full rounded-full ${segment.className}`}
+              style={{ flexGrow: segment.value, flexBasis: 0 }}
+            />
+          ) : null,
+        )
+      ) : (
+        <span
+          aria-hidden="true"
+          className="h-full rounded-full bg-leasium-slate-150"
+          style={{ flexGrow: 1, flexBasis: 0 }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DashboardLeaseHorizon({
+  events,
+  loading,
+}: {
+  events: HorizonDashboardEvent[];
+  loading: boolean;
+}) {
+  return (
+    <section
+      aria-labelledby="dashboard-lease-horizon"
+      className="min-h-[116px] rounded-[18px] border border-leasium-card-border bg-white p-[18px] shadow-[0_1px_3px_rgba(16,24,40,0.04)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          id="dashboard-lease-horizon"
+          className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-muted-foreground"
+        >
+          Lease horizon - next 120 days
+        </h2>
+        <CalendarClock size={14} className="text-leasium-slate-400" />
+      </div>
+      {loading ? (
+        <div className="mt-4 rounded-md border border-border bg-muted/25 px-3 py-2 text-sm text-muted-foreground">
+          Preparing lease horizon.
+        </div>
+      ) : events.length ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {events.slice(0, 4).map((event) => (
+            <Link
+              key={event.id}
+              href={event.href}
+              className="grid min-w-0 gap-1 border-t border-border pt-2 text-xs transition hover:text-primary"
+            >
+              <span
+                className={[
+                  "h-2 w-2 rounded-full",
+                  event.tone === "danger"
+                    ? "bg-danger"
+                    : event.tone === "warning"
+                      ? "bg-warning"
+                      : "bg-primary",
+                ].join(" ")}
+              />
+              <span className="truncate font-medium text-foreground">
+                {event.title}
+              </span>
+              <span className="truncate text-[11px] leading-4 text-muted-foreground">
+                {event.detail || dueLabel(event.date)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-md border border-border bg-muted/25 px-3 py-2 text-sm text-muted-foreground">
+          No lease events in the next 120 days.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DashboardTrustRibbon() {
+  return (
+    <div className="flex items-center justify-center">
+      <div className="inline-flex items-center gap-2 rounded-full bg-[var(--leasium-teal-soft)] px-4 py-2 text-xs font-semibold text-[var(--leasium-teal-strong)]">
+        <ShieldCheck size={14} aria-hidden="true" />
+        <span>Nothing is applied until you approve it.</span>
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard({
   mode = "dashboard",
 }: {
@@ -3589,17 +3785,6 @@ export function Dashboard({
           : (rentRollQuery.data ?? []),
     [allMode, demoMode, demoRentRows, rentRollFanOut.data, rentRollQuery.data],
   );
-  const obligationsTrend = useMemo<DashboardMetricTrend | null>(
-    () =>
-      // Trend is a single-entity computed series; in all-mode it is not safely
-      // additive, so it is suppressed (the card simply shows no trend chip).
-      computeOpenObligationTrend({
-        records:
-          demoMode || allMode ? null : (obligationsQuery.data ?? null),
-      }),
-    [allMode, demoMode, obligationsQuery.data],
-  );
-
   const displayOnboardings = useMemo(
     () =>
       demoMode
@@ -3991,18 +4176,6 @@ export function Dashboard({
       rentRollLoading ||
       onboardingLoading ||
       obligationsLoading);
-  const operationsMetricLoading = obligationsLoading && !dashboardOverview;
-  const operationsMetricCount =
-    demoMode || allMode || obligationsQuery.data
-      ? urgentObligations.length
-      : overviewOperationsCount;
-  const operationsMetricChip = operationsMetricCount ? "Act now" : "Clear";
-  const operationsMetricTone = operationsMetricCount ? "warning" : "success";
-  const operationsMetricNextAction =
-    urgentObligations[0]?.title ??
-    (operationsMetricCount
-      ? "Review overdue and due-soon lease work."
-      : "No urgent dates need action.");
   const billingMetricLoading = rentRollLoading && !dashboardOverview;
   const billingMetricCount =
     demoMode || allMode || rentRollQuery.data
@@ -4013,15 +4186,6 @@ export function Dashboard({
     (billingMetricCount
       ? "Review blocked billing rows."
       : "Invoice run is ready from current data.");
-  const reviewMetricLoading = documentIntakesLoading && !dashboardOverview;
-  const reviewMetricCount =
-    demoMode || allMode || documentIntakesQuery.data
-      ? needsReviewCount
-      : overviewDocumentNeedsReviewCount;
-  const failedIntakeMetricCount =
-    demoMode || allMode || documentIntakesQuery.data
-      ? failedIntakeCount
-      : overviewDocumentFailedCount;
   const recentlyAppliedIntakes = documentIntakes
     .filter((item) => item.status === "applied")
     .sort((a, b) =>
@@ -4209,6 +4373,7 @@ export function Dashboard({
       meta: item.category.replaceAll("_", " "),
       date: item.due_date,
       tone: obligationTone(item),
+      href: "/properties",
     })),
     ...activeOnboardings.slice(0, 3).map((item) => ({
       id: item.id,
@@ -4216,8 +4381,126 @@ export function Dashboard({
       meta: item.status,
       date: item.due_date,
       tone: "primary" as StatusTone,
+      href: "/tenants",
     })),
   ].sort((a, b) => dueRank(a.date) - dueRank(b.date));
+
+  const rentRollDetailsReady =
+    demoMode || allMode || Boolean(rentRollQuery.data);
+  const dashboardUnitCount = rentRollDetailsReady
+    ? displayRentRoll.length
+    : (dashboardOverview?.rent_roll.unit_count ?? 0);
+  const dashboardOccupiedUnitCount = rentRollDetailsReady
+    ? displayRentRoll.filter((row) => Boolean(row.lease_id)).length
+    : (dashboardOverview?.rent_roll.occupied_unit_count ?? 0);
+  const occupancyPercent = dashboardUnitCount
+    ? Math.round((dashboardOccupiedUnitCount / dashboardUnitCount) * 100)
+    : 0;
+  const arrearsSnapshot =
+    !allMode && !isIntakeWorkspace
+      ? insightsOverviewQuery.data?.arrears_snapshot
+      : null;
+  const arrearsLoading =
+    !allMode &&
+    !isIntakeWorkspace &&
+    insightsOverviewQuery.isLoading &&
+    !insightsOverviewQuery.data;
+  const arrearsHeadline = allMode
+    ? "Single entity"
+    : arrearsLoading
+      ? "Checking"
+      : arrearsSnapshot
+        ? formatMoney(arrearsSnapshot.total_balance_cents)
+        : formatMoney(0);
+  const arrearsDetail = allMode
+    ? "Select one entity for ageing detail."
+    : arrearsLoading
+      ? "Preparing arrears signal."
+      : arrearsSnapshot && arrearsSnapshot.open_count > 0
+        ? `${countLabel(arrearsSnapshot.open_count, "tenancy", "tenancies")} · ${arrearsSnapshot.oldest_age_days} days · ${
+            arrearsSnapshot.promise_to_pay_count > 0 ? "promise logged" : "review"
+          }`
+        : "No active arrears right now.";
+  const workQueueOpenCount = openObligations.length;
+  const workQueueOverdueCount = openObligations.filter(
+    (item) => dueRank(item.due_date) < 0,
+  ).length;
+  const workQueueScheduledCount = openObligations.filter(
+    (item) => dueRank(item.due_date) >= 0,
+  ).length;
+  const workQueueUndatedCount = displayObligations.filter(
+    (item) => !item.due_date,
+  ).length;
+  const workQueueDetail =
+    obligationsLoading && !openObligations.length
+      ? "Preparing work queue."
+      : `${workQueueOverdueCount} overdue · ${workQueueScheduledCount} scheduled${
+          workQueueUndatedCount ? ` · ${workQueueUndatedCount} undated` : ""
+        }`;
+  const workQueueNextAction =
+    urgentObligations[0]?.title ??
+    (workQueueOpenCount
+      ? "Review open lease and compliance work."
+      : "No urgent work needs action.");
+  const billingReady = !billingMetricLoading && billingMetricCount === 0;
+  const billingHeadline = billingMetricLoading
+    ? "Checking"
+    : billingReady
+      ? "Invoice run ready"
+      : `${billingMetricCount} ${billingMetricCount === 1 ? "blocker" : "blockers"}`;
+  const billingDetail = billingMetricLoading
+    ? "Checking billing readiness."
+    : billingReady
+      ? "No blockers from current data."
+      : billingMetricNextAction;
+  const overviewLeaseEvents = !allMode
+    ? (insightsOverviewQuery.data?.lease_event_snapshot.next_events ?? [])
+    : [];
+  const dashboardOverviewEvents = dashboardOverview?.upcoming_lease_events ?? [];
+  const dashboardHorizonEvents: HorizonDashboardEvent[] = overviewLeaseEvents
+    .slice(0, 4)
+    .map((event) => ({
+      id: event.id,
+      title: event.title,
+      detail: dueLabel(event.date),
+      date: event.date,
+      href: event.href || "/properties",
+      tone: eventToneFromDueDate(event.date),
+    }));
+  if (dashboardHorizonEvents.length === 0) {
+    dashboardHorizonEvents.push(
+      ...dashboardOverviewEvents.slice(0, 4).map((event) => ({
+        id: event.id,
+        title: event.title,
+        detail: compactEntityDetail([
+          event.property_name,
+          event.unit_label,
+          dueLabel(event.date),
+        ]),
+        date: event.date,
+        href: "/properties",
+        tone: eventToneFromDueDate(event.date),
+      })),
+    );
+  }
+  if (dashboardHorizonEvents.length === 0) {
+    dashboardHorizonEvents.push(
+      ...upcomingEvents.slice(0, 4).map((event) => ({
+        id: event.id,
+        title: event.title,
+        detail: compactEntityDetail([event.meta, dueLabel(event.date)]),
+        date: event.date,
+        href: event.href,
+        tone: eventToneFromDueDate(event.date),
+      })),
+    );
+  }
+  const leaseHorizonLoading =
+    !allMode &&
+    !isIntakeWorkspace &&
+    insightsOverviewQuery.isLoading &&
+    !insightsOverviewQuery.data &&
+    !dashboardOverview;
 
   // Brand-new account (no entities/properties yet): show a friendly onboarding
   // welcome instead of firing entity-scoped queries and surfacing a red error.
@@ -4400,121 +4683,185 @@ export function Dashboard({
           />
         ) : null}
 
-        {/* Metric grid trimmed 2026-05-23 (external design review §3.1):
-            6 → 4 operational cards. Properties + Tenants counts are not
-            "act now" metrics — they're navigational, and the sidebar
-            already links to both. The four operational cards (Operations,
-            Billing blockers, Needs review, Blocked docs) all answer
-            "what needs me right now?" which is what the metric strip is for.
-            The intake workspace now carries those counts inside the Horizon
-            review queue instead of a separate metric strip.
-            Pending Remba review. */}
         {!isIntakeWorkspace ? (
-        <section className="grid gap-[14px] sm:grid-cols-2 lg:grid-cols-4">
-          {!isIntakeWorkspace ? (
-            <>
-              <DashboardMetricCard
+          <>
+            <section
+              data-testid="dashboard-horizon-bento"
+              className="grid gap-[14px] sm:grid-cols-2 lg:grid-cols-4"
+            >
+              <DashboardBentoCard
+                href="/properties"
+                label="Occupancy"
+                icon={<Building2 size={14} />}
+              >
+                <div className="flex items-center gap-4">
+                  <DashboardOccupancyRing percent={occupancyPercent} />
+                  <div className="min-w-0">
+                    <div className="text-2xl font-bold tracking-normal text-foreground">
+                      {rentRollLoading && !dashboardUnitCount
+                        ? "Checking"
+                        : `${dashboardOccupiedUnitCount} of ${dashboardUnitCount}`}
+                    </div>
+                    <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                      units occupied
+                    </p>
+                  </div>
+                </div>
+              </DashboardBentoCard>
+
+              <DashboardBentoCard
+                href="/operations?tab=arrears"
+                label="Arrears"
+                icon={<ReceiptText size={14} />}
+              >
+                <div className="text-2xl font-bold tracking-normal text-foreground">
+                  {arrearsHeadline}
+                </div>
+                <svg
+                  className="mt-2 h-7 w-28"
+                  viewBox="0 0 112 28"
+                  role="presentation"
+                  aria-hidden="true"
+                >
+                  <polyline
+                    fill="none"
+                    points="2,19 18,17 31,19 44,12 58,14 72,8 88,10 108,6"
+                    stroke="var(--leasium-warning)"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+                <p className="mt-auto pt-2 text-[11px] leading-4 text-warning-strong">
+                  {arrearsDetail}
+                </p>
+              </DashboardBentoCard>
+
+              <DashboardBentoCard
                 href="/operations"
-                label="Operations"
-                count={
-                  operationsMetricLoading ? "Checking" : operationsMetricCount
-                }
-                chip={
-                  operationsMetricLoading ? "Checking" : operationsMetricChip
-                }
-                tone={
-                  operationsMetricLoading ? "neutral" : operationsMetricTone
-                }
-                nextAction={
-                  operationsMetricLoading
-                    ? "Checking key dates."
-                    : operationsMetricNextAction
-                }
-                icon={<AlertTriangle size={17} />}
-                trend={obligationsTrend}
-              />
-              <DashboardMetricCard
-                href="/billing-readiness"
-                label="Billing blockers"
-                count={billingMetricLoading ? "Checking" : billingMetricCount}
-                chip={
-                  billingMetricLoading
+                label="Work queue"
+                icon={<ClipboardList size={14} />}
+              >
+                <div className="text-2xl font-bold tracking-normal text-foreground">
+                  {obligationsLoading && !workQueueOpenCount
                     ? "Checking"
-                    : billingMetricCount
-                      ? "Blocked"
-                      : "Ready"
-                }
-                tone={
-                  billingMetricLoading
-                    ? "neutral"
-                    : billingMetricCount
-                      ? "danger"
-                      : "success"
-                }
-                nextAction={
-                  billingMetricLoading
-                    ? "Checking billing readiness."
-                    : billingMetricNextAction
-                }
-                icon={<ReceiptText size={17} />}
+                    : `${workQueueOpenCount} open`}
+                </div>
+                <div className="mt-3">
+                  <DashboardSegmentBar
+                    segments={[
+                      {
+                        label: "Overdue",
+                        value: workQueueOverdueCount,
+                        className: "bg-danger",
+                      },
+                      {
+                        label: "Scheduled",
+                        value: workQueueScheduledCount,
+                        className: "bg-info",
+                      },
+                      {
+                        label: "Undated",
+                        value: workQueueUndatedCount,
+                        className: "bg-leasium-slate-150",
+                      },
+                    ]}
+                  />
+                </div>
+                <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                  {workQueueDetail}
+                </p>
+                <p className="mt-auto line-clamp-1 pt-2 text-[11px] font-medium leading-4 text-foreground">
+                  {workQueueNextAction}
+                </p>
+              </DashboardBentoCard>
+
+              <DashboardBentoCard
+                href="/billing-readiness"
+                label="Billing"
+                icon={<CheckCircle2 size={14} />}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-leasium-teal-strong">
+                    <CheckCircle2 size={17} />
+                  </span>
+                  <div className="min-w-0 text-[15px] font-semibold leading-5 text-foreground">
+                    {billingHeadline}
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                  {billingDetail}
+                </p>
+                <span className="mt-auto pt-2 text-xs font-semibold text-primary">
+                  Review &amp; approve →
+                </span>
+              </DashboardBentoCard>
+            </section>
+
+            <section className="grid gap-[14px] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <DashboardLeaseHorizon
+                events={dashboardHorizonEvents}
+                loading={leaseHorizonLoading}
               />
-            </>
-          ) : null}
-          <DashboardMetricCard
-            href="/intake"
-            label="Needs review"
-            count={reviewMetricLoading ? "Preparing" : reviewMetricCount}
-            chip={
-              reviewMetricLoading
-                ? "Preparing"
-                : reviewMetricCount
-                  ? "Review"
-                  : "Clear"
-            }
-            tone={
-              reviewMetricLoading
-                ? "neutral"
-                : reviewMetricCount
-                  ? "primary"
-                  : "neutral"
-            }
-            nextAction={
-              reviewMetricLoading
-                ? "Preparing review queue."
-                : reviewMetricCount
-                  ? "Approve extracted document data."
-                  : "Drop documents into Smart Intake."
-            }
-            icon={<Sparkles size={17} />}
-          />
-          <DashboardMetricCard
-            href="/intake"
-            label="Blocked docs"
-            count={reviewMetricLoading ? "Checking" : failedIntakeMetricCount}
-            chip={
-              reviewMetricLoading
-                ? "Checking"
-                : failedIntakeMetricCount
-                  ? "Fix"
-                  : "Clear"
-            }
-            tone={
-              reviewMetricLoading
-                ? "neutral"
-                : failedIntakeMetricCount
-                  ? "danger"
-                  : "success"
-            }
-            nextAction={
-              reviewMetricLoading
-                ? "Checking document reads."
-                : failedIntakeMetricCount
-                  ? "Review documents Leasium could not read."
-                  : "No intake failures right now."
-            }
-            icon={<FileText size={17} />}
-          />
-        </section>
+
+              <DashboardBentoCard
+                label="Onboarding"
+                icon={<UserRound size={14} />}
+              >
+                <div className="text-base font-bold tracking-normal text-foreground">
+                  {onboardingLoading
+                    ? "Checking"
+                    : `${activeOnboardings.length} waiting · ${submittedOnboardings.length} in`}
+                </div>
+                <div className="mt-3">
+                  <DashboardSegmentBar
+                    segments={[
+                      {
+                        label: "Waiting",
+                        value: activeOnboardings.length,
+                        className: "bg-primary-soft",
+                      },
+                      {
+                        label: "Submitted",
+                        value: submittedOnboardings.length,
+                        className: "bg-primary",
+                      },
+                    ]}
+                  />
+                </div>
+                <Link
+                  href="/properties"
+                  className="mt-auto inline-flex min-h-11 items-center text-xs font-semibold text-primary transition hover:text-primary-hover"
+                >
+                  Manage links →
+                </Link>
+              </DashboardBentoCard>
+
+              <DashboardBentoCard
+                label="Smart Intake"
+                icon={<FileUp size={14} />}
+                dashed
+              >
+                <div className="flex items-center gap-2">
+                  <FileUp size={18} className="text-primary" />
+                  <div className="text-sm font-semibold text-foreground">
+                    Drop a document
+                  </div>
+                </div>
+                <p className="mt-2 max-w-[220px] text-[11px] leading-4 text-muted-foreground">
+                  Lease, invoice, contract - reviewed before anything changes.
+                </p>
+                <Link
+                  href="/intake"
+                  className="mt-auto inline-flex min-h-11 items-center text-xs font-semibold text-primary transition hover:text-primary-hover"
+                >
+                  Open Smart Intake
+                </Link>
+              </DashboardBentoCard>
+            </section>
+
+            <DashboardTrustRibbon />
+          </>
         ) : null}
 
         {isIntakeWorkspace ? (
@@ -4924,186 +5271,6 @@ export function Dashboard({
                 />
               </section>
             ) : null}
-          </section>
-        ) : null}
-
-        {!isIntakeWorkspace ? (
-          <section className="grid gap-[18px] lg:grid-cols-[minmax(320px,430px)_minmax(0,1fr)]">
-            <div className="grid gap-5">
-              <SectionPanel
-                title="Smart Intake"
-                description="Drop documents and review extractions."
-                icon={<Sparkles size={17} className="text-primary" />}
-                actions={
-                  <StatusBadge tone={reviewMetricCount ? "primary" : "neutral"}>
-                    {reviewMetricLoading
-                      ? "Preparing"
-                      : `${reviewMetricCount} waiting`}
-                  </StatusBadge>
-                }
-              >
-                <div className="grid gap-3 p-4">
-                  <Link
-                    href="/intake"
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
-                  >
-                    <Sparkles size={15} />
-                    Open Smart Intake
-                  </Link>
-                </div>
-              </SectionPanel>
-
-              <SectionPanel title="Onboarding">
-                <div className="grid gap-3 p-4 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">
-                      Waiting on tenants
-                    </span>
-                    <span className="font-semibold">
-                      {onboardingLoading
-                        ? "Checking"
-                        : activeOnboardings.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Submitted</span>
-                    <span className="font-semibold">
-                      {onboardingLoading
-                        ? "Updating"
-                        : submittedOnboardings.length}
-                    </span>
-                  </div>
-                  <Link
-                    href="/properties"
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
-                  >
-                    <Link2 size={15} />
-                    Manage links
-                  </Link>
-                </div>
-              </SectionPanel>
-            </div>
-
-            <div className="grid gap-5">
-              <SectionPanel
-                title="Needs attention"
-                icon={<ClipboardList size={17} className="text-primary" />}
-              >
-                <div className="divide-y divide-border">
-                  {obligationsLoading ? (
-                    <SkeletonRows rows={4} />
-                  ) : (
-                    urgentObligations.slice(0, 6).map((item) => (
-                      <Link
-                        href="/properties"
-                        key={item.id}
-                        className="grid gap-2 px-4 py-3.5 transition hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
-                      >
-                        <div className="min-w-0">
-                          <div className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
-                            {item.title}
-                          </div>
-                          <div className="mt-1 text-xs capitalize leading-4 text-muted-foreground">
-                            {item.category.replaceAll("_", " ")}
-                          </div>
-                        </div>
-                        <StatusBadge tone={obligationTone(item)}>
-                          {dueLabel(item.due_date)}
-                        </StatusBadge>
-                      </Link>
-                    ))
-                  )}
-                  {!obligationsLoading && urgentObligations.length === 0 ? (
-                    <EmptyState
-                      icon={<CheckCircle2 size={18} />}
-                      title="No urgent dates right now."
-                    />
-                  ) : null}
-                </div>
-              </SectionPanel>
-
-              <section className="grid gap-5 xl:grid-cols-2">
-                <SectionPanel
-                  title="Events"
-                  icon={<CalendarClock size={17} className="text-primary" />}
-                >
-                  <div className="divide-y divide-border">
-                    {upcomingEvents.slice(0, 8).map((event) => (
-                      <Link
-                        href="/properties"
-                        key={event.id}
-                        className="block px-4 py-3.5 text-sm transition hover:bg-muted/50"
-                      >
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                          <span className="line-clamp-2 text-leasium-body-compact font-medium leading-5 text-foreground">
-                            {event.title}
-                          </span>
-                          {event.date ? (
-                            <StatusBadge tone={event.tone}>
-                              {dueLabel(event.date)}
-                            </StatusBadge>
-                          ) : null}
-                        </div>
-                        <div className="mt-1 text-xs capitalize leading-4 text-muted-foreground">
-                          {event.meta}
-                        </div>
-                      </Link>
-                    ))}
-                    {obligationsLoading ? (
-                      <SkeletonRows rows={3} />
-                    ) : upcomingEvents.length === 0 ? (
-                      <EmptyState
-                        icon={<Clock3 size={18} />}
-                        title="No upcoming events for this entity."
-                      />
-                    ) : null}
-                  </div>
-                </SectionPanel>
-
-                <SectionPanel
-                  title="Billing updates"
-                  icon={<ReceiptText size={17} className="text-primary" />}
-                >
-                  <div className="divide-y divide-border">
-                    {billingIssues
-                      .slice(0, 6)
-                      .map(({ row, blockers: rowBlockers }) => (
-                        <Link
-                          href="/properties"
-                          key={`${row.property_id}-${row.tenancy_unit_id}`}
-                          className="block px-4 py-3.5 text-sm transition hover:bg-muted/50"
-                        >
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-leasium-body-compact font-semibold leading-5 text-foreground">
-                                {row.unit_label}
-                              </div>
-                              <div className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
-                                {row.property_name} -{" "}
-                                {row.tenant_name ?? "Vacant"}
-                              </div>
-                            </div>
-                            <span className="pt-0.5 text-xs font-semibold tabular-nums text-foreground">
-                              {formatMoney(row.charge_rules_total_cents)}
-                            </span>
-                          </div>
-                          <div className="mt-2 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs leading-4 text-muted-foreground">
-                            {rowBlockers[0]}
-                          </div>
-                        </Link>
-                      ))}
-                    {rentRollLoading ? (
-                      <SkeletonRows rows={3} />
-                    ) : billingIssues.length === 0 ? (
-                      <EmptyState
-                        icon={<CheckCircle2 size={18} />}
-                        title="No billing readiness blockers."
-                      />
-                    ) : null}
-                  </div>
-                </SectionPanel>
-              </section>
-            </div>
           </section>
         ) : null}
 
