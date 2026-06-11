@@ -79,6 +79,8 @@ Add final local build, browser, and smoke evidence. Commit, push, and deployment
 
 Run targeted ESLint, `tsc --noEmit`, Dashboard/app-flow/mobile/appearance smokes, production build, `git diff --check`, and browser QA at 1280x900 and 390x844.
 
-- [ ] **Step 2: Commit and push**
+- [x] **Step 2: Commit and push**
 
 Stage only the Dashboard v2 slice files and docs, commit with the Gmail identity, push `main`, and confirm Vercel deployment is READY.
+
+Committed as `55bdb06b26944b79b2cba28d64f4ebcb4e66de66`, pushed to `main`, and confirmed Vercel production deployment `dpl_JCsAezFVoKc17PVEzkQQcsiqVkGx` reached READY. `https://leasium.ai/` returned `HTTP/2 200`.

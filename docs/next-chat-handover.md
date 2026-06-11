@@ -53,9 +53,12 @@ Verification recorded so far:
   running, so the browser check used the rendered shell/empty-data state; live
   data behavior is covered by mocked Playwright smokes.
 
-Remaining before ship: commit, push, and Vercel READY proof.
+Shipped on `main` as `55bdb06b26944b79b2cba28d64f4ebcb4e66de66`
+(`Polish Horizon dashboard bento`) and pushed to GitHub. Vercel production
+deployment `dpl_JCsAezFVoKc17PVEzkQQcsiqVkGx` reached READY for that commit,
+and `https://leasium.ai/` returned `HTTP/2 200`.
 
-## Cowork continuation - 2026-06-11 (All Entities Fresh Default v1 - latest)
+## Cowork continuation - 2026-06-11 (All Entities Fresh Default v1)
 
 Implemented the all-entities fresh-default follow-up. Fresh multi-entity
 operator sessions now land on the cross-entity `All entities` view across the
