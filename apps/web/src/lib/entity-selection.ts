@@ -21,3 +21,15 @@ export function scopeEntityId(entityId: string | null | undefined): string {
   if (!entityId || entityId === ALL_ENTITIES_VALUE) return "";
   return entityId;
 }
+
+// Default selection when nothing valid is stored: multi-entity orgs land on
+// the cross-entity "All entities" view. Single-entity orgs land directly on
+// their one entity instead — all-mode gates single-entity write actions, so
+// the sentinel would only add friction when there is nothing to merge.
+export function defaultEntitySelection(
+  entities: ReadonlyArray<{ id: string }>,
+): string {
+  if (!entities.length) return "";
+  if (entities.length === 1) return entities[0].id;
+  return ALL_ENTITIES_VALUE;
+}
