@@ -1,7 +1,7 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-10. Owner: Temba. Status: Dashboard v1 shipped (`94966f2`);
-this brief covers the remaining Horizon implementation.
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Mobile Polish v1 is
+Remba-pending; this brief covers the remaining Horizon implementation.
 
 ## The one rule
 
@@ -26,7 +26,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | People | (on 03) | tenant/vendor cards |
 | Money | (on 03) | billing readiness + approve-run |
 | Insights | (on 03) | value flow, compliance, what-changed |
-| Mobile set | 45:371, 45:461 + companions | 390×844, bottom nav + FAB |
+| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, bottom nav + FAB |
 | Dashboard · Dark | 62:696 | dark-mode reference |
 
 Components (02 Components): Horizon Sidebar 44:117, Command bar 44:155, Hero focus
@@ -51,8 +51,10 @@ extend the same pattern, never hardcode hex in components.
 4. **Smart Intake** (55:166) then **Document review** (58:352) — the review-first
    centrepiece; reuse Input/Modal primitives.
 5. **Notifications** (55:307) + **Settings** (55:439).
-6. **Mobile polish pass** against the mobile frames (the responsive layouts mostly
-   follow from desktop work + shell).
+6. **Mobile polish pass v1** against the 03 Screens mobile frames — shipped
+   pending Remba review for Work tabs/range targets, Notifications compact
+   channel chips, Settings compact tabs/touch targets, and Document review
+   source/action/bottom-nav safety.
 7. **Dark mode** — wire the dark token values from the design SoT doc through the
    existing `data-theme="dark"` CSS variables; check against 62:696.
 

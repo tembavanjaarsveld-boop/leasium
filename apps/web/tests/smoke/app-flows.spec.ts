@@ -54,6 +54,15 @@ async function expectTouchTarget(locator: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
 async function selectAllEntitiesFromWorkspaceSwitcher(page: Page) {
   const switcher = page
     .getByRole("complementary", { name: "Primary navigation" })
@@ -595,6 +604,74 @@ test("smart intake Horizon document review keeps source preview beside extracted
   expect(forbiddenRequests).toEqual([]);
 });
 
+test("mobile Smart Intake document review keeps touch guardrails above bottom nav without provider writes", async ({
+  page,
+}) => {
+  const forbiddenLoadRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(
+      request.method(),
+    );
+    const documentReviewWrite =
+      unsafeMethod &&
+      /\/document-intakes\/[^/]+\/(apply|review|accept-lease-match)$/.test(
+        path,
+      );
+    const providerOrPaymentWrite =
+      unsafeMethod &&
+      (/\/(sendgrid|twilio|basiq)\b/i.test(path) ||
+        path.includes("/provider-dispatch") ||
+        path.includes("/provider-refresh") ||
+        path.includes("/provider-history") ||
+        path.includes("/xero/") ||
+        path.includes("/payments/") ||
+        path.includes("/reconciliation"));
+    if (documentReviewWrite || providerOrPaymentWrite) {
+      forbiddenLoadRequests.push(`${request.method()} ${url.toString()}`);
+    }
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-1");
+
+  await expect(
+    page.getByTestId("horizon-document-review").getByRole("heading", {
+      name: "bright-cafe-lease.pdf",
+    }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  const fieldsPanel = page.getByTestId("document-review-fields");
+  await expect(fieldsPanel).toBeVisible();
+  const fieldActionButtons = fieldsPanel.getByRole("button", {
+    name: /^(approve|edit|ignore)$/i,
+  });
+  await expect(fieldActionButtons.first()).toBeVisible();
+  const fieldActionButtonCount = await fieldActionButtons.count();
+  expect(fieldActionButtonCount).toBeGreaterThan(0);
+  for (let index = 0; index < fieldActionButtonCount; index += 1) {
+    const button = fieldActionButtons.nth(index);
+    await button.scrollIntoViewIfNeeded();
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  const stickyActions = page.getByTestId("document-review-sticky-actions");
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await stickyActions.scrollIntoViewIfNeeded();
+  await expect(stickyActions).toBeVisible();
+  await expect(mobileNav).toBeVisible();
+  const stickyBox = await stickyActions.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(stickyBox).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(stickyBox!.y + stickyBox!.height).toBeLessThanOrEqual(navBox!.y);
+  expect(forbiddenLoadRequests).toEqual([]);
+});
+
 test("billing readiness mobile actions keep 44px touch targets", async ({
   page,
 }) => {
@@ -714,7 +791,7 @@ test("notifications mobile actions keep intended touch targets", async ({
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
   const workNoticeCenter = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Work notice center" }),
+    has: page.getByRole("heading", { name: /NEEDS YOU/i }),
   });
   for (const filterName of [
     /^All 2$/,
@@ -733,7 +810,7 @@ test("notifications mobile actions keep intended touch targets", async ({
     );
   }
   const digestHistory = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Digest history" }),
+    has: page.getByRole("heading", { name: "RECEIPTS — QUIET" }),
   });
   for (const filterName of [
     /^All 1$/,

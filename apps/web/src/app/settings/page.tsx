@@ -3370,7 +3370,7 @@ function SettingsWorkspace() {
 
         <div
           aria-label="Settings sections"
-          className="grid gap-2 rounded-2xl border border-leasium-card-border bg-white p-1.5 shadow-leasiumCard md:grid-cols-4"
+          className="no-scrollbar flex gap-1 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumCard md:grid md:grid-cols-4 md:gap-2 md:rounded-2xl"
           role="tablist"
         >
           {settingsTabs.map((tab) => (
@@ -3378,7 +3378,7 @@ function SettingsWorkspace() {
               key={tab.id}
               aria-label={tab.label}
               aria-selected={activeTab === tab.id}
-              className={`flex min-h-[54px] items-center gap-2 rounded-xl px-4 py-3 text-left transition-shadow duration-200 ease-leasium ${
+              className={`flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 py-2 text-left transition-shadow duration-200 ease-leasium md:min-h-[54px] md:rounded-xl md:py-3 ${
                 activeTab === tab.id
                   ? "bg-primary text-white shadow-leasiumXs"
                   : "text-leasium-slate-600 hover:bg-muted hover:text-foreground"
@@ -3387,13 +3387,13 @@ function SettingsWorkspace() {
               role="tab"
               type="button"
             >
-              <span className="shrink-0">{tab.icon}</span>
+              <span className="hidden shrink-0 md:inline-flex">{tab.icon}</span>
               <span className="min-w-0">
                 <span className="block text-sm font-semibold">
                   {tab.label}
                 </span>
                 <span
-                  className={`block text-xs font-medium ${
+                  className={`hidden text-xs font-medium md:block ${
                     activeTab === tab.id
                       ? "text-white/85"
                       : "text-muted-foreground"
@@ -3586,7 +3586,7 @@ function SettingsWorkspace() {
                       </div>
 
                       <div className="grid gap-2">
-                        <label className="flex min-h-8 items-center justify-between gap-3">
+                        <label className="flex min-h-11 items-center justify-between gap-3">
                           <span className="flex items-center gap-2 font-medium text-foreground">
                             <input
                               aria-label={`${member.display_name} assignment email notifications`}
@@ -3614,7 +3614,7 @@ function SettingsWorkspace() {
                           </StatusBadge>
                         </label>
 
-                        <label className="flex min-h-8 items-center justify-between gap-3">
+                        <label className="flex min-h-11 items-center justify-between gap-3">
                           <span className="flex items-center gap-2 font-medium text-foreground">
                             <input
                               aria-label={`${member.display_name} assignment SMS notifications`}

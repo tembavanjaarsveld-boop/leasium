@@ -4021,7 +4021,7 @@ function OperationsWorkspace() {
                     aria-pressed={active}
                     onClick={() => setWorkRange(range.id)}
                     className={cn(
-                      "min-h-9 rounded-full px-3 text-sm font-semibold transition duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                      "min-h-11 rounded-full px-3 text-sm font-semibold transition duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
                       active
                         ? "bg-primary text-primary-foreground shadow-leasiumXs"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -4108,7 +4108,7 @@ function OperationsWorkspace() {
         {selectedEntityId ? (
           <>
             <div
-              className="grid gap-2 rounded-[12px] border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid-cols-4"
+              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-4 md:gap-2 md:rounded-[12px]"
               role="tablist"
               aria-label="Operations sections"
             >
@@ -4122,17 +4122,17 @@ function OperationsWorkspace() {
                     aria-selected={isActive}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "grid min-h-14 gap-1 rounded-[10px] px-3 py-2 text-left transition duration-200 ease-leasium",
+                      "grid min-h-11 shrink-0 gap-1 rounded-full px-4 py-2 text-left transition duration-200 ease-leasium md:min-h-14 md:rounded-[10px] md:px-3",
                       isActive
-                        ? "bg-primary-soft text-primary-hover shadow-leasiumXs"
+                        ? "bg-primary text-white shadow-leasiumXs md:bg-primary-soft md:text-primary-hover"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
                     <span className="text-sm font-semibold">{tab.label}</span>
                     <span
                       className={cn(
-                        "text-xs",
-                        isActive && "text-primary-hover",
+                        "hidden text-xs md:block",
+                        isActive && "md:text-primary-hover",
                       )}
                     >
                       {tab.description}

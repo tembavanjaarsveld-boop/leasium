@@ -826,7 +826,7 @@ function HorizonChannelCards({
     return null;
   }
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="flex flex-wrap gap-2 md:grid md:grid-cols-3 md:gap-3">
       {channels.map((channel) => {
         const ready = channel.configured && channel.readiness !== "blocked";
         const setupNeeded = channel.action_available && !channel.configured;
@@ -838,9 +838,9 @@ function HorizonChannelCards({
         return (
           <article
             key={channel.channel}
-            className="rounded-2xl border border-leasium-card-border bg-white px-4 py-4 shadow-leasiumCard"
+            className="inline-flex min-h-10 items-center rounded-full border border-leasium-card-border bg-white px-3 py-1.5 text-xs shadow-leasiumXs md:block md:min-h-0 md:rounded-2xl md:px-4 md:py-4 md:text-sm md:shadow-leasiumCard"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between gap-2 md:items-start md:gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 font-semibold text-foreground">
                   {channel.channel === "sms" ? (
@@ -852,10 +852,10 @@ function HorizonChannelCards({
                   )}
                   <span>{channel.label}</span>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                <p className="mt-2 hidden text-xs leading-5 text-muted-foreground md:block">
                   {channel.detail}
                 </p>
-                <p className="mt-1 text-leasium-micro font-semibold uppercase text-muted-foreground">
+                <p className="mt-1 hidden text-leasium-micro font-semibold uppercase text-muted-foreground md:block">
                   {channel.label}{" "}
                   {channelReadinessLabel(channel.readiness).toLowerCase()}
                 </p>

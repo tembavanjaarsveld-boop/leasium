@@ -40,9 +40,11 @@ the core design. It has been promoted into the canonical pages:
   44:155, Hero focus card 44:179, Bento metric card 44:193, Work card 44:238, Trust
   ribbon 44:274, Segmented control 44:282, Bottom nav mobile 44:301.
 - **03 Screens** now shows the approved Horizon target design for ALL core
-  screens: Dashboard 45:2, Work 45:168, Dashboard·Mobile 45:371, Work·Mobile
-  45:461, and (approved + promoted 2026-06-10) Properties 55:2, Smart Intake
-  55:166, Notifications 55:307, Settings 55:439. All desktop screens share the
+  screens: Dashboard 45:2, Work 45:168, Properties 55:2, Smart Intake 55:166,
+  Notifications 55:307, Settings 55:439, and the mobile companion set
+  Dashboard·Mobile 45:371, Work·Mobile 45:461, Properties·Mobile 59:427,
+  Smart Intake·Mobile 59:521, Notifications·Mobile 59:594, Settings·Mobile
+  59:677, and Tenant portal·Mobile 61:1251. All desktop screens share the
   Horizon shell (sidebar with entity switcher + user card).
 - **04 Concept — Horizon** is kept as the design archive with the rationale card.
   The Horizon extension frames (Properties, Smart Intake, Notifications,
@@ -54,8 +56,9 @@ the core design. It has been promoted into the canonical pages:
 - **Detail screens** on 03: Document review 58:352 (source preview + extracted
   fields + approve/edit + apply bar) and Property detail 58:627 (header, tabs,
   bento, lease + activity).
-- **Mobile companions**: Properties·Mobile, Smart Intake·Mobile (with camera
-  capture), Notifications·Mobile, Settings·Mobile.
+- **Mobile companions**: Properties·Mobile 59:427, Smart Intake·Mobile 59:521
+  (with camera capture), Notifications·Mobile 59:594, Settings·Mobile 59:677,
+  and Tenant portal·Mobile 61:1251.
 - **New surfaces** on 03: People (tenant/vendor cards), Money (billing readiness
   + approve-run flow), Insights (value flow, compliance ring, what-changed
   narrative), and Tenant portal·Mobile (balance/pay card, requests, documents).
@@ -245,6 +248,23 @@ a design-facing slice.
   notification lanes, retained evidence disclosures, settings card priority,
   and supporting ownership/appearance panels match the approved Horizon density
   before this is marked `[x]`.
+- **Horizon Mobile Polish v1 (2026-06-11, Remba pending):** production mobile
+  polish pass against the approved 03 Screens mobile set: Dashboard·Mobile
+  `45:371`, Work·Mobile `45:461`, Properties·Mobile `59:427`,
+  Smart Intake·Mobile `59:521`, Notifications·Mobile `59:594`,
+  Settings·Mobile `59:677`, and Tenant portal·Mobile `61:1251`. Scope stayed
+  mobile-only: Work range controls and section tabs are touch-safe segmented
+  controls; Notifications uses compact channel chips so the Needs You queue
+  remains visible earlier in the first mobile viewport; Settings uses compact
+  tabs with touch-safe targets; and Document review shortens the source preview
+  on phones, keeps extracted-field actions touch-safe, and lifts the sticky
+  review-first action bar above the fixed bottom nav. No API shape, provider
+  send, email/SMS, payment, reconciliation, Xero/Basiq, Smart Intake apply, or
+  workflow mutation path changed. Verified with targeted ESLint, `tsc --noEmit`,
+  mobile/Horizon Playwright smokes, production build, and 390x844 light/dark
+  browser QA before push; Vercel proof is recorded in the shipping chat. Remba
+  should review the mobile density, first-viewport hierarchy, and bottom-nav
+  clearance before this is marked `[x]`.
 - **Horizon shell polish v1 (2026-06-10, Remba pending):** Temba review of the
   shipped shell removed the extra visible chrome that diverged from the approved
   Horizon sidebar. The entity switcher keeps `All entities` as a native dropdown

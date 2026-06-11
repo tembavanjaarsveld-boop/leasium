@@ -2,6 +2,68 @@
 
 Last updated: 2026-06-11
 
+## Cowork continuation - 2026-06-11 (Horizon Mobile Polish v1 - latest)
+
+Implemented Horizon Mobile Polish v1 against the approved 03 Screens mobile
+frames in Figma source of truth `PO2jOANgmqgZHfqWZXOZGU`: Dashboard `45:371`,
+Work `45:461`, Properties `59:427`, Smart Intake `59:521`, Notifications
+`59:594`, Settings `59:677`, and Tenant portal mobile `61:1251`. The
+design-facing work remains Remba-pending. 04 Concept remains out of scope;
+production source stays 01 Foundations / 02 Components / 03 Screens.
+
+Recorded shipped scope: Work mobile range controls and section tabs are
+touch-safe segmented controls; Notifications uses compact channel chips so the
+Needs You queue stays visible earlier in the first mobile viewport; Settings
+uses compact tabs with touch-safe targets; Document review shortens the mobile
+source preview, keeps approve/edit/ignore field actions touch-safe, and lifts
+the sticky review-first action bar above the fixed bottom nav.
+
+Existing explicit review/apply/send/retry/update/provider actions remain behind
+their current operator-controlled paths. No API shape, provider send, email/SMS,
+Xero/Basiq, payment, reconciliation, Smart Intake apply, or workflow mutation
+path changed.
+
+Files touched by the implementation slice:
+
+- `apps/web/src/app/operations/page.tsx` — mobile Work range controls and
+  tablist density/touch target polish.
+- `apps/web/src/app/notifications/page.tsx` — compact mobile channel chips so
+  Needs You content appears earlier.
+- `apps/web/src/app/settings/page.tsx` — compact mobile settings tabs and
+  touch-safe operator notification controls.
+- `apps/web/src/components/dashboard.tsx` — Document review mobile source
+  height, approve/edit/ignore touch targets, and bottom-nav-safe action bar.
+- `apps/web/tests/smoke/mobile-bottom-nav.spec.ts` and
+  `apps/web/tests/smoke/app-flows.spec.ts` — mobile route and Document review
+  guardrail coverage.
+- `docs/product-roadmap.md` — records Horizon Mobile Polish v1 as `[~]` and
+  Remba-pending.
+- `docs/design-governance.md` — records the mobile frame IDs, Remba-pending
+  review scope, and mobile density follow-up.
+- `docs/horizon-implementation-brief.md` — updates the mobile target-frame set
+  and slice-order status.
+- `docs/superpowers/plans/2026-06-11-horizon-mobile-polish.md` — records the
+  implementation and verification status.
+- `docs/next-chat-handover.md` — this handover entry.
+
+Verification:
+
+- Targeted ESLint passed for the changed app/test files.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Mobile/Horizon Playwright smoke sweep passed: 21 checks.
+- Production build passed.
+- Sidecar 390x844 light/dark mobile QA covered `/operations`,
+  `/notifications`, `/settings`, and focused Document review; no commit blockers
+  were found. Work/Notifications/Settings still allow normal content scrolling
+  beneath the fixed bottom nav until the user scrolls lower, but controls can
+  clear the nav and Document review actions are nav-safe.
+
+Known follow-ups:
+
+- Remba should review Work tab density/range sizing, Notifications first-viewport
+  Needs You visibility, Settings tab density, and Document review bottom-nav
+  clearance before this is marked complete.
+
 ## Cowork continuation - 2026-06-11 (Horizon Notifications + Settings v1 - latest)
 
 Implemented the approved Horizon Notifications and Settings slice from Figma

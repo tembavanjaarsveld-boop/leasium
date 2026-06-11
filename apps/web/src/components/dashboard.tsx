@@ -2258,12 +2258,12 @@ function DocumentIntakeReviewPanel({
       data-testid="horizon-document-review"
       className="border-primary/10 bg-white"
     >
-      <div className="grid gap-5 p-4 sm:p-5">
+      <div className="grid min-w-0 grid-cols-1 gap-5 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <Link
               href="/intake"
-              className="inline-flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm font-semibold text-primary transition hover:text-primary-hover"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-sm font-semibold text-primary transition hover:text-primary-hover"
             >
               <ArrowLeft size={15} />
               Smart Intake
@@ -2305,10 +2305,10 @@ function DocumentIntakeReviewPanel({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
           <div
             data-testid="document-review-source-preview"
-            className="grid gap-4 rounded-2xl border border-border bg-muted/20 p-4"
+            className="grid min-w-0 max-w-full gap-4 rounded-2xl border border-border bg-muted/20 p-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -2322,7 +2322,7 @@ function DocumentIntakeReviewPanel({
                 </StatusBadge>
               )}
             </div>
-            <div className="relative min-h-[360px] overflow-hidden rounded-xl border border-border bg-white p-5 shadow-leasiumXs">
+            <div className="relative min-h-[260px] overflow-hidden rounded-xl border border-border bg-white p-5 shadow-leasiumXs sm:min-h-[360px]">
               <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 <FileText size={15} />
                 {intake.filename}
@@ -2359,7 +2359,7 @@ function DocumentIntakeReviewPanel({
 
           <div
             data-testid="document-review-fields"
-            className="grid gap-3 rounded-2xl border border-border bg-white p-4 shadow-leasiumXs"
+            className="grid min-w-0 max-w-full gap-3 rounded-2xl border border-border bg-white p-4 shadow-leasiumXs"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -2379,7 +2379,7 @@ function DocumentIntakeReviewPanel({
                 </StatusBadge>
               </div>
             </div>
-            <div className="grid max-h-[620px] gap-2 overflow-y-auto pr-1">
+            <div className="grid min-w-0 max-h-[620px] gap-2 overflow-y-auto pr-1">
               {reviewRows.map((row) => {
                 const isSelected = selectedSourceRow?.id === row.id;
                 const ignored = row.action === "ignore";
@@ -2435,7 +2435,7 @@ function DocumentIntakeReviewPanel({
                           ) : null}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-1 rounded-xl border border-border bg-white p-1">
+                      <div className="grid w-full grid-cols-3 gap-1 rounded-xl border border-border bg-white p-1 sm:flex sm:w-auto sm:flex-wrap">
                         {(
                           ["approve", "edit", "ignore"] as ReviewItemAction[]
                         ).map((nextAction) => (
@@ -2456,7 +2456,7 @@ function DocumentIntakeReviewPanel({
                             }}
                             disabled={!included[row.groupKey]}
                             className={[
-                              "min-h-8 rounded-lg px-2 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50",
+                              "min-h-11 min-w-0 rounded-lg px-2 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-3",
                               row.action === nextAction
                                 ? nextAction === "ignore"
                                   ? "bg-danger-soft text-danger"
@@ -3002,7 +3002,10 @@ function DocumentIntakeReviewPanel({
           </div>
         ) : null}
 
-        <div className="sticky bottom-0 z-10 flex flex-col items-stretch justify-between gap-3 rounded-2xl border border-border bg-white/95 p-3 shadow-leasiumCard backdrop-blur sm:flex-row sm:items-center">
+        <div
+          data-testid="document-review-sticky-actions"
+          className="z-10 mb-[calc(92px+env(safe-area-inset-bottom))] scroll-mb-[calc(112px+env(safe-area-inset-bottom))] flex flex-col items-stretch justify-between gap-3 rounded-2xl border border-border bg-white/95 p-3 shadow-leasiumCard backdrop-blur sm:sticky sm:bottom-0 sm:mb-0 sm:flex-row sm:items-center"
+        >
           <div className="text-sm">
             <div className="font-semibold text-foreground">
               Nothing is applied until you approve.

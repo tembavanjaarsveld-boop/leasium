@@ -8,6 +8,21 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Mobile Polish v1:** shipped the first mobile polish
+  pass against the approved 03 Screens mobile targets (`PO2jOANgmqgZHfqWZXOZGU`:
+  Dashboard `45:371`, Work `45:461`, Properties `59:427`, Smart Intake
+  `59:521`, Notifications `59:594`, Settings `59:677`, Tenant portal mobile
+  `61:1251`). Scope stayed to mobile density and touch safety: Work mobile now
+  has touch-safe range controls and segmented tabs, Notifications uses compact
+  channel chips so Needs You stays visible earlier, Settings uses compact tabs
+  and touch-safe tab controls, and Document review shortens the mobile source
+  preview, keeps approve/edit/ignore controls touch-safe, and lifts sticky
+  review actions above the bottom nav. Frontend-only presentation work over
+  existing routes: no API shape, provider send, email/SMS, Xero/Basiq, payment,
+  reconciliation, Smart Intake apply, or workflow mutation path changed.
+  Verified with targeted ESLint, `tsc --noEmit`, mobile/Horizon Playwright
+  smokes, production build, and 390x844 light/dark browser QA. Pending Remba
+  review.
 - [~] **2026-06-11 Horizon Notifications + Settings v1:** implemented the
   approved Figma Notifications and Settings targets (`PO2jOANgmqgZHfqWZXOZGU`,
   nodes `55:307` and `55:439`) on `/notifications` and `/settings`.

@@ -9,6 +9,15 @@ async function expectMobileTouchTarget(locator: Locator) {
   expect(box!.height).toBeGreaterThanOrEqual(44);
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
 function watchForbiddenProviderRequests(page: Page) {
   const requests: string[] = [];
   page.on("request", (request) => {
@@ -34,6 +43,31 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("mobile production routes keep headings and bottom navigation in frame", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const route of [
+    { path: "/", heading: "Today's focus" },
+    { path: "/operations", heading: "Work" },
+    { path: "/properties", heading: "Properties" },
+    { path: "/intake", heading: "Smart Intake" },
+    { path: "/notifications", heading: "Notifications" },
+    { path: "/settings", heading: "Settings" },
+  ]) {
+    await page.goto(route.path);
+
+    await expect(
+      page.getByRole("heading", { name: route.heading, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Mobile primary" }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test("mobile bottom navigation exposes the Horizon field-operator hubs", async ({
   page,
 }) => {
@@ -43,12 +77,7 @@ test("mobile bottom navigation exposes the Horizon field-operator hubs", async (
 
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
-  const horizontalOverflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+  await expectNoHorizontalOverflow(page);
   const links = mobileNav.getByRole("link");
   await expect(links).toHaveCount(5);
 
@@ -183,12 +212,7 @@ test("desktop Horizon sidebar exposes the entity switcher and operator card", as
   await expect(operatorCard).toContainText("Owner Operator");
   await expect(operatorCard).toContainText("Owner - operator");
 
-  const horizontalOverflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+  await expectNoHorizontalOverflow(page);
 });
 
 test("desktop keeps the bottom navigation out of the shell", async ({
