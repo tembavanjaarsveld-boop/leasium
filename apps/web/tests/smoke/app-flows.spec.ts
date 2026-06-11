@@ -537,6 +537,71 @@ test("smart intake shows Horizon review-first landing", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("mobile Smart Intake landing keeps the compact Horizon queue first", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/intake");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Drop it. Review it. Approve it."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Drop or snap a document" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take photo" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Leasium reads it, shows you every extracted field with confidence and source, and waits for your approval.",
+    ),
+  ).toBeHidden();
+  await expect(page.getByLabel("Review filter")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Copy review queue CSV" }),
+  ).toBeHidden();
+
+  const reviewPanel = page.getByTestId("smart-intake-review-panel");
+  await expect(reviewPanel).toBeVisible();
+  await expect(page.getByTestId("horizon-document-review")).toHaveCount(0);
+  await expect(reviewPanel.getByText("Review queue — 4")).toBeVisible();
+
+  const firstRow = page.getByTestId("review-intake-intake-1");
+  await expect(firstRow).toBeVisible();
+  await expect(firstRow).toContainText("bright-cafe-lease.pdf");
+  const rowBox = await firstRow.boundingBox();
+  expect(rowBox).not.toBeNull();
+  expect(rowBox!.height).toBeLessThanOrEqual(150);
+
+  const thirdRow = page.getByTestId(
+    "review-intake-intake-tenant-upload-insurance-1",
+  );
+  await expect(thirdRow).toBeVisible();
+  const thirdRowBox = await thirdRow.boundingBox();
+  const mobileNavBox = await page
+    .getByRole("navigation", { name: "Mobile primary" })
+    .boundingBox();
+  expect(thirdRowBox).not.toBeNull();
+  expect(mobileNavBox).not.toBeNull();
+  expect(thirdRowBox!.y + thirdRowBox!.height).toBeLessThanOrEqual(
+    mobileNavBox!.y - 8,
+  );
+
+  await expect(
+    page.getByRole("navigation", { name: "Mobile primary" }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await firstRow.getByRole("button", { name: "Review" }).click();
+  await expect(
+    page.getByTestId("horizon-document-review").getByRole("heading", {
+      name: "Review document",
+    }),
+  ).toBeVisible();
+});
+
 test("smart intake Horizon document review keeps source preview beside extracted fields without mutations", async ({
   page,
 }) => {

@@ -8,6 +8,16 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Smart Intake mobile landing follow-up:** tightened
+  bare mobile `/intake` against the approved Smart Intake mobile frame
+  (`PO2jOANgmqgZHfqWZXOZGU`, node `59:521`). The mobile route now stays
+  landing-first instead of auto-opening the first review, uses the compact
+  drop/snap panel and queue cards above the Horizon bottom nav, and keeps the
+  desktop landing, explicit `?review=...` deep links, row Review clicks, upload
+  success handoff, and review/apply workflows intact. Frontend-only
+  presentation/routing work plus smoke coverage: no API shape, provider send,
+  email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
+  workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Properties mobile compact board follow-up:**
   tightened the default mobile `/properties` board against the approved
   Properties mobile frame (`PO2jOANgmqgZHfqWZXOZGU`, node `59:427`). Mobile

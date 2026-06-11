@@ -322,13 +322,17 @@ back-filled in Figma before code.
   cards, shows only the Rent roll and Renewals stat cards in the first mobile
   viewport, and hides board-only controls while keeping direct Map/Calendar
   mobile tabs visible. Notifications send/retry controls now have explicit
-  mobile smoke coverage for the 44px touch floor. No API shape, provider send,
-  email/SMS, payment, reconciliation, Xero/Basiq, Smart Intake apply, or
-  workflow mutation path changed. Verified with targeted ESLint, `tsc
+  mobile smoke coverage for the 44px touch floor. Follow-up Smart Intake mobile
+  polish matches `59:521` more closely: bare `/intake` now stays landing-first,
+  uses the compact drop/snap panel and queue cards, and opens review only from
+  explicit `?review=...`, row Review, or upload success. No API shape, provider
+  send, email/SMS, payment, reconciliation, Xero/Basiq, Smart Intake apply, or
+  workflow mutation path changed. Verified locally with targeted ESLint, `tsc
   --noEmit`, mobile/Horizon Playwright smokes, production build, and browser QA
-  before push; Vercel proof is recorded in the shipping chat. Remba should
+  before push; Vercel proof is recorded per shipped follow-up. Remba should
   review the mobile density, first-viewport hierarchy, compact Properties row
-  treatment, and bottom-nav clearance before this is marked `[x]`.
+  treatment, Smart Intake landing-first behavior, and bottom-nav clearance
+  before this is marked `[x]`.
 - **Horizon Tenant portal mobile v1 (2026-06-11, Remba pending):** production
   implementation from the approved Figma Tenant portal·Mobile target
   (`61:1251`) inside the authenticated tenant portal full account view. Mobile

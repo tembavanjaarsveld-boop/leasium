@@ -2,7 +2,60 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Properties mobile compact board - latest)
+## Cowork continuation - 2026-06-11 (Horizon Smart Intake mobile landing - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Smart Intake mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `59:521`; 04 Concept stayed out of scope.
+
+Scope stayed inside `/intake` presentation and smoke coverage. Bare mobile
+`/intake` now stays landing-first instead of auto-opening the first review. The
+mobile landing uses the compact Figma subtitle, drop/snap upload panel, hidden
+filter/export toolbar, and compact review queue cards above the Horizon bottom
+nav. Desktop keeps the existing Horizon landing with full copy, Browse files,
+review filter, CSV controls, and recently applied provenance. Explicit
+`?review=...` links, row Review clicks, upload success handoff, and review/apply
+workflows are unchanged.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, document review/save/apply, upload, or workflow mutation
+path changed. The mobile `Take photo` label still uses the existing file input;
+image MIME acceptance was not expanded because the backend intentionally rejects
+images today.
+
+Verification recorded so far:
+
+- Figma source of truth pulled with `get_design_context` and screenshot for
+  Smart Intake mobile `59:521`.
+- RED mobile smoke failed before implementation because bare `/intake` opened
+  the first document review and lacked the compact mobile landing copy.
+- Focused Smart Intake mobile smoke passed **1/1**:
+  `tests/smoke/app-flows.spec.ts --grep "mobile Smart Intake landing keeps the compact Horizon queue first" --workers=1`.
+- Smart Intake focused group passed **4/4**:
+  `tests/smoke/app-flows.spec.ts --grep "smart intake shows Horizon review-first landing|smart intake Horizon document review keeps source preview beside extracted fields without mutations|mobile Smart Intake document review keeps touch guardrails above bottom nav without provider writes|mobile Smart Intake landing keeps the compact Horizon queue first" --workers=1`.
+- Mobile production route sweep passed **1/1**:
+  `tests/smoke/mobile-bottom-nav.spec.ts --grep "mobile production routes keep headings and bottom navigation in frame" --workers=1`.
+- Targeted ESLint passed for `apps/web/src/components/dashboard.tsx`,
+  `apps/web/tests/smoke/app-flows.spec.ts`, and
+  `apps/web/tests/smoke/mobile-bottom-nav.spec.ts`.
+- `./node_modules/.bin/tsc --noEmit --pretty false` passed.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3030/intake` passed at 390x844 for
+  heading, compact subtitle/drop zone/Take photo, hidden review filter, no
+  bare-route review auto-open, visible mobile nav, and no horizontal overflow.
+  Desktop 1280x900 kept the full landing copy, Browse files CTA, visible review
+  filter/export controls, no mobile nav, and no horizontal overflow. The local
+  browser could not hydrate live intake rows outside the mocked smoke harness
+  (`Failed to fetch`), so seeded row fidelity remains covered by Playwright.
+
+Design-facing status: pending Remba review, not `[x]` complete.
+
+Next scoped mobile polish found by agents: Settings mobile frame `59:677` shows
+Organisation / Security / Connect in the mobile tab rail; production still
+shows Notifications as a fourth mobile tab. Notifications had no smaller
+first-viewport gap from source.
+
+## Cowork continuation - 2026-06-11 (Horizon Properties mobile compact board)
 
 Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
 Figma source of truth was the approved Properties mobile frame

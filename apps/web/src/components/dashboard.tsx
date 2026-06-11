@@ -48,7 +48,7 @@ import {
   scopeEntityId,
 } from "@/lib/entity-selection";
 import { useEntityFanOut } from "@/lib/use-entity-fan-out";
-import { friendlyError } from "@/lib/utils";
+import { cn, friendlyError } from "@/lib/utils";
 import {
   EvidenceSourceTrail,
   type EvidenceFieldChange,
@@ -60,7 +60,7 @@ import {
   EmptyState,
   Field,
   Input,
-  PageHeader,
+  PageTitle,
   SecondaryButton,
   SectionPanel,
   Select,
@@ -367,6 +367,20 @@ function intakeStatusTone(status: string | null | undefined): StatusTone {
       return "danger";
     default:
       return "neutral";
+  }
+}
+
+function intakeStatusRailClassName(status: string | null | undefined) {
+  switch (status) {
+    case "needs_attention":
+      return "bg-warning";
+    case "failed":
+      return "bg-danger";
+    case "ready_for_review":
+    case "applied":
+      return "bg-accent";
+    default:
+      return "bg-info";
   }
 }
 
@@ -3828,10 +3842,10 @@ export function Dashboard({
     intakeReviewFilterMatch(item, reviewQueueFilter),
   );
   const activeReviewIntakeId = reviewIntakeId ?? requestedReviewId;
-  const selectedReviewIntake =
-    filteredReviewIntakes.find((item) => item.id === activeReviewIntakeId) ??
-    filteredReviewIntakes[0] ??
-    null;
+  const selectedReviewIntake = activeReviewIntakeId
+    ? (filteredReviewIntakes.find((item) => item.id === activeReviewIntakeId) ??
+      null)
+    : null;
   const needsReviewCount = documentIntakes.filter((item) =>
     ["ready_for_review", "needs_attention"].includes(item.status),
   ).length;
@@ -4573,31 +4587,39 @@ export function Dashboard({
 
       <div className="mx-auto grid max-w-none gap-[18px] px-5 py-5 lg:px-9 lg:py-7">
         {isIntakeWorkspace ? (
-          <PageHeader
-            title="Smart Intake"
-            description="Drop a document. Review what Leasium found. Apply only what you approve."
-            actions={
-              <>
-                {demoMode ? (
-                  <SecondaryButton
-                    type="button"
-                    onClick={() => setDemoMode((current) => !current)}
-                  >
-                    <Layers3 size={15} />
-                    View live portfolio
-                  </SecondaryButton>
-                ) : null}
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <PageTitle className="text-[21px] leading-7 tracking-[-0.02em] sm:text-3xl sm:leading-9">
+                Smart Intake
+              </PageTitle>
+              <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">Drop it. Review it. Approve it.</span>
+                <span className="hidden sm:inline">
+                  Drop a document. Review what Leasium found. Apply only what
+                  you approve.
+                </span>
+              </p>
+            </div>
+            <div className="hidden flex-wrap items-center gap-2 sm:flex">
+              {demoMode ? (
                 <SecondaryButton
                   type="button"
-                  onClick={refreshDashboardData}
-                  disabled={!selectedEntityId}
+                  onClick={() => setDemoMode((current) => !current)}
                 >
-                  <RefreshCw size={15} />
-                  Refresh
+                  <Layers3 size={15} />
+                  View live portfolio
                 </SecondaryButton>
-              </>
-            }
-          />
+              ) : null}
+              <SecondaryButton
+                type="button"
+                onClick={refreshDashboardData}
+                disabled={!selectedEntityId}
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </SecondaryButton>
+            </div>
+          </section>
         ) : (
           <h1 className="sr-only">Dashboard</h1>
         )}
@@ -4893,7 +4915,7 @@ export function Dashboard({
                 uploadSmartIntake(event.dataTransfer.files[0]);
               }}
               className={[
-                "grid min-h-[232px] place-items-center overflow-hidden rounded-2xl border border-dashed px-5 py-8 text-center shadow-leasiumCard transition md:px-8",
+                "grid min-h-[126px] place-items-center overflow-hidden rounded-[18px] border border-dashed px-4 py-6 text-center shadow-leasiumCard transition sm:min-h-[232px] sm:rounded-2xl sm:px-5 sm:py-8 md:px-8",
                 dragActive
                   ? "border-primary bg-primary/10"
                   : "border-primary/30 bg-gradient-to-br from-primary/10 via-white to-success/10",
@@ -4912,8 +4934,8 @@ export function Dashboard({
                   event.currentTarget.value = "";
                 }}
               />
-              <div className="grid max-w-3xl justify-items-center gap-4">
-                <div className="grid h-[52px] w-[52px] place-items-center rounded-2xl border border-primary/15 bg-white text-primary shadow-leasiumXs">
+              <div className="grid max-w-3xl justify-items-center gap-2 sm:gap-4">
+                <div className="hidden h-[52px] w-[52px] place-items-center rounded-2xl border border-primary/15 bg-white text-primary shadow-leasiumXs sm:grid">
                   {documentIntakeMutation.isPending ? (
                     <Loader2 size={24} className="animate-spin" />
                   ) : (
@@ -4921,12 +4943,20 @@ export function Dashboard({
                   )}
                 </div>
                 <div className="grid gap-2">
-                  <h2 className="text-xl font-semibold leading-7 text-foreground">
-                    Drop anything — lease, invoice, contract, rent roll
+                  <h2 className="text-[15px] font-semibold leading-5 tracking-[-0.01em] text-foreground sm:text-xl sm:leading-7 sm:tracking-normal">
+                    <span className="sm:hidden">Drop or snap a document</span>
+                    <span className="hidden sm:inline">
+                      Drop anything — lease, invoice, contract, rent roll
+                    </span>
                   </h2>
-                  <p className="text-sm leading-5 text-muted-foreground">
-                    Leasium reads it, shows you every extracted field with
-                    confidence and source, and waits for your approval.
+                  <p className="text-[11px] leading-4 text-muted-foreground sm:text-sm sm:leading-5">
+                    <span className="sm:hidden">
+                      Lease, invoice, contract, rent roll
+                    </span>
+                    <span className="hidden sm:inline">
+                      Leasium reads it, shows you every extracted field with
+                      confidence and source, and waits for your approval.
+                    </span>
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3">
@@ -4937,10 +4967,11 @@ export function Dashboard({
                       !selectedEntityId || documentIntakeMutation.isPending
                     }
                   >
-                    <FileUp size={15} />
-                    Browse files
+                    <FileUp size={15} className="hidden sm:block" />
+                    <span className="sm:hidden">Take photo</span>
+                    <span className="hidden sm:inline">Browse files</span>
                   </Button>
-                  <span className="text-sm leading-5 text-muted-foreground">
+                  <span className="hidden text-sm leading-5 text-muted-foreground sm:inline">
                     or email documents to intake@leasium.ai
                   </span>
                 </div>
@@ -4965,9 +4996,9 @@ export function Dashboard({
             <section className="grid gap-4 xl:grid-cols-2">
               <div
                 data-testid="smart-intake-review-panel"
-                className="overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard"
+                className="overflow-visible sm:overflow-hidden sm:rounded-2xl sm:border sm:border-border sm:bg-white sm:shadow-leasiumCard"
               >
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3 pb-0 sm:border-b sm:border-border sm:px-4 sm:py-3">
                   <div>
                     <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                       Review queue —{" "}
@@ -4975,18 +5006,21 @@ export function Dashboard({
                         ? "preparing"
                         : filteredReviewIntakes.length}
                     </h2>
-                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    <p className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">
                       Open a document to approve, edit, or ignore extracted
                       fields before anything changes.
                     </p>
                   </div>
-                  <StatusBadge tone={needsReviewCount ? "primary" : "neutral"}>
+                  <StatusBadge
+                    tone={needsReviewCount ? "primary" : "neutral"}
+                    className="hidden sm:inline-flex"
+                  >
                     {documentIntakesLoading
                       ? "Preparing"
                       : `${needsReviewCount} waiting`}
                   </StatusBadge>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-4 py-3">
+                <div className="hidden flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-4 py-3 sm:flex">
                   <Select
                     aria-label="Review filter"
                     className="h-11 min-h-11 w-full rounded-md sm:w-56"
@@ -5038,7 +5072,7 @@ export function Dashboard({
                     </SecondaryButton>
                   </div>
                 </div>
-                <div className="divide-y divide-border">
+                <div className="grid gap-3 pt-3 sm:block sm:divide-y sm:divide-border sm:pt-0">
                   {filteredReviewIntakes.slice(0, 3).map((item) => {
                     const propertyName = firstField(
                       item.extracted_data.properties,
@@ -5052,28 +5086,20 @@ export function Dashboard({
                       <div
                         key={item.id}
                         data-testid={`review-intake-${item.id}`}
-                        className="grid gap-3 px-4 py-3 text-sm sm:grid-cols-[3px_minmax(0,1fr)_auto] sm:items-start"
+                        className="relative grid gap-2 overflow-hidden rounded-[14px] border border-border bg-white py-3 pl-[18px] pr-[14px] text-sm shadow-leasiumCard sm:gap-3 sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent sm:px-4 sm:shadow-none sm:grid-cols-[3px_minmax(0,1fr)_auto] sm:items-start"
                       >
                         <div
-                          className={[
-                            "hidden h-full min-h-14 rounded-full sm:block",
-                            item.status === "needs_attention"
-                              ? "bg-warning"
-                              : item.status === "failed"
-                                ? "bg-danger"
-                                : "bg-primary",
-                          ].join(" ")}
+                          aria-hidden="true"
+                          className={cn(
+                            "absolute inset-y-0 left-0 w-1 sm:static sm:block sm:h-full sm:min-h-14 sm:rounded-full",
+                            intakeStatusRailClassName(item.status),
+                          )}
                         />
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-start justify-between gap-2 sm:hidden">
-                            <StatusBadge tone={intakeStatusTone(item.status)}>
-                              {intakeStatusLabel(item.status)}
-                            </StatusBadge>
-                          </div>
                           <div className="truncate font-semibold text-foreground">
                             {item.filename}
                           </div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <div className="mt-1 hidden flex-wrap gap-2 text-xs text-muted-foreground sm:flex">
                             <span>{documentTypeLabel(item.document_type)}</span>
                             <span>{formatDateTime(item.created_at)}</span>
                           </div>
@@ -5085,12 +5111,12 @@ export function Dashboard({
                             </div>
                           ) : null}
                           {item.summary ? (
-                            <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">
+                            <p className="mt-1 line-clamp-1 text-[11px] leading-4 text-muted-foreground sm:mt-2 sm:line-clamp-2 sm:text-sm sm:leading-5">
                               {item.summary}
                             </p>
                           ) : null}
                           {sourceInfo ? (
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <div className="mt-2 hidden flex-wrap items-center gap-2 text-xs sm:flex">
                               <StatusBadge tone="primary">
                                 {sourceInfo.label}
                               </StatusBadge>
@@ -5099,7 +5125,7 @@ export function Dashboard({
                               </span>
                             </div>
                           ) : null}
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                          <div className="mt-2 hidden flex-wrap gap-2 text-xs sm:flex">
                             {propertyName ? (
                               <span className="rounded-md bg-muted px-2 py-1">
                                 {propertyName}
@@ -5115,7 +5141,7 @@ export function Dashboard({
                             </span>
                           </div>
                         </div>
-                        <div className="flex flex-wrap justify-end gap-2 sm:flex-col sm:items-end">
+                        <div className="flex flex-wrap justify-end gap-2 pt-1 sm:flex-col sm:items-end sm:pt-0">
                           <StatusBadge
                             tone={intakeStatusTone(item.status)}
                             className="hidden sm:inline-flex"
@@ -5131,7 +5157,7 @@ export function Dashboard({
                           </SecondaryButton>
                           <SecondaryButton
                             type="button"
-                            className="min-h-11"
+                            className="hidden min-h-11 sm:inline-flex"
                             title={
                               intakeIsActive(item)
                                 ? "Stop reviewing and clear"
