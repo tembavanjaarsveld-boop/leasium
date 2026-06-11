@@ -5875,6 +5875,10 @@ export type CommsDispatchPayload = {
   body: string;
   recipient_email?: string | null;
   recipient_phone?: string | null;
+  template_key?: string | null;
+  template_version?: string | null;
+  original_subject?: string | null;
+  original_body?: string | null;
 };
 
 export type CommsDispatchRecord = {
@@ -5888,7 +5892,34 @@ export type CommsDispatchRecord = {
   recipient: string | null;
   provider_message_id: string | null;
   error: string | null;
+  template_id: string | null;
+  template_key: string | null;
+  template_version: string | null;
+  template_status: string | null;
   sent_at: string;
+};
+
+export type CommsTemplatePreviewPayload = {
+  kind: CommsKind;
+  target_kind: string;
+  target_id: string;
+  related_target_ids?: string[];
+  template_key: string;
+  template_version?: string | null;
+  channel?: "email" | "sms";
+};
+
+export type CommsTemplatePreviewRecord = {
+  entity_id: string;
+  candidate_id: string;
+  template_id: string;
+  template_key: string;
+  template_version: string;
+  channel: "email" | "sms";
+  subject: string | null;
+  body: string;
+  variables: Record<string, string>;
+  guardrails: string[];
 };
 
 export type CommsDismissPayload = {
@@ -6920,6 +6951,13 @@ export function deleteContractor(contractorId: string) {
 
 export function dispatchCommsDraft(payload: CommsDispatchPayload) {
   return request<CommsDispatchRecord>("/comms/dispatch", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function previewCommsTemplate(payload: CommsTemplatePreviewPayload) {
+  return request<CommsTemplatePreviewRecord>("/comms/template-preview", {
     method: "POST",
     body: JSON.stringify(payload),
   });

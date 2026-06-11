@@ -67,6 +67,7 @@ import {
   type CommsCorrespondenceEventRecord,
   type CommsKind,
   type CommsSeverity,
+  type CommsTemplatePreviewRecord,
   createBrandedCommunicationTemplate,
   createBrandedCommunicationTemplateVersion,
   deleteBrandedCommunicationTemplate,
@@ -76,6 +77,7 @@ import {
   getCommsQueue,
   listBrandedCommunicationTemplates,
   listEntities,
+  previewCommsTemplate,
   updateBrandedCommunicationTemplate,
   uploadDocument,
 } from "@/lib/api";
@@ -154,6 +156,10 @@ const COMMS_KIND_ORDER: CommsKind[] = [
   "compliance_obligation",
   "rent_review",
 ];
+
+const COMMS_TEMPLATE_KEY_BY_KIND: Partial<Record<CommsKind, string>> = {
+  maintenance_contractor_forward: "maintenance_contractor_update",
+};
 
 const SEVERITY_TONE: Record<CommsSeverity, StatusTone> = {
   info: "neutral",
@@ -582,6 +588,39 @@ function complianceCandidateSourceIds(candidate: CommsCandidateRecord) {
       ),
     ),
   );
+}
+
+function templateVersionRank(version: string) {
+  const match = version.trim().match(/^v(\d+)$/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function templateForCandidate(
+  candidate: CommsCandidateRecord,
+  templates: BrandedCommunicationTemplateRecord[],
+) {
+  if (candidate.kind === "inbound_sms") return null;
+  const key = COMMS_TEMPLATE_KEY_BY_KIND[candidate.kind];
+  if (!key) return null;
+  return templates
+    .filter(
+      (template) =>
+        template.key === key &&
+        template.channel === "email" &&
+        template.is_active &&
+        template.deleted_at === null,
+    )
+    .reduce<BrandedCommunicationTemplateRecord | null>((best, template) => {
+      if (!best) return template;
+      const rank = templateVersionRank(template.version);
+      const bestRank = templateVersionRank(best.version);
+      if (rank !== bestRank) {
+        return rank > bestRank ? template : best;
+      }
+      return Date.parse(template.updated_at) > Date.parse(best.updated_at)
+        ? template
+        : best;
+    }, null);
 }
 
 function commsEventStatusTone(
@@ -1314,6 +1353,7 @@ function CommsContent() {
                 <CandidateCard
                   candidate={candidate}
                   entityId={scopedEntityId}
+                  template={templateForCandidate(candidate, activeTemplates)}
                   allMode={allMode}
                   entityName={
                     allMode
@@ -1838,12 +1878,14 @@ function CommsFilterButton({
 function CandidateCard({
   candidate,
   entityId,
+  template,
   allMode,
   entityName,
   onSettled,
 }: {
   candidate: CommsCandidateRecord;
   entityId: string;
+  template: BrandedCommunicationTemplateRecord | null;
   allMode: boolean;
   entityName: string | null;
   onSettled: (candidateId: string) => void;
@@ -1860,7 +1902,32 @@ function CandidateCard({
   );
   const [dispatchedStatus, setDispatchedStatus] = useState<string | null>(null);
   const [dismissedUntil, setDismissedUntil] = useState<string | null>(null);
+  const [templatePreview, setTemplatePreview] =
+    useState<CommsTemplatePreviewRecord | null>(null);
   const approvalBlockerId = useId();
+  const canPreviewTemplate = Boolean(template && !allMode && !isSms);
+  const templateLabel = template
+    ? `Template ${template.key} ${template.version}`
+    : null;
+  const previewMutation = useMutation({
+    mutationFn: () => {
+      if (!template) {
+        throw new Error("No stored template is available for this draft.");
+      }
+      return previewCommsTemplate({
+        kind: candidate.kind,
+        target_kind: candidate.target_kind,
+        target_id: candidate.target_id,
+        related_target_ids: candidate.related_target_ids ?? [],
+        template_key: template.key,
+        template_version: template.version,
+        channel,
+      });
+    },
+    onSuccess: (preview) => {
+      setTemplatePreview(preview);
+    },
+  });
 
   const dispatchMutation = useMutation({
     mutationFn: () =>
@@ -1873,6 +1940,10 @@ function CandidateCard({
         body,
         recipient_email: isSms ? null : recipientEmail || null,
         recipient_phone: isSms ? recipientPhone || null : null,
+        template_key: template?.key ?? null,
+        template_version: template?.version ?? null,
+        original_subject: candidate.subject,
+        original_body: candidate.body,
       }),
     onSuccess: (result) => {
       setDispatchedStatus(result.status);
@@ -1896,6 +1967,7 @@ function CandidateCard({
 
   const dispatchError = dispatchMutation.error as Error | null;
   const dismissError = dismissMutation.error as Error | null;
+  const previewError = previewMutation.error as Error | null;
   const actionPending = dispatchMutation.isPending || dismissMutation.isPending;
   const draftSettled = Boolean(dispatchedStatus) || Boolean(dismissedUntil);
   const draftInputsDisabled = actionPending || draftSettled;
@@ -2010,6 +2082,9 @@ function CandidateCard({
           </StatusBadge>
           {draftEdited ? (
             <StatusBadge tone="warning">Edited draft</StatusBadge>
+          ) : null}
+          {templateLabel ? (
+            <StatusBadge tone="neutral">{templateLabel}</StatusBadge>
           ) : null}
           {settledBadge ? (
             <StatusBadge tone={settledBadge.tone}>{settledBadge.label}</StatusBadge>
@@ -2128,6 +2203,77 @@ function CandidateCard({
               {smsBodyLength}/{SMS_SINGLE_SEGMENT_GUIDE} chars
             </StatusBadge>
           </div>
+        ) : null}
+
+        {canPreviewTemplate && template ? (
+          <details className="rounded-md border border-border bg-muted/20">
+            <summary className="min-h-11 cursor-pointer px-3 py-2.5 text-sm font-medium text-foreground">
+              Stored template preview
+            </summary>
+            <div className="grid gap-3 border-t border-border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium text-foreground">
+                    {templateLabel}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Preview uses the current draft context. Edited subject or
+                    body still wins when you approve.
+                  </p>
+                </div>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => previewMutation.mutate()}
+                  disabled={previewMutation.isPending || draftSettled}
+                >
+                  {previewMutation.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={15} />
+                  )}
+                  {previewMutation.isPending
+                    ? "Previewing…"
+                    : "Preview stored template"}
+                </SecondaryButton>
+              </div>
+              {templatePreview ? (
+                <div
+                  aria-label="Comms template preview"
+                  className="grid gap-2 rounded-md border border-border bg-white p-3"
+                >
+                  {templatePreview.subject ? (
+                    <div>
+                      <p className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                        Subject
+                      </p>
+                      <p className="text-sm font-medium text-foreground">
+                        {templatePreview.subject}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      Body
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm text-foreground">
+                      {templatePreview.body}
+                    </p>
+                  </div>
+                  {templatePreview.guardrails.map((guardrail) => (
+                    <p key={guardrail} className="text-xs text-muted-foreground">
+                      {guardrail}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {previewError ? (
+                <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                  <AlertTriangle size={16} />
+                  {friendlyError(previewError)}
+                </p>
+              ) : null}
+            </div>
+          </details>
         ) : null}
 
         {showEvidencePanel ? (

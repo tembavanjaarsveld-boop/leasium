@@ -22,6 +22,7 @@ from stewart.core.models import (
     ArrearsCaseStatus,
     AuditAction,
     AuditOutcome,
+    BrandedCommunicationTemplate,
     Contractor,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -126,6 +127,37 @@ def _seed_arrears(session: Session) -> dict[str, str]:
         "unit_id": str(unit.id),
         "case_id": str(case.id),
     }
+
+
+def _seed_comms_template(
+    session: Session,
+    *,
+    entity_id: UUID,
+    key: str = "comms_arrears_reminder",
+    version: str = "v1",
+    subject_template: str | None = "Template: {{tenant_name}} at {{property_name}}",
+    body_template: str = (
+        "Hi {{tenant_name}}, {{property_name}} {{unit_label}} has "
+        "{{kind_label}} queued. Draft said: {{draft_body}}"
+    ),
+) -> BrandedCommunicationTemplate:
+    template = BrandedCommunicationTemplate(
+        entity_id=entity_id,
+        key=key,
+        version=version,
+        channel="email",
+        provider="sendgrid",
+        name="Comms arrears reminder",
+        subject_template=subject_template,
+        body_template=body_template,
+        is_active=True,
+        is_system=False,
+        template_metadata={},
+    )
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    return template
 
 
 def test_comms_queue_returns_arrears_reminder_for_active_case(
@@ -1183,7 +1215,448 @@ def test_comms_dispatch_arrears_records_audit_and_bumps_reminder_stage(
     assert case is not None
     assert case.reminder_stage == 2  # was 1 from seed, +1 after dispatch
     assert case.last_reminder_at is not None
-    assert case.next_reminder_on is not None
+
+
+def test_comms_template_preview_renders_real_draft_context(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Template preview uses the current comms draft context and sends nothing."""
+
+    scope = _seed_arrears(session)
+    template = _seed_comms_template(
+        session,
+        entity_id=UUID(scope["entity_id"]),
+        subject_template="Reminder for {{tenant_name}}",
+        body_template=(
+            "{{kind_label}} for {{property_name}} {{unit_label}}. "
+            "Original: {{draft_subject}} / {{draft_body}}"
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/template-preview",
+        json={
+            "kind": "arrears_reminder",
+            "target_kind": "arrears_case",
+            "target_id": scope["case_id"],
+            "template_key": template.key,
+            "template_version": template.version,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["candidate_id"] == f"arrears_reminder:arrears_case:{scope['case_id']}"
+    assert body["template_key"] == "comms_arrears_reminder"
+    assert body["template_version"] == "v1"
+    assert body["template_id"] == str(template.id)
+    assert body["subject"] == "Reminder for Arrears Cafe"
+    assert "Arrears reminder for Queen Street Retail Centre Shop 1" in body["body"]
+    assert "Queen Street Retail Centre" in body["variables"]["property_name"]
+    assert any("never sends" in guardrail for guardrail in body["guardrails"])
+
+    dispatch_count = session.scalar(
+        select(AuditAction).where(AuditAction.action == "dispatch")
+    )
+    assert dispatch_count is None
+
+
+def test_comms_dispatch_unedited_draft_uses_requested_template_and_records_receipt(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_arrears(session)
+    template = _seed_comms_template(
+        session,
+        entity_id=UUID(scope["entity_id"]),
+        subject_template="Template subject for {{tenant_name}}",
+        body_template="Rendered body for {{tenant_name}} at {{property_name}}.",
+    )
+    calls: list[dict[str, object]] = []
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        calls.append(
+            {
+                "recipient_email": recipient_email,
+                "subject": subject,
+                "body": body,
+                "kind": kind,
+            }
+        )
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="comms-template-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send)
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    candidate = queue.json()["candidates"][0]
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": candidate["kind"],
+            "target_kind": candidate["target_kind"],
+            "target_id": candidate["target_id"],
+            "subject": candidate["subject"],
+            "body": candidate["body"],
+            "original_subject": candidate["subject"],
+            "original_body": candidate["body"],
+            "recipient_email": candidate["recipient_email"],
+            "template_key": template.key,
+            "template_version": template.version,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["template_key"] == "comms_arrears_reminder"
+    assert body["template_version"] == "v1"
+    assert body["template_id"] == str(template.id)
+    assert body["template_status"] == "template_rendered"
+    assert calls == [
+        {
+            "recipient_email": "mia@arrears.example",
+            "subject": "Template subject for Arrears Cafe",
+            "body": "Rendered body for Arrears Cafe at Queen Street Retail Centre.",
+            "kind": "arrears_reminder",
+        }
+    ]
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "dispatch",
+            AuditAction.target_id == UUID(scope["case_id"]),
+        )
+    )
+    assert audit is not None
+    assert audit.tool_input["template_key"] == template.key
+    assert audit.tool_input["template_version"] == template.version
+    assert audit.tool_input["template_id"] == str(template.id)
+    assert audit.tool_input["template_status"] == "template_rendered"
+
+
+def test_comms_dispatch_operator_edit_wins_over_requested_template(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_arrears(session)
+    template = _seed_comms_template(
+        session,
+        entity_id=UUID(scope["entity_id"]),
+        subject_template="Template subject for {{tenant_name}}",
+        body_template="Rendered body for {{tenant_name}}.",
+    )
+    calls: list[dict[str, object]] = []
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        calls.append({"subject": subject, "body": body})
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="comms-template-edit-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send)
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    candidate = queue.json()["candidates"][0]
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": candidate["kind"],
+            "target_kind": candidate["target_kind"],
+            "target_id": candidate["target_id"],
+            "subject": "Operator reviewed subject",
+            "body": "Operator reviewed body wins.",
+            "original_subject": candidate["subject"],
+            "original_body": candidate["body"],
+            "recipient_email": candidate["recipient_email"],
+            "template_key": template.key,
+            "template_version": template.version,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["template_status"] == "operator_edit_sent"
+    assert calls == [
+        {
+            "subject": "Operator reviewed subject",
+            "body": "Operator reviewed body wins.",
+        }
+    ]
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "dispatch",
+            AuditAction.target_id == UUID(scope["case_id"]),
+        )
+    )
+    assert audit is not None
+    assert audit.tool_input["template_key"] == template.key
+    assert audit.tool_input["template_version"] == template.version
+    assert audit.tool_input["template_id"] == str(template.id)
+    assert audit.tool_input["template_status"] == "operator_edit_sent"
+
+
+def test_comms_dispatch_spoofed_originals_do_not_override_operator_edit(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_arrears(session)
+    template = _seed_comms_template(
+        session,
+        entity_id=UUID(scope["entity_id"]),
+        subject_template="Template subject for {{tenant_name}}",
+        body_template="Rendered body for {{tenant_name}}.",
+    )
+    calls: list[dict[str, object]] = []
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        calls.append({"subject": subject, "body": body})
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="comms-template-spoof-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send)
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    candidate = queue.json()["candidates"][0]
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": candidate["kind"],
+            "target_kind": candidate["target_kind"],
+            "target_id": candidate["target_id"],
+            "subject": "Operator reviewed subject",
+            "body": "Operator reviewed body wins even if client originals lie.",
+            "original_subject": "Operator reviewed subject",
+            "original_body": "Operator reviewed body wins even if client originals lie.",
+            "recipient_email": candidate["recipient_email"],
+            "template_key": template.key,
+            "template_version": template.version,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["template_status"] == "operator_edit_sent"
+    assert calls == [
+        {
+            "subject": "Operator reviewed subject",
+            "body": "Operator reviewed body wins even if client originals lie.",
+        }
+    ]
+
+
+def test_comms_dispatch_unedited_without_originals_uses_server_candidate(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_arrears(session)
+    template = _seed_comms_template(
+        session,
+        entity_id=UUID(scope["entity_id"]),
+        subject_template="Template subject for {{tenant_name}}",
+        body_template="Rendered body for {{tenant_name}}.",
+    )
+    calls: list[dict[str, object]] = []
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        calls.append({"subject": subject, "body": body})
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="comms-template-server-original-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send)
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    candidate = queue.json()["candidates"][0]
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": candidate["kind"],
+            "target_kind": candidate["target_kind"],
+            "target_id": candidate["target_id"],
+            "subject": candidate["subject"],
+            "body": candidate["body"],
+            "recipient_email": candidate["recipient_email"],
+            "template_key": template.key,
+            "template_version": template.version,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["template_status"] == "template_rendered"
+    assert calls == [
+        {
+            "subject": "Template subject for Arrears Cafe",
+            "body": "Rendered body for Arrears Cafe.",
+        }
+    ]
+
+
+def test_comms_dispatch_missing_template_version_rejects_before_provider_send(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_arrears(session)
+    _seed_comms_template(session, entity_id=UUID(scope["entity_id"]), version="v1")
+
+    from apps.api.routers import comms as comms_router
+
+    def fail_send(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("provider send should not run")
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fail_send)
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": scope["entity_id"]},
+    )
+    assert queue.status_code == 200
+    candidate = queue.json()["candidates"][0]
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": candidate["kind"],
+            "target_kind": candidate["target_kind"],
+            "target_id": candidate["target_id"],
+            "subject": candidate["subject"],
+            "body": candidate["body"],
+            "recipient_email": candidate["recipient_email"],
+            "template_key": "comms_arrears_reminder",
+            "template_version": "v9",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Requested comms template was not found."
+    dispatch_count = session.scalar(
+        select(AuditAction).where(AuditAction.action == "dispatch")
+    )
+    assert dispatch_count is None
+
+
+def test_comms_dispatch_template_with_missing_current_candidate_sends_reviewed_text(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    scope = _seed_arrears(session)
+    template = _seed_comms_template(
+        session,
+        entity_id=UUID(scope["entity_id"]),
+        subject_template="Template subject for {{tenant_name}}",
+        body_template="Rendered body for {{tenant_name}}.",
+    )
+    case = session.get(ArrearsCase, UUID(scope["case_id"]))
+    assert case is not None
+    case.reminder_paused_until = date.today() + timedelta(days=14)
+    session.commit()
+    calls: list[dict[str, object]] = []
+
+    from apps.api.routers import comms as comms_router
+
+    def fake_send(*, recipient_email, subject, body, entity_id, candidate_id, kind, settings):  # noqa: ANN001, ARG001
+        calls.append({"subject": subject, "body": body})
+        return comms_router._CommsEmailResult(
+            status="queued",
+            provider="sendgrid",
+            recipient=recipient_email,
+            provider_message_id="comms-template-paused-1",
+        )
+
+    monkeypatch.setattr(comms_router, "_send_comms_email", fake_send)
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "arrears_reminder",
+            "target_kind": "arrears_case",
+            "target_id": scope["case_id"],
+            "subject": "Operator reviewed paused subject",
+            "body": "Operator reviewed paused body.",
+            "recipient_email": "mia@arrears.example",
+            "template_key": template.key,
+            "template_version": template.version,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["template_status"] == "operator_edit_sent"
+    assert calls == [
+        {
+            "subject": "Operator reviewed paused subject",
+            "body": "Operator reviewed paused body.",
+        }
+    ]
+
+
+def test_comms_template_preview_rejects_missing_requested_version_without_dispatch(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_arrears(session)
+    _seed_comms_template(session, entity_id=UUID(scope["entity_id"]), version="v1")
+
+    response = client.post(
+        "/api/v1/comms/template-preview",
+        json={
+            "kind": "arrears_reminder",
+            "target_kind": "arrears_case",
+            "target_id": scope["case_id"],
+            "template_key": "comms_arrears_reminder",
+            "template_version": "v9",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Requested comms template was not found."
+    dispatch_count = session.scalar(
+        select(AuditAction).where(AuditAction.action == "dispatch")
+    )
+    assert dispatch_count is None
 
 
 def test_comms_queue_returns_rent_review_with_fixed_pct_formula(

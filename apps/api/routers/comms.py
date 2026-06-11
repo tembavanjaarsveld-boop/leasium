@@ -35,6 +35,7 @@ from stewart.core.models import (
     ArrearsCaseStatus,
     AuditAction,
     AuditOutcome,
+    BrandedCommunicationTemplate,
     Contractor,
     DocumentCategory,
     DocumentIntake,
@@ -55,6 +56,7 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
+from stewart.integrations.communications import render_template_string
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.comms import (
@@ -69,10 +71,13 @@ from apps.api.schemas.comms import (
     CommsOutboundLogRead,
     CommsQueueCountsRead,
     CommsQueueRead,
+    CommsTemplatePreviewCreate,
+    CommsTemplatePreviewRead,
     CommsTenantCorrespondenceRead,
 )
 from apps.api.tenant_lease_agreement import lease_agreement_signed
 from apps.api.webhook_auth import twilio_signature_valid
+from apps.api.work_assignments import resolve_branded_template
 
 router = APIRouter(prefix="/comms", tags=["comms"])
 
@@ -89,6 +94,24 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 DEFAULT_DISMISS_DAYS = 7
 DISMISS_METADATA_KEY = "comms_dismiss"
 SENDGRID_INBOUND_SECRET_DETAIL = "SendGrid inbound secret is invalid."
+COMMS_TEMPLATE_PREVIEW_GUARDRAILS = [
+    "Template preview is review-only; it saves nothing and never sends any message.",
+    "Approve & send remains the only provider-mutation action for this draft.",
+    "If the operator edits the subject or body, the reviewed text wins over the template.",
+]
+
+COMMS_KIND_LABELS: dict[str, str] = {
+    "arrears_reminder": "Arrears reminder",
+    "insurance_expiry": "Insurance expiry",
+    "lease_renewal": "Lease renewal",
+    "inbound_email": "Inbound email",
+    "inbound_sms": "Inbound SMS",
+    "compliance_obligation": "Compliance reminder",
+    "rent_review": "Rent review",
+    "tenant_lifecycle_stall": "Tenant lifecycle",
+    "maintenance_contractor_forward": "Contractor forward",
+    "maintenance_tenant_forward": "Tenant forward",
+}
 
 
 @dataclass(frozen=True)
@@ -1899,16 +1922,7 @@ def get_comms_queue(
     """
 
     assert_entity_role(session, user, entity_id, READ_ROLES)
-    candidates = (
-        _inbound_email_candidates(entity_id, session)
-        + _arrears_candidates(entity_id, session)
-        + _compliance_candidates(entity_id, session)
-        + _insurance_candidates(entity_id, session)
-        + _lease_renewal_candidates(entity_id, session)
-        + _rent_review_candidates(entity_id, session)
-        + _tenant_lifecycle_stall_candidates(entity_id, session)
-        + _maintenance_forwarding_candidates(entity_id, session)
-    )
+    candidates = _queue_candidates(entity_id, session)
     return CommsQueueRead(
         entity_id=entity_id,
         candidates=candidates,
@@ -2654,6 +2668,220 @@ def _resolve_dispatch_entity_id(
     )
 
 
+def _queue_candidates(entity_id: UUID, session: Session) -> list[CommsCandidate]:
+    return (
+        _inbound_email_candidates(entity_id, session)
+        + _arrears_candidates(entity_id, session)
+        + _compliance_candidates(entity_id, session)
+        + _insurance_candidates(entity_id, session)
+        + _lease_renewal_candidates(entity_id, session)
+        + _rent_review_candidates(entity_id, session)
+        + _tenant_lifecycle_stall_candidates(entity_id, session)
+        + _maintenance_forwarding_candidates(entity_id, session)
+    )
+
+
+def _candidate_id(kind: str, target_kind: str, target_id: UUID) -> str:
+    return f"{kind}:{target_kind}:{target_id}"
+
+
+def _candidate_matches(
+    candidate: CommsCandidate,
+    *,
+    kind: str,
+    target_kind: str,
+    target_id: UUID,
+) -> bool:
+    return (
+        candidate.kind == kind
+        and candidate.target_kind == target_kind
+        and candidate.target_id == target_id
+    )
+
+
+def _find_current_candidate(
+    entity_id: UUID,
+    *,
+    kind: str,
+    target_kind: str,
+    target_id: UUID,
+    session: Session,
+) -> CommsCandidate | None:
+    for candidate in _queue_candidates(entity_id, session):
+        if _candidate_matches(
+            candidate,
+            kind=kind,
+            target_kind=target_kind,
+            target_id=target_id,
+        ):
+            return candidate
+    return None
+
+
+def _template_or_404(
+    *,
+    entity_id: UUID,
+    key: str,
+    channel: str,
+    version: str | None,
+    session: Session,
+) -> BrandedCommunicationTemplate:
+    if version:
+        template = session.scalar(
+            select(BrandedCommunicationTemplate).where(
+                BrandedCommunicationTemplate.entity_id == entity_id,
+                BrandedCommunicationTemplate.key == key,
+                BrandedCommunicationTemplate.version == version,
+                BrandedCommunicationTemplate.channel == channel,
+                BrandedCommunicationTemplate.is_active.is_(True),
+                BrandedCommunicationTemplate.deleted_at.is_(None),
+            )
+        )
+    else:
+        template = resolve_branded_template(session, entity_id, key, channel)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requested comms template was not found.",
+        )
+    return template
+
+
+def _template_context(candidate: CommsCandidate) -> dict[str, str]:
+    return {
+        "candidate_id": candidate.id,
+        "kind": candidate.kind,
+        "kind_label": COMMS_KIND_LABELS.get(candidate.kind, candidate.kind),
+        "target_kind": candidate.target_kind,
+        "target_id": str(candidate.target_id),
+        "tenant_name": candidate.tenant_name or "",
+        "property_name": candidate.property_name or "",
+        "unit_label": candidate.unit_label or "",
+        "recipient_email": candidate.recipient_email or "",
+        "recipient_phone": candidate.recipient_phone or "",
+        "severity": candidate.severity,
+        "due_date": candidate.due_at.isoformat() if candidate.due_at else "",
+        "detail": candidate.detail or "",
+        "draft_subject": candidate.subject,
+        "draft_body": candidate.body,
+    }
+
+
+@dataclass(frozen=True)
+class _RenderedCommsTemplate:
+    template: BrandedCommunicationTemplate
+    candidate: CommsCandidate | None
+    subject: str | None
+    body: str
+    variables: dict[str, str]
+
+
+def _render_comms_template(
+    *,
+    entity_id: UUID,
+    kind: str,
+    target_kind: str,
+    target_id: UUID,
+    key: str,
+    version: str | None,
+    channel: str,
+    fallback_subject: str,
+    fallback_body: str,
+    session: Session,
+) -> _RenderedCommsTemplate:
+    template = _template_or_404(
+        entity_id=entity_id,
+        key=key,
+        channel=channel,
+        version=version,
+        session=session,
+    )
+    candidate = _find_current_candidate(
+        entity_id,
+        kind=kind,
+        target_kind=target_kind,
+        target_id=target_id,
+        session=session,
+    )
+    if candidate is None:
+        variables = {
+            "candidate_id": _candidate_id(kind, target_kind, target_id),
+            "kind": kind,
+            "kind_label": COMMS_KIND_LABELS.get(kind, kind),
+            "target_kind": target_kind,
+            "target_id": str(target_id),
+            "draft_subject": fallback_subject,
+            "draft_body": fallback_body,
+        }
+    else:
+        variables = _template_context(candidate)
+    subject = (
+        render_template_string(template.subject_template, variables)
+        if template.subject_template is not None
+        else None
+    )
+    return _RenderedCommsTemplate(
+        template=template,
+        candidate=candidate,
+        subject=subject,
+        body=render_template_string(template.body_template, variables),
+        variables=variables,
+    )
+
+
+def _draft_matches_current_candidate(
+    payload: CommsDispatchCreate, candidate: CommsCandidate | None
+) -> bool:
+    if candidate is None:
+        return False
+    if payload.body != candidate.body:
+        return False
+    return payload.subject == candidate.subject
+
+
+@router.post("/template-preview", response_model=CommsTemplatePreviewRead)
+def preview_comms_template(
+    payload: CommsTemplatePreviewCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsTemplatePreviewRead:
+    entity_id, _ = _resolve_dispatch_entity_id(payload, session)
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    candidate = _find_current_candidate(
+        entity_id,
+        kind=payload.kind,
+        target_kind=payload.target_kind,
+        target_id=payload.target_id,
+        session=session,
+    )
+    fallback_subject = candidate.subject if candidate is not None else ""
+    fallback_body = candidate.body if candidate is not None else ""
+    rendered = _render_comms_template(
+        entity_id=entity_id,
+        kind=payload.kind,
+        target_kind=payload.target_kind,
+        target_id=payload.target_id,
+        key=payload.template_key,
+        version=payload.template_version,
+        channel=payload.channel,
+        fallback_subject=fallback_subject,
+        fallback_body=fallback_body,
+        session=session,
+    )
+    return CommsTemplatePreviewRead(
+        entity_id=entity_id,
+        candidate_id=_candidate_id(payload.kind, payload.target_kind, payload.target_id),
+        template_id=rendered.template.id,
+        template_key=rendered.template.key,
+        template_version=rendered.template.version,
+        channel=payload.channel,
+        subject=rendered.subject,
+        body=rendered.body,
+        variables=rendered.variables,
+        guardrails=COMMS_TEMPLATE_PREVIEW_GUARDRAILS,
+    )
+
+
 def _update_source_after_dispatch(
     source: ArrearsCase
     | Tenant
@@ -2764,10 +2992,10 @@ def dispatch_comms_draft(
     """Send an operator-approved comms draft.
 
     The click on the Approve button is the explicit operator approval that
-    satisfies the provider-mutation guardrail. Sends the supplied subject
-    and body via SendGrid (no AI re-draft, no template substitution at
-    dispatch time) and records the outcome in the audit log. Returns a
-    receipt so the operator surface can show queued/failed inline.
+    satisfies the provider-mutation guardrail. If the operator has not edited
+    the draft, a requested stored template is rendered at send-time; reviewed
+    operator edits always win over template output. The send result is recorded
+    in the audit log and returned as an inline receipt.
     """
 
     entity_id, source = _resolve_dispatch_entity_id(payload, session)
@@ -2781,17 +3009,46 @@ def dispatch_comms_draft(
     # expiries, lease renewals, inbound_email replies, compliance reminders)
     # routes through SendGrid. The operator's Approve click is the explicit
     # provider-mutation approval on either path.
-    channel: str
+    channel = "sms" if payload.kind == "inbound_sms" else "email"
+    send_subject = payload.subject
+    send_body = payload.body
+    template_id: UUID | None = None
+    template_key: str | None = None
+    template_version: str | None = None
+    template_status: str | None = None
+    if payload.template_key:
+        rendered = _render_comms_template(
+            entity_id=entity_id,
+            kind=payload.kind,
+            target_kind=payload.target_kind,
+            target_id=payload.target_id,
+            key=payload.template_key,
+            version=payload.template_version,
+            channel=channel,
+            fallback_subject=payload.subject,
+            fallback_body=payload.body,
+            session=session,
+        )
+        template_id = rendered.template.id
+        template_key = rendered.template.key
+        template_version = rendered.template.version
+        if _draft_matches_current_candidate(payload, rendered.candidate):
+            template_status = "template_rendered"
+            send_body = rendered.body
+            if rendered.subject is not None:
+                send_subject = rendered.subject
+        else:
+            template_status = "operator_edit_sent"
+
     result_status: str
     result_provider: str
     result_recipient: str | None
     result_provider_message_id: str | None
     result_error: str | None
     if payload.kind == "inbound_sms":
-        channel = "sms"
         sms_result = _send_comms_sms(
             recipient_phone=payload.recipient_phone,
-            body=payload.body,
+            body=send_body,
             entity_id=entity_id,
             candidate_id=candidate_id,
             kind=payload.kind,
@@ -2805,11 +3062,10 @@ def dispatch_comms_draft(
         tool_name = f"twilio.{sms_result.provider}"
         summary = f"comms draft sms {sms_result.status}"
     else:
-        channel = "email"
         email_result = _send_comms_email(
             recipient_email=payload.recipient_email,
-            subject=payload.subject,
-            body=payload.body,
+            subject=send_subject,
+            body=send_body,
             entity_id=entity_id,
             candidate_id=candidate_id,
             kind=payload.kind,
@@ -2856,6 +3112,10 @@ def dispatch_comms_draft(
             "kind": payload.kind,
             "channel": channel,
             "recipient": result_recipient,
+            "template_id": str(template_id) if template_id is not None else None,
+            "template_key": template_key,
+            "template_version": template_version,
+            "template_status": template_status,
         },
         tool_output_summary=summary,
         outcome=(
@@ -2880,6 +3140,10 @@ def dispatch_comms_draft(
         recipient=result_recipient,
         provider_message_id=result_provider_message_id,
         error=result_error,
+        template_id=template_id,
+        template_key=template_key,
+        template_version=template_version,
+        template_status=template_status,
         sent_at=utcnow(),
     )
 

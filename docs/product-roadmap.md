@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-12 Comms send-time template consumption v1:** `/comms` now
+  previews matching active stored templates for visible email drafts without
+  dispatching, and approved unedited drafts render the requested template on the
+  backend at send-time. If an operator edits the subject or body, the reviewed
+  text wins while the dispatch audit records template id/key/version/status.
+  Backend coverage locks preview rendering, unedited template send, edited draft
+  override, missing-version rejection, and existing dispatch lanes; frontend
+  smoke traps preview-only behavior. No provider send occurs from preview;
+  SendGrid/Twilio still run only from explicit `Approve & send`. Pending
+  Remba/prototype review of inline preview density and Comms kind-to-template
+  mapping.
 - [~] **2026-06-11 Horizon Dashboard mobile first-viewport follow-up:**
   tightened mobile `/` against the approved Dashboard mobile frame
   (`PO2jOANgmqgZHfqWZXOZGU`, node `45:371`). Phones now open with the compact
@@ -996,7 +1007,7 @@ The 2026-05-23 [automation strategy](automation-strategy-2026-05-23.md) frames e
 - [x] Continue Xero from guided sync exceptions into accounting snapshot guardrails, stale reconciliation indicators, and richer accounting-readiness snapshots. Local freshness snapshots, Billing Readiness row cues, month-end checklist, owner-statement handoff, and Settings next-step guidance are shipped; remaining follow-up is live SKJ/accountant tuning.
 - [x] Continue Portfolio QA from guided cleanup v1 into bulk fix review, AI-assisted enrichment candidates, and clearer completion/reporting states. Completion report, cleanup report CSV download, enrichment candidate queue, reviewed bulk-staging actions, blocked-followup queue, onboarding/billing blocker-review summaries, and final-readiness verdicts are shipped; remaining follow-up is live SKJ tuning.
 - [x] Smart Intake spreadsheet migration template download shipped: the spreadsheet import section now has a `Download template` action, and the generated workbook covers the SaaS/bulk migration fields through the current import tabs: Entities for owners/billing identities, Properties, Tenancies for units/tenants/leases, Charge Rules, Bonds/Dates for obligations and compliance, Vendors for contacts/vendors, Arrears, Active Issues, and Actions. Backend template/download coverage and spreadsheet smoke have passed; remaining follow-up is live SKJ/Remba tuning of sheet names, field order, and whether additional AI-fill instructions should sit in-app or only inside the workbook.
-- [~] Branded communications editable templates UI + send-time wiring (deprioritised while SKJ uses Leasium internally per `leasium-internal-first-6-months`). Read-only stored override visibility is shipped, including a local `communication-template-overrides.csv` export from Settings for runtime template keys, stored override names/versions/providers, active/system/override state, coverage status, and no-send/no-mutation guardrails. The Comms hub now also has an operator editor drawer for branded-template create/edit/deactivate/reactivate/delete-safe workflows with system delete guards, provider-send traps, and a review-only sample preview for known `{{token}}` substitutions. Remaining work is reviewed send-time consumption after Remba/operator review.
+- [~] Branded communications editable templates UI + send-time wiring (deprioritised while SKJ uses Leasium internally per `leasium-internal-first-6-months`). Read-only stored override visibility is shipped, including a local `communication-template-overrides.csv` export from Settings for runtime template keys, stored override names/versions/providers, active/system/override state, coverage status, and no-send/no-mutation guardrails. The Comms hub now also has an operator editor drawer for branded-template create/edit/deactivate/reactivate/delete-safe workflows with system delete guards, provider-send traps, a review-only sample preview for known `{{token}}` substitutions, and send-time consumption for matching Comms email drafts when the operator has not edited the reviewed draft. Remaining work is Remba/operator review of preview density, template-key coverage, and whether more Comms draft kinds need first-class system seeds.
 
 ## Smart Intake North Star
 
@@ -1083,6 +1094,7 @@ Official Re-Leased pages position their product around a few mature modules that
   - [~] Comms template editor v1 (2026-06-07): the Comms hub template catalog now includes a New template/Edit drawer for operator-owned branded communication templates. Operators can create, edit editable fields, deactivate/reactivate, and soft-delete non-system rows; system rows show the delete guard and can only be deactivated. The catalog fetches inactive rows for reactivation while active counts and CSV exports remain active-only. Smoke coverage traps provider/send/dispatch paths so template CRUD never sends email/SMS, dispatches candidates, mutates invoice/provider paths, or writes provider history. Pending prototype/Remba review of drawer density and whether rendered template preview belongs inline.
     2026-06-08 follow-up: the editor drawer now renders a review-only sample preview for subject, body, and action URL fields with local demo substitutions for known `{{token}}` placeholders; unknown placeholders stay visible. No send-time consumption, provider dispatch, email/SMS, invoice/provider mutation, or provider-history behaviour changed. Pending prototype/Remba review of the sample values and preview density before send-time consumption is wired.
     Same-day Settings copy follow-up: Settings Organisation now frames stored template overrides as audit/export only and points editing to the Comms hub, while the export guardrail says it does not edit templates or wire send paths. Pending prototype/Remba review of Settings-vs-Comms ownership.
+    2026-06-12 follow-up: send-time consumption is now wired for matching Comms email drafts. The UI can preview a stored template against the current draft without dispatching, and backend dispatch renders the requested template only when the operator has not changed the subject/body; edited drafts keep the reviewed text and still audit the template id/key/version/status. Pending prototype/Remba review of inline preview density and kind-to-template mapping.
   - [x] Comms queue source links v1: draft cards now expose local source-record handoffs for rent-review lease drafts and compliance obligation reminders, matching the existing tenant lifecycle, Smart Intake attachment, and maintenance work-order handoffs. Opening these links does not approve, dismiss, send, refresh providers, mutate queue state, or write provider history.
   - [~] Comms compliance reminder consolidation v1: same-recipient compliance obligation reminders now collapse into one review draft with all source obligation IDs carried through `related_target_ids`. The grouped draft lists each item/property/unit, dispatch sends one operator-approved email, and dispatch/dismiss stamps every grouped obligation so hidden siblings do not reappear. Grouped cards keep Smart Intake and Compliance Work handoffs but hide one-off manual evidence upload so evidence is not accidentally linked only to the primary obligation. 2026-06-08 follow-up: grouped cards now expose one local source-item handoff per included obligation, targeting stable Operations Compliance anchors. No automatic SendGrid/Twilio/provider action runs; approval is still explicit. Pending prototype/Remba review of grouped-draft wording and per-source link density.
   - [x] Maintenance correspondence panel v1: maintenance work-order detail now shows linked Comms dispatch/dismiss receipts for tenant and contractor forwards, with local Comms/tenant handoffs, formula-safe Copy/Download CSV export parity, and guardrails that the panel never sends, dismisses, refreshes providers, or mutates the work order.

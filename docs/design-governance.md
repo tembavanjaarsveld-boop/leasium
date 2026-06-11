@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
 
@@ -816,7 +816,7 @@ back-filled in Figma before code.
   compliance smokes (4/4) + operations smokes (11/11) + production build. Same-day follow-up
   shipped: an optional "Upload a new file" input in the same form (file takes precedence,
   button becomes "Upload & link evidence"; local storage write only), compliance smokes 5/5.
-- **Comms branded-template editor (2026-06-07, prototype mode, no Remba gate):**
+- **Comms branded-template editor (2026-06-07, prototype editor slice):**
   `/comms` now adds operator CRUD controls to the template catalog: a New template button,
   per-card Edit buttons, a right-side editor drawer, active/inactive grouping, system-template
   delete guard copy, and deactivate/reactivate actions. The drawer edits only branded-template
@@ -829,8 +829,17 @@ back-filled in Figma before code.
   follow-up: Settings Organisation now describes stored templates as an audit/export surface
   and points editing to the Comms hub instead of saying editing is paused. Remba should review
   drawer density, inactive reactivation discoverability, Settings-vs-Comms ownership, and
-  whether the sample values are the right operator-facing preview before send-time consumption
-  is wired.
+  whether the sample values are the right operator-facing preview alongside the shipped
+  send-time consumption path.
+- **Comms send-time template preview and consumption (2026-06-12, Remba pending):**
+  `/comms` now shows a compact stored-template preview disclosure on matching email draft
+  cards. Opening the preview calls the review-only `/comms/template-preview` endpoint; it
+  saves nothing and never sends providers. Approving an unedited matching draft renders the
+  requested stored template at backend send-time, while edited subject/body text wins over the
+  template output and dispatch audit records template id/key/version/status either way.
+  SendGrid/Twilio still run only from explicit `Approve & send`. Remba should review the
+  inline preview density, disclosure placement, guardrail wording, and the conservative
+  Comms-kind-to-template mapping before this is marked `[x]`.
 - **Comms tenant lifecycle signed-agreement settle (2026-06-07, prototype mode, no Remba gate):**
   `/comms` no longer surfaces a stale "DocuSign setup needed" tenant lifecycle draft when
   the lease agreement already has a recorded signed timestamp, even if older provider metadata

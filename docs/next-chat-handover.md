@@ -1,6 +1,47 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
+
+## Codex continuation - 2026-06-12 (Comms send-time templates)
+
+Ticket 1 from the 2026-06-12 next-build instructions is implemented locally:
+Communications send-time template consumption. `/comms` now offers a
+review-only stored-template preview for matching email drafts, and backend
+dispatch renders the requested stored template only when the submitted
+subject/body still match the server-derived current queue candidate. If the
+operator edits the subject or body, the reviewed text wins and the dispatch
+audit still records `template_id`, `template_key`, `template_version`, and
+`template_status=operator_edit_sent`. Preview never sends; SendGrid/Twilio still
+run only from explicit `Approve & send`.
+
+The first code review agent caught the important bug: the initial edited-vs-
+unedited decision trusted browser-supplied `original_subject/body`. That is now
+server-anchored, with regression coverage for spoofed originals, missing
+originals, missing template versions before provider send, and no-current-
+candidate fallback. The Comms UI now maps only contractor forwards to the
+existing `maintenance_contractor_update` template; tenant forwards do not reuse
+contractor copy until a tenant-specific template key exists.
+
+Verification recorded:
+
+- Backend template/dispatch group passed **12/12**:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -k "dispatch_arrears_records or comms_template_preview or unedited_draft_uses_requested_template or operator_edit_wins or spoofed_originals or unedited_without_originals or missing_template_version_rejects or missing_current_candidate or dispatch_maintenance_forward or dispatch_compliance_obligation or dispatch_inbound_sms" -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py`.
+- Frontend targeted ESLint passed for `src/app/comms/page.tsx`,
+  `src/lib/api.ts`, and `tests/smoke/comms-template-preview.spec.ts`.
+- Frontend typecheck passed: `./node_modules/.bin/tsc --noEmit --pretty false`.
+- Focused Comms smoke passed **1/1**:
+  `NODE_ENV=development ./node_modules/.bin/playwright test tests/smoke/comms-template-preview.spec.ts --workers=1`.
+- Production build passed: `npm run build` in `apps/web`.
+
+Docs updated: `docs/product-roadmap.md` and `docs/design-governance.md` mark the
+Comms slice `[~]`/Remba-pending. Review agents found no critical docs issues; a
+minor docs fix was applied for the older Comms editor heading.
+
+Active local tree note: there were pre-existing unrelated dirty files and
+untracked artifacts before this slice. Keep staging scoped to the
+Comms/template files unless Temba asks to bundle the older work.
 
 ## Cowork continuation - 2026-06-11 (Horizon Dashboard mobile first viewport - latest)
 

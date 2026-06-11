@@ -154,9 +154,9 @@ class CommsDispatchCreate(BaseModel):
     """Payload for ``POST /api/v1/comms/dispatch``.
 
     The operator's click on the Approve button is the explicit approval that
-    satisfies the provider-mutation guardrail. The subject and body are sent
-    as-is — the operator can edit them inline before approving and the
-    server does not re-derive the draft on dispatch.
+    satisfies the provider-mutation guardrail. When a template key is present,
+    an unedited draft is rendered from that stored template at send-time; if the
+    operator edited the subject or body, the reviewed text is sent as-is.
     """
 
     kind: CommsKind
@@ -167,6 +167,10 @@ class CommsDispatchCreate(BaseModel):
     body: str
     recipient_email: str | None = None
     recipient_phone: str | None = None
+    template_key: str | None = Field(default=None, max_length=120)
+    template_version: str | None = Field(default=None, max_length=40)
+    original_subject: str | None = None
+    original_body: str | None = None
 
 
 class CommsDispatchRead(BaseModel):
@@ -182,7 +186,38 @@ class CommsDispatchRead(BaseModel):
     recipient: str | None
     provider_message_id: str | None = None
     error: str | None = None
+    template_id: UUID | None = None
+    template_key: str | None = None
+    template_version: str | None = None
+    template_status: str | None = None
     sent_at: datetime
+
+
+class CommsTemplatePreviewCreate(BaseModel):
+    """Preview a stored branded template against a current comms draft."""
+
+    kind: CommsKind
+    target_kind: str
+    target_id: UUID
+    related_target_ids: list[UUID] = Field(default_factory=list, max_length=25)
+    template_key: str = Field(min_length=1, max_length=120)
+    template_version: str | None = Field(default=None, max_length=40)
+    channel: Literal["email", "sms"] = "email"
+
+
+class CommsTemplatePreviewRead(BaseModel):
+    """Rendered comms template preview. Review-only; no provider send."""
+
+    entity_id: UUID
+    candidate_id: str
+    template_id: UUID
+    template_key: str
+    template_version: str
+    channel: Literal["email", "sms"]
+    subject: str | None
+    body: str
+    variables: dict[str, str] = Field(default_factory=dict)
+    guardrails: list[str] = Field(default_factory=list)
 
 
 class CommsDismissCreate(BaseModel):
