@@ -5,7 +5,7 @@ import {
   propertyMatchesOwnershipTag,
   propertyOwnershipBadges,
 } from "../../src/lib/property-ownership";
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 async function expectTouchTarget(locator: Locator, minSize = 44) {
   await locator.scrollIntoViewIfNeeded();
@@ -17,6 +17,7 @@ async function expectTouchTarget(locator: Locator, minSize = 44) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 
@@ -256,7 +257,13 @@ test("properties calendar creates lease follow-up tasks without provider side ef
     });
   });
   await page.route("**/api/v1/{work-assignments,comms,xero,basiq}/**", async (route) => {
-    blockedCalls.push(new URL(route.request().url()).pathname);
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "GET" && pathname === "/api/v1/comms/queue/counts") {
+      await route.fallback();
+      return;
+    }
+    blockedCalls.push(pathname);
     await route.fulfill({
       status: 418,
       contentType: "application/json",

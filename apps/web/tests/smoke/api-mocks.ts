@@ -2744,6 +2744,15 @@ type MockLeasiumApiOptions = {
   operationsComplianceDemo?: boolean;
 };
 
+// The fixture has two entities, so a fresh workspace defaults to the
+// cross-entity "All entities" view. Specs that assert single-entity behaviour
+// seed the primary entity to keep their pre-existing scope deterministic.
+export async function seedPrimaryEntitySelection(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+}
+
 export async function mockLeasiumApi(
   page: Page,
   options: MockLeasiumApiOptions = {},

@@ -1,9 +1,10 @@
 import { expect, type Locator, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 
@@ -78,11 +79,14 @@ test("contractor directory copies and downloads the same guarded readiness CSV",
     const apiPath = new URL(request.url()).pathname.replace("/api/v1", "");
     const isContractorMutation =
       apiPath === "/contractors" || apiPath.startsWith("/contractors/");
+    const isReadOnlyShellBadge =
+      request.method() === "GET" && apiPath === "/comms/queue/counts";
     const isForbiddenPath =
-      forbiddenPathStarts.some((path) => apiPath.startsWith(path)) ||
-      forbiddenPathFragments.some((fragment) =>
-        apiPath.toLowerCase().includes(fragment),
-      );
+      !isReadOnlyShellBadge &&
+      (forbiddenPathStarts.some((path) => apiPath.startsWith(path)) ||
+        forbiddenPathFragments.some((fragment) =>
+          apiPath.toLowerCase().includes(fragment),
+        ));
 
     if (
       isForbiddenPath ||

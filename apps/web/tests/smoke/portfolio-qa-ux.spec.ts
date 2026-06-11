@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
+
+// The two-entity fixture defaults fresh storage to All entities; pin these
+// single-entity specs to the primary entity.
+test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
+});
 
 test("portfolio QA loading metrics use contextual labels", async ({ page }) => {
   await mockLeasiumApi(page);

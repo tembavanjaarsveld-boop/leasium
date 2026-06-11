@@ -82,10 +82,12 @@ function useCommsBadge(): { urgent: number; total: number } | null {
     };
   }, []);
 
+  const scopedEntityId =
+    entityId && !isAllEntities(entityId) ? entityId : null;
   const countsQuery = useQuery({
-    queryKey: ["comms-queue-counts", entityId],
-    queryFn: () => getCommsQueueCounts(entityId ?? ""),
-    enabled: Boolean(entityId),
+    queryKey: ["comms-queue-counts", scopedEntityId],
+    queryFn: () => getCommsQueueCounts(scopedEntityId ?? ""),
+    enabled: Boolean(scopedEntityId),
     // The sidebar fires this on every page mount; cache for 5 minutes so the
     // badge stays fresh without re-running the queue scan on every navigation.
     // `/comms/queue/counts` runs the full set of queue scanners server-side

@@ -48,6 +48,7 @@ import { saveBlob } from "@/lib/download";
 import {
   ENTITY_STORAGE_KEY,
   ENTITY_CHANGED_EVENT,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -3142,12 +3143,17 @@ export function Dashboard({
         ((!isIntakeWorkspace && isAllEntities(stored)) ||
           accessibleIds.has(stored)),
     );
+    // Fresh selection: multi-entity orgs default to All entities in dashboard
+    // mode; intake stays single-entity, so it keeps the first entity.
+    const fallbackEntity = isIntakeWorkspace
+      ? firstEntity
+      : defaultEntitySelection(entitiesQuery.data ?? []);
     const next =
       requestedEntityId && accessibleIds.has(requestedEntityId)
         ? requestedEntityId
         : storedIsRestorable
           ? (stored as string)
-          : firstEntity;
+          : fallbackEntity;
     const selectionValid =
       (!isIntakeWorkspace && isAllEntities(selectedEntityId)) ||
       accessibleIds.has(selectedEntityId);

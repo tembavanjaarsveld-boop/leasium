@@ -1,6 +1,6 @@
 import { expect, type Locator, test } from "@playwright/test";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 async function expectTouchTarget(control: Locator, minSize = 44) {
   await control.scrollIntoViewIfNeeded();
@@ -82,6 +82,7 @@ async function expectContrast(control: Locator, minRatio = 4.5) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 

@@ -65,6 +65,7 @@ import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   ENTITY_STORAGE_KEY,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -1764,13 +1765,12 @@ function BillingReadinessWorkspace() {
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
-    const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
     // The All-entities sentinel is a valid restore target even though it is not
     // a real entity id, so the cross-entity view survives navigation/reload.
     const next =
       stored && (isAllEntities(stored) || accessibleIds.has(stored))
         ? stored
-        : firstEntity;
+        : defaultEntitySelection(entitiesQuery.data ?? []);
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }

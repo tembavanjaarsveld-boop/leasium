@@ -16,7 +16,7 @@ test("dashboard command center prepares work without raw loading counters", asyn
 }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("leasium.demo_mode", "false");
-    window.localStorage.removeItem("leasium.entity_id");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
   });
   await mockLeasiumApi(page);
   await page.route("**/api/v1/**", async (route) => {

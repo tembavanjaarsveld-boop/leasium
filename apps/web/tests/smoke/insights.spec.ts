@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 
@@ -30,17 +31,20 @@ test("insights exports review packet CSV from loaded overview data", async ({
       request.method() !== "GET" &&
       (path === "/insights/snapshots" ||
         /^\/insights\/snapshots\/[^/]+\/revoke$/.test(path));
+    const isReadOnlyShellBadge =
+      request.method() === "GET" && path === "/comms/queue/counts";
     const isForbiddenPath =
-      isSnapshotMutation ||
-      path.includes("/provider") ||
-      path.includes("/xero") ||
-      path.includes("/send") ||
-      path.includes("/dispatch") ||
-      path.includes("/payment") ||
-      path.includes("/reconciliation") ||
-      path.includes("/comms") ||
-      path.includes("/billing-drafts") ||
-      path.includes("/invoice-drafts");
+      !isReadOnlyShellBadge &&
+      (isSnapshotMutation ||
+        path.includes("/provider") ||
+        path.includes("/xero") ||
+        path.includes("/send") ||
+        path.includes("/dispatch") ||
+        path.includes("/payment") ||
+        path.includes("/reconciliation") ||
+        path.includes("/comms") ||
+        path.includes("/billing-drafts") ||
+        path.includes("/invoice-drafts"));
 
     if (isForbiddenPath) {
       forbiddenApiCalls.push(`${request.method()} ${path}`);

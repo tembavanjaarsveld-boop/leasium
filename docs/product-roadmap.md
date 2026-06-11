@@ -8,6 +8,19 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 All entities fresh default v1:** fresh multi-entity
+  operator sessions now land on the cross-entity `All entities` view by
+  default across the workspaces that already support portfolio-wide fan-out:
+  Dashboard, Properties, People/Tenants, Work, Contractors, Comms,
+  Notifications, Billing Readiness, Inbox, Portfolio QA, and Insights.
+  Single-entity organisations still land directly on their one entity, and
+  single-entity-only surfaces keep clearing or ignoring the sentinel. Smoke
+  fixtures now seed the primary entity for specs that assert entity-scoped
+  behaviour, while a fresh-storage regression proves Properties opens on
+  `entity_id=__all_entities__` and shows both demo entities. Frontend-only
+  selection behaviour: no API shape, provider send, email/SMS, Xero/Basiq,
+  payment, reconciliation, Smart Intake apply, or workflow mutation path
+  changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Dark Mode Token Alignment v1:** aligned the shipped
   operator dark theme with the approved Figma Dashboard · Dark reference
   (`PO2jOANgmqgZHfqWZXOZGU`, node `62:696`) by wiring the dark Leasium Color

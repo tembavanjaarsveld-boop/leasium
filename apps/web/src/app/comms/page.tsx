@@ -84,6 +84,7 @@ import { saveBlob } from "@/lib/download";
 import {
   ENTITY_CHANGED_EVENT,
   ENTITY_STORAGE_KEY,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -717,8 +718,8 @@ function CommsContent() {
   }, [selectedEntityId]);
   useEffect(() => {
     if (selectedEntityId) return;
-    const first = entitiesQuery.data?.[0]?.id;
-    if (first) setSelectedEntityId(first);
+    const fallback = defaultEntitySelection(entitiesQuery.data ?? []);
+    if (fallback) setSelectedEntityId(fallback);
   }, [entitiesQuery.data, selectedEntityId]);
 
   // All-entities mode: entity-scoped queries use scopedEntityId (empty in

@@ -60,6 +60,7 @@ import {
 } from "@/lib/delivery";
 import {
   ENTITY_STORAGE_KEY,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -247,13 +248,12 @@ function TenantWorkspace() {
   useEffect(() => {
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
     const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
-    const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
     // The All-entities sentinel is a valid restore target even though it is not
     // a real entity id, so the cross-entity view survives navigation/reload.
     const next =
       stored && (isAllEntities(stored) || accessibleIds.has(stored))
         ? stored
-        : firstEntity;
+        : defaultEntitySelection(entitiesQuery.data ?? []);
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }
@@ -456,7 +456,13 @@ function TenantWorkspace() {
   // gated by Clerk sign-up so submitted data is bound to an
   // authenticated identity rather than just an email-borne token.
   const sendInviteMutation = useMutation({
-    mutationFn: async (values: InviteForm) => {
+    mutationFn: async ({
+      values,
+      entityId,
+    }: {
+      values: InviteForm;
+      entityId: string;
+    }) => {
       // Resolve the unit id based on the picker mode:
       //   - auto-create → make a "Main premises" unit now
       //   - auto-select → use the single existing unit
@@ -474,7 +480,7 @@ function TenantWorkspace() {
         resolvedUnitId = autoSelectedUnit.id;
       }
       const tenant = await createTenant({
-        entity_id: selectedEntityId,
+        entity_id: entityId,
         legal_name: values.legal_name.trim(),
         trading_name: null,
         abn: null,
@@ -508,12 +514,12 @@ function TenantWorkspace() {
       const sent = await sendTenantOnboardingPortalInvite(onboarding.id);
       return { tenant, lease, onboarding: sent };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tenants", selectedEntityId] });
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["tenants", variables.entityId] });
       queryClient.invalidateQueries({
-        queryKey: ["tenant-onboardings", selectedEntityId],
+        queryKey: ["tenant-onboardings", variables.entityId],
       });
-      queryClient.invalidateQueries({ queryKey: ["rent-roll", selectedEntityId] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll", variables.entityId] });
       setShowCreate(false);
       setForm(emptyForm);
     },
@@ -527,9 +533,9 @@ function TenantWorkspace() {
   });
 
   const runRemindersMutation = useMutation({
-    mutationFn: () => runTenantOnboardingReminders(selectedEntityId),
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", selectedEntityId] });
+    mutationFn: (entityId: string) => runTenantOnboardingReminders(entityId),
+    onSuccess: (result, entityId) => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-onboardings", entityId] });
       setReminderRunSummary(
         result.sent
           ? `${result.sent} reminder${result.sent === 1 ? "" : "s"} sent.`
@@ -589,7 +595,7 @@ function TenantWorkspace() {
     unitPickerMode === "auto-select" ||
     Boolean(form.tenancy_unit_id);
   const canSubmitInvite =
-    Boolean(selectedEntityId) &&
+    Boolean(scopedEntityId) &&
     Boolean(form.property_id) &&
     !unitsQuery.isLoading &&
     unitReady &&
@@ -598,10 +604,10 @@ function TenantWorkspace() {
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSubmitInvite) {
+    if (!canSubmitInvite || !scopedEntityId) {
       return;
     }
-    sendInviteMutation.mutate(form);
+    sendInviteMutation.mutate({ values: form, entityId: scopedEntityId });
   }
 
   return (
@@ -699,9 +705,13 @@ function TenantWorkspace() {
               <div>
                 <Button
                   type="button"
-                  onClick={() => runRemindersMutation.mutate()}
+                  onClick={() => {
+                    if (scopedEntityId) {
+                      runRemindersMutation.mutate(scopedEntityId);
+                    }
+                  }}
                   disabled={
-                    !selectedEntityId || runRemindersMutation.isPending
+                    !scopedEntityId || runRemindersMutation.isPending
                   }
                 >
                   <Clock3 size={15} />
@@ -787,7 +797,7 @@ function TenantWorkspace() {
                     updateField("property_id", event.target.value)
                   }
                   disabled={
-                    propertiesQuery.isLoading || !selectedEntityId
+                    propertiesQuery.isLoading || !scopedEntityId
                   }
                 >
                   <option value="">Select a property</option>

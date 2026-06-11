@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
+
+// The two-entity fixture defaults fresh storage to All entities; pin these
+// single-entity specs to the primary entity.
+test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
+});
 
 function expectTouchTarget(box: { width: number; height: number } | null) {
   expect(box).not.toBeNull();
@@ -162,7 +168,7 @@ test("mobile tenant rows expose invite actions without raw loading placeholders"
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     window.localStorage.setItem("leasium.demo_mode", "false");
-    window.localStorage.removeItem("leasium.entity_id");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {

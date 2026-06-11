@@ -292,6 +292,13 @@ a design-facing slice.
   review whether the cleaned footer/account placement and dropdown-only
   all-entities affordance match the locked Horizon shell across desktop and
   mobile before this is marked `[x]`.
+- **Workspace defaults to "All entities" for multi-entity orgs (2026-06-11, Remba pending):**
+  with nothing stored, multi-entity orgs now land on the cross-entity All-entities view
+  on every sentinel-aware surface; single-entity orgs still default to their one entity
+  (all-mode gates single-entity write actions), and Money/Statements/Spreadsheet
+  intake/Settings keep their single-entity first-entity default. Follow-up 1: Remba to
+  review whether the all-mode landing (merged rows + gated write actions) reads clearly
+  as the new first impression.
 - **"All entities" cross-entity rollout complete (2026-06-10, prototype mode, no Remba gate):**
   the shared `EntityPicker` (dropdown-only `All entities` option) + fan-out pattern now
   spans every workspace surface. List pages (Properties, Tenants, People, Operations,

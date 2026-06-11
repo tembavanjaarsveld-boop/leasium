@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { isPublicOperatorPath } from "../../src/lib/operator-routes";
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 

@@ -2396,16 +2396,18 @@ function Workspace({
     const stored =
       window.localStorage.getItem(ENTITY_STORAGE_KEY) ??
       window.localStorage.getItem("stewart.entity_id");
-    const firstEntity = entitiesQuery.data?.[0]?.id;
+    // Fresh selection: multi-entity orgs default to the All-entities view;
+    // single-entity orgs land directly on their one entity.
+    const fallbackEntity = defaultEntitySelection(entitiesQuery.data ?? []);
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
     // The "All entities" sentinel is a valid restore target even though it is
     // not in accessibleIds, so it survives reload and ?entity_id deep links.
-    const preferred = [fromUrl, stored, firstEntity].find(
+    const preferred = [fromUrl, stored].find(
       (id) => id && (id === ALL_ENTITIES_VALUE || accessibleIds.has(id)),
     );
-    const next = preferred || firstEntity || "";
+    const next = preferred || fallbackEntity;
     if (!selectedEntityId && next) {
       setSelectedEntityId(next);
     }

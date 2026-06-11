@@ -2,7 +2,72 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Dark Mode Token Alignment v1 - latest)
+## Cowork continuation - 2026-06-11 (All Entities Fresh Default v1 - latest)
+
+Implemented the all-entities fresh-default follow-up. Fresh multi-entity
+operator sessions now land on the cross-entity `All entities` view across the
+workspaces that already support portfolio-wide fan-out, while single-entity
+organisations still land directly on their one entity. Single-entity-only
+surfaces remain intentionally single-entity.
+
+Scope:
+
+- `apps/web/src/app/billing-readiness/page.tsx`, `comms/page.tsx`,
+  `contractors/page.tsx`, `inbox/page.tsx`, `insights/page.tsx`,
+  `notifications/page.tsx`, `operations/page.tsx`, `people/page.tsx`,
+  `portfolio-qa/page.tsx`, and `tenants/page.tsx` now use the shared
+  `defaultEntitySelection()` helper instead of falling back to the first entity.
+- `apps/web/src/components/dashboard.tsx` uses the shared helper for dashboard
+  mode while keeping Smart Intake mode single-entity.
+- `apps/web/src/components/property-workspace.tsx` defaults fresh Properties to
+  `All entities` and still lets explicit deep links or stored valid selections
+  win.
+- `apps/web/tests/smoke/api-mocks.ts` adds `seedPrimaryEntitySelection(page)`.
+  Existing smoke specs that assert single-entity behavior seed `entity-1`; the
+  all-entities specs stay on fresh storage.
+- `apps/web/tests/smoke/app-flows.spec.ts` adds a fresh-storage regression that
+  proves `/properties` opens with `entity_id=__all_entities__` and shows records
+  from both demo entities.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, or workflow mutation path changed. The change is
+Remba-pending because it affects first-impression workspace IA and write-action
+gating visibility.
+
+Verification recorded in this implementation context:
+
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Targeted ESLint passed for touched app/source and smoke files.
+- `git diff --check` passed.
+- All-entities regression smoke group passed **6/6**:
+  fresh Properties default, Properties all-mode merge/drop-in, Contractors
+  all-mode gate, Contractor create form scope-switch gate, Tenants all-mode
+  gate, and Tenant action-panel scope-switch gate.
+- Affected route smokes passed in focused chunks: Contractors/Insights **3/3**,
+  Properties UX **20/20**, the remaining route chunk **69/70** before the
+  patched Properties matcher, then Properties UX **20/20** after the patch.
+- Settings app-flow maintenance smokes passed **3/3** after aligning stale
+  Horizon Settings expectations to the current cards/tabs/preflight UI.
+- AI Inbox focused app-flow smokes passed **2/2** after clearing a transient
+  local Next dev-cache 404 seen only during a long full-file run.
+- Production build passed.
+- In-app browser sanity reached `http://127.0.0.1:3030/properties` and rendered
+  the Properties shell. The live local API was not available (`Failed to fetch`),
+  so cross-entity data behavior remains covered by mocked Playwright smokes.
+
+A one-shot full `app-flows.spec.ts` run was attempted for extra confidence but
+was not used as the final signal: after the Settings fixes, the long run hit a
+transient `/inbox` 404 from the local Next dev cache; the focused AI Inbox rerun
+passed on a fresh cache.
+
+Unrelated local items intentionally left out of scope: `docs/ai-mailbox-intake-design.md`,
+`docs/external-skills/ui-ux-pro-max/`, `marketing/`, and
+`apps/web/tests/smoke/.fuse_hidden*` artifacts.
+
+Next clean Horizon design slice after this behavior follow-up: Dashboard
+hero/bento polish v2 from Figma Dashboard `45:2`.
+
+## Cowork continuation - 2026-06-11 (Horizon Dark Mode Token Alignment v1)
 
 Implemented the Horizon dark-mode token alignment slice against Figma source of
 truth `PO2jOANgmqgZHfqWZXOZGU`, Dashboard · Dark node `62:696`, plus the
@@ -59,8 +124,10 @@ chunk/404 while loading `/settings`; the isolated dark route sweep passed, a
 fresh full 40-check rerun passed, and the diagnostic sidecar found no `/settings`
 route regression.
 
-Commit, push, and Vercel READY proof are the remaining closure steps for this
-slice.
+Committed as `8babd85` (`Align Horizon dark tokens`) and deployed after the
+follow-up typecheck repair `899de35` (`Add entity selection helper export`).
+Vercel deployment `dpl_4WACpiL6WHdCigGuAszky3gbPgAK` reached READY and is
+aliased to `leasium.ai`; `/`, `/settings`, and `/properties` returned HTTP 200.
 
 ## Cowork continuation - 2026-06-11 (Horizon Mobile Polish v1 - latest)
 

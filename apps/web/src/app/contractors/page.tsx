@@ -51,6 +51,7 @@ import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   ENTITY_STORAGE_KEY,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -167,8 +168,8 @@ function ContractorsContent() {
   }, [selectedEntityId]);
   useEffect(() => {
     if (selectedEntityId) return;
-    const first = entitiesQuery.data?.[0]?.id;
-    if (first) setSelectedEntityId(first);
+    const fallback = defaultEntitySelection(entitiesQuery.data ?? []);
+    if (fallback) setSelectedEntityId(fallback);
   }, [entitiesQuery.data, selectedEntityId]);
 
   const allMode = isAllEntities(selectedEntityId);
@@ -283,11 +284,11 @@ function ContractorsContent() {
 
         {showCreate ? (
           <AddContractorForm
-            entityId={selectedEntityId}
+            entityId={scopedEntityId}
             onSaved={() => {
               setShowCreate(false);
               queryClient.invalidateQueries({
-                queryKey: ["contractors", selectedEntityId],
+                queryKey: ["contractors", scopedEntityId],
               });
             }}
           />

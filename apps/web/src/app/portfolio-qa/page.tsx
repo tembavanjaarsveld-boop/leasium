@@ -77,6 +77,7 @@ import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   ENTITY_STORAGE_KEY,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -4118,10 +4119,10 @@ function PortfolioQaWorkspace() {
     if (!entitiesQuery.isSuccess) {
       return;
     }
-    const first = entities[0]?.id ?? "";
-    if (!selectedEntityId && first) {
-      setSelectedEntityId(first);
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, first);
+    const fallback = defaultEntitySelection(entities);
+    if (!selectedEntityId && fallback) {
+      setSelectedEntityId(fallback);
+      window.localStorage.setItem(ENTITY_STORAGE_KEY, fallback);
     } else if (
       selectedEntityId &&
       // The All-entities sentinel is a valid selection even though it is not a
@@ -4129,9 +4130,9 @@ function PortfolioQaWorkspace() {
       !isAllEntities(selectedEntityId) &&
       !entities.some((entity) => entity.id === selectedEntityId)
     ) {
-      setSelectedEntityId(first);
-      if (first) {
-        window.localStorage.setItem(ENTITY_STORAGE_KEY, first);
+      setSelectedEntityId(fallback);
+      if (fallback) {
+        window.localStorage.setItem(ENTITY_STORAGE_KEY, fallback);
       }
     }
   }, [entities, entitiesQuery.isSuccess, selectedEntityId]);

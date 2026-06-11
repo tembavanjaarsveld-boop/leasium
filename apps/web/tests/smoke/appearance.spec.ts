@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 test.use({ colorScheme: "dark" });
 
@@ -14,6 +14,7 @@ const rootLayoutPath = path.join(process.cwd(), "src/app/layout.tsx");
 const uiComponentsPath = path.join(process.cwd(), "src/components/ui.tsx");
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 

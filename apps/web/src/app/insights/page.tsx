@@ -64,6 +64,7 @@ import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
   ENTITY_STORAGE_KEY,
+  defaultEntitySelection,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -1279,9 +1280,9 @@ function InsightsWorkspace() {
       (!isAllEntities(selectedEntityId) &&
         !entities.some((entity) => entity.id === selectedEntityId))
     ) {
-      const firstEntityId = entities[0].id;
-      setSelectedEntityId(firstEntityId);
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, firstEntityId);
+      const fallbackEntityId = defaultEntitySelection(entities);
+      setSelectedEntityId(fallbackEntityId);
+      window.localStorage.setItem(ENTITY_STORAGE_KEY, fallbackEntityId);
     }
   }, [entities, entitiesQuery.isSuccess, selectedEntityId]);
 

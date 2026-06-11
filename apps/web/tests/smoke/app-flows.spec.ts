@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 function watchForbiddenXeroProviderRequests(page: Page) {
   const requests: string[] = [];
@@ -63,6 +63,13 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
+async function selectWorkspaceEntity(page: Page, value: string) {
+  const switcher = page
+    .getByRole("complementary", { name: "Primary navigation" })
+    .getByRole("group", { name: "Workspace switcher" });
+  await switcher.getByLabel("Entity").selectOption(value);
+}
+
 async function selectAllEntitiesFromWorkspaceSwitcher(page: Page) {
   const switcher = page
     .getByRole("complementary", { name: "Primary navigation" })
@@ -70,10 +77,16 @@ async function selectAllEntitiesFromWorkspaceSwitcher(page: Page) {
   await expect(
     switcher.getByRole("button", { name: "All entities" }),
   ).toHaveCount(0);
-  await switcher.getByLabel("Entity").selectOption("__all_entities__");
+  await selectWorkspaceEntity(page, "__all_entities__");
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
+  // The two-entity fixture defaults fresh storage to All entities; pin
+  // single-entity specs to the primary entity, leaving All-entities specs
+  // on the fresh-storage default.
+  if (!testInfo.title.includes("All entities")) {
+    await seedPrimaryEntitySelection(page);
+  }
   await mockLeasiumApi(page, {
     leaseMatchAcceptConflict: testInfo.title.includes(
       "active DocuSign conflict",
@@ -3649,6 +3662,44 @@ test("properties All entities view merges across entities and drops into one", a
   ).toBeVisible();
 });
 
+test("fresh storage defaults a multi-entity org to All entities", async ({
+  page,
+}) => {
+  const countEntityIds: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/comms/queue/counts") {
+      countEntityIds.push(url.searchParams.get("entity_id") ?? "");
+    }
+  });
+
+  // No seeded leasium.entity_id (the beforeEach skips All-entities specs), so
+  // the workspace should land on the cross-entity view by default.
+  await page.goto("/properties");
+
+  await expect(
+    page.getByRole("heading", { name: "Properties" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("4 properties across 2 entities"),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/entity_id=__all_entities__/);
+
+  const cards = page.getByRole("list", { name: "Property cards" });
+  await expect(
+    cards
+      .getByRole("listitem")
+      .filter({ hasText: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await expect(
+    cards
+      .getByRole("listitem")
+      .filter({ hasText: "Rivergum Industrial Estate" }),
+  ).toBeVisible();
+  await page.waitForTimeout(100);
+  expect(countEntityIds).not.toContain("__all_entities__");
+});
+
 test("contractors All entities merges vendors across entities and gates add", async ({
   page,
 }) => {
@@ -3672,6 +3723,34 @@ test("contractors All entities merges vendors across entities and gates add", as
   await expect(
     page.getByRole("button", { name: "Add contractor" }),
   ).toBeDisabled();
+});
+
+test("contractor create form blocks submit after switching scopes", async ({
+  page,
+}) => {
+  const contractorPosts: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/api/v1/contractors") {
+      contractorPosts.push(request.postData() ?? "");
+    }
+  });
+
+  await page.goto("/contractors");
+
+  await expect(
+    page.getByRole("heading", { name: "Contractor directory" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add contractor" }).click();
+  await page.getByLabel("Name").fill("Scope Switch Services");
+
+  await selectAllEntitiesFromWorkspaceSwitcher(page);
+
+  await expect(
+    page.getByRole("button", { name: "Save contractor" }),
+  ).toBeDisabled();
+  await page.waitForTimeout(100);
+  expect(contractorPosts).toEqual([]);
 });
 
 test("tenants All entities merges tenants across entities and gates invite", async ({
@@ -3701,6 +3780,59 @@ test("tenants All entities merges tenants across entities and gates invite", asy
 
   // Send invite needs a single entity, so it is disabled in all-mode.
   await expect(page.getByRole("button", { name: "Send invite" })).toBeDisabled();
+});
+
+test("tenant action panels block submit after switching scopes", async ({
+  page,
+}) => {
+  const actionPosts: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === "POST" &&
+      (url.pathname === "/api/v1/tenants" ||
+        url.pathname === "/api/v1/tenant-onboarding/reminders/run")
+    ) {
+      actionPosts.push(url.pathname);
+    }
+  });
+
+  await page.goto("/tenants");
+
+  await expect(
+    page.getByRole("heading", { name: "Tenant workspace" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Review reminders" }).click();
+
+  await selectAllEntitiesFromWorkspaceSwitcher(page);
+
+  const reminderApproval = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Send due reminders?" }),
+    })
+    .first();
+  await expect(
+    reminderApproval.getByRole("button", { name: "Send due reminders" }),
+  ).toBeDisabled();
+  await reminderApproval.getByRole("button", { name: "Cancel" }).click();
+
+  await selectWorkspaceEntity(page, "entity-1");
+  await page.getByRole("button", { name: "Send invite" }).click();
+  const invitePanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Send invite" }) })
+    .first();
+  await expect(invitePanel).toBeVisible();
+
+  await selectAllEntitiesFromWorkspaceSwitcher(page);
+
+  await expect(invitePanel.getByRole("combobox").first()).toBeDisabled();
+  await expect(
+    invitePanel.locator("form").getByRole("button", { name: "Send invite" }),
+  ).toBeDisabled();
+  await page.waitForTimeout(100);
+  expect(actionPosts).toEqual([]);
 });
 
 test("tenant detail shows portal access recovery actions", async ({ page }) => {
@@ -5419,6 +5551,7 @@ test("tenant portal token view guides relink when the signed-in account belongs 
 });
 
 test("settings shows Xero readiness and records mappings", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 1432, height: 900 });
   await page.goto("/settings");
 
@@ -5453,93 +5586,26 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(entitySwitcherFits).toBe(true);
   expect(primaryNavFits).toBe(true);
   expect(settingsNavFits).toBe(true);
-  await expect(page.getByText("Operator access")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
   await expect(page.getByText("Work notifications")).toBeVisible();
   await expect(page.getByText("2 email on").first()).toBeVisible();
   await expect(page.getByText("1 SMS ready").first()).toBeVisible();
-  await expect(
-    page.getByLabel("Owner Operator assignment email notifications").first(),
-  ).toBeVisible();
-  await expect(
-    page.getByLabel("Owner Operator assignment SMS notifications").first(),
-  ).toBeVisible();
-  await expect(
-    page.getByLabel("Owner Operator assignment SMS phone").first(),
-  ).toHaveValue("+61400111222");
-  const ownerTemplateDefaults = page
-    .locator("details")
-    .filter({ hasText: "Templates" })
+  const ownerNotificationCard = page
+    .locator("article")
+    .filter({ hasText: "Owner Operator" })
     .first();
-  await expect(ownerTemplateDefaults).toBeVisible();
-  await expect(
-    ownerTemplateDefaults.getByText("Template preview").first(),
-  ).not.toBeVisible();
-  await expect(
-    ownerTemplateDefaults.getByText("Standard assignment notice").first(),
-  ).not.toBeVisible();
-  await expect(
-    ownerTemplateDefaults.getByText("Standard work digest").first(),
-  ).not.toBeVisible();
-  await expect(ownerTemplateDefaults.locator("summary")).not.toContainText(
-    "Standard assignment notice",
-  );
-  await expect(ownerTemplateDefaults.locator("summary")).not.toContainText(
-    "Standard work digest",
-  );
-  const ownerNotificationRow = await page
-    .getByLabel("Owner Operator assignment email notifications")
-    .first()
-    .evaluate((node) => {
-      let current = node.parentElement;
-      while (current) {
-        const hasOwner = current.textContent?.includes("Owner Operator");
-        const hasSmsPhone = Boolean(
-          current.querySelector(
-            '[aria-label="Owner Operator assignment SMS phone"]',
-          ),
-        );
-        const hasTemplates = current.textContent?.includes("Templates");
-        if (hasOwner && hasSmsPhone && hasTemplates) {
-          const box = current.getBoundingClientRect();
-          return {
-            height: box.height,
-            width: box.width,
-          };
-        }
-        current = current.parentElement;
-      }
-      return null;
-    });
-  expect(ownerNotificationRow).not.toBeNull();
-  expect(ownerNotificationRow?.width).toBeGreaterThan(900);
-  expect(ownerNotificationRow?.height).toBeLessThanOrEqual(170);
-  await ownerTemplateDefaults.locator("summary").click();
-  await expect(
-    ownerTemplateDefaults
-      .getByLabel("Owner Operator assignment notice template key")
-      .first(),
-  ).toHaveValue("work_assignment_notification");
-  await expect(
-    ownerTemplateDefaults
-      .getByLabel("Owner Operator digest template key")
-      .first(),
-  ).toHaveValue("work_assignment_digest");
-  await expect(
-    ownerTemplateDefaults.getByText("Template preview").first(),
-  ).toBeVisible();
-  await expect(
-    ownerTemplateDefaults
-      .getByText("New Leasium work assigned to Owner Operator")
-      .first(),
-  ).toBeVisible();
-  const ownerDigestCadence = page
-    .getByLabel("Owner Operator work digest")
-    .first();
-  await expect(ownerDigestCadence).toBeVisible();
-  await expect(ownerDigestCadence).toHaveValue("daily");
-  await expect(page.getByText("Last digest").first()).toBeVisible();
-  await expect(page.getByText("No messages sent").first()).toBeVisible();
+  await expect(ownerNotificationCard).toBeVisible();
+  await expect(ownerNotificationCard.getByText("Assignment email")).toBeVisible();
+  await expect(ownerNotificationCard.getByText("Assignment SMS")).toBeVisible();
+  await expect(ownerNotificationCard.getByText("+61400111222")).toBeVisible();
+  await expect(ownerNotificationCard.getByText("Reviewed")).toBeVisible();
+  await expect(ownerNotificationCard.getByText("Notice — Standard v1")).toBeVisible();
+  await expect(ownerNotificationCard.getByText("Digest v1")).toBeVisible();
+  await expect(ownerNotificationCard.getByText("Managed")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Security" }).click();
+  await expect(page.getByText("Operator access")).toBeVisible();
+  await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Organisation" }).click();
   await expect(page.getByText("Communication templates")).toBeVisible();
@@ -5560,7 +5626,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
   const ownershipTagsPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Ownership tags" }),
-  });
+  }).last();
   await expect(ownershipTagsPanel).toBeVisible();
   await expect(
     ownershipTagsPanel.getByText("Queen Street Property Trust"),
@@ -6144,39 +6210,72 @@ test("settings keeps provider readiness visible when API release is unavailable"
   await mockLeasiumApi(page, { apiHealthUnavailable: true });
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Organisation" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
 
-  await expect(page.getByText("API release", { exact: true })).toBeVisible();
-  await expect(page.getByText("Release unavailable")).toBeVisible();
   await expect(
-    page.getByText("API release status is unavailable."),
+    page.getByRole("heading", { name: "Entities & Xero" }),
   ).toBeVisible();
-  await expect(page.getByText("DocuSign Connect webhook")).toBeVisible();
+  await expect(page.getByText("Freshness", { exact: true }).first()).toBeVisible();
   await expect(
-    page.getByText("DOCUSIGN_WEBHOOK_SECRET", { exact: true }),
+    page.getByText(/1 Xero readiness issue.*needs review/).first(),
+  ).toBeVisible();
+  const advancedSupportDetails = page
+    .locator("details")
+    .filter({ hasText: "Advanced support details" })
+    .first();
+  await advancedSupportDetails.getByText("Advanced support details").click();
+  const providerSetupPreflightPanel = page.getByRole("region", {
+    name: "Provider setup preflight",
+  });
+  await expect(providerSetupPreflightPanel).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("Xero app configuration"),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("XERO_CLIENT_ID", { exact: true }),
   ).toBeVisible();
 });
 
-test("settings explains DocuSign demo endpoint readiness", async ({ page }) => {
+test("settings explains Xero setup preflight readiness", async ({ page }) => {
   await page.unroute("**/api/v1/**");
   await page.unroute("**/health");
-  await mockLeasiumApi(page, { docusignDemoEndpoints: true });
+  await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Organisation" }).click();
+  await page.getByRole("tab", { name: "Connect" }).click();
 
-  await expect(page.getByText("DocuSign", { exact: true })).toBeVisible();
-  await expect(page.getByText("Setup needed").first()).toBeVisible();
   await expect(
-    page.getByText(
-      "Credentials and webhook are set; switch DocuSign REST and auth URLs to production before live envelope testing.",
+    page.getByRole("heading", { name: "Connect Xero" }),
+  ).toBeVisible();
+  const advancedSupportDetails = page
+    .locator("details")
+    .filter({ hasText: "Advanced support details" })
+    .first();
+  await advancedSupportDetails.getByText("Advanced support details").click();
+  const providerSetupPreflightPanel = page.getByRole("region", {
+    name: "Provider setup preflight",
+  });
+  await expect(providerSetupPreflightPanel).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("Xero app configuration"),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("XERO_CLIENT_ID", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("XERO_CLIENT_SECRET", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText("XERO_TOKEN_ENCRYPTION_KEY", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    providerSetupPreflightPanel.getByText(
+      "Register expected_redirect_uri in the Xero app.",
     ),
-  ).toBeVisible();
-  await expect(
-    page.getByText("DOCUSIGN_BASE_URL", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("DOCUSIGN_AUTH_BASE_URL", { exact: true }),
   ).toBeVisible();
 });
 

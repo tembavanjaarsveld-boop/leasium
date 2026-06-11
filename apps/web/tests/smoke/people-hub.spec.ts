@@ -1,6 +1,15 @@
 import { expect, type Locator, test } from "@playwright/test";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
+
+// The two-entity fixture defaults fresh storage to All entities; pin
+// single-entity specs to the primary entity, leaving All-entities specs
+// on the fresh-storage default.
+test.beforeEach(async ({ page }, testInfo) => {
+  if (!testInfo.title.includes("All entities")) {
+    await seedPrimaryEntitySelection(page);
+  }
+});
 
 const OWNERS = [
   {

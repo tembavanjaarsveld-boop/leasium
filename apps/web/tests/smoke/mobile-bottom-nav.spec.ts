@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 async function expectMobileTouchTarget(locator: Locator) {
   const box = await locator.boundingBox();
@@ -40,6 +40,7 @@ function watchForbiddenProviderRequests(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
 
