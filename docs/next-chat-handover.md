@@ -40,6 +40,11 @@ Verification recorded so far:
   portal" entry state with no horizontal overflow. A real Clerk-authenticated
   full-account browser pass was not available locally; the new cockpit remains
   covered by mocked Playwright source/runtime guardrails.
+- Shipped to production: commit `aa2bfc9` deployed as Vercel
+  `dpl_97VosShXoVN8TiWrPmQWgMvFEG8e`, state `READY`, with aliases attached
+  (`leasium.ai`, `www.leasium.ai`, `leasium.vercel.app`). HTTP checks returned
+  200 for `https://leasium.ai/tenant-portal` and
+  `https://leasium.ai/tenant-portal/tenant-token-1`.
 
 Design-facing status: shipped pending Remba review, not `[x]` complete.
 

@@ -59,3 +59,7 @@ Observed: focused GREEN passed; focused ESLint passed; `tsc --noEmit` passed; te
 - [x] **Step 2: Update docs as Remba-pending**
 
 Record the slice as shipped pending Remba; do not mark design complete.
+
+- [x] **Step 3: Push and verify deployment**
+
+Commit `aa2bfc9` was pushed to `main`, Vercel deployment `dpl_97VosShXoVN8TiWrPmQWgMvFEG8e` reached `READY`, aliases attached to `leasium.ai`, and canonical HTTP checks returned 200 for `/tenant-portal` and `/tenant-portal/tenant-token-1`.
