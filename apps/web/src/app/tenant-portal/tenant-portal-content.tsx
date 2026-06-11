@@ -150,6 +150,14 @@ function formatMoney(cents: number, currency = "AUD") {
   }).format(cents / 100);
 }
 
+function formatCompactMoney(cents: number, currency = "AUD") {
+  return new Intl.NumberFormat("en-AU", {
+    currency,
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+    style: "currency",
+  }).format(cents / 100);
+}
+
 function formatBytes(bytes: number) {
   if (bytes < 1_000_000) {
     return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
@@ -469,6 +477,84 @@ function maintenanceRequestSortValue(
   return `${closed ? "1" : "0"}-${String(
     Number.MAX_SAFE_INTEGER - new Date(activityAt).getTime(),
   ).padStart(16, "0")}`;
+}
+
+function tenantPortalPaymentCurrency(portal: TenantPortalRecord) {
+  return portal.invoices[0]?.currency ?? "AUD";
+}
+
+function tenantPortalPaymentHeadline(portal: TenantPortalRecord) {
+  const amount = formatCompactMoney(
+    portal.payment_summary.outstanding_cents,
+    tenantPortalPaymentCurrency(portal),
+  );
+  if (portal.payment_summary.status === "paid") {
+    return "All paid";
+  }
+  if (portal.payment_summary.status === "no_invoices") {
+    return "Nothing due";
+  }
+  if (portal.payment_summary.status === "overdue") {
+    return `${amount} overdue`;
+  }
+  return `${amount} due`;
+}
+
+function tenantPortalPaymentDetail(portal: TenantPortalRecord) {
+  const invoices =
+    portal.payment_summary.invoice_count === 1
+      ? "1 invoice"
+      : `${portal.payment_summary.invoice_count} invoices`;
+  if (portal.payment_summary.status === "paid") {
+    return `${invoices} paid`;
+  }
+  if (portal.payment_summary.status === "no_invoices") {
+    return "No approved invoices yet";
+  }
+  const dueDate = portal.payment_summary.next_due_date
+    ? `Next due ${formatDate(portal.payment_summary.next_due_date)}`
+    : "Due date not set";
+  if (portal.payment_summary.overdue_count) {
+    const overdue =
+      portal.payment_summary.overdue_count === 1
+        ? "1 overdue invoice"
+        : `${portal.payment_summary.overdue_count} overdue invoices`;
+    return `${overdue} - ${dueDate}`;
+  }
+  return `${invoices} outstanding - ${dueDate}`;
+}
+
+function tenantPortalRecentDocuments(portal: TenantPortalRecord) {
+  const leaseDocument = portal.lease_agreement.signed_at
+    ? [
+        {
+          key: "lease-agreement",
+          title: "Lease agreement",
+          detail: `Signed ${formatDate(portal.lease_agreement.signed_at)}`,
+        },
+      ]
+    : [];
+  const invoiceDocuments = portal.invoices
+    .filter((invoice) => Boolean(invoice.pdf_document_id))
+    .map((invoice) => ({
+      key: `invoice-${invoice.id}`,
+      title: invoice.invoice_number ? `${invoice.invoice_number}` : invoice.title,
+      detail: invoice.issue_date
+        ? `Issued ${formatDate(invoice.issue_date)}`
+        : "Invoice ready",
+    }));
+  const uploadedDocuments = portal.compliance.uploaded_documents.map(
+    (document) => ({
+      key: `document-${document.id}`,
+      title: document.filename.replace(/\.[^.]+$/, ""),
+      detail: formatDate(document.created_at),
+    }),
+  );
+
+  return [...leaseDocument, ...invoiceDocuments, ...uploadedDocuments].slice(
+    0,
+    3,
+  );
 }
 
 type TenantPortalActivityItem = {
@@ -2021,12 +2107,14 @@ function ContactDetailsPanel({
   accountAuthToken,
   getAccountAuthToken,
   onSaved,
+  id,
 }: {
   portal: TenantPortalRecord;
   token: string | null;
   accountAuthToken: string | null;
   getAccountAuthToken: TenantPortalAccountAuthTokenGetter;
   onSaved: TenantPortalSavedHandler;
+  id?: string;
 }) {
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeForm, setChangeForm] =
@@ -2096,6 +2184,7 @@ function ContactDetailsPanel({
 
   return (
     <Panel
+      id={id}
       title="Contact Details"
       icon={<UserRound size={18} />}
       actions={<StatusBadge tone="success">Confirmed</StatusBadge>}
@@ -2234,6 +2323,166 @@ function ContactDetailsPanel({
         )}
       </div>
     </Panel>
+  );
+}
+
+function TenantPortalMobileCockpit({
+  portal,
+  maintenanceSummary,
+}: {
+  portal: TenantPortalRecord;
+  maintenanceSummary: MaintenanceSummary;
+}) {
+  const tenantName = tenantDisplayName(portal.tenant);
+  const leaseTitle = portal.lease.unit_label
+    ? `${portal.lease.unit_label}, ${portal.lease.property_name}`
+    : portal.lease.property_name;
+  const latestRequest = maintenanceSummary.latestOpenRequest;
+  const latestRequestDetail = latestRequest
+    ? (latestMaintenanceHistoryEntry(latestRequest)?.summary ??
+      maintenanceStatusDetail(
+        latestRequest.status,
+        latestRequest.due_date,
+        latestRequest.completed_at,
+      ).replace(/\.$/, ""))
+    : "No active maintenance requests.";
+  const recentDocuments = tenantPortalRecentDocuments(portal);
+  const quickActions = [
+    {
+      href: "#tenant-maintenance",
+      icon: Wrench,
+      label: "Report an issue",
+    },
+    {
+      href: "#tenant-documents",
+      icon: FileText,
+      label: "My documents",
+    },
+    {
+      href: "#tenant-contact",
+      icon: UserRound,
+      label: "Contact",
+    },
+  ];
+
+  return (
+    <section
+      aria-label="Tenant portal mobile summary"
+      className="grid gap-3 md:hidden"
+    >
+      <div className="flex items-center gap-2 pt-1">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-white">
+          L
+        </div>
+        <div className="min-w-0">
+          <h2 className="truncate text-[15px] font-bold tracking-normal text-foreground">
+            {leaseTitle}
+          </h2>
+          <p className="truncate text-[10px] text-muted-foreground">
+            {tenantName}
+          </p>
+        </div>
+        <div className="flex-1" />
+        <div
+          aria-hidden="true"
+          className="size-[30px] rounded-full bg-danger"
+        />
+      </div>
+
+      <div className="grid gap-2 rounded-[18px] bg-leasium-navy-900 p-[18px] text-white">
+        <p className="text-[9px] font-semibold uppercase tracking-normal text-leasium-slate-300">
+          Balance
+        </p>
+        <p className="text-[22px] font-bold tracking-normal">
+          {tenantPortalPaymentHeadline(portal)}
+        </p>
+        <p className="text-[11px] text-leasium-slate-300">
+          {tenantPortalPaymentDetail(portal)}
+        </p>
+        <a
+          className="mt-1 flex min-h-11 items-center justify-center rounded-xl bg-accent px-4 text-[13px] font-semibold text-leasium-navy-900"
+          href="#tenant-how-to-pay"
+        >
+          Pay now - PayID / BPAY
+        </a>
+        <a
+          className="w-fit text-[11px] font-medium text-primary-soft"
+          href="#tenant-how-to-pay"
+        >
+          View payment instructions
+        </a>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2.5">
+        {quickActions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <a
+              key={action.href}
+              className="grid min-h-[76px] place-items-center gap-1.5 rounded-[14px] border border-leasium-card-border bg-white px-2 py-3 text-center text-[11px] font-semibold text-foreground"
+              href={action.href}
+            >
+              <span className="flex size-7 items-center justify-center rounded-lg bg-primary-soft text-primary">
+                <Icon size={15} />
+              </span>
+              <span>{action.label}</span>
+            </a>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-2 rounded-[14px] border border-leasium-card-border bg-white p-3.5">
+        <p className="text-[9px] font-semibold uppercase tracking-normal text-muted-foreground">
+          MY REQUESTS
+        </p>
+        {latestRequest ? (
+          <div className="grid grid-cols-[4px_minmax(0,1fr)_auto] items-center gap-2.5">
+            <div className="h-9 rounded-sm bg-danger" />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-foreground">
+                {latestRequest.title}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {latestRequestDetail}
+              </p>
+            </div>
+            <span className="rounded-full bg-info-soft px-2.5 py-1 text-[11px] font-semibold capitalize text-primary">
+              {label(latestRequest.status)}
+            </span>
+          </div>
+        ) : (
+          <p className="text-[12px] text-muted-foreground">
+            No active maintenance requests.
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-2 rounded-[14px] border border-leasium-card-border bg-white p-3.5">
+        <p className="text-[9px] font-semibold uppercase tracking-normal text-muted-foreground">
+          RECENT DOCUMENTS
+        </p>
+        {recentDocuments.length ? (
+          recentDocuments.map((document) => (
+            <div
+              key={document.key}
+              className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-2 py-1"
+            >
+              <FileText size={14} className="text-muted-foreground" />
+              <p className="truncate text-[12px] font-medium text-foreground">
+                {document.title}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {document.detail}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="text-[12px] text-muted-foreground">
+            Documents will appear here once the property team shares them.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -4754,9 +5003,13 @@ function TenantPortalContent({
   return (
     <PortalShell>
       <div className="mx-auto grid max-w-4xl gap-5 px-5 py-6">
+        <TenantPortalMobileCockpit
+          portal={portal}
+          maintenanceSummary={maintenanceSummary}
+        />
 
         {/* Status hero — identity plus one clear answer to "do I need to do anything?" */}
-        <section className="grid gap-4 rounded-md border border-border bg-white p-5">
+        <section className="hidden gap-4 rounded-md border border-border bg-white p-5 md:grid">
           <div>
             <p className="text-sm text-muted-foreground">
               {portal.lease.property_name}
@@ -4832,6 +5085,7 @@ function TenantPortalContent({
 
             {/* Payments */}
             <Panel
+              id="tenant-payments"
               title="Payments"
               icon={<ReceiptText size={18} />}
               actions={
@@ -4950,11 +5204,16 @@ function TenantPortalContent({
               </div>
             </Panel>
 
-            {portal.how_to_pay ? (
-              <Panel title="How to pay" icon={<ReceiptText size={18} />}>
-                <div className="grid gap-3 p-4 text-sm">
-                  {portal.how_to_pay.bsb &&
-                  portal.how_to_pay.account_number ? (
+            <Panel
+              id="tenant-how-to-pay"
+              title="How to pay"
+              icon={<ReceiptText size={18} />}
+            >
+              <div className="grid gap-3 p-4 text-sm">
+                {portal.how_to_pay ? (
+                  <>
+                    {portal.how_to_pay.bsb &&
+                    portal.how_to_pay.account_number ? (
                     <div className="grid gap-1 rounded-md border border-border p-3">
                       <div className="font-semibold">Bank transfer (EFT)</div>
                       {portal.how_to_pay.account_name ? (
@@ -4967,41 +5226,48 @@ function TenantPortalContent({
                         Account: {portal.how_to_pay.account_number}
                       </div>
                     </div>
-                  ) : null}
-                  {portal.how_to_pay.payid ? (
-                    <div className="grid gap-1 rounded-md border border-border p-3">
-                      <div className="font-semibold">PayID</div>
-                      <div>{portal.how_to_pay.payid}</div>
-                      {portal.how_to_pay.payid_name ? (
-                        <div className="text-muted-foreground">
-                          Registered to {portal.how_to_pay.payid_name}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {portal.how_to_pay.bpay_biller_code ? (
-                    <div className="grid gap-1 rounded-md border border-border p-3">
-                      <div className="font-semibold">BPAY</div>
-                      <div>
-                        Biller code: {portal.how_to_pay.bpay_biller_code}
+                    ) : null}
+                    {portal.how_to_pay.payid ? (
+                      <div className="grid gap-1 rounded-md border border-border p-3">
+                        <div className="font-semibold">PayID</div>
+                        <div>{portal.how_to_pay.payid}</div>
+                        {portal.how_to_pay.payid_name ? (
+                          <div className="text-muted-foreground">
+                            Registered to {portal.how_to_pay.payid_name}
+                          </div>
+                        ) : null}
                       </div>
-                    </div>
-                  ) : null}
-                  {portal.how_to_pay.instructions ? (
-                    <p className="text-muted-foreground">
-                      {portal.how_to_pay.instructions}
-                    </p>
-                  ) : null}
-                  <p className="text-xs text-muted-foreground">
-                    Quote your invoice reference when paying. Leasium does
-                    not process payments.
-                  </p>
-                </div>
-              </Panel>
-            ) : null}
+                    ) : null}
+                    {portal.how_to_pay.bpay_biller_code ? (
+                      <div className="grid gap-1 rounded-md border border-border p-3">
+                        <div className="font-semibold">BPAY</div>
+                        <div>
+                          Biller code: {portal.how_to_pay.bpay_biller_code}
+                        </div>
+                      </div>
+                    ) : null}
+                    {portal.how_to_pay.instructions ? (
+                      <p className="text-muted-foreground">
+                        {portal.how_to_pay.instructions}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="rounded-md border border-border bg-muted/30 p-3 text-muted-foreground">
+                    Payment instructions have not been configured yet. Contact
+                    the property team before paying.
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Quote your invoice reference when paying. Leasium does not
+                  process payments.
+                </p>
+              </div>
+            </Panel>
 
             {/* Maintenance */}
             <Panel
+              id="tenant-maintenance"
               title="Maintenance"
               icon={<Wrench size={18} />}
               actions={
@@ -5423,6 +5689,7 @@ function TenantPortalContent({
 
             {/* Contact details */}
             <ContactDetailsPanel
+              id="tenant-contact"
               portal={portal}
               token={token}
               accountAuthToken={

@@ -321,6 +321,25 @@ back-filled in Figma before code.
   browser QA before push; Vercel proof is recorded in the shipping chat. Remba
   should review the mobile density, first-viewport hierarchy, and bottom-nav
   clearance before this is marked `[x]`.
+- **Horizon Tenant portal mobile v1 (2026-06-11, Remba pending):** production
+  implementation from the approved Figma Tenant portal·Mobile target
+  (`61:1251`) inside the authenticated tenant portal full account view. Mobile
+  now opens with the Horizon identity strip, dark balance/payment card, quick
+  actions, My requests, and Recent documents above the existing detailed account
+  panels. `Pay now - PayID / BPAY` is display-only and links to
+  `#tenant-how-to-pay`; the slice also adds stable anchors for
+  `#tenant-maintenance`, `#tenant-documents`, and `#tenant-contact`. No payment
+  or provider mutation path, Xero/SendGrid/Twilio/Basiq call, document upload,
+  tenant email, or desktop portal behavior changed. Verified by focused ESLint,
+  `tsc --noEmit`, tenant portal smoke chunks (4/4, 5/5, 2/2), production build,
+  and browser QA for the public portal recovery/entry states at 390x844 and
+  1280x900 in light/dark; a live Clerk-authenticated full-account browser pass
+  remains pending. Remba should review follow-up 1: mobile fidelity to the
+  `61:1251` frame, including first-viewport density and section hierarchy;
+  follow-up 2: whether live tenant balances, request counts, and document rows
+  should diverge from the illustrative Figma values; follow-up 3: whether the
+  `Pay now` wording is acceptable when the action is an instructions anchor
+  rather than an in-portal payment rail before this is marked `[x]`.
 - **Horizon Dark Mode Token Alignment v1 (2026-06-11, Remba pending):**
   production token alignment against Dashboard·Dark `62:696` and the Figma
   Leasium Color dark values. Scope stayed inside the existing

@@ -2,7 +2,48 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Insights v1 - latest)
+## Cowork continuation - 2026-06-11 (Horizon Tenant portal mobile v1 - latest)
+
+Implemented the Horizon Tenant portal mobile v1 slice from the approved Figma
+source of truth: Tenant portal·Mobile node `61:1251`.
+
+Scope stayed inside the authenticated tenant portal full account view and its
+source smoke coverage. Mobile tenants now see a Horizon first-viewport cockpit:
+top identity strip, dark balance/payment card, quick actions, My requests, and
+Recent documents. The existing detailed account panels remain below; desktop
+portal layout and account/claim gates are unchanged.
+
+`Pay now - PayID / BPAY` is display-only and links to `#tenant-how-to-pay`.
+Stable anchors now cover `#tenant-how-to-pay`, `#tenant-maintenance`,
+`#tenant-documents`, and `#tenant-contact`.
+
+No payment/provider mutation path, Xero/SendGrid/Twilio/Basiq call, document
+upload, tenant email behavior, or desktop portal behavior changed.
+
+Verification recorded so far:
+
+- Figma source of truth: `PO2jOANgmqgZHfqWZXOZGU`, node `61:1251`, production
+  `03 Screens` mobile framework.
+- Focused RED failed before implementation for the tenant portal mobile Horizon
+  cockpit source smoke.
+- Focused GREEN passed after implementation; final rerun passed **1/1**.
+- Focused ESLint passed for the touched tenant portal component, source smoke,
+  and API mock fixture.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Broader tenant portal smokes passed in focused chunks: tenant UX **4/4**,
+  tenant portal invite/preview **5/5**, and account-helper guardrails **2/2**.
+- `npm run build` passed.
+- In-app browser QA passed on `http://127.0.0.1:3030/tenant-portal/tenant-token-1`
+  at 390x844 and 1280x900 in light mode, and at 390x844/1280x900 in the
+  restored dark preference: recovery heading/copy visible and no horizontal
+  overflow. `/tenant-portal` at 390x844 also showed the no-token "Open your
+  portal" entry state with no horizontal overflow. A real Clerk-authenticated
+  full-account browser pass was not available locally; the new cockpit remains
+  covered by mocked Playwright source/runtime guardrails.
+
+Design-facing status: shipped pending Remba review, not `[x]` complete.
+
+## Cowork continuation - 2026-06-11 (Horizon Insights v1)
 
 Implemented the next remaining Horizon desktop slice from the approved Figma
 source of truth: Insights node `61:1063`.

@@ -2157,6 +2157,18 @@ const tenantPortalSession = (
     status: "overdue",
     manual_only: true,
   },
+  how_to_pay: {
+    configured: true,
+    methods: ["payid", "bpay", "eft"],
+    account_name: "Acme Holdings Pty Ltd Trust Account",
+    bsb: "064000",
+    account_number: "12345678",
+    payid: "rent@acme.example",
+    payid_name: "Acme Holdings Pty Ltd",
+    bpay_biller_code: "123456",
+    instructions:
+      "Use your invoice reference when paying by PayID, BPAY, or EFT.",
+  },
   maintenance_requests: (options.maintenanceStatusMatrix
     ? maintenanceStatusMatrixWorkOrders()
     : maintenanceWorkOrders

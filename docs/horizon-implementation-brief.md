@@ -1,6 +1,6 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Insights v1 is
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Tenant portal mobile v1 is
 Remba-pending; this brief covers the remaining Horizon
 implementation.
 
@@ -27,7 +27,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | People | 61:580 | tenant/vendor cards; v1 shipped pending Remba review |
 | Money | 61:842 | billing readiness + approve-run; v1 shipped pending Remba review |
 | Insights | 61:1063 | value flow, compliance, what-changed; v1 shipped pending Remba review |
-| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, bottom nav + FAB |
+| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, Tenant portal v1 shipped pending Remba review |
 | Dashboard · Dark | 62:696 | dark-mode reference |
 
 Components (02 Components): Horizon Sidebar 44:117, Command bar 44:155, Hero focus
@@ -75,6 +75,12 @@ extend the same pattern, never hardcode hex in components.
     `/insights` first screen now uses the approved value-flow, compliance,
     exceptions, and what-changed cockpit while preserving read-only review
     packet exports and the existing detailed reporting sections below.
+12. **Tenant portal mobile v1** (`61:1251`) — shipped pending Remba review.
+    The authenticated full tenant portal now has a mobile-only cockpit with the
+    approved identity strip, balance/payment card, quick actions, requests, and
+    documents. The payment CTA is a display-only anchor to the existing
+    instructions section; no provider, payment, upload, email, or desktop portal
+    behavior changed.
 
 ## Non-negotiable guardrails (from CLAUDE.md)
 

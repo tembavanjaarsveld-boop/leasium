@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Tenant portal mobile v1:** implemented the approved
+  Figma Tenant portal mobile target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:1251`)
+  inside the authenticated tenant portal full account view. Mobile tenants now
+  see a Horizon first-viewport cockpit with the identity strip, dark
+  balance/payment card, quick actions, My requests, and Recent documents above
+  the existing detailed account panels. The `Pay now - PayID / BPAY` CTA is a
+  display-only anchor to `#tenant-how-to-pay`; stable anchors were added for
+  payment instructions, maintenance, documents, and contact sections. No
+  payment/provider mutation path, Xero/SendGrid/Twilio/Basiq call, document
+  upload, tenant email, or desktop portal behavior changed. Pending Remba
+  review.
 - [~] **2026-06-11 Horizon Insights v1:** implemented the approved Figma
   Insights target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:1063`) on `/insights`.
   The legacy tabbed reporting layout now opens as a Horizon cockpit with the
