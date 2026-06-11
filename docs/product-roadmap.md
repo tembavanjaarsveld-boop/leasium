@@ -8,6 +8,16 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Insights v1:** implemented the approved Figma
+  Insights target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:1063`) on `/insights`.
+  The legacy tabbed reporting layout now opens as a Horizon cockpit with the
+  value-flow card, compliance ring, exceptions card, and "what changed this
+  week" rail, with the existing detailed reporting sections stacked below for
+  scroll-depth review. Copy review packet and Export CSV remain local-only over
+  already-loaded overview/snapshot data; no API shape, provider send, email/SMS,
+  Xero/Basiq write, payment, reconciliation, billing draft generation, snapshot
+  creation/revoke, provider dispatch, or portfolio mutation path changed.
+  Pending Remba review.
 - [~] **2026-06-11 Horizon Money v1:** implemented the approved Figma Money
   target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:842`) on `/money`. The legacy
   tabbed finance hub is now a Horizon billing cockpit with live this-month,

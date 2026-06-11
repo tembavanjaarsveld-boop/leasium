@@ -8,6 +8,69 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("insights renders the Horizon first-screen cockpit", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const unsafeRequests: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+    const isReadOnlyShellBadge =
+      request.method() === "GET" && path === "/comms/queue/counts";
+    const isUnsafe =
+      request.method() !== "GET" &&
+      !isReadOnlyShellBadge &&
+      !path.startsWith("/insights/snapshots");
+
+    if (isUnsafe) {
+      unsafeRequests.push(`${request.method()} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "insights must stay review-only" }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/insights");
+
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Insights" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Portfolio health, compliance, and what changed - shareable."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy review packet" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
+
+  await expect(
+    page.getByText("PORTFOLIO VALUE FLOW", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("COMPLIANCE", { exact: true })).toBeVisible();
+  await expect(page.getByText("EXCEPTIONS", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("WHAT CHANGED THIS WEEK", { exact: true }),
+  ).toBeVisible();
+  const changeRail = page
+    .locator("section")
+    .filter({
+      has: page.getByText("WHAT CHANGED THIS WEEK", { exact: true }),
+    })
+    .first();
+  const changeRailBox = await changeRail.boundingBox();
+  expect(changeRailBox).not.toBeNull();
+  expect(changeRailBox!.y + changeRailBox!.height).toBeLessThanOrEqual(900);
+  await expect(page.getByText("Rent roll up")).toBeVisible();
+  await expect(page.getByText("Arrears aged past")).toBeVisible();
+  await expect(page.getByText("Vacancy listed")).toBeVisible();
+  await expect(page.getByRole("tablist")).toHaveCount(0);
+  expect(unsafeRequests).toEqual([]);
+});
+
 test("insights exports review packet CSV from loaded overview data", async ({
   page,
 }) => {
@@ -69,8 +132,7 @@ test("insights exports review packet CSV from loaded overview data", async ({
   ).toBeVisible();
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
 
-  // Money tab: finance snapshot, arrears, invoice status.
-  await page.getByRole("tab", { name: /Money/ }).click();
+  // Money sections: finance snapshot, arrears, invoice status.
   await expect(
     page.getByRole("heading", { name: "Finance Snapshot" }),
   ).toBeVisible();
@@ -93,8 +155,7 @@ test("insights exports review packet CSV from loaded overview data", async ({
   await expect(invoiceRow.getByText("Provider failed")).toBeVisible();
   await expect(invoiceRow.getByText("$8,800")).toBeVisible();
 
-  // Operations tab: compliance, maintenance aging.
-  await page.getByRole("tab", { name: /Operations/ }).click();
+  // Operations sections: compliance, maintenance aging.
   await expect(
     page.getByRole("heading", { name: "Compliance & Inspections" }),
   ).toBeVisible();
@@ -131,8 +192,7 @@ test("insights exports review packet CSV from loaded overview data", async ({
   await expect(maintenanceRow.getByText("21 days open")).toBeVisible();
   await expect(maintenanceRow.getByText("Cool Air Services")).toBeVisible();
 
-  // Portfolio tab: owner/entity snapshot.
-  await page.getByRole("tab", { name: /Portfolio/ }).click();
+  // Portfolio section: owner/entity snapshot.
   await expect(
     page.getByRole("heading", { name: "Portfolio rollup" }),
   ).toBeVisible();
@@ -151,7 +211,7 @@ test("insights exports review packet CSV from loaded overview data", async ({
   );
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download review CSV" }).click();
+  await page.getByRole("button", { name: "Export CSV" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(
     "insights-review-packet-2026-05-19.csv",
@@ -224,9 +284,6 @@ test("insights splits the Xero-status guardrail into label and caption", async (
   page,
 }) => {
   await page.goto("/insights");
-
-  // Finance Snapshot lives in the Money tab of the tabbed Insights layout.
-  await page.getByRole("tab", { name: /Money/ }).click();
 
   const financeSnapshot = page
     .locator("section")

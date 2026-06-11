@@ -41,7 +41,8 @@ the core design. It has been promoted into the canonical pages:
   ribbon 44:274, Segmented control 44:282, Bottom nav mobile 44:301.
 - **03 Screens** now shows the approved Horizon target design for ALL core
   screens: Dashboard 45:2, Work 45:168, Properties 55:2, Smart Intake 55:166,
-  Notifications 55:307, Settings 55:439, and the mobile companion set
+  Notifications 55:307, Settings 55:439, People 61:580, Money 61:842,
+  Insights 61:1063, and the mobile companion set
   Dashboard·Mobile 45:371, Work·Mobile 45:461, Properties·Mobile 59:427,
   Smart Intake·Mobile 59:521, Notifications·Mobile 59:594, Settings·Mobile
   59:677, and Tenant portal·Mobile 61:1251. All desktop screens share the
@@ -105,6 +106,7 @@ map for agents:
 | 03 Screens / Settings 55:439 | `apps/web/src/app/settings/page.tsx` — Horizon Settings v1 |
 | 03 Screens / People 61:580 | `apps/web/src/app/people/page.tsx` — Horizon People v1 |
 | 03 Screens / Money 61:842 | `apps/web/src/app/money/page.tsx` — Horizon Money v1 |
+| 03 Screens / Insights 61:1063 | `apps/web/src/app/insights/page.tsx` — Horizon Insights v1 |
 | 03 Screens / AI Mailbox Intake 82:2 | not implemented — concept frame for ai@leasium.ai mailbox intake (queue + quarantine), awaiting Temba sign-off; design doc `docs/ai-mailbox-intake-design.md` |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
@@ -199,6 +201,21 @@ back-filled in Figma before code.
   values versus the Figma illustrative values, the lower finance-route cards
   below the invoice-run panel, and whether the single-entity selector placement
   should move into the shell/entity switcher before this is marked `[x]`.
+- **Horizon Insights v1 (2026-06-11, Remba pending):** production
+  implementation from the approved Figma Insights target (`61:1063`) on
+  `/insights`. The first viewport now follows the locked Horizon cockpit:
+  title/actions, portfolio value-flow card, compliance ring, exceptions card,
+  and "what changed this week" narrative rail. The previous visible tablist was
+  removed; existing detailed sections for exceptions, billing risk, compliance,
+  maintenance, arrears, invoices, finance, lease events, activity, ownership,
+  snapshots, and controls remain stacked below the first screen. Copy review
+  packet and Export CSV remain local-only over already-loaded overview/snapshot
+  data; no API shape, provider send, email/SMS, Xero/Basiq write, payment,
+  reconciliation, billing draft generation, snapshot mutation, provider
+  dispatch, or portfolio mutation path changed. Remba should review whether the
+  live-derived value-flow/compliance figures communicate clearly against the
+  illustrative Figma numbers, and whether stacking the detailed reports below
+  the cockpit is the right no-tabs pattern before this is marked `[x]`.
 - **Horizon Work desktop v1 (2026-06-10, Remba pending):** first production
   implementation from the approved Figma Work target (`45:168`) on `/operations`,
   scoped to the queue landing area. The page now

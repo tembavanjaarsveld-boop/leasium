@@ -1,6 +1,6 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Money v1 is
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Insights v1 is
 Remba-pending; this brief covers the remaining Horizon
 implementation.
 
@@ -26,7 +26,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | Property detail | 58:627 | header/tabs/bento/lease/activity |
 | People | 61:580 | tenant/vendor cards; v1 shipped pending Remba review |
 | Money | 61:842 | billing readiness + approve-run; v1 shipped pending Remba review |
-| Insights | 61:1063 | value flow, compliance, what-changed |
+| Insights | 61:1063 | value flow, compliance, what-changed; v1 shipped pending Remba review |
 | Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, bottom nav + FAB |
 | Dashboard · Dark | 62:696 | dark-mode reference |
 
@@ -71,8 +71,10 @@ extend the same pattern, never hardcode hex in components.
 10. **Money v1** (`61:842`) — shipped pending Remba review. The `/money`
     first screen now uses the approved billing cockpit, metric cards,
     invoice-run approval panel, trust ribbon, and review-route handoffs.
-11. **Insights v1** (`61:1063`) — next remaining production Horizon desktop
-    slice.
+11. **Insights v1** (`61:1063`) — shipped pending Remba review. The
+    `/insights` first screen now uses the approved value-flow, compliance,
+    exceptions, and what-changed cockpit while preserving read-only review
+    packet exports and the existing detailed reporting sections below.
 
 ## Non-negotiable guardrails (from CLAUDE.md)
 

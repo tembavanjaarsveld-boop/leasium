@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Share2,
   ShieldCheck,
-  Sparkles,
   TableProperties,
   UserRound,
   Wrench,
@@ -33,7 +32,6 @@ import {
   Button,
   EmptyState,
   Field,
-  PageHeader,
   SecondaryButton,
   SectionPanel,
   Select,
@@ -69,19 +67,6 @@ import {
   scopeEntityId,
 } from "@/lib/entity-selection";
 import { cn, friendlyError } from "@/lib/utils";
-
-const INSIGHTS_TABS = [
-  { id: "overview", label: "Overview", description: "Exceptions & billing risk" },
-  { id: "money", label: "Money", description: "Finance, invoices, arrears" },
-  {
-    id: "operations",
-    label: "Operations",
-    description: "Maintenance, compliance, leases",
-  },
-  { id: "portfolio", label: "Portfolio", description: "Owner, activity & sharing" },
-] as const;
-
-type InsightsTab = (typeof INSIGHTS_TABS)[number]["id"];
 
 type AccountingReadinessView = NonNullable<
   InsightsOverviewRecord["finance_snapshot"]["accounting_readiness"]
@@ -326,6 +311,113 @@ function CountPill({ label, value }: { label: string; value: number | string }) 
       <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
       <div className="mt-1 text-lg font-semibold">{value}</div>
     </div>
+  );
+}
+
+const horizonActionButtonClass =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-leasium-card-border bg-white px-4 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:border-primary/30 hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-50";
+
+const horizonCardClass =
+  "rounded-[18px] border border-leasium-card-border bg-white p-[18px] shadow-leasiumCard";
+
+function formatCompactMoney(cents: number | null | undefined) {
+  if (cents === null || cents === undefined) {
+    return "-";
+  }
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    notation: "compact",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+function MiniValueLine() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="mt-2 h-9 w-full max-w-[220px] text-primary"
+      viewBox="0 0 220 36"
+      preserveAspectRatio="none"
+    >
+      <path
+        d="M2 27 C30 23 42 27 64 20 C88 13 102 22 124 18 C150 13 163 10 184 8 C198 7 208 3 218 2"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
+
+function ComplianceRing({ current, total }: { current: number; total: number }) {
+  const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 100;
+  return (
+    <div
+      aria-hidden="true"
+      className="grid size-[52px] shrink-0 place-items-center rounded-full"
+      style={{
+        background: `conic-gradient(var(--leasium-success) ${pct}%, var(--leasium-border) 0)`,
+      }}
+    >
+      <div className="size-[36px] rounded-full bg-white" />
+    </div>
+  );
+}
+
+function HorizonInsightCard({
+  label,
+  value,
+  detail,
+  children,
+  tone = "default",
+}: {
+  label: string;
+  value?: string;
+  detail?: string;
+  children?: ReactNode;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <section className={`${horizonCardClass} min-h-[128px]`}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        {label}
+      </p>
+      {children ?? (
+        <>
+          <p
+            className={cn(
+              "mt-2 text-2xl font-bold tracking-normal text-foreground",
+              tone === "warning" && "text-warning-strong",
+            )}
+          >
+            {value}
+          </p>
+          {detail ? (
+            <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+              {detail}
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+function HorizonChangeRow({
+  title,
+  detail,
+}: {
+  title: string;
+  detail: string;
+}) {
+  return (
+    <li className="grid gap-2 border-t border-leasium-card-border py-2 text-sm sm:grid-cols-[auto_minmax(120px,max-content)_minmax(0,1fr)] sm:items-center">
+      <span className="mt-1 size-[7px] rounded-full bg-accent sm:mt-0" />
+      <span className="font-semibold text-foreground">{title}</span>
+      <span className="text-xs leading-5 text-muted-foreground">{detail}</span>
+    </li>
   );
 }
 
@@ -1214,7 +1306,6 @@ function AllEntitiesInsights({
 function InsightsWorkspace() {
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
-  const [activeTab, setActiveTab] = useState<InsightsTab>("overview");
   const [snapshotType, setSnapshotType] = useState<InsightsSnapshotType>("owner");
   const [latestSnapshot, setLatestSnapshot] =
     useState<InsightsSnapshotCreateRecord | null>(null);
@@ -1238,29 +1329,6 @@ function InsightsWorkspace() {
       setSelectedEntityId(stored);
     }
   }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get("tab");
-    if (tab && INSIGHTS_TABS.some((entry) => entry.id === tab)) {
-      setActiveTab(tab as InsightsTab);
-    }
-  }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (activeTab === "overview") {
-      params.delete("tab");
-    } else {
-      params.set("tab", activeTab);
-    }
-    const query = params.toString();
-    window.history.replaceState(
-      null,
-      "",
-      query ? `${window.location.pathname}?${query}` : window.location.pathname,
-    );
-  }, [activeTab]);
 
   useEffect(() => {
     if (!entitiesQuery.isSuccess) {
@@ -1314,9 +1382,7 @@ function InsightsWorkspace() {
   const portfolioRollupQuery = useQuery({
     queryKey: ["insights-portfolio-rollup"],
     queryFn: getPortfolioRollup,
-    // In all-entities mode the rollup is the page's main content; in single
-    // mode it is only shown on the Portfolio tab.
-    enabled: allMode || activeTab === "portfolio",
+    enabled: allMode || Boolean(activeEntityId),
   });
   const portfolioRollup = portfolioRollupQuery.data;
 
@@ -1404,53 +1470,53 @@ function InsightsWorkspace() {
     setCopiedSnapshotId(latestSnapshot?.id ?? "snapshot-link");
   }
 
-  const metricCards = overview
-    ? [
-        {
-          label: "Portfolio",
-          value: health?.property_count ?? 0,
-          detail: `${health?.tenant_count ?? 0} ${plural(
-            health?.tenant_count ?? 0,
-            "tenant",
-          )}, ${health?.unit_count ?? 0} ${plural(health?.unit_count ?? 0, "unit")}.`,
-          tone: "primary" as const,
-          icon: <Building2 size={18} />,
-        },
-        {
-          label: "Active Leases",
-          value: health?.active_lease_count ?? 0,
-          detail: `${health?.vacant_unit_count ?? 0} ${plural(
-            health?.vacant_unit_count ?? 0,
-            "vacant unit",
-          )} visible today.`,
-          tone: health?.vacant_unit_count ? ("warning" as const) : ("success" as const),
-          icon: <UserRound size={18} />,
-        },
-        {
-          label: "Live Exceptions",
-          value: overview.live_exceptions.length,
-          detail: "Documents, dates, onboarding, billing, and Xero readiness.",
-          tone: overview.live_exceptions.length ? ("danger" as const) : ("success" as const),
-          icon: <AlertTriangle size={18} />,
-        },
-        {
-          label: "Ready To Bill",
-          value: billing?.ready_to_bill_count ?? 0,
-          detail: `${billing?.blocked_row_count ?? 0} blocked ${
-            billing?.blocked_row_count === 1 ? "tenancy" : "tenancies"
-          }.`,
-          tone: billing?.blocked_row_count ? ("warning" as const) : ("success" as const),
-          icon: <CheckCircle2 size={18} />,
-        },
-        {
-          label: "Configured Charges",
-          value: formatMoney(billing?.configured_charges_cents ?? 0),
-          detail: "Rent roll value currently visible to Leasium.",
-          tone: "neutral" as const,
-          icon: <LineChart size={18} />,
-        },
-      ]
-    : [];
+  const annualValueCents = overview
+    ? (financeSnapshot?.configured_charges_cents ??
+        billing?.configured_charges_cents ??
+        0) * 12
+    : 0;
+  const complianceTotal = complianceSnapshot?.open_count ?? 0;
+  const complianceCurrent = Math.max(
+    0,
+    complianceTotal - (complianceSnapshot?.overdue_count ?? 0),
+  );
+  const nextCompliance = complianceSnapshot?.next_items[0];
+  const firstArrears = arrearsSnapshot?.next_items[0];
+  const firstLeaseEvent = leaseEventSnapshot?.next_events[0];
+  const exceptionDetail = `${arrearsSnapshot?.open_count ?? 0} ${plural(
+    arrearsSnapshot?.open_count ?? 0,
+    "arrears case",
+  )} · ${health?.vacant_unit_count ?? 0} ${plural(
+    health?.vacant_unit_count ?? 0,
+    "vacancy",
+    "vacancies",
+  )} tracked in Work.`;
+  const horizonChanges = [
+    {
+      title: "Rent roll up",
+      detail: firstLeaseEvent
+        ? `${firstLeaseEvent.title} is queued in lease events.`
+        : `${formatCompactMoney(annualValueCents)} annualised value from current configured charges.`,
+    },
+    {
+      title: firstArrears
+        ? `Arrears aged past ${firstArrears.age_days} days`
+        : "Arrears watch",
+      detail: firstArrears
+        ? `${firstArrears.tenant_name ?? firstArrears.title} · ${firstArrears.chip} · reminder ${formatDate(firstArrears.next_reminder_on)}.`
+        : "No active arrears rows in the current snapshot.",
+    },
+    {
+      title: "Vacancy listed",
+      detail:
+        (health?.vacant_unit_count ?? 0) > 0
+          ? `${health?.vacant_unit_count ?? 0} vacant ${plural(
+              health?.vacant_unit_count ?? 0,
+              "unit",
+            )} visible in the portfolio.`
+          : "No vacant units currently visible in this entity.",
+    },
+  ];
 
   return (
     <main className="min-h-screen">
@@ -1469,82 +1535,46 @@ function InsightsWorkspace() {
       </AppHeader>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
-        <PageHeader
-          title="Insights"
-          description={
-            allMode
-              ? "Portfolio-wide rollup across every entity. Per-entity overview, billing, and owner detail show when a single entity is selected."
-              : overview
-                ? `${overview.entity.name} live portfolio, exception, billing, and owner/entity view.`
-                : "Live portfolio, exception, billing, and owner/entity view."
-          }
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/intake"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-              >
-                <Sparkles size={15} />
-                Smart Intake
-              </Link>
-              <Link
-                href="/portfolio-qa"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
-              >
-                <TableProperties size={15} />
-                Portfolio QA
-              </Link>
-              <SecondaryButton
-                type="button"
-                onClick={() =>
-                  void (allMode
-                    ? portfolioRollupQuery.refetch()
-                    : overviewQuery.refetch())
-                }
-                disabled={
-                  allMode
-                    ? portfolioRollupQuery.isFetching
-                    : !activeEntityId || isOverviewFetching
-                }
-              >
-                {(allMode ? portfolioRollupQuery.isFetching : isOverviewFetching) ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={15} />
-                )}
-                {(allMode ? portfolioRollupQuery.isFetching : isOverviewFetching)
-                  ? "Refreshing…"
-                  : "Refresh"}
-              </SecondaryButton>
-              <SecondaryButton
-                type="button"
-                onClick={() => void copyReviewPacket()}
-                disabled={!overview}
-                title={
-                  allMode
-                    ? "Select a single entity to copy its review packet"
-                    : undefined
-                }
-              >
-                <Copy size={15} />
-                Copy review packet
-              </SecondaryButton>
-              <SecondaryButton
-                type="button"
-                onClick={downloadReviewCsv}
-                disabled={!overview}
-                title={
-                  allMode
-                    ? "Select a single entity to download its review CSV"
-                    : undefined
-                }
-              >
-                <Download size={15} />
-                Download review CSV
-              </SecondaryButton>
-            </div>
-          }
-        />
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-normal text-foreground">
+              Insights
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Portfolio health, compliance, and what changed - shareable.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void copyReviewPacket()}
+              disabled={!overview}
+              title={
+                allMode
+                  ? "Select a single entity to copy its review packet"
+                  : undefined
+              }
+              className={horizonActionButtonClass}
+            >
+              <Copy size={15} />
+              Copy review packet
+            </button>
+            <button
+              type="button"
+              onClick={downloadReviewCsv}
+              disabled={!overview}
+              title={
+                allMode
+                  ? "Select a single entity to download its review CSV"
+                  : undefined
+              }
+              className={horizonActionButtonClass}
+            >
+              <Download size={15} />
+              Export CSV
+            </button>
+          </div>
+        </div>
         {reviewExportReceipt ? (
           <p className="text-sm font-medium text-success">
             {reviewExportReceipt}
@@ -1639,49 +1669,55 @@ function InsightsWorkspace() {
 
         {overview ? (
           <>
-            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {metricCards.map((card) => (
-                <MetricCard key={card.label} {...card} />
-              ))}
+            <section className="grid gap-3 md:grid-cols-3">
+              <HorizonInsightCard label="PORTFOLIO VALUE FLOW">
+                <p className="mt-2 text-2xl font-bold tracking-normal text-foreground">
+                  {formatCompactMoney(annualValueCents)} / yr
+                </p>
+                <MiniValueLine />
+                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                  {leaseEventSnapshot?.next_review_count ?? 0}{" "}
+                  {plural(leaseEventSnapshot?.next_review_count ?? 0, "rent review")}{" "}
+                  tracked in the next lease cycle.
+                </p>
+              </HorizonInsightCard>
+              <HorizonInsightCard label="COMPLIANCE">
+                <div className="mt-2 flex items-center gap-3">
+                  <ComplianceRing
+                    current={complianceCurrent}
+                    total={complianceTotal}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold text-foreground">
+                      {complianceCurrent} of {complianceTotal || 0} current
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                      {nextCompliance
+                        ? `${nextCompliance.title} due ${formatDate(nextCompliance.due_date)}`
+                        : "No open compliance follow-up."}
+                    </p>
+                  </div>
+                </div>
+              </HorizonInsightCard>
+              <HorizonInsightCard
+                label="EXCEPTIONS"
+                value={`${overview.live_exceptions.length} open`}
+                detail={exceptionDetail}
+                tone={overview.live_exceptions.length ? "warning" : "default"}
+              />
             </section>
 
-            <div
-              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs sm:grid-cols-2 lg:grid-cols-4"
-              role="tablist"
-              aria-label="Insights sections"
-            >
-              {INSIGHTS_TABS.map((tab) => {
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={cn(
-                      "grid min-h-16 gap-1 rounded-xl px-3 py-2 text-left transition duration-200 ease-leasium",
-                      isActive
-                        ? "bg-primary text-primary-foreground shadow-leasiumXs"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <span className="text-sm font-semibold">{tab.label}</span>
-                    <span
-                      className={cn(
-                        "text-xs",
-                        isActive && "text-primary-foreground",
-                      )}
-                    >
-                      {tab.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <section className={horizonCardClass}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                WHAT CHANGED THIS WEEK
+              </p>
+              <ul className="mt-2">
+                {horizonChanges.map((change) => (
+                  <HorizonChangeRow key={change.title} {...change} />
+                ))}
+              </ul>
+            </section>
 
-            {activeTab === "portfolio" ? (
-            <>
             {portfolioRollup && portfolioRollup.totals.entity_count > 1 ? (
               <SectionPanel
                 title="Portfolio rollup"
@@ -1835,10 +1871,7 @@ function InsightsWorkspace() {
                 </div>
               </div>
             </SectionPanel>
-            </>
-            ) : null}
 
-            {activeTab === "overview" ? (
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
               <SectionPanel
                 title="Live Exceptions"
@@ -1898,9 +1931,7 @@ function InsightsWorkspace() {
                 </div>
               </SectionPanel>
             </div>
-            ) : null}
 
-            {activeTab === "operations" ? (
             <>
             <SectionPanel
               title="Compliance & Inspections"
@@ -2084,9 +2115,7 @@ function InsightsWorkspace() {
               </div>
             </SectionPanel>
             </>
-            ) : null}
 
-            {activeTab === "money" ? (
             <>
             <SectionPanel
               title="Arrears Snapshot"
@@ -2310,9 +2339,7 @@ function InsightsWorkspace() {
               ) : null}
             </SectionPanel>
             </>
-            ) : null}
 
-            {activeTab === "operations" ? (
             <SectionPanel
               title="Lease Events"
               description="Upcoming reviews, expiries, obligations, and onboarding follow-ups."
@@ -2349,9 +2376,7 @@ function InsightsWorkspace() {
                 ) : null}
               </div>
             </SectionPanel>
-            ) : null}
 
-            {activeTab === "portfolio" ? (
             <>
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
               <SectionPanel
@@ -2468,7 +2493,6 @@ function InsightsWorkspace() {
               </div>
             </SectionPanel>
             </>
-            ) : null}
           </>
         ) : null}
       </div>

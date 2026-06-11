@@ -2,7 +2,55 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Money v1 - latest)
+## Cowork continuation - 2026-06-11 (Horizon Insights v1 - latest)
+
+Implemented the next remaining Horizon desktop slice from the approved Figma
+source of truth: Insights node `61:1063`.
+
+Scope stayed inside `/insights` and its smoke coverage. The old tabbed
+reporting workspace now opens as the Horizon Insights cockpit: title/actions,
+portfolio value-flow card, compliance ring, exceptions card, and the "what
+changed this week" rail. The existing detailed reporting sections remain
+available below the first screen for scroll-depth review: live exceptions,
+billing risk, compliance, maintenance, arrears, invoice status, finance,
+lease events, automation activity, owner/entity snapshot, shareable snapshots,
+and controls.
+
+No API shape, provider send, email/SMS, Xero/Basiq write, payment,
+reconciliation, billing draft generation, provider dispatch, snapshot
+creation/revoke, review packet export, or portfolio mutation path changed.
+`Copy review packet` and `Export CSV` still work from already-loaded local
+overview/snapshot data only.
+
+Verification recorded so far:
+
+- Figma source pulled with `get_design_context`, `get_screenshot`, and
+  `get_variable_defs` for `PO2jOANgmqgZHfqWZXOZGU`, node `61:1063`.
+- RED smoke confirmed the old tabbed Insights page failed the new Horizon
+  cockpit expectations.
+- Targeted ESLint passed for `apps/web/src/app/insights/page.tsx`,
+  `apps/web/tests/smoke/insights.spec.ts`, and
+  `apps/web/tests/smoke/app-flows.spec.ts`.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Insights smoke passed **3/3**: Horizon first screen, local-only review packet
+  copy/CSV export, and the Xero-status guardrail label split.
+- Focused app-flow smoke for Insights passed after removing stale tab-click
+  assumptions.
+- Appearance dark-route smoke passed for the core operator surfaces.
+- `npm run build` passed.
+- In-app browser shell QA passed on `http://127.0.0.1:3030/insights` at
+  1280x900 and 390x844 in light and dark: heading, subtitle, copy/export
+  actions, no visible tablist, and no horizontal overflow were verified. The
+  local API-backed cards could not render in that manual browser pass because
+  local Postgres was not running (`make demo-seed` could not connect to
+  localhost:5432); the data-backed cockpit remains covered by mocked Playwright
+  smokes.
+
+Next clean Horizon design slice after Insights: commit, push, confirm Vercel
+READY, then continue to the next remaining Figma target from the implementation
+brief.
+
+## Cowork continuation - 2026-06-11 (Horizon Money v1)
 
 Implemented the next remaining Horizon desktop slice from the approved Figma
 source of truth: Money node `61:842`. The next locked production slice is

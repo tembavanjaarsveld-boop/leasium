@@ -6516,14 +6516,13 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(
     page.getByRole("heading", { exact: true, name: "Insights" }),
   ).toBeVisible();
-  // Overview tab (default): exceptions and billing risk.
+  // Overview sections: exceptions and billing risk.
   await expect(
     page.getByRole("heading", { name: "Live Exceptions" }),
   ).toBeVisible();
   await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
 
-  // Money tab: finance, invoices, arrears.
-  await page.getByRole("tab", { name: /Money/ }).click();
+  // Money sections: finance, invoices, arrears.
   await expect(
     page.getByRole("heading", { name: "Finance Snapshot" }),
   ).toBeVisible();
@@ -6546,15 +6545,15 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(financeSnapshotPanel.getByText("Tax")).toBeVisible();
   await expect(financeSnapshotPanel.getByText("Open in Xero")).toBeVisible();
 
-  // Operations tab: maintenance, compliance, lease events.
-  await page.getByRole("tab", { name: /Operations/ }).click();
+  // Operations sections: maintenance, compliance, lease events.
   await expect(
     page.getByRole("heading", { name: "Lease Events" }),
   ).toBeVisible();
-  await expect(page.getByText("Bright Cafe Pty Ltd rent review")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Bright Cafe Pty Ltd rent review/ }),
+  ).toBeVisible();
 
-  // Portfolio tab: owner/entity, activity, and sharing.
-  await page.getByRole("tab", { name: /Portfolio/ }).click();
+  // Portfolio sections: owner/entity, activity, and sharing.
   await expect(
     page.getByRole("heading", { name: "Automation Activity" }),
   ).toBeVisible();
