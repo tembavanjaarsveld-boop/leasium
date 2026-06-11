@@ -45,10 +45,13 @@ Verification recorded so far:
   local Postgres was not running (`make demo-seed` could not connect to
   localhost:5432); the data-backed cockpit remains covered by mocked Playwright
   smokes.
+- Shipped to production: commit `f7e52c3` deployed as Vercel
+  `dpl_EAJFs7ZfAR9nu8e97B7zzbWagyAJ`, state `READY`, with aliases attached
+  (`leasium.ai`, `www.leasium.ai`, `leasium.vercel.app`). HTTP check returned
+  200 for `https://leasium.ai/insights`.
 
-Next clean Horizon design slice after Insights: commit, push, confirm Vercel
-READY, then continue to the next remaining Figma target from the implementation
-brief.
+Next clean Horizon design slice after Insights: continue to the next remaining
+Figma target from the implementation brief.
 
 ## Cowork continuation - 2026-06-11 (Horizon Money v1)
 
