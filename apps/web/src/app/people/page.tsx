@@ -10,7 +10,14 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Send, Sparkles, Users, Wrench } from "lucide-react";
+import {
+  ArrowUpRight,
+  Plus,
+  Send,
+  Sparkles,
+  Users,
+  Wrench,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -18,14 +25,8 @@ import { AppHeader } from "@/components/app-shell";
 import { EntityPicker } from "@/components/entity-picker";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
-import {
-  EmptyState,
-  PageHeader,
-  SectionPanel,
-  SkeletonRows,
-  StatusBadge,
-} from "@/components/ui";
-import type { Entity } from "@/lib/api";
+import { SkeletonRows, StatusBadge } from "@/components/ui";
+import type { ContractorRecord, TenantRecord } from "@/lib/api";
 import { listContractors, listEntities, listTenants } from "@/lib/api";
 import {
   ENTITY_CHANGED_EVENT,
@@ -44,7 +45,9 @@ type TabKey = "tenants" | "owners" | "vendors" | "prospects";
 // self_managed_owner has no third-party owners, so the tab is dropped for that
 // mode (docs/account-operating-mode-ia.md). Their owner-entity CRUD still lives
 // in Settings → Entities via the shared OwnersDirectory.
-function tabsForMode(showOwners: boolean): Array<{ key: TabKey; label: string }> {
+function tabsForMode(
+  showOwners: boolean,
+): Array<{ key: TabKey; label: string }> {
   const tabs: Array<{ key: TabKey; label: string }> = [
     { key: "tenants", label: "Tenants" },
   ];
@@ -54,8 +57,17 @@ function tabsForMode(showOwners: boolean): Array<{ key: TabKey; label: string }>
   return tabs;
 }
 
-const recordLinkClass =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2";
+const horizonActionLinkClass =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2";
+
+const horizonPrimaryLinkClass =
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2";
+
+const horizonCardClass =
+  "group relative min-h-[92px] overflow-hidden rounded-[18px] border border-leasium-card-border bg-white p-4 shadow-leasiumCard transition duration-200 ease-leasium hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-leasiumElevated motion-reduce:transition-none motion-reduce:hover:translate-y-0";
+
+const horizonMutedCardClass =
+  "relative min-h-[92px] overflow-hidden rounded-[18px] border border-dashed border-primary/25 bg-leasium-canvas p-4 text-center";
 
 function isTabKey(value: string | null): value is TabKey {
   return (
@@ -64,6 +76,76 @@ function isTabKey(value: string | null): value is TabKey {
     value === "vendors" ||
     value === "prospects"
   );
+}
+
+function countLabel(count: number | null) {
+  return count == null ? "—" : String(count);
+}
+
+function personInitials(name: string) {
+  const parts = name
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return "L";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function tenantStatus(tenant: TenantRecord) {
+  if (!tenant.contact_email) {
+    return {
+      tone: "warning" as const,
+      label: "Needs contact",
+      detail: "Contact missing",
+      avatarClass: "bg-warning text-white",
+      railClass: "bg-warning",
+    };
+  }
+  if (tenant.billing_email) {
+    return {
+      tone: "success" as const,
+      label: "Billing ready",
+      detail: "Portal active",
+      avatarClass: "bg-primary text-white",
+      railClass: "",
+    };
+  }
+  return {
+    tone: "primary" as const,
+    label: "Contact ready",
+    detail: "Billing email missing",
+    avatarClass: "bg-primary text-white",
+    railClass: "",
+  };
+}
+
+function vendorStatus(contractor: ContractorRecord) {
+  if (!contractor.email && !contractor.phone) {
+    return {
+      tone: "warning" as const,
+      label: "Needs contact",
+      detail: "Contact missing",
+      avatarClass: "bg-warning text-white",
+      railClass: "bg-warning",
+    };
+  }
+  if (contractor.priority === 1) {
+    return {
+      tone: "success" as const,
+      label: "Preferred",
+      detail: contractor.email ? "Email ready" : "Phone ready",
+      avatarClass: "bg-accent text-white",
+      railClass: "",
+    };
+  }
+  return {
+    tone: "primary" as const,
+    label: "Vendor ready",
+    detail: contractor.email ? "Email ready" : "Phone ready",
+    avatarClass: "bg-primary text-white",
+    railClass: "",
+  };
 }
 
 export default function PeoplePage() {
@@ -101,6 +183,53 @@ function PeopleContent() {
   const { operatingMode, isResolved } = useOperatingMode();
   const showOwners = operatingMode !== "self_managed_owner";
   const TABS = tabsForMode(showOwners);
+  const allMode = isAllEntities(selectedEntityId);
+  const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entityNameById = useMemo(
+    () =>
+      new Map(
+        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
+      ),
+    [entitiesQuery.data],
+  );
+
+  const tenantsQuery = useQuery({
+    queryKey: ["tenants", scopedEntityId],
+    queryFn: () => listTenants(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
+  });
+  const tenantsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["tenants"],
+    queryFn: listTenants,
+  });
+  const tenants = allMode ? tenantsFanOut.data : (tenantsQuery.data ?? []);
+  const tenantsLoading = allMode
+    ? tenantsFanOut.isLoading
+    : tenantsQuery.isLoading;
+  const tenantsError = allMode ? tenantsFanOut.error : tenantsQuery.error;
+
+  const contractorsQuery = useQuery({
+    queryKey: ["contractors", scopedEntityId],
+    queryFn: () => listContractors(scopedEntityId),
+    enabled: Boolean(scopedEntityId),
+  });
+  const contractorsFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: allMode,
+    keyPrefix: ["contractors"],
+    queryFn: listContractors,
+  });
+  const contractors = allMode
+    ? contractorsFanOut.data
+    : (contractorsQuery.data ?? []);
+  const contractorsLoading = allMode
+    ? contractorsFanOut.isLoading
+    : contractorsQuery.isLoading;
+  const contractorsError = allMode
+    ? contractorsFanOut.error
+    : contractorsQuery.error;
 
   // Default toward "tenants": until the mode resolves we assume self-managed
   // (Owners hidden), so the initial tab must not be "owners" or it would render
@@ -138,6 +267,13 @@ function PeopleContent() {
     window.history.replaceState(null, "", url.toString());
   }
 
+  const tabCounts: Record<TabKey, number | null> = {
+    tenants: tenantsLoading ? null : tenants.length,
+    owners: null,
+    vendors: contractorsLoading ? null : contractors.length,
+    prospects: null,
+  };
+
   return (
     <main className="min-h-screen">
       <AppHeader>
@@ -149,16 +285,38 @@ function PeopleContent() {
         />
       </AppHeader>
 
-      <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
-        <PageHeader
-          title="People"
-          description="Every relationship in one place — tenants, owners, vendors, and (soon) prospects — tied together by leases."
-        />
+      <div className="mx-auto grid max-w-[1040px] gap-[14px] px-5 py-6 lg:px-9">
+        <section className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold leading-tight tracking-normal text-foreground">
+              People
+            </h1>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              Tenants and vendors across the portfolio.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/tenants?action=invite"
+              className={horizonActionLinkClass}
+            >
+              <Send size={15} />
+              Invite tenant
+            </Link>
+            <Link
+              href="/tenants?action=invite"
+              className={horizonPrimaryLinkClass}
+            >
+              <Plus size={15} />
+              Add person
+            </Link>
+          </div>
+        </section>
 
         <div
           role="tablist"
           aria-label="People types"
-          className="flex flex-wrap gap-2"
+          className="inline-flex w-fit max-w-full flex-wrap gap-0.5 rounded-full border border-leasium-card-border bg-white p-1 shadow-leasiumXs"
         >
           {(isResolved ? TABS : tabsForMode(false)).map((tab) => {
             const isActive = tab.key === activeTab;
@@ -171,11 +329,20 @@ function PeopleContent() {
                 onClick={() => selectTab(tab.key)}
                 className={
                   isActive
-                    ? "inline-flex min-h-11 items-center rounded-full border border-primary/30 bg-primary-soft px-4 text-sm font-semibold text-primary-hover transition"
-                    : "inline-flex min-h-11 items-center rounded-full border border-border bg-white px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    ? "inline-flex min-h-11 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-semibold text-white transition"
+                    : "inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 }
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                <span
+                  className={
+                    isActive
+                      ? "text-xs font-semibold text-white"
+                      : "text-xs font-semibold text-muted-foreground"
+                  }
+                >
+                  {countLabel(tabCounts[tab.key])}
+                </span>
               </button>
             );
           })}
@@ -186,14 +353,20 @@ function PeopleContent() {
         ) : null}
         {activeTab === "tenants" ? (
           <TenantsTab
-            entityId={selectedEntityId}
-            entities={entitiesQuery.data}
+            allMode={allMode}
+            entityNameById={entityNameById}
+            tenants={tenants}
+            isLoading={tenantsLoading}
+            error={tenantsError}
           />
         ) : null}
         {activeTab === "vendors" ? (
           <VendorsTab
-            entityId={selectedEntityId}
-            entities={entitiesQuery.data}
+            allMode={allMode}
+            entityNameById={entityNameById}
+            contractors={contractors}
+            isLoading={contractorsLoading}
+            error={contractorsError}
           />
         ) : null}
         {activeTab === "prospects" ? <ProspectsTab /> : null}
@@ -203,230 +376,275 @@ function PeopleContent() {
 }
 
 function TenantsTab({
-  entityId,
-  entities,
+  allMode,
+  entityNameById,
+  tenants,
+  isLoading,
+  error,
 }: {
-  entityId: string;
-  entities: Entity[] | undefined;
+  allMode: boolean;
+  entityNameById: Map<string, string>;
+  tenants: TenantRecord[];
+  isLoading: boolean;
+  error: unknown;
 }) {
-  const allMode = isAllEntities(entityId);
-  const scopedEntityId = scopeEntityId(entityId);
-  const entityNameById = useMemo(
-    () => new Map((entities ?? []).map((entity) => [entity.id, entity.name])),
-    [entities],
-  );
-  const tenantsQuery = useQuery({
-    queryKey: ["tenants", scopedEntityId],
-    queryFn: () => listTenants(scopedEntityId),
-    enabled: Boolean(scopedEntityId),
-  });
-  const tenantsFanOut = useEntityFanOut({
-    entities,
-    enabled: allMode,
-    keyPrefix: ["tenants"],
-    queryFn: listTenants,
-  });
-  const tenants = allMode ? tenantsFanOut.data : (tenantsQuery.data ?? []);
-  const isLoading = allMode ? tenantsFanOut.isLoading : tenantsQuery.isLoading;
-  const error = allMode ? tenantsFanOut.error : tenantsQuery.error;
-
   return (
-    <SectionPanel
-      title="Tenants"
-      icon={<Users size={17} />}
-      description="Tenant relationships, contacts, billing details, and portal-ready records."
-      actions={
-        <Link
-          href="/tenants?action=invite"
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-transparent bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
-        >
-          <Send size={14} />
-          Add tenant
-        </Link>
-      }
-    >
-      <div className="p-4">
-        {isLoading ? <SkeletonRows rows={3} /> : null}
-        {error ? (
-          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {friendlyError(error)}
+    <section aria-labelledby="people-tenants-heading" className="grid gap-3">
+      <div className="sr-only">
+        <h2 id="people-tenants-heading">Tenants</h2>
+      </div>
+      {isLoading ? (
+        <div className="rounded-[18px] border border-leasium-card-border bg-white p-4 shadow-leasiumCard">
+          <SkeletonRows rows={3} />
+        </div>
+      ) : null}
+      {error ? (
+        <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+          {friendlyError(error)}
+        </p>
+      ) : null}
+      {!isLoading && tenants.length === 0 && !error ? (
+        <div className={horizonMutedCardClass}>
+          <Users size={20} className="mx-auto text-primary" />
+          <p className="mt-2 text-sm font-semibold text-foreground">
+            No tenants yet
           </p>
-        ) : null}
-        {!isLoading && tenants.length === 0 && !error ? (
-          <p className="text-sm text-muted-foreground">No tenants yet.</p>
-        ) : null}
-        <ul className="grid gap-2">
-          {tenants.map((tenant) => {
-            const contactEmail = tenant.contact_email || null;
-            // Avoid repeating the same email: rows whose display name is the
-            // contact email show it once, and identical billing emails render
-            // as "same as contact".
-            const nameIsContactEmail = Boolean(
-              contactEmail &&
-                tenant.legal_name.trim().toLowerCase() ===
-                  contactEmail.toLowerCase(),
-            );
-            const billingSameAsContact = Boolean(
-              tenant.billing_email &&
-                contactEmail &&
-                tenant.billing_email.toLowerCase() ===
-                  contactEmail.toLowerCase(),
-            );
-            const contactLine = nameIsContactEmail
-              ? tenant.contact_name
-              : contactEmail || tenant.contact_name || "No contact";
-            return (
-            <li
-              key={tenant.id}
-              className="grid gap-2 rounded-lg border border-border bg-white px-3 py-3 text-sm md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-medium text-foreground">
-                  {tenant.legal_name}
-                </p>
-                {allMode ? (
-                  <p className="truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
-                    {entityNameById.get(tenant.entity_id) ?? "Unknown entity"}
-                  </p>
-                ) : null}
-                <p className="truncate text-muted-foreground">
-                  {tenant.trading_name || tenant.abn || "No trading name"}
-                </p>
-              </div>
-              <div className="min-w-0 text-muted-foreground">
-                {contactLine ? <p className="truncate">{contactLine}</p> : null}
-                <p className="truncate">
-                  {billingSameAsContact
-                    ? "Billing: same as contact"
-                    : tenant.billing_email
-                      ? `Billing: ${tenant.billing_email}`
-                      : "Billing email not set"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-start justify-start gap-2 md:justify-end">
-                <StatusBadge
-                  tone={tenant.contact_email ? "success" : "warning"}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Invite the first tenant from the reviewed tenant workflow.
+          </p>
+        </div>
+      ) : null}
+      <ul className="grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
+        {tenants.map((tenant) => {
+          const contactEmail = tenant.contact_email || null;
+          // Avoid repeating the same email: rows whose display name is the
+          // contact email show it once, and identical billing emails render
+          // as "same as contact".
+          const nameIsContactEmail = Boolean(
+            contactEmail &&
+            tenant.legal_name.trim().toLowerCase() ===
+              contactEmail.toLowerCase(),
+          );
+          const billingSameAsContact = Boolean(
+            tenant.billing_email &&
+            contactEmail &&
+            tenant.billing_email.toLowerCase() === contactEmail.toLowerCase(),
+          );
+          const contactLine = nameIsContactEmail
+            ? tenant.contact_name
+            : contactEmail || tenant.contact_name || "No contact";
+          const status = tenantStatus(tenant);
+          const entityName = entityNameById.get(tenant.entity_id);
+          return (
+            <li key={tenant.id} className={horizonCardClass}>
+              {status.railClass ? (
+                <div
+                  className={`absolute inset-y-0 left-0 w-[3px] ${status.railClass}`}
+                />
+              ) : null}
+              <div className="flex min-w-0 gap-3">
+                <div
+                  className={`flex size-[34px] shrink-0 items-center justify-center rounded-full text-xs font-bold ${status.avatarClass}`}
                 >
-                  {tenant.contact_email ? "Contact ready" : "Needs contact"}
-                </StatusBadge>
-                <Link href={`/tenants/${tenant.id}`} className={recordLinkClass}>
-                  <ArrowUpRight size={15} />
-                  Open record
-                </Link>
+                  {personInitials(tenant.legal_name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {tenant.legal_name}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {tenant.trading_name ||
+                          tenant.abn ||
+                          contactLine ||
+                          "No trading name"}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/tenants/${tenant.id}`}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full px-2 text-primary transition hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      aria-label={`Open ${tenant.legal_name}`}
+                    >
+                      <ArrowUpRight size={16} />
+                    </Link>
+                  </div>
+                  {allMode ? (
+                    <p className="mt-1 truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      {entityName ?? "Unknown entity"}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex items-center gap-2">
+                    <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                    <div className="min-w-0 flex-1" />
+                    <p className="truncate text-xs text-muted-foreground">
+                      {status.detail}
+                    </p>
+                  </div>
+                  <p className="mt-2 truncate text-xs text-muted-foreground">
+                    {tenant.billing_email
+                      ? billingSameAsContact
+                        ? "Billing: same as contact"
+                        : `Billing: ${tenant.billing_email}`
+                      : "Billing email not set"}
+                  </p>
+                </div>
               </div>
             </li>
-            );
-          })}
-        </ul>
-      </div>
-    </SectionPanel>
+          );
+        })}
+        <li className={horizonMutedCardClass}>
+          <Link
+            href="/tenants?action=invite"
+            className="flex min-h-[72px] flex-col items-center justify-center gap-2 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            <Plus size={18} />
+            <span className="text-sm font-semibold">Add person</span>
+          </Link>
+        </li>
+      </ul>
+    </section>
   );
 }
 
 function VendorsTab({
-  entityId,
-  entities,
+  allMode,
+  entityNameById,
+  contractors,
+  isLoading,
+  error,
 }: {
-  entityId: string;
-  entities: Entity[] | undefined;
+  allMode: boolean;
+  entityNameById: Map<string, string>;
+  contractors: ContractorRecord[];
+  isLoading: boolean;
+  error: unknown;
 }) {
-  const allMode = isAllEntities(entityId);
-  const scopedEntityId = scopeEntityId(entityId);
-  const entityNameById = useMemo(
-    () => new Map((entities ?? []).map((entity) => [entity.id, entity.name])),
-    [entities],
-  );
-  const contractorsQuery = useQuery({
-    queryKey: ["contractors", scopedEntityId],
-    queryFn: () => listContractors(scopedEntityId),
-    enabled: Boolean(scopedEntityId),
-  });
-  const contractorsFanOut = useEntityFanOut({
-    entities,
-    enabled: allMode,
-    keyPrefix: ["contractors"],
-    queryFn: listContractors,
-  });
-  const contractors = allMode
-    ? contractorsFanOut.data
-    : (contractorsQuery.data ?? []);
-  const isLoading = allMode
-    ? contractorsFanOut.isLoading
-    : contractorsQuery.isLoading;
-  const error = allMode ? contractorsFanOut.error : contractorsQuery.error;
-
   return (
-    <SectionPanel
-      title="Vendors"
-      icon={<Wrench size={17} />}
-      description="Maintenance vendors, categories, priority, and contact readiness."
-    >
-      <div className="p-4">
-        {isLoading ? <SkeletonRows rows={3} /> : null}
-        {error ? (
-          <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-            {friendlyError(error)}
+    <section aria-labelledby="people-vendors-heading" className="grid gap-3">
+      <div className="sr-only">
+        <h2 id="people-vendors-heading">Vendors</h2>
+      </div>
+      {isLoading ? (
+        <div className="rounded-[18px] border border-leasium-card-border bg-white p-4 shadow-leasiumCard">
+          <SkeletonRows rows={3} />
+        </div>
+      ) : null}
+      {error ? (
+        <p className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+          {friendlyError(error)}
+        </p>
+      ) : null}
+      {!isLoading && contractors.length === 0 && !error ? (
+        <div className={horizonMutedCardClass}>
+          <Wrench size={20} className="mx-auto text-primary" />
+          <p className="mt-2 text-sm font-semibold text-foreground">
+            No vendors yet
           </p>
-        ) : null}
-        {!isLoading && contractors.length === 0 && !error ? (
-          <p className="text-sm text-muted-foreground">No vendors yet.</p>
-        ) : null}
-        <ul className="grid gap-2">
-          {contractors.map((contractor) => (
-            <li
-              key={contractor.id}
-              className="grid gap-2 rounded-lg border border-border bg-white px-3 py-3 text-sm md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto]"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-medium text-foreground">
-                  {contractor.name}
-                </p>
-                {allMode ? (
-                  <p className="truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
-                    {entityNameById.get(contractor.entity_id) ??
-                      "Unknown entity"}
-                  </p>
-                ) : null}
-                <p className="truncate text-muted-foreground">
-                  {contractor.company_name || "Independent vendor"}
-                </p>
-              </div>
-              <div className="min-w-0 text-muted-foreground">
-                <p className="truncate">
-                  {contractor.categories.length > 0
-                    ? contractor.categories.join(", ")
-                    : "No categories"}
-                </p>
-                <p className="truncate">
-                  {contractor.email || contractor.phone || "No contact"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-start justify-start gap-2 md:justify-end">
-                <StatusBadge tone={contractor.email ? "success" : "warning"}>
-                  {contractor.email ? "Contact ready" : "Needs contact"}
-                </StatusBadge>
-                <Link
-                  href={`/contractors/${contractor.id}`}
-                  className={recordLinkClass}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Add preferred contractors from the vendor directory.
+          </p>
+        </div>
+      ) : null}
+      <ul className="grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
+        {contractors.map((contractor) => {
+          const status = vendorStatus(contractor);
+          const entityName = entityNameById.get(contractor.entity_id);
+          return (
+            <li key={contractor.id} className={horizonCardClass}>
+              {status.railClass ? (
+                <div
+                  className={`absolute inset-y-0 left-0 w-[3px] ${status.railClass}`}
+                />
+              ) : null}
+              <div className="flex min-w-0 gap-3">
+                <div
+                  className={`flex size-[34px] shrink-0 items-center justify-center rounded-full text-xs font-bold ${status.avatarClass}`}
                 >
-                  <ArrowUpRight size={15} />
-                  Open record
-                </Link>
+                  {personInitials(contractor.name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {contractor.name}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {contractor.company_name || "Independent vendor"}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/contractors/${contractor.id}`}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full px-2 text-primary transition hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      aria-label={`Open ${contractor.name}`}
+                    >
+                      <ArrowUpRight size={16} />
+                    </Link>
+                  </div>
+                  {allMode ? (
+                    <p className="mt-1 truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
+                      {entityName ?? "Unknown entity"}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex items-center gap-2">
+                    <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                    <div className="min-w-0 flex-1" />
+                    <p className="truncate text-xs text-muted-foreground">
+                      {status.detail}
+                    </p>
+                  </div>
+                  <p className="mt-2 truncate text-xs text-muted-foreground">
+                    {contractor.categories.length > 0
+                      ? contractor.categories.join(", ")
+                      : "No categories"}
+                  </p>
+                </div>
               </div>
             </li>
-          ))}
-        </ul>
-      </div>
-    </SectionPanel>
+          );
+        })}
+        <li className={horizonMutedCardClass}>
+          <Link
+            href="/contractors"
+            className="flex min-h-[72px] flex-col items-center justify-center gap-2 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            <Plus size={18} />
+            <span className="text-sm font-semibold">Add vendor</span>
+          </Link>
+        </li>
+      </ul>
+    </section>
   );
 }
 
 function ProspectsTab() {
   return (
-    <EmptyState
-      icon={<Sparkles size={18} />}
-      title="Prospects are on the roadmap."
-      description="A leasing CRM (lead → application → screening → signed lease) joins the People hub in a later phase. For now, owners, tenants, and vendors live here."
-    />
+    <section aria-labelledby="people-prospects-heading" className="grid gap-3">
+      <div className="sr-only">
+        <h2 id="people-prospects-heading">Prospects</h2>
+      </div>
+      <div className="grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
+        <div className={horizonMutedCardClass}>
+          <Sparkles size={20} className="mx-auto text-primary" />
+          <p className="mt-2 text-sm font-semibold text-foreground">
+            Prospects are on the roadmap
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Leasing CRM, applications, screening, and signed-lease conversion
+            will join the People hub later.
+          </p>
+        </div>
+        <div className={horizonMutedCardClass}>
+          <Plus size={20} className="mx-auto text-primary" />
+          <p className="mt-2 text-sm font-semibold text-primary">
+            Add prospect
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Not available yet; use Smart Intake or Tenants for reviewed records
+            today.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }

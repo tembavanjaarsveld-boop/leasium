@@ -171,6 +171,19 @@ a design-facing slice.
   should review live data density, all-entities single-entity notes, the
   truncated Lease horizon titles, and whether the lower dedicated panels should
   remain visible below the first Horizon frame before this is marked `[x]`.
+- **Horizon People v1 (2026-06-11, Remba pending):** production
+  implementation from the approved Figma People target (`61:580`) on `/people`.
+  The hub now presents the Horizon header/actions, segmented count pills,
+  tenant/vendor cards with live all-entities labels, touch-safe record links,
+  and dashed prospect/add tiles while preserving the existing
+  operating-mode-gated Owners tab for managing-agent/hybrid accounts. The
+  buttons remain route handoffs into existing reviewed tenant/vendor workflows;
+  no API shape, provider send, email/SMS, payment, reconciliation, Xero/Basiq,
+  tenant onboarding send, contractor dispatch, or People record mutation path
+  changed. Remba should review whether the retained Owners tab/default in
+  managing-agent mode fits the locked People frame, and whether the generic
+  `Add person` label should split into tenant/vendor-specific actions before
+  this is marked `[x]`.
 - **Horizon Work desktop v1 (2026-06-10, Remba pending):** first production
   implementation from the approved Figma Work target (`45:168`) on `/operations`,
   scoped to the queue landing area. The page now

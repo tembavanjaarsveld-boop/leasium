@@ -1,7 +1,7 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Dashboard hero/bento
-polish v2 is Remba-pending; this brief covers the remaining Horizon
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon People v1 is
+Remba-pending; this brief covers the remaining Horizon
 implementation.
 
 ## The one rule
@@ -24,9 +24,9 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | Settings | 55:439 | tab cards, per-operator notification cards |
 | Document review | 58:352 | source preview + field approval flow |
 | Property detail | 58:627 | header/tabs/bento/lease/activity |
-| People | (on 03) | tenant/vendor cards |
-| Money | (on 03) | billing readiness + approve-run |
-| Insights | (on 03) | value flow, compliance, what-changed |
+| People | 61:580 | tenant/vendor cards; v1 shipped pending Remba review |
+| Money | 61:842 | billing readiness + approve-run |
+| Insights | 61:1063 | value flow, compliance, what-changed |
 | Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, bottom nav + FAB |
 | Dashboard · Dark | 62:696 | dark-mode reference |
 
@@ -64,6 +64,12 @@ extend the same pattern, never hardcode hex in components.
    Dashboard `45:2` first screen now uses the approved hero, four live bento
    cards, lower Lease horizon / Onboarding / Smart Intake row, and centered
    trust ribbon.
+9. **People v1** (`61:580`) — shipped pending Remba review. The `/people`
+   first screen now uses the approved header, count pills, tenant/vendor cards,
+   roadmap prospect tile, and touch-safe add handoffs while keeping
+   operating-mode owner gating intact.
+10. **Money v1** (`61:842`) then **Insights v1** (`61:1063`) — remaining
+    production Horizon desktop slices.
 
 ## Non-negotiable guardrails (from CLAUDE.md)
 

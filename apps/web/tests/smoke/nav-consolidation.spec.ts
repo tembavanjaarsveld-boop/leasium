@@ -155,20 +155,28 @@ test("operator shell muted text and urgent badges keep readable contrast", async
   });
   await expectContrast(workLink.locator("span").filter({ hasText: /^3$/ }));
   await expectContrast(
-    page.getByRole("tab", { name: /All drafts \d+/ }).locator("span").last(),
+    page
+      .getByRole("tab", { name: /All drafts \d+/ })
+      .locator("span")
+      .last(),
   );
 
   await page.goto("/billing-readiness?tab=delivery");
   await expectContrast(page.getByText("Send, sync, record payment"));
   await expectContrast(
-    page.getByRole("button", { name: /All \d+/ }).locator("span").last(),
+    page
+      .getByRole("button", { name: /All \d+/ })
+      .locator("span")
+      .last(),
   );
 
   await page.goto("/operations?tab=compliance");
   await expectContrast(page.getByText("Checks and inspections"));
 
   await page.goto("/settings?tab=security");
-  await expectContrast(page.getByRole("button", { name: "Deactivate" }).first());
+  await expectContrast(
+    page.getByRole("button", { name: "Deactivate" }).first(),
+  );
   await page.goto("/settings?tab=organisation");
   await expectContrast(page.getByRole("tab", { name: "Security" }));
   const organisationTab = page.getByRole("tab", { name: "Organisation" });
@@ -183,9 +191,7 @@ test("operator shell muted text and urgent badges keep readable contrast", async
 
   await page.goto("/people");
   await expectContrast(
-    page.getByText(
-      /Every relationship in one place — tenants, owners, vendors/,
-    ),
+    page.getByText("Tenants and vendors across the portfolio."),
   );
 });
 
@@ -197,7 +203,8 @@ test("people hub keeps tenants and vendors inline", async ({ page }) => {
     "true",
   );
   await expect(page.getByText("Bright Cafe Pty Ltd")).toBeVisible();
-  await expect(page.getByText("mia@example.com")).toBeVisible();
+  await expect(page.getByText("Billing ready")).toBeVisible();
+  await expect(page.getByText("Portal active")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Open tenant workspace/i }),
   ).toHaveCount(0);
@@ -211,6 +218,7 @@ test("people hub keeps tenants and vendors inline", async ({ page }) => {
     page.getByText("Bright Spark Electrical", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("electrical", { exact: true })).toBeVisible();
+  await expect(page.getByText("Preferred")).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Open vendor directory/i }),
   ).toHaveCount(0);

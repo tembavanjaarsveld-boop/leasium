@@ -52,14 +52,49 @@ async function expectTouchTarget(control: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+function watchForbiddenPeopleRequests(
+  page: Parameters<typeof mockLeasiumApi>[0],
+) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const mutatesPeople =
+      request.method() !== "GET" &&
+      (path.startsWith("/api/v1/tenants") ||
+        path.startsWith("/api/v1/tenant-onboarding") ||
+        path.startsWith("/api/v1/contractors") ||
+        path.startsWith("/api/v1/owners") ||
+        path.startsWith("/api/v1/comms") ||
+        path.includes("/provider-dispatch"));
+    const providerOrPayment =
+      path.includes("/sendgrid") ||
+      path.includes("/twilio") ||
+      path.includes("/xero") ||
+      path.includes("/basiq") ||
+      path.includes("/payments") ||
+      path.includes("/reconciliation");
+    if (mutatesPeople || providerOrPayment) {
+      requests.push(`${request.method()} ${path}`);
+    }
+  });
+  return requests;
+}
+
 test("people hub renders tabs and the owners directory", async ({ page }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
   await mockOwners(page);
+  const forbiddenRequests = watchForbiddenPeopleRequests(page);
 
   await page.goto("/people");
 
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await expect(
+    page.getByText("Tenants and vendors across the portfolio."),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Invite tenant" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Add person" })).toBeVisible();
 
   for (const label of ["Tenants", "Owners", "Vendors", "Prospects"]) {
     await expect(page.getByRole("tab", { name: label })).toBeVisible();
@@ -73,6 +108,8 @@ test("people hub renders tabs and the owners directory", async ({ page }) => {
   // Prospects tab shows the roadmap stub.
   await page.getByRole("tab", { name: "Prospects" }).click();
   await expect(page.getByText(/Prospects are on the roadmap/i)).toBeVisible();
+  await expect(page.getByText("Add prospect")).toBeVisible();
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("people hub All entities merges tenants and vendors across entities", async ({
@@ -83,6 +120,9 @@ test("people hub All entities merges tenants and vendors across entities", async
   await page.goto("/people");
 
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await expect(
+    page.getByText("Tenants and vendors across the portfolio."),
+  ).toBeVisible();
   // Tenants is the default tab for a self-managed owner.
   const switcher = page
     .getByRole("complementary", { name: "Primary navigation" })
@@ -112,6 +152,7 @@ test("people hub All entities merges tenants and vendors across entities", async
   await expect(
     page.getByText("Rivergum Plumbing", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Add vendor" })).toBeVisible();
 });
 
 test("mobile people hub tabs stay touch-safe", async ({ page }) => {
@@ -138,7 +179,10 @@ test("people tenants add action stays touch-safe", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await page.getByRole("tab", { name: "Tenants" }).click();
-  await expectTouchTarget(page.getByRole("link", { name: "Add tenant" }));
+  await expectTouchTarget(page.getByRole("link", { name: "Invite tenant" }));
+  await expectTouchTarget(
+    page.getByRole("link", { name: "Add person" }).first(),
+  );
 });
 
 test("self-managed people hub hides owner-client tab and falls back from owner URLs", async ({

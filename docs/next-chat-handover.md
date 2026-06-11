@@ -2,7 +2,41 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Dashboard hero/bento polish v2 - latest)
+## Cowork continuation - 2026-06-11 (Horizon People v1 - latest)
+
+Implemented the next remaining Horizon desktop slice from the approved Figma
+source of truth: People node `61:580`. The same Figma discovery pass confirmed
+Money `61:842` and Insights `61:1063` for the next slices.
+
+Scope stayed inside `/people` and its smoke coverage. The page now uses the
+Horizon title/actions, segmented count pills, responsive tenant/vendor cards,
+all-entities entity labels, touch-safe record links, and dashed prospect/add
+tiles. The existing operating-mode Owners tab remains for managing-agent/hybrid
+accounts; self-managed owner mode still hides Owners and lands on Tenants.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+tenant onboarding send, contractor dispatch, People record create/update/delete,
+or owner-directory mutation path changed. CTAs are navigation handoffs into
+existing explicit workflows.
+
+Verification recorded so far:
+
+- Targeted ESLint passed for `apps/web/src/app/people/page.tsx` and
+  `apps/web/tests/smoke/people-hub.spec.ts`.
+- `git diff --check` passed.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- People hub smoke passed **7/7** with the Horizon first-screen and
+  provider/write guard assertions.
+- Broader Horizon route batch passed **32/32**:
+  `people-hub.spec.ts`, `nav-consolidation.spec.ts`,
+  `mobile-bottom-nav.spec.ts`, and `appearance.spec.ts`.
+- `npm run build` passed.
+- Browser QA passed at 1280x900 and 390x844 on `http://127.0.0.1:3030/people`:
+  heading/actions/tabs visible, 44px controls, no horizontal overflow.
+
+Remaining before ship: commit, push, and Vercel READY proof.
+
+## Cowork continuation - 2026-06-11 (Horizon Dashboard hero/bento polish v2)
 
 Implemented the Dashboard hero/bento polish follow-up against the approved
 Figma source of truth `PO2jOANgmqgZHfqWZXOZGU`, Dashboard node `45:2`. The

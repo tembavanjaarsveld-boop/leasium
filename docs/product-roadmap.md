@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon People v1:** implemented the approved Figma People
+  target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:580`) on `/people`. The hub now
+  opens with the Horizon title/actions, compact count pills, tenant/vendor
+  cards, all-entities entity labels, touch-safe record handoffs, and a dashed
+  prospect/add tile while preserving the existing operating-mode Owners gate
+  for managing-agent/hybrid accounts. Frontend-only presentation/routing work:
+  no API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+  tenant onboarding send, contractor dispatch, or People record mutation path
+  changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Dashboard hero/bento polish v2:** tightened `/`
   against the approved Figma Dashboard target (`PO2jOANgmqgZHfqWZXOZGU`, node
   `45:2`). The hero now hands off to a Figma-shaped first screen: four live
