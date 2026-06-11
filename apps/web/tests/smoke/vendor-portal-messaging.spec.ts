@@ -1,13 +1,19 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
+
+test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
+});
 
 function watchUnsafeRequests(page: Page) {
   const unsafeRequests: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
     if (
-      path.startsWith("/api/v1/comms") ||
+      // Read-only comms GETs (thread hydration, app-shell queue badge) are
+      // safe; the guard exists to catch dispatch/mutation calls.
+      (path.startsWith("/api/v1/comms") && request.method() !== "GET") ||
       path.startsWith("/api/v1/xero") ||
       path.startsWith("/api/v1/basiq") ||
       path.startsWith("/api/v1/payments") ||

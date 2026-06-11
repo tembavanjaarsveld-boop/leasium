@@ -1,8 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
+  await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 });
 
@@ -81,6 +82,8 @@ test("owner statement send is disabled when the owner has no billing email", asy
   await expect(
     page.getByRole("button", { name: "Send statement" }),
   ).toBeDisabled();
-  await expect(page.getByText("No billing email")).toBeVisible();
+  await expect(
+    page.getByText("No billing email").filter({ visible: true }).first(),
+  ).toBeVisible();
   expect(sendRequests).toHaveLength(0);
 });
