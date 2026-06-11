@@ -291,6 +291,8 @@ test("maintenance inline undo toast controls stay touch-safe on mobile", async (
   await mockLeasiumApi(page);
 
   await page.goto("/operations");
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await expect(mobileNav).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
@@ -316,6 +318,12 @@ test("maintenance inline undo toast controls stay touch-safe on mobile", async (
 
   await expectTouchTarget(undoToast.getByRole("button", { name: "Undo" }));
   await expectTouchTarget(undoToast.getByRole("button", { name: "Dismiss" }));
+
+  const toastBox = await undoToast.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(toastBox).toBeTruthy();
+  expect(navBox).toBeTruthy();
+  expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(navBox!.y - 8);
 });
 
 test("operations queue assignment action stays touch-safe", async ({

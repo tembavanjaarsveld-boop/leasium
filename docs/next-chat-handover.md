@@ -2,7 +2,42 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Tenant portal mobile v1 - latest)
+## Cowork continuation - 2026-06-11 (Horizon Work mobile toast clearance - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Work mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `45:461`; 04 Concept stayed out of scope.
+
+Scope stayed inside `/operations` presentation and smoke coverage. The Work
+inline undo, obligation confirmation, and compliance completion `role="status"`
+toasts now sit above the fixed mobile bottom navigation using
+`calc(6rem + env(safe-area-inset-bottom))`, while desktop keeps the prior
+`bottom-5` placement.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, work update, obligation update, or compliance completion
+mutation path changed.
+
+Verification recorded so far:
+
+- Figma source of truth pulled for Work mobile `45:461`.
+- Focused Playwright smoke passed **1/1**:
+  `tests/smoke/operations-ux.spec.ts --grep "maintenance inline undo toast controls stay touch-safe on mobile" --workers=1`.
+- Targeted ESLint passed for `apps/web/src/app/operations/page.tsx` and
+  `apps/web/tests/smoke/operations-ux.spec.ts`.
+- `./node_modules/.bin/tsc --noEmit --pretty false` passed.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3030/operations` passed at 390x844
+  and 1280x900 for Work heading visibility, mobile-nav breakpoint visibility,
+  and no horizontal overflow. The local browser could not seed the API/session
+  state needed to trigger the inline edit toast directly; the toast itself is
+  covered by the mocked Playwright smoke above.
+- Push and deployment proof still need to be recorded before this follow-up is
+  considered shipped.
+
+Design-facing status: pending Remba review, not `[x]` complete.
+
+## Cowork continuation - 2026-06-11 (Horizon Tenant portal mobile v1)
 
 Implemented the Horizon Tenant portal mobile v1 slice from the approved Figma
 source of truth: Tenant portal·Mobile node `61:1251`.

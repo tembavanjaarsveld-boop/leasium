@@ -93,12 +93,14 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   channel chips so Needs You stays visible earlier, Settings uses compact tabs
   and touch-safe tab controls, and Document review shortens the mobile source
   preview, keeps approve/edit/ignore controls touch-safe, and lifts sticky
-  review actions above the bottom nav. Frontend-only presentation work over
-  existing routes: no API shape, provider send, email/SMS, Xero/Basiq, payment,
-  reconciliation, Smart Intake apply, or workflow mutation path changed.
-  Verified with targeted ESLint, `tsc --noEmit`, mobile/Horizon Playwright
-  smokes, production build, and 390x844 light/dark browser QA. Pending Remba
-  review.
+  review actions above the bottom nav. Follow-up Work mobile toast polish keeps
+  the inline undo, obligation, and compliance status toasts clear of the fixed
+  Horizon bottom nav while preserving desktop placement. Frontend-only
+  presentation work over existing routes: no API shape, provider send,
+  email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
+  workflow mutation path changed. Verified with targeted ESLint, `tsc
+  --noEmit`, mobile/Horizon Playwright smokes, production build, and 390x844
+  light/dark browser QA. Pending Remba review.
 - [~] **2026-06-11 Horizon Notifications + Settings v1:** implemented the
   approved Figma Notifications and Settings targets (`PO2jOANgmqgZHfqWZXOZGU`,
   nodes `55:307` and `55:439`) on `/notifications` and `/settings`.

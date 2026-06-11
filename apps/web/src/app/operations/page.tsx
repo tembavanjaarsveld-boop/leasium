@@ -123,6 +123,8 @@ const EMPTY_MAINTENANCE: MaintenanceWorkOrderRecord[] = [];
 const EMPTY_ARREARS: ArrearsCaseRecord[] = [];
 const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
 const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
+const WORK_MOBILE_TOAST_CLASS =
+  "fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:bottom-5 md:left-auto md:w-[420px]";
 const WORK_ASSIGNMENT_KEY = "work_assignment";
 const WORK_ASSIGNMENT_TEMPLATE_KEY = "work_assignment_notification";
 const WORK_ASSIGNMENT_TEMPLATE_VERSION = "v1";
@@ -6316,7 +6318,7 @@ function OperationsWorkspace() {
       </div>
       {maintenanceInlineUndo ? (
         <div
-          className="fixed bottom-5 left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:left-auto md:w-[420px]"
+          className={WORK_MOBILE_TOAST_CLASS}
           role="status"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -6362,7 +6364,7 @@ function OperationsWorkspace() {
       ) : null}
       {obligationConfirmation ? (
         <div
-          className="fixed bottom-5 left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:left-auto md:w-[420px]"
+          className={WORK_MOBILE_TOAST_CLASS}
           role="status"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -6384,7 +6386,7 @@ function OperationsWorkspace() {
       ) : null}
       {complianceCompletionConfirmation ? (
         <div
-          className="fixed bottom-5 left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:left-auto md:w-[420px]"
+          className={WORK_MOBILE_TOAST_CLASS}
           role="status"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
