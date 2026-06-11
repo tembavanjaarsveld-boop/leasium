@@ -59,3 +59,7 @@ and record deployment proof before marking this follow-up shipped.
 Observed before commit: targeted ESLint passed; `tsc --noEmit` passed;
 `npm run build` passed; in-app browser QA at 390x844 and 1280x900 confirmed
 the Work heading, correct mobile-nav visibility, and no horizontal overflow.
+Commit `61b5fbf` was pushed to `main`; Vercel deployment
+`dpl_6PNHbr8GAzEcgnsgNJtzYSBPZcQt` reached `READY`, aliases attached to
+`leasium.ai`, `www.leasium.ai`, and `leasium.vercel.app`, and canonical HTTP
+checks returned 200 for `/operations` and `/`.

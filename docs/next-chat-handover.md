@@ -32,8 +32,10 @@ Verification recorded so far:
   and no horizontal overflow. The local browser could not seed the API/session
   state needed to trigger the inline edit toast directly; the toast itself is
   covered by the mocked Playwright smoke above.
-- Push and deployment proof still need to be recorded before this follow-up is
-  considered shipped.
+- Shipped to production: commit `61b5fbf` deployed as Vercel
+  `dpl_6PNHbr8GAzEcgnsgNJtzYSBPZcQt`, state `READY`, with aliases attached
+  (`leasium.ai`, `www.leasium.ai`, `leasium.vercel.app`). HTTP checks returned
+  200 for `https://leasium.ai/operations` and `https://leasium.ai`.
 
 Design-facing status: pending Remba review, not `[x]` complete.
 
