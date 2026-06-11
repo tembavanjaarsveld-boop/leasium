@@ -327,12 +327,15 @@ back-filled in Figma before code.
   uses the compact drop/snap panel and queue cards, and opens review only from
   explicit `?review=...`, row Review, or upload success. No API shape, provider
   send, email/SMS, payment, reconciliation, Xero/Basiq, Smart Intake apply, or
-  workflow mutation path changed. Verified locally with targeted ESLint, `tsc
-  --noEmit`, mobile/Horizon Playwright smokes, production build, and browser QA
-  before push; Vercel proof is recorded per shipped follow-up. Remba should
-  review the mobile density, first-viewport hierarchy, compact Properties row
-  treatment, Smart Intake landing-first behavior, and bottom-nav clearance
-  before this is marked `[x]`.
+  workflow mutation path changed. Follow-up Settings mobile polish matches
+  `59:677` by keeping the phone tab rail to Organisation, Security, and Connect
+  while preserving desktop Notifications and direct `?tab=notifications`
+  rendering. Verified locally with targeted ESLint, `tsc --noEmit`,
+  mobile/Horizon Playwright smokes, production build, and browser QA before
+  push; Vercel proof is recorded per shipped follow-up. Remba should review the
+  mobile density, first-viewport hierarchy, compact Properties row treatment,
+  Smart Intake landing-first behavior, Settings three-tab rail, and bottom-nav
+  clearance before this is marked `[x]`.
 - **Horizon Tenant portal mobile v1 (2026-06-11, Remba pending):** production
   implementation from the approved Figma Tenant portal·Mobile target
   (`61:1251`) inside the authenticated tenant portal full account view. Mobile

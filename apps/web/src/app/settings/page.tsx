@@ -3378,7 +3378,9 @@ function SettingsWorkspace() {
               key={tab.id}
               aria-label={tab.label}
               aria-selected={activeTab === tab.id}
-              className={`flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 py-2 text-left transition-shadow duration-200 ease-leasium md:min-h-[54px] md:rounded-xl md:py-3 ${
+              className={`min-h-11 shrink-0 items-center gap-2 rounded-full px-4 py-2 text-left transition-shadow duration-200 ease-leasium md:min-h-[54px] md:rounded-xl md:py-3 ${
+                tab.id === "notifications" ? "hidden md:flex" : "flex"
+              } ${
                 activeTab === tab.id
                   ? "bg-primary text-white shadow-leasiumXs"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"

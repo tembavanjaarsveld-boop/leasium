@@ -69,6 +69,45 @@ test("settings notifications tab opens the Horizon operator controls directly", 
   ).toBeVisible();
 });
 
+test("mobile settings keeps the approved compact tab rail", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  const settingsSections = page.getByRole("tablist", {
+    name: "Settings sections",
+  });
+  await expect(settingsSections.getByRole("tab")).toHaveCount(3);
+  for (const section of ["Organisation", "Security", "Connect"]) {
+    const tab = settingsSections.getByRole("tab", { name: section });
+    await expect(tab).toBeVisible();
+    const tabBox = await tab.boundingBox();
+    expect(tabBox).not.toBeNull();
+    expect(tabBox!.height).toBeGreaterThanOrEqual(44);
+  }
+  await expect(
+    settingsSections.getByRole("tab", { name: "Notifications" }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
+
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+  await page.goto("/settings?tab=notifications");
+  await expect(page).toHaveURL(/\/settings\?tab=notifications/);
+  const deepLinkSections = page.getByRole("tablist", {
+    name: "Settings sections",
+  });
+  await expect(
+    deepLinkSections.getByRole("tab", { name: "Notifications" }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
+});
+
 test("settings security loading state avoids raw access placeholders", async ({
   page,
 }) => {

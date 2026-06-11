@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Settings mobile tab-rail follow-up:** tightened
+  mobile `/settings` against the approved Settings mobile frame
+  (`PO2jOANgmqgZHfqWZXOZGU`, node `59:677`). Phones now show the locked
+  compact tab rail of Organisation, Security, and Connect only, while desktop
+  keeps all four Settings tabs and `?tab=notifications` deep links still render
+  the Work notifications controls. Frontend-only presentation/routing work plus
+  smoke coverage: no API shape, provider send, email/SMS, Xero/Basiq, payment,
+  reconciliation, notification preference mutation, invite send/resend, or
+  workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Smart Intake mobile landing follow-up:** tightened
   bare mobile `/intake` against the approved Smart Intake mobile frame
   (`PO2jOANgmqgZHfqWZXOZGU`, node `59:521`). The mobile route now stays

@@ -2,7 +2,56 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Smart Intake mobile landing - latest)
+## Cowork continuation - 2026-06-11 (Horizon Settings mobile tab rail - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Settings mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `59:677`; 04 Concept stayed out of scope.
+
+Scope stayed inside `/settings` presentation and smoke coverage. On phones, the
+Settings tab rail now matches the locked three-tab frame: Organisation,
+Security, and Connect. Desktop keeps all four Settings tabs, including
+Notifications. Direct `/settings?tab=notifications` links still render the Work
+notifications controls, but the mobile tab button itself remains hidden to
+preserve the Figma first viewport.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+notification preference mutation, invite send/resend, or workflow mutation path
+changed.
+
+Verification recorded so far:
+
+- Figma source of truth pulled as a screenshot for Settings mobile `59:677`.
+- Read-only agent audit confirmed the smallest safe path: hide only the
+  Notifications tab button on mobile while preserving tab state and routing.
+- RED mobile smoke failed before implementation because mobile Settings exposed
+  four tabs instead of the locked three-tab rail.
+- Focused Settings mobile smoke passed **1/1**:
+  `tests/smoke/settings.spec.ts --grep "mobile settings keeps the approved compact tab rail" --workers=1`.
+- Focused Settings group passed **4/4**:
+  `tests/smoke/settings.spec.ts --grep "settings render the Horizon operator controls without provider mutation on load|settings notifications tab opens the Horizon operator controls directly|mobile settings keeps the approved compact tab rail|mobile settings users and roles use readable cards" --workers=1`.
+- Mobile production route sweep initially hit a local dev-server port collision,
+  then passed **1/1** when rerun sequentially:
+  `tests/smoke/mobile-bottom-nav.spec.ts --grep "mobile production routes keep headings and bottom navigation in frame" --workers=1`.
+- Targeted ESLint passed for `apps/web/src/app/settings/page.tsx`,
+  `apps/web/tests/smoke/settings.spec.ts`, and
+  `apps/web/tests/smoke/mobile-bottom-nav.spec.ts`.
+- `./node_modules/.bin/tsc --noEmit --pretty false` passed.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3030/settings` passed at 390x844:
+  visible tabs were Organisation, Security, and Connect; Work notifications
+  content remained visible; mobile nav was present; horizontal overflow was 0.
+  `/settings?tab=notifications` at the same width still rendered Work
+  notifications while keeping the three-tab rail visible. Desktop 1280x900 kept
+  all four tabs visible with no horizontal overflow.
+
+Design-facing status: pending Remba review, not `[x]` complete.
+
+Next likely scoped polish: commit/push and Vercel proof for this Settings
+follow-up; after that, continue through the next locked 03 Screens gap rather
+than 04 Concept.
+
+## Cowork continuation - 2026-06-11 (Horizon Smart Intake mobile landing)
 
 Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
 Figma source of truth was the approved Smart Intake mobile frame
