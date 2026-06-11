@@ -98,7 +98,15 @@ Observed before commit:
 Update roadmap, design governance, Horizon brief, and next-chat handover. Do
 not mark `[x]` complete until Remba signs off the visible mobile hierarchy.
 
-- [ ] **Step 3: Commit, push, and Vercel**
+- [x] **Step 3: Commit, push, and Vercel**
 
 Stage only slice files, commit with the Gmail identity, push `main`, and confirm
 the production Vercel deployment reaches READY.
+
+Observed after commit:
+- Implementation commit `6245648` pushed to `main`.
+- Vercel production deployment `dpl_97giagnbWEZS9sKukKkzUqZ6iuaY` reached
+  **READY** with aliases attached to `https://leasium.ai`,
+  `https://www.leasium.ai`, and `https://leasium.vercel.app`.
+- Live HTTP checks returned 200 for `/notifications`, `/settings`, `/intake`,
+  and `/`.

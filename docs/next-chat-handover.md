@@ -47,6 +47,12 @@ Verification recorded so far:
   overflow 0; 1280x900 hid the mobile summary and bottom nav with horizontal
   overflow 0. The local browser did not have the mocked notification-center
   payload, so seeded card-copy fidelity remains covered by Playwright smokes.
+- Implementation commit `6245648` pushed to `main`; Vercel production
+  deployment `dpl_97giagnbWEZS9sKukKkzUqZ6iuaY` reached **READY** and attached
+  `https://leasium.ai`, `https://www.leasium.ai`, and
+  `https://leasium.vercel.app`.
+- Live production HTTP checks returned 200 for `/notifications`, `/settings`,
+  `/intake`, and `/`.
 
 Design-facing status: pending Remba review, not `[x]` complete.
 
