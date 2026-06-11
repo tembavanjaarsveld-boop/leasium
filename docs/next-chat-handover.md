@@ -2,7 +2,47 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon People v1 - latest)
+## Cowork continuation - 2026-06-11 (Horizon Money v1 - latest)
+
+Implemented the next remaining Horizon desktop slice from the approved Figma
+source of truth: Money node `61:842`. The next locked production slice is
+Insights node `61:1063`.
+
+Scope stayed inside `/money` and nav/appearance smoke coverage. The old tabbed
+finance hub is now the Horizon Money cockpit: title/actions, four live metric
+cards for this month / collected / arrears / Xero, an invoice-run approval
+panel, a review-first trust ribbon, and compact lower handoffs for statements,
+Xero settings, and Basiq controls. The page remains intentionally single-entity
+because provider connections and finance review state are per entity.
+
+No API shape, provider send, email/SMS, Xero/Basiq write, payment,
+reconciliation, invoice delivery, statement dispatch, billing draft creation,
+or finance mutation path changed. `Reconcile payments`, `Run invoices`, and
+`Approve run...` are links into the existing Billing Readiness review flow.
+
+Verification recorded so far:
+
+- Figma source pulled with `get_design_context` and `get_screenshot` for
+  `PO2jOANgmqgZHfqWZXOZGU`, node `61:842`.
+- RED smoke confirmed the old tabbed Money page failed the new Horizon cockpit
+  expectations.
+- Targeted ESLint passed for `apps/web/src/app/money/page.tsx`,
+  `apps/web/tests/smoke/nav-consolidation.spec.ts`, and
+  `apps/web/tests/smoke/appearance.spec.ts`.
+- `git diff --check` passed.
+- `./node_modules/.bin/tsc --noEmit` passed.
+- Money nav smoke passed **4/4**: desktop cockpit, mobile touch-safety,
+  managing-agent owner-statement framing, and no unsafe provider mutation calls.
+- Appearance dark-route smoke passed with `/money` included in the desktop and
+  mobile core operator surface sweep.
+- `npm run build` passed.
+- In-app browser QA passed on `http://127.0.0.1:3030/money` at 1280x900 and
+  390x844 in light and dark: Money heading, invoice-run panel, trust copy,
+  mobile touch targets, and no horizontal overflow were verified.
+
+Still to finish before closing the slice: commit, push, and Vercel READY.
+
+## Cowork continuation - 2026-06-11 (Horizon People v1)
 
 Implemented the next remaining Horizon desktop slice from the approved Figma
 source of truth: People node `61:580`. The same Figma discovery pass confirmed

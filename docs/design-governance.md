@@ -103,6 +103,8 @@ map for agents:
 | 03 Screens / Document review 58:352 | `apps/web/src/components/dashboard.tsx` (`DocumentIntakeReviewPanel`) — Horizon Document review v1 |
 | 03 Screens / Notifications 55:307 | `apps/web/src/app/notifications/page.tsx` — Horizon Notifications v1 |
 | 03 Screens / Settings 55:439 | `apps/web/src/app/settings/page.tsx` — Horizon Settings v1 |
+| 03 Screens / People 61:580 | `apps/web/src/app/people/page.tsx` — Horizon People v1 |
+| 03 Screens / Money 61:842 | `apps/web/src/app/money/page.tsx` — Horizon Money v1 |
 | 03 Screens / AI Mailbox Intake 82:2 | not implemented — concept frame for ai@leasium.ai mailbox intake (queue + quarantine), awaiting Temba sign-off; design doc `docs/ai-mailbox-intake-design.md` |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
@@ -115,9 +117,9 @@ source of record; Figma 01 Foundations mirrors it plus the Horizon additions.
 Workflow: new design-facing slices get a frame in this file first (duplicate
 the nearest screen, modify, then implement). Figma frame review can stand in
 for the pre-implementation half of the Remba gate; code review of the shipped
-surface remains the second half. Screens not yet captured in Figma
-(People, Money, Insights, tenant portal) are back-filled when first touched by
-a design-facing slice.
+surface remains the second half. Production Horizon work now targets the 03
+Screens frame list above; any new surface that is not represented there must be
+back-filled in Figma before code.
 
 ## Remba Review Gate
 
@@ -184,6 +186,19 @@ a design-facing slice.
   managing-agent mode fits the locked People frame, and whether the generic
   `Add person` label should split into tenant/vendor-specific actions before
   this is marked `[x]`.
+- **Horizon Money v1 (2026-06-11, Remba pending):** production
+  implementation from the approved Figma Money target (`61:842`) on `/money`.
+  The old temporary finance tabs are replaced by a single Horizon cockpit:
+  live this-month, collected, arrears, and Xero cards; an invoice-run approval
+  panel; a review-first trust ribbon; and compact lower handoffs for statements,
+  Xero settings, and Basiq controls. Header actions and `Approve run...` route
+  into Billing Readiness delivery/reconciliation review rather than calling any
+  provider or finance mutation endpoint. No API shape, provider send, email/SMS,
+  payment, reconciliation, Xero/Basiq write, invoice delivery, statement
+  dispatch, or finance mutation path changed. Remba should review the live-demo
+  values versus the Figma illustrative values, the lower finance-route cards
+  below the invoice-run panel, and whether the single-entity selector placement
+  should move into the shell/entity switcher before this is marked `[x]`.
 - **Horizon Work desktop v1 (2026-06-10, Remba pending):** first production
   implementation from the approved Figma Work target (`45:168`) on `/operations`,
   scoped to the queue landing area. The page now
@@ -897,7 +912,12 @@ Shipped in the DoorLoop refocus stream; design-facing IA remains pending Remba r
   review whether the Properties handoff copy is clear enough for operators
   arriving from cleanup links.
 - **Navigation consolidation to 7 hubs** (Phase 3): sidebar is Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings). The standalone Tenants and Billing items are removed; People carries Tenants/Owners/Vendors; Work is active for Comms; Money groups Billing Readiness, Owner statements, Xero, and Basiq. Hub alias redirects (`/people/tenants`, `/people/vendors`, `/work`, `/work/comms`, `/money/*`) preserve moved-route entry points while the existing workspaces stay alive for deep links. Remba should review the People vs Properties split, Money label, and whether the command palette makes the folded destinations discoverable enough.
-- **Money hub** (`/money`): a focused finance hub with tabs for Billing · Statements · Xero · Basiq and review-first handoffs to the existing finance workspaces. It does not call providers, preview reconciliation, dispatch invoices, send owner email, or mutate Xero/Basiq state.
+- **Money hub** (`/money`): now a Horizon billing cockpit rather than a tabbed
+  holding page. The first screen shows billing readiness, collection, arrears,
+  Xero freshness, and the invoice-run approval handoff, with statements/Xero/
+  Basiq routes retained as lower review cards. It does not call providers,
+  preview/apply reconciliation, dispatch invoices, send tenant/owner email, or
+  mutate Xero/Basiq state.
 - **Owner portal read-only preview** (`/owner-portal/[ownerId]`): portal-style,
   operator-previewed surface backed by `GET /api/v1/owner-portal/{owner_id}`.
   It shows owner identity, linked property splits, selected-month statement

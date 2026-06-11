@@ -236,15 +236,32 @@ test("money hub groups finance destinations and legacy links still resolve", asy
 }) => {
   await page.goto("/money");
 
-  for (const label of ["Billing", "Statements", "Xero", "Basiq"]) {
-    await expect(page.getByRole("tab", { name: label })).toBeVisible();
-  }
-
+  await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open Billing Readiness" }),
-  ).toHaveAttribute("href", "/billing-readiness");
+    page.getByText("Billing readiness, arrears, and Xero"),
+  ).toBeVisible();
 
-  await page.getByRole("tab", { name: "Statements" }).click();
+  for (const label of ["THIS MONTH", "COLLECTED", "ARREARS", "XERO"]) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(
+    page.getByText("INVOICE RUN", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText("No blockers")).toBeVisible();
+  await expect(
+    page.getByText("Drafts only - nothing posts to Xero or sends without you."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Reconcile payments" }),
+  ).toHaveAttribute("href", "/billing-readiness?tab=delivery");
+  await expect(page.getByRole("link", { name: "Run invoices" })).toHaveAttribute(
+    "href",
+    "/billing-readiness?tab=delivery",
+  );
+  await expect(page.getByRole("link", { name: /Approve run/ })).toHaveAttribute(
+    "href",
+    "/billing-readiness?tab=delivery",
+  );
   await expect(
     page.getByText("Entity statements", { exact: true }),
   ).toBeVisible();
@@ -252,6 +269,12 @@ test("money hub groups finance destinations and legacy links still resolve", asy
   await expect(
     page.getByRole("link", { name: "Open entity statements" }),
   ).toHaveAttribute("href", "/statements");
+  await expect(
+    page.getByRole("link", { name: "Open Xero settings" }),
+  ).toHaveAttribute("href", "/settings?tab=xero");
+  await expect(
+    page.getByRole("link", { name: "Open Basiq controls" }),
+  ).toHaveAttribute("href", "/settings?tab=xero");
 
   await page.goto("/billing-readiness");
   await expect(
@@ -270,19 +293,21 @@ test("money hub groups finance destinations and legacy links still resolve", asy
   await expect(page).toHaveURL(/\/comms$/);
 });
 
-test("mobile money hub tabs and actions stay touch-safe", async ({ page }) => {
+test("mobile money hub cockpit actions stay touch-safe", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/money");
 
   await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
 
-  const moneyTabs = page.getByRole("tablist", { name: "Money areas" });
-  await expect(moneyTabs).toBeVisible();
-  for (const label of ["Billing", "Statements", "Xero", "Basiq"]) {
-    await expectTouchTarget(moneyTabs.getByRole("tab", { name: label }));
-  }
+  await expect(
+    page.getByRole("tablist", { name: "Money areas" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("INVOICE RUN", { exact: false })).toBeVisible();
+  await expect(page.getByText("Drafts only - nothing posts")).toBeVisible();
+  await expectTouchTarget(page.getByRole("link", { name: "Reconcile payments" }));
+  await expectTouchTarget(page.getByRole("link", { name: "Run invoices" }));
   await expectTouchTarget(
-    page.getByRole("link", { name: "Open Billing Readiness" }),
+    page.getByRole("link", { name: /Approve run/ }),
   );
 });
 
@@ -299,4 +324,30 @@ test("money hub keeps owner-statement dispatch framing for managing agents", asy
   await expect(
     page.getByRole("link", { name: "Open owner statements" }),
   ).toHaveAttribute("href", "/statements");
+});
+
+test("money hub loads review data without provider mutation calls", async ({
+  page,
+}) => {
+  const forbiddenCalls: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (!url.pathname.startsWith("/api/v1/")) return;
+    const path = url.pathname.replace("/api/v1", "");
+    const unsafeMethod = request.method() !== "GET";
+    const unsafePath =
+      /sendgrid|twilio|provider-dispatch|provider-history|provider-refresh|xero|basiq|payment|reconciliation|send-delivery-email|record-delivery|prepare-delivery/i.test(
+        path,
+      );
+    if (unsafeMethod && unsafePath) {
+      forbiddenCalls.push(`${request.method()} ${path}`);
+    }
+  });
+
+  await page.goto("/money");
+
+  await expect(
+    page.getByText("Drafts only - nothing posts to Xero or sends without you."),
+  ).toBeVisible();
+  expect(forbiddenCalls).toEqual([]);
 });

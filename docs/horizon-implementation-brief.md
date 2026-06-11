@@ -1,6 +1,6 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon People v1 is
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Money v1 is
 Remba-pending; this brief covers the remaining Horizon
 implementation.
 
@@ -25,7 +25,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | Document review | 58:352 | source preview + field approval flow |
 | Property detail | 58:627 | header/tabs/bento/lease/activity |
 | People | 61:580 | tenant/vendor cards; v1 shipped pending Remba review |
-| Money | 61:842 | billing readiness + approve-run |
+| Money | 61:842 | billing readiness + approve-run; v1 shipped pending Remba review |
 | Insights | 61:1063 | value flow, compliance, what-changed |
 | Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, bottom nav + FAB |
 | Dashboard · Dark | 62:696 | dark-mode reference |
@@ -68,8 +68,11 @@ extend the same pattern, never hardcode hex in components.
    first screen now uses the approved header, count pills, tenant/vendor cards,
    roadmap prospect tile, and touch-safe add handoffs while keeping
    operating-mode owner gating intact.
-10. **Money v1** (`61:842`) then **Insights v1** (`61:1063`) — remaining
-    production Horizon desktop slices.
+10. **Money v1** (`61:842`) — shipped pending Remba review. The `/money`
+    first screen now uses the approved billing cockpit, metric cards,
+    invoice-run approval panel, trust ribbon, and review-route handoffs.
+11. **Insights v1** (`61:1063`) — next remaining production Horizon desktop
+    slice.
 
 ## Non-negotiable guardrails (from CLAUDE.md)
 

@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Money v1:** implemented the approved Figma Money
+  target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:842`) on `/money`. The legacy
+  tabbed finance hub is now a Horizon billing cockpit with live this-month,
+  collected, arrears, and Xero cards; an invoice-run approval panel; a
+  review-first trust ribbon; and route handoffs into Billing Readiness,
+  statements, Xero settings, and Basiq controls. All finance/provider actions
+  remain explicit review links: no API shape, provider send, email/SMS,
+  Xero/Basiq write, payment, reconciliation, invoice delivery, statement
+  dispatch, or finance mutation path changed. Pending Remba review.
 - [~] **2026-06-11 Horizon People v1:** implemented the approved Figma People
   target (`PO2jOANgmqgZHfqWZXOZGU`, node `61:580`) on `/people`. The hub now
   opens with the Horizon title/actions, compact count pills, tenant/vendor
@@ -652,11 +661,11 @@ Equifax/illion; RTBA/state RTAs).
   Dashboard · Smart Intake · Properties · People · Work · Money · Insights (+ Settings).
   Tenants/Vendors live under **People**, Billing / Statements / Xero / Basiq group under
   the new `/money` hub, Comms is treated as **Work**, and hub alias redirects preserve
-  moved-route entry points. 2026-06-02 mobile follow-up lifted Money hub tabs plus
-  the active panel action to the 44px tap-target baseline with matching 390px smoke
-  coverage. 2026-06-10 Horizon shell follow-up keeps the same IA inside the
-  approved 232px Horizon sidebar and mobile FAB bottom nav. Honours the §10.5.1
-  seven-item sidebar cap.
+  moved-route entry points. 2026-06-10 Horizon shell follow-up keeps the same IA
+  inside the approved 232px Horizon sidebar and mobile FAB bottom nav. 2026-06-11
+  Horizon Money v1 replaced the temporary tabbed hub with the Figma Money
+  billing cockpit while preserving statements/Xero/Basiq handoffs below the
+  invoice-run review surface. Honours the §10.5.1 seven-item sidebar cap.
 - [~] **Account operating mode gate (self-managed owner vs managing agent).** SHIPPED pending Remba — `cb4704f` (backend: `operating_mode` on Organisation, default `self_managed_owner`, owner/admin PATCH) + `1996aa7`/`ce271e1` (frontend: People→Owners hub hidden for self-managed, Settings mode toggle + a "Your entities & trusts" fallback keeping owner-entity CRUD reachable, owner-statement palette/shortcut gating with provider-call guard tests) + `add20ac` (Money/Statements dispatch deep gate: self-managed sees Entity statements/local reports only; dispatch queues/drafts/send + dispatch receipt reads are agent/hybrid-only) + `147eae1` (owner-portal deep gate: self-managed cannot open operator portal previews, create/claim owner portal invites, read linked owner account sessions/status, or download owner-visible account documents; hybrid stays enabled). Remaining follow-up: gate deeper disbursement/trust-accounting entry points once those routes exist. Background: the shipped
   People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are the
   *managing-agent* framing. A self-managed owner-operator (SKJ, and most 2–20-property owners)

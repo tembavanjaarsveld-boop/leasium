@@ -287,6 +287,7 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
     },
     { path: "/people?tab=tenants", heading: "People" },
     { path: "/operations", heading: "Work" },
+    { path: "/money", heading: "Money" },
     { path: "/notifications", heading: "Notifications" },
     { path: "/settings", heading: "Settings" },
   ];
