@@ -44,6 +44,12 @@ Verification recorded so far:
   sidebar and bento layout visible, and had horizontal overflow 0. The local
   live API was unavailable outside the smoke harness, so seeded copy fidelity
   remains covered by Playwright mocks.
+- Implementation commit `0566077` pushed to `main`; Vercel production deployment
+  `dpl_6PNvGW1T3ANY68LU6RdeU8fcgBr7` reached **READY** and attached
+  `https://leasium.ai`, `https://www.leasium.ai`, and
+  `https://leasium.vercel.app`.
+- Live production HTTP checks returned 200 for `/`, `/notifications`,
+  `/settings`, and `/intake`.
 
 Design-facing status: pending Remba review, not `[x]` complete. Remba should
 review the two-row mobile horizon cap used to fit the real app shell.

@@ -3,6 +3,8 @@
 Date: 2026-06-11
 Status: shipped pending Remba review
 Figma source: `PO2jOANgmqgZHfqWZXOZGU`, Dashboard mobile `45:371`
+Commit: `0566077` (`Compact Dashboard mobile viewport`)
+Deployment: `dpl_6PNvGW1T3ANY68LU6RdeU8fcgBr7` READY on `https://leasium.ai`
 
 ## Goal
 
@@ -30,3 +32,5 @@ Dashboard data flow, provider paths, Smart Intake apply paths, or app shell.
   the static Figma frame.
 - No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
   Smart Intake apply, or workflow mutation path changed.
+- Live production HTTP checks returned 200 for `/`, `/notifications`,
+  `/settings`, and `/intake`.
