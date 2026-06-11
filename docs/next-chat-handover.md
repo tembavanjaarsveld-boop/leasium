@@ -46,6 +46,11 @@ Verification recorded so far:
   local browser could not hydrate portfolio data outside the mocked smoke
   harness (`Failed to fetch`), so seeded row fidelity remains covered by the
   Playwright mocks above.
+- Shipped to production: commit `17e63b1` deployed as Vercel
+  `dpl_CRzjxjkcuNuQcmgUWETgoRh7r15C`, state `READY`, with aliases attached
+  (`leasium.ai`, `www.leasium.ai`, `leasium.vercel.app`). HTTP checks returned
+  200 for `https://leasium.ai/properties`,
+  `https://leasium.ai/notifications`, and `https://leasium.ai`.
 
 Design-facing status: pending Remba review, not `[x]` complete.
 
