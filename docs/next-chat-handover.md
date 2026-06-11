@@ -60,6 +60,10 @@ was not used as the final signal: after the Settings fixes, the long run hit a
 transient `/inbox` 404 from the local Next dev cache; the focused AI Inbox rerun
 passed on a fresh cache.
 
+Committed as `b179983` (`Default fresh workspaces to all entities`) and pushed
+to `main`. Vercel deployment `dpl_5nezycwLcJqtDQs5kRZa7yZhG3Pv` reached READY
+for commit `b179983b8360c07aad339fa11c0398a7bd80dc47`.
+
 Unrelated local items intentionally left out of scope: `docs/ai-mailbox-intake-design.md`,
 `docs/external-skills/ui-ux-pro-max/`, `marketing/`, and
 `apps/web/tests/smoke/.fuse_hidden*` artifacts.

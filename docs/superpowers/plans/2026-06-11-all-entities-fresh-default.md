@@ -76,6 +76,6 @@ Log the all-entities fresh default as a user-visible IA behavior change pending 
 
 Run targeted ESLint, `tsc --noEmit`, the entity-selection smoke set, production build, and browser sanity for fresh `/properties` at desktop/mobile.
 
-- [ ] **Step 3: Commit, push, deploy**
+- [x] **Step 3: Commit, push, deploy**
 
 Stage only the all-entities default slice files and docs, commit with the Gmail identity, push `main`, and confirm Vercel `READY`.
