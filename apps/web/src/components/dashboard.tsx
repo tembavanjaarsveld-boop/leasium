@@ -248,6 +248,26 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+function formatCompactDate(value: string | null | undefined) {
+  if (!value) {
+    return "No date";
+  }
+  const dateValue = value.length === 10 ? `${value}T00:00:00` : value;
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+  }).format(new Date(dateValue));
+}
+
+function formatDashboardTodayLabel() {
+  return new Intl.DateTimeFormat("en-AU", {
+    weekday: "short",
+    day: "2-digit",
+    month: "long",
+    timeZone: "Australia/Brisbane",
+  }).format(new Date());
+}
+
 function formatMoney(cents: number | null | undefined) {
   if (cents === null || cents === undefined) {
     return "-";
@@ -3111,7 +3131,7 @@ function DashboardBentoCard({
 }) {
   const labelId = dashboardCardLabelId(label);
   const cardClass = [
-    "group flex min-h-[128px] flex-col overflow-hidden rounded-[18px] border bg-white p-[18px] shadow-[0_1px_3px_rgba(16,24,40,0.04)] transition duration-200 ease-leasium",
+    "group flex min-h-[98px] flex-col overflow-hidden rounded-[14px] border bg-white p-3 shadow-[0_1px_3px_rgba(16,24,40,0.04)] transition duration-200 ease-leasium sm:min-h-[128px] sm:rounded-[18px] sm:p-[18px]",
     dashed
       ? "border-dashed border-primary/70 hover:border-primary"
       : "border-leasium-card-border hover:border-primary/40 hover:shadow-leasiumMd",
@@ -3126,11 +3146,11 @@ function DashboardBentoCard({
         >
           {label}
         </span>
-        <span className="grid h-7 w-7 place-items-center rounded-lg text-leasium-slate-400 transition group-hover:bg-primary-soft group-hover:text-primary">
+        <span className="hidden h-7 w-7 place-items-center rounded-lg text-leasium-slate-400 transition group-hover:bg-primary-soft group-hover:text-primary sm:grid">
           {icon}
         </span>
       </div>
-      <div className="mt-3 flex flex-1 flex-col">{children}</div>
+      <div className="mt-2 flex flex-1 flex-col sm:mt-3">{children}</div>
     </>
   );
 
@@ -3152,13 +3172,13 @@ function DashboardBentoCard({
 function DashboardOccupancyRing({ percent }: { percent: number }) {
   return (
     <div
-      className="grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full"
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-full sm:h-[54px] sm:w-[54px]"
       aria-label={`${percent}% occupied`}
       style={{
         background: `conic-gradient(var(--leasium-teal) ${percent}%, var(--leasium-slate-150) 0)`,
       }}
     >
-      <div className="grid h-[40px] w-[40px] place-items-center rounded-full bg-white text-[11px] font-bold text-foreground">
+      <div className="grid h-8 w-8 place-items-center rounded-full bg-white text-[0px] font-bold text-foreground sm:h-[40px] sm:w-[40px] sm:text-[11px]">
         {percent}%
       </div>
     </div>
@@ -3205,28 +3225,36 @@ function DashboardLeaseHorizon({
   return (
     <section
       aria-labelledby="dashboard-lease-horizon"
-      className="min-h-[116px] rounded-[18px] border border-leasium-card-border bg-white p-[18px] shadow-[0_1px_3px_rgba(16,24,40,0.04)]"
+      data-testid="dashboard-mobile-horizon"
+      className="rounded-[14px] border border-leasium-card-border bg-white p-3.5 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:min-h-[116px] sm:rounded-[18px] sm:p-[18px]"
     >
       <div className="flex items-center justify-between gap-3">
         <h2
           id="dashboard-lease-horizon"
           className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-muted-foreground"
         >
-          Lease horizon - next 120 days
+          <span className="sm:hidden">Next on the horizon</span>
+          <span className="hidden sm:inline">Lease horizon - next 120 days</span>
         </h2>
-        <CalendarClock size={14} className="text-leasium-slate-400" />
+        <CalendarClock
+          size={14}
+          className="hidden text-leasium-slate-400 sm:block"
+        />
       </div>
       {loading ? (
         <div className="mt-4 rounded-md border border-border bg-muted/25 px-3 py-2 text-sm text-muted-foreground">
           Preparing lease horizon.
         </div>
       ) : events.length ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          {events.slice(0, 4).map((event) => (
+        <div className="mt-2 grid gap-0 sm:mt-4 sm:gap-3 sm:grid-cols-4">
+          {events.slice(0, 4).map((event, index) => (
             <Link
               key={event.id}
               href={event.href}
-              className="grid min-w-0 gap-1 border-t border-border pt-2 text-xs transition hover:text-primary"
+              className={cn(
+                "grid min-h-11 min-w-0 grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 py-1 text-xs transition hover:text-primary sm:min-h-0 sm:grid-cols-1 sm:items-start sm:gap-1 sm:border-t sm:border-border sm:pt-2",
+                index > 1 && "hidden sm:grid",
+              )}
             >
               <span
                 className={[
@@ -3241,7 +3269,10 @@ function DashboardLeaseHorizon({
               <span className="truncate font-medium text-foreground">
                 {event.title}
               </span>
-              <span className="truncate text-[11px] leading-4 text-muted-foreground">
+              <span className="truncate text-[11px] leading-4 text-muted-foreground sm:hidden">
+                {formatCompactDate(event.date)}
+              </span>
+              <span className="hidden truncate text-[11px] leading-4 text-muted-foreground sm:inline">
                 {event.detail || dueLabel(event.date)}
               </span>
             </Link>
@@ -3256,12 +3287,21 @@ function DashboardLeaseHorizon({
   );
 }
 
-function DashboardTrustRibbon() {
+function DashboardTrustRibbon({
+  variant = "desktop",
+}: {
+  variant?: "desktop" | "mobile";
+}) {
+  const mobile = variant === "mobile";
   return (
     <div className="flex items-center justify-center">
-      <div className="inline-flex items-center gap-2 rounded-full bg-[var(--leasium-teal-soft)] px-4 py-2 text-xs font-semibold text-[var(--leasium-teal-strong)]">
-        <ShieldCheck size={14} aria-hidden="true" />
-        <span>Nothing is applied until you approve it.</span>
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-[var(--leasium-teal-soft)] px-3 py-2 text-[11px] font-semibold text-[var(--leasium-teal-strong)] sm:gap-2 sm:px-4 sm:text-xs">
+        <ShieldCheck size={mobile ? 12 : 14} aria-hidden="true" />
+        <span>
+          {mobile
+            ? "Nothing applies until you approve it."
+            : "Nothing is applied until you approve it."}
+        </span>
       </div>
     </div>
   );
@@ -4190,6 +4230,35 @@ export function Dashboard({
       rentRollLoading ||
       onboardingLoading ||
       obligationsLoading);
+  const dashboardFocusItemCount = displayedCommandCenterItems.length;
+  const dashboardMobileFocusSummary = commandCenterLoading
+    ? "checking today's focus"
+    : dashboardFocusItemCount === 0
+      ? "portfolio clear right now"
+      : dashboardFocusItemCount === 1
+        ? "one thing needs you"
+        : `${dashboardFocusItemCount} things need you`;
+  function renderDashboardActions() {
+    return (
+      <>
+        <SecondaryButton
+          type="button"
+          onClick={() => setDemoMode((current) => !current)}
+        >
+          <Layers3 size={15} />
+          {demoMode ? "View live portfolio" : "View demo portfolio"}
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          onClick={refreshDashboardData}
+          disabled={!selectedEntityId}
+        >
+          <RefreshCw size={15} />
+          Refresh
+        </SecondaryButton>
+      </>
+    );
+  }
   const billingMetricLoading = rentRollLoading && !dashboardOverview;
   const billingMetricCount =
     demoMode || allMode || rentRollQuery.data
@@ -4585,7 +4654,7 @@ export function Dashboard({
         />
       </AppHeader>
 
-      <div className="mx-auto grid max-w-none gap-[18px] px-5 py-5 lg:px-9 lg:py-7">
+      <div className="mx-auto grid max-w-none gap-3 px-4 py-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:gap-[18px] sm:px-5 sm:py-5 md:pb-7 lg:px-9 lg:py-7">
         {isIntakeWorkspace ? (
           <section className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -4623,6 +4692,31 @@ export function Dashboard({
         ) : (
           <h1 className="sr-only">Dashboard</h1>
         )}
+
+        {!isIntakeWorkspace ? (
+          <section
+            data-testid="dashboard-mobile-cockpit"
+            className="grid gap-3 md:hidden"
+            aria-label="Dashboard mobile summary"
+          >
+            <div>
+              <p className="text-[19px] font-bold leading-6 tracking-normal text-foreground">
+                Good morning, Temba
+              </p>
+              <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
+                {formatDashboardTodayLabel()} · {dashboardMobileFocusSummary}
+              </p>
+            </div>
+            <Link
+              href="#ask-leasium"
+              aria-label="Ask Leasium anything"
+              className="flex min-h-11 items-center gap-2 rounded-full border border-leasium-card-border bg-white px-3.5 py-2.5 text-[13px] leading-5 text-muted-foreground shadow-[0_2px_8px_rgba(16,24,40,0.06)] transition duration-200 ease-leasium hover:border-primary/30 hover:text-foreground"
+            >
+              <Sparkles size={14} className="shrink-0 text-primary" />
+              <span>Ask Leasium anything...</span>
+            </Link>
+          </section>
+        ) : null}
 
         {dashboardError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/20 bg-danger-soft p-4 text-sm text-danger">
@@ -4683,25 +4777,7 @@ export function Dashboard({
             loading={commandCenterLoading}
             refreshing={dashboardRefreshing}
             counts={displayedCommandCenterCounts}
-            actions={
-              <>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => setDemoMode((current) => !current)}
-                >
-                  <Layers3 size={15} />
-                  {demoMode ? "View live portfolio" : "View demo portfolio"}
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  onClick={refreshDashboardData}
-                  disabled={!selectedEntityId}
-                >
-                  <RefreshCw size={15} />
-                  Refresh
-                </SecondaryButton>
-              </>
-            }
+            actions={renderDashboardActions()}
           />
         ) : null}
 
@@ -4709,23 +4785,34 @@ export function Dashboard({
           <>
             <section
               data-testid="dashboard-horizon-bento"
-              className="grid gap-[14px] sm:grid-cols-2 lg:grid-cols-4"
+              className="grid grid-cols-2 gap-3 sm:gap-[14px] lg:grid-cols-4"
             >
               <DashboardBentoCard
                 href="/properties"
                 label="Occupancy"
                 icon={<Building2 size={14} />}
+                className="h-[104px] sm:h-auto"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
                   <DashboardOccupancyRing percent={occupancyPercent} />
                   <div className="min-w-0">
-                    <div className="text-2xl font-bold tracking-normal text-foreground">
-                      {rentRollLoading && !dashboardUnitCount
-                        ? "Checking"
-                        : `${dashboardOccupiedUnitCount} of ${dashboardUnitCount}`}
+                    <div className="text-lg font-bold leading-6 tracking-normal text-foreground sm:text-2xl">
+                      {rentRollLoading && !dashboardUnitCount ? (
+                        "Checking"
+                      ) : (
+                        <>
+                          <span className="sm:hidden">
+                            {dashboardOccupiedUnitCount}/{dashboardUnitCount}
+                          </span>
+                          <span className="hidden sm:inline">
+                            {dashboardOccupiedUnitCount} of {dashboardUnitCount}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                      units occupied
+                      <span className="sm:hidden">occupied</span>
+                      <span className="hidden sm:inline">units occupied</span>
                     </p>
                   </div>
                 </div>
@@ -4735,12 +4822,13 @@ export function Dashboard({
                 href="/operations?tab=arrears"
                 label="Arrears"
                 icon={<ReceiptText size={14} />}
+                className="h-[104px] sm:h-auto"
               >
-                <div className="text-2xl font-bold tracking-normal text-foreground">
+                <div className="text-lg font-bold leading-6 tracking-normal text-foreground sm:text-2xl">
                   {arrearsHeadline}
                 </div>
                 <svg
-                  className="mt-2 h-7 w-28"
+                  className="mt-2 h-5 w-24 sm:h-7 sm:w-28"
                   viewBox="0 0 112 28"
                   role="presentation"
                   aria-hidden="true"
@@ -4754,8 +4842,17 @@ export function Dashboard({
                     strokeWidth="1.8"
                   />
                 </svg>
-                <p className="mt-auto pt-2 text-[11px] leading-4 text-warning-strong">
-                  {arrearsDetail}
+                <p className="mt-auto line-clamp-1 pt-1 text-[10px] leading-4 text-warning-strong sm:line-clamp-none sm:pt-2 sm:text-[11px]">
+                  <span className="sm:hidden">
+                    {arrearsSnapshot && arrearsSnapshot.open_count > 0
+                      ? `${arrearsSnapshot.oldest_age_days} days · ${
+                          arrearsSnapshot.promise_to_pay_count > 0
+                            ? "promise"
+                            : "review"
+                        }`
+                      : arrearsDetail}
+                  </span>
+                  <span className="hidden sm:inline">{arrearsDetail}</span>
                 </p>
               </DashboardBentoCard>
 
@@ -4763,13 +4860,14 @@ export function Dashboard({
                 href="/operations"
                 label="Work queue"
                 icon={<ClipboardList size={14} />}
+                className="h-[104px] sm:h-auto"
               >
-                <div className="text-2xl font-bold tracking-normal text-foreground">
+                <div className="text-lg font-bold leading-6 tracking-normal text-foreground sm:text-2xl">
                   {obligationsLoading && !workQueueOpenCount
                     ? "Checking"
                     : `${workQueueOpenCount} open`}
                 </div>
-                <div className="mt-3">
+                <div className="mt-2 sm:mt-3">
                   <DashboardSegmentBar
                     segments={[
                       {
@@ -4790,10 +4888,15 @@ export function Dashboard({
                     ]}
                   />
                 </div>
-                <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
-                  {workQueueDetail}
+                <p className="mt-1 line-clamp-1 text-[10px] leading-4 text-muted-foreground sm:mt-2 sm:line-clamp-none sm:text-[11px]">
+                  <span className="sm:hidden">
+                    {workQueueOverdueCount
+                      ? `${workQueueOverdueCount} needs you`
+                      : `${workQueueScheduledCount} scheduled`}
+                  </span>
+                  <span className="hidden sm:inline">{workQueueDetail}</span>
                 </p>
-                <p className="mt-auto line-clamp-1 pt-2 text-[11px] font-medium leading-4 text-foreground">
+                <p className="mt-auto hidden line-clamp-1 pt-1 text-[10px] font-medium leading-4 text-foreground sm:block sm:pt-2 sm:text-[11px]">
                   {workQueueNextAction}
                 </p>
               </DashboardBentoCard>
@@ -4802,20 +4905,23 @@ export function Dashboard({
                 href="/billing-readiness"
                 label="Billing"
                 icon={<CheckCircle2 size={14} />}
+                className="h-[104px] sm:h-auto"
               >
-                <div className="flex items-center gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-leasium-teal-strong">
-                    <CheckCircle2 size={17} />
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-leasium-teal-strong sm:h-9 sm:w-9">
+                    <CheckCircle2 size={16} className="sm:hidden" />
+                    <CheckCircle2 size={17} className="hidden sm:block" />
                   </span>
-                  <div className="min-w-0 text-[15px] font-semibold leading-5 text-foreground">
+                  <div className="min-w-0 text-[14px] font-semibold leading-5 text-foreground sm:text-[15px]">
                     {billingHeadline}
                   </div>
                 </div>
-                <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                <p className="mt-1 hidden line-clamp-1 text-[10px] leading-4 text-muted-foreground sm:mt-2 sm:block sm:line-clamp-none sm:text-[11px]">
                   {billingDetail}
                 </p>
-                <span className="mt-auto pt-2 text-xs font-semibold text-primary">
-                  Review &amp; approve →
+                <span className="mt-auto pt-1 text-[11px] font-semibold text-primary sm:pt-2 sm:text-xs">
+                  <span className="sm:hidden">Approve →</span>
+                  <span className="hidden sm:inline">Review &amp; approve →</span>
                 </span>
               </DashboardBentoCard>
             </section>
@@ -4825,6 +4931,14 @@ export function Dashboard({
                 events={dashboardHorizonEvents}
                 loading={leaseHorizonLoading}
               />
+
+              <div className="md:hidden">
+                <DashboardTrustRibbon variant="mobile" />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 md:hidden">
+                {renderDashboardActions()}
+              </div>
 
               <DashboardBentoCard
                 label="Onboarding"
@@ -4882,7 +4996,9 @@ export function Dashboard({
               </DashboardBentoCard>
             </section>
 
-            <DashboardTrustRibbon />
+            <div className="hidden md:block">
+              <DashboardTrustRibbon variant="desktop" />
+            </div>
           </>
         ) : null}
 

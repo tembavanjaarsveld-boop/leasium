@@ -1,6 +1,6 @@
 # Horizon Implementation Brief (for Codex / coding agents)
 
-Last updated: 2026-06-11. Owner: Temba. Status: Horizon Notifications mobile
+Last updated: 2026-06-11. Owner: Temba. Status: Horizon Dashboard mobile
 first-viewport follow-up is Remba-pending; this brief covers the remaining
 Horizon implementation.
 
@@ -16,7 +16,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 
 | Surface | Node ID | Notes |
 |---|---|---|
-| Dashboard | 45:2 | v2 hero/bento polish shipped; Remba review remains |
+| Dashboard | 45:2 | v2 hero/bento polish + mobile first-viewport follow-up shipped; Remba review remains |
 | Work | 45:168 | triage lanes, severity rails, right rail |
 | Properties | 55:2 | card grid, stat strip, view switcher |
 | Smart Intake | 55:166 | hero dropzone, queue rails, provenance |
@@ -27,7 +27,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | People | 61:580 | tenant/vendor cards; v1 shipped pending Remba review |
 | Money | 61:842 | billing readiness + approve-run; v1 shipped pending Remba review |
 | Insights | 61:1063 | value flow, compliance, what-changed; v1 shipped pending Remba review |
-| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, Tenant portal v1 shipped pending Remba review |
+| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, Dashboard/Properties/Smart Intake/Notifications/Settings/Tenant portal follow-ups shipped pending Remba review |
 | Dashboard · Dark | 62:696 | dark-mode reference |
 
 Components (02 Components): Horizon Sidebar 44:117, Command bar 44:155, Hero focus
@@ -53,7 +53,8 @@ extend the same pattern, never hardcode hex in components.
    centrepiece; reuse Input/Modal primitives.
 5. **Notifications** (55:307) + **Settings** (55:439).
 6. **Mobile polish pass v1** against the 03 Screens mobile frames — shipped
-   pending Remba review for Work tabs/range targets, Notifications compact
+   pending Remba review for Dashboard mobile first-viewport fidelity,
+   Work tabs/range targets, Notifications compact
    channel chips/send-retry target guards plus the `59:594` compact
    first-viewport stack, Settings compact tabs/touch targets plus the `59:677`
    three-tab mobile rail, Document review source/action/bottom nav safety,

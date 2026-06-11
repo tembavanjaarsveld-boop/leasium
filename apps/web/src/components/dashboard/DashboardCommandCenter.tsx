@@ -102,7 +102,7 @@ export function DashboardCommandCenter({
 
   return (
     <section
-      className="overflow-hidden rounded-[20px] border border-primary/15 bg-gradient-to-r from-leasium-hero-wash-from to-leasium-hero-wash-to shadow-[0_1px_3px_rgba(16,24,40,0.04)]"
+      className="overflow-hidden rounded-[18px] border border-primary/15 bg-gradient-to-r from-leasium-hero-wash-from to-leasium-hero-wash-to shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:rounded-[20px]"
       aria-label="Today's focus"
       aria-describedby="dashboard-focus-counts"
     >
@@ -110,7 +110,7 @@ export function DashboardCommandCenter({
         Today&apos;s focus is ranked from {totalCount} open items across Smart
         Intake, billing, onboarding, and operations.
       </p>
-      <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="grid gap-3 p-3 sm:gap-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         {loading && !primaryItem ? (
           <div className="grid gap-3">
             <h2 className="text-leasium-micro font-semibold uppercase tracking-[0.04em] text-primary">
@@ -123,22 +123,24 @@ export function DashboardCommandCenter({
           </div>
         ) : primaryItem ? (
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <h2 className="inline-flex min-h-6 items-center rounded-full bg-primary-soft px-2.5 text-leasium-micro font-semibold uppercase tracking-[0.04em] text-primary">
                 Today&apos;s focus
               </h2>
               <StatusBadge tone={primaryItem.tone}>{primaryItem.chip}</StatusBadge>
-              <StatusBadge tone="neutral">{primaryItem.dateLabel}</StatusBadge>
+              <StatusBadge tone="neutral" className="hidden sm:inline-flex">
+                {primaryItem.dateLabel}
+              </StatusBadge>
             </div>
-            <h3 className="mt-3 text-xl font-bold leading-7 tracking-normal text-foreground sm:text-2xl">
+            <h3 className="mt-2 text-[15px] font-bold leading-6 tracking-normal text-foreground sm:mt-3 sm:text-2xl sm:leading-8">
               {primaryItem.title}
             </h3>
-            <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">
+            <p className="mt-1 line-clamp-1 max-w-3xl text-xs leading-4 text-muted-foreground sm:line-clamp-none sm:leading-5 sm:text-sm">
               {primaryItem.why}
             </p>
             {nextItems.length ? (
               <div
-                className="mt-3 flex flex-wrap gap-2 text-[11px] leading-4 text-muted-foreground"
+                className="mt-3 hidden flex-wrap gap-2 text-[11px] leading-4 text-muted-foreground sm:flex"
                 onKeyDown={handleListKeyDown}
               >
                 {nextItems.map((item) => (
@@ -177,15 +179,15 @@ export function DashboardCommandCenter({
 
         <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
           {primaryItem ? (
-            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-              <div className="grid h-16 w-16 place-items-center rounded-full border-[6px] border-primary/15 bg-white/80 text-center shadow-leasiumXs">
+            <div className="flex w-full flex-wrap items-center gap-3 lg:w-auto lg:justify-end">
+              <div className="hidden h-16 w-16 place-items-center rounded-full border-[6px] border-primary/15 bg-white/80 text-center shadow-leasiumXs sm:grid">
                 <div className="text-xs font-bold leading-none text-foreground">
                   1/{focusTotal}
                 </div>
               </div>
               <Link
                 href={primaryItem.href}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_4px_12px_rgba(36,91,255,0.32)] transition duration-200 ease-leasium hover:bg-primary-hover active:scale-[0.98]"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_4px_12px_rgba(36,91,255,0.32)] transition duration-200 ease-leasium hover:bg-primary-hover active:scale-[0.98] sm:w-auto"
               >
                 {primaryItem.nextStep}
                 <ArrowRight size={15} />
@@ -193,7 +195,7 @@ export function DashboardCommandCenter({
             </div>
           ) : null}
           {actions ? (
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <div className="hidden flex-wrap items-center gap-2 sm:flex lg:justify-end">
               {actions}
             </div>
           ) : null}

@@ -1,4 +1,4 @@
-import { expect, type Locator, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
 
@@ -10,6 +10,94 @@ async function expectTouchTarget(locator: Locator) {
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(box.width).toBeGreaterThanOrEqual(44);
 }
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
+function watchForbiddenDashboardLoadRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(
+      request.method(),
+    );
+    const apiPath = url.pathname.startsWith("/api/v1/");
+    const providerMutationPath = /provider-dispatch|provider-refresh/i.test(
+      url.pathname,
+    );
+    const providerWrite =
+      unsafeMethod &&
+      /xero|basiq|sendgrid|twilio|payment|reconciliation|provider-history/i.test(
+        url.pathname,
+      );
+    if ((apiPath && unsafeMethod) || providerMutationPath || providerWrite) {
+      requests.push(`${request.method()} ${url.pathname}`);
+    }
+  });
+  return requests;
+}
+
+test("dashboard mobile matches the Horizon first viewport without provider writes", async ({
+  page,
+}) => {
+  const forbiddenRequests = watchForbiddenDashboardLoadRequests(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+
+  await page.goto("/");
+
+  const cockpit = page.getByTestId("dashboard-mobile-cockpit");
+  await expect(cockpit).toBeVisible();
+  await expect(cockpit.getByText("Good morning, Temba")).toBeVisible();
+  await expect(
+    cockpit.getByRole("link", { name: "Ask Leasium anything" }),
+  ).toBeVisible();
+
+  const focus = page.getByRole("region", { name: "Today's focus" });
+  await expect(focus).toBeVisible();
+  await expect(focus.getByRole("link")).toHaveCount(1);
+  await expectTouchTarget(focus.getByRole("link").first());
+
+  const bentoStrip = page.getByTestId("dashboard-horizon-bento");
+  await expect(bentoStrip).toBeVisible();
+  const bentoBox = await bentoStrip.boundingBox();
+  expect(bentoBox).not.toBeNull();
+  expect(bentoBox!.width).toBeLessThanOrEqual(358);
+  const firstMetricBox = await bentoStrip.getByText("Occupancy").boundingBox();
+  const secondMetricBox = await bentoStrip.getByText("Arrears").boundingBox();
+  expect(firstMetricBox).not.toBeNull();
+  expect(secondMetricBox).not.toBeNull();
+  expect(Math.abs(firstMetricBox!.y - secondMetricBox!.y)).toBeLessThan(8);
+
+  const leaseHorizon = page.getByTestId("dashboard-mobile-horizon");
+  await expect(leaseHorizon).toContainText("Next on the horizon");
+  await expect(leaseHorizon.getByRole("link").first()).toBeVisible();
+  await expectTouchTarget(leaseHorizon.getByRole("link").first());
+  const mobileTrustPill = page
+    .getByText("Nothing applies until you approve it.")
+    .first();
+  await expect(mobileTrustPill).toBeVisible();
+
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await expect(mobileNav).toBeVisible();
+  const trustBox = await mobileTrustPill.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(trustBox).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(trustBox!.y + trustBox!.height).toBeLessThan(navBox!.y);
+  await expectNoHorizontalOverflow(page);
+  expect(forbiddenRequests).toEqual([]);
+});
 
 test("dashboard command center prepares work without raw loading counters", async ({
   page,

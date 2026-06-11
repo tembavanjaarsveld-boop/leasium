@@ -2,7 +2,57 @@
 
 Last updated: 2026-06-11
 
-## Cowork continuation - 2026-06-11 (Horizon Notifications mobile first viewport - latest)
+## Cowork continuation - 2026-06-11 (Horizon Dashboard mobile first viewport - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Dashboard mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `45:371`; 04 Concept stayed out of scope.
+
+Scope stayed inside Dashboard presentation and smoke coverage. Phones now open
+with the compact greeting, Ask Leasium pill, Today’s Focus hero, a 2x2 bento
+cockpit, touch-safe Next on the horizon rows, and the review-first trust pill
+above the fixed Horizon bottom nav. Desktop keeps the Dashboard v2 hero/bento
+layout and the full command-center action controls. The mobile Refresh /
+demo-live controls remain accessible below the trust pill rather than crowding
+the hero.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, dashboard query, or workflow mutation path changed.
+
+Verification recorded so far:
+
+- Figma source of truth pulled with `get_design_context` for Dashboard mobile
+  `45:371`.
+- Read-only agent audit recommended Dashboard mobile as the next locked 03
+  Screens gap, and a follow-up review agent found the mobile action and
+  touch-target risks; both were addressed.
+- RED mobile smoke failed before implementation because the mobile cockpit did
+  not exist.
+- Targeted ESLint passed for `apps/web/src/components/dashboard.tsx`,
+  `apps/web/src/components/dashboard/DashboardCommandCenter.tsx`,
+  `apps/web/src/components/dashboard/AskLeasiumPanel.tsx`, and
+  `apps/web/tests/smoke/dashboard-command-center.spec.ts`.
+- `npm exec -- tsc --noEmit --pretty false` passed.
+- Full Dashboard command-center smoke passed **12/12**:
+  `tests/smoke/dashboard-command-center.spec.ts --workers=1`.
+- Mobile production route sweep passed **1/1**:
+  `tests/smoke/mobile-bottom-nav.spec.ts --grep "mobile production routes keep headings and bottom navigation in frame" --workers=1`.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3030/` passed for responsive chrome:
+  390x844 demo-mode Dashboard had horizontal overflow 0 and the trust pill
+  cleared the fixed bottom nav; 1280x900 hid the mobile cockpit/nav, kept the
+  sidebar and bento layout visible, and had horizontal overflow 0. The local
+  live API was unavailable outside the smoke harness, so seeded copy fidelity
+  remains covered by Playwright mocks.
+
+Design-facing status: pending Remba review, not `[x]` complete. Remba should
+review the two-row mobile horizon cap used to fit the real app shell.
+
+Next likely scoped polish: continue locked 03 Screens gaps; Work mobile full
+first-viewport fidelity (`45:461`) is still a candidate, but avoid `04 Concept —
+Horizon` unless Temba explicitly signs off a new production frame.
+
+## Cowork continuation - 2026-06-11 (Horizon Notifications mobile first viewport)
 
 Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
 Figma source of truth was the approved Notifications mobile frame

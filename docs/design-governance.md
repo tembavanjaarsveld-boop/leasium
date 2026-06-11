@@ -175,6 +175,17 @@ back-filled in Figma before code.
   should review live data density, all-entities single-entity notes, the
   truncated Lease horizon titles, and whether the lower dedicated panels should
   remain visible below the first Horizon frame before this is marked `[x]`.
+- **Horizon Dashboard mobile first-viewport follow-up (2026-06-11, Remba
+  pending):** follow-up implementation from the approved Dashboard mobile frame
+  (`45:371`). Mobile `/` now opens with the compact greeting, Ask Leasium pill,
+  Today’s Focus hero, 2x2 bento cockpit, touch-safe Next on the horizon rows,
+  and the review-first trust pill above the fixed Horizon bottom nav. The
+  existing Refresh / demo-live controls remain accessible below the trust pill
+  on mobile; desktop keeps the v2 Dashboard frame. No API shape, provider send,
+  email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
+  workflow mutation path changed. Remba should review the two-row mobile horizon
+  cap used to keep the trust pill above the shell bottom nav, plus live-data
+  title truncation in the compact bento cards, before this is marked `[x]`.
 - **Horizon People v1 (2026-06-11, Remba pending):** production
   implementation from the approved Figma People target (`61:580`) on `/people`.
   The hub now presents the Horizon header/actions, segmented count pills,

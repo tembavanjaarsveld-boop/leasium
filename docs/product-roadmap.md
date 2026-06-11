@@ -8,6 +8,15 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-11 Horizon Dashboard mobile first-viewport follow-up:**
+  tightened mobile `/` against the approved Dashboard mobile frame
+  (`PO2jOANgmqgZHfqWZXOZGU`, node `45:371`). Phones now open with the compact
+  greeting, Ask Leasium pill, Today’s Focus hero, 2x2 bento cockpit, touch-safe
+  Next on the horizon rows, and review-first trust pill above the fixed bottom
+  nav. Desktop Dashboard keeps the v2 hero/bento layout and full action controls.
+  Frontend-only presentation and smoke coverage: no API shape, provider send,
+  email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or workflow
+  mutation path changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Notifications mobile first-viewport follow-up:**
   tightened mobile `/notifications` against the approved Notifications mobile
   frame (`PO2jOANgmqgZHfqWZXOZGU`, node `59:594`). Phones now open with the
