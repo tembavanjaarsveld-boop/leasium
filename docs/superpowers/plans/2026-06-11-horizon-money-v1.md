@@ -95,14 +95,14 @@ Visible work must be described as Remba-pending, not final design-approved.
 
 Run targeted eslint, `tsc --noEmit`, relevant Playwright smokes, production build, and browser checks at 1280x900 and 390x844.
 
-- [ ] **Step 2: Stage only intended tracked files**
+- [x] **Step 2: Stage only intended tracked files**
 
 Do not stage unrelated untracked `.fuse_hidden*`, marketing, or external-skill files.
 
-- [ ] **Step 3: Commit and push to main**
+- [x] **Step 3: Commit and push to main**
 
 Commit with Gmail author identity using a terse imperative subject.
 
-- [ ] **Step 4: Confirm Vercel READY**
+- [x] **Step 4: Confirm Vercel READY**
 
 Check the pushed deployment and update the handover with the deployment proof if needed.

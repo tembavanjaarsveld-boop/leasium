@@ -40,7 +40,10 @@ Verification recorded so far:
   390x844 in light and dark: Money heading, invoice-run panel, trust copy,
   mobile touch targets, and no horizontal overflow were verified.
 
-Still to finish before closing the slice: commit, push, and Vercel READY.
+Shipped to production: commit `5ff5388` deployed as Vercel
+`dpl_5YipVazLPjdjZiLvzaCkGDEnJjT7`, state `READY`, with aliases attached
+(`leasium.ai`, `www.leasium.ai`, `leasium.vercel.app`). HTTP checks returned
+200 for `https://leasium.ai/` and `https://leasium.ai/money`.
 
 ## Cowork continuation - 2026-06-11 (Horizon People v1)
 
