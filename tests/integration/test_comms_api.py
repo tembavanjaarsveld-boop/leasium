@@ -24,6 +24,7 @@ from stewart.core.models import (
     AuditOutcome,
     BrandedCommunicationTemplate,
     Contractor,
+    DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
     Entity,
@@ -3564,8 +3565,12 @@ def test_ai_mailbox_webhook_quarantines_untrusted_sender_before_ai_or_attachment
     assert row.trust_state == "quarantined"
     assert row.classification_kind is None
     assert row.inbound_metadata["quarantine_reason"] == "sender_not_trusted"
+    raw_document_id = row.inbound_metadata["raw_email_document_id"]
+    raw_document = session.get(StoredDocument, UUID(raw_document_id))
+    assert raw_document is not None
+    assert raw_document.document_metadata["source"] == "ai_mailbox_raw_email"
+    assert raw_document.document_metadata["trust_state"] == "quarantined"
     assert session.scalar(select(DocumentIntake)) is None
-    assert session.scalar(select(StoredDocument)) is None
 
     queue = client.get(
         "/api/v1/comms/queue",
@@ -3625,6 +3630,53 @@ def test_ai_mailbox_webhook_quarantines_when_inbound_secret_is_not_configured(
     assert row.classification_kind is None
 
 
+def test_ai_mailbox_webhook_drops_unrouteable_public_mail_without_rows(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Untrusted public ai@ spam with no entity stays unscoped and inert."""
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("unrouteable mailbox mail must not call AI triage")
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fail_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            openai_api_key="sk-test",
+            sendgrid_inbound_secret="inbound-secret",
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": "unknown@external.example",
+            "to": "ai@leasium.ai",
+            "subject": "Urgent payment update",
+            "text": "Please change the payment account.",
+            "SPF": "pass",
+            "dkim": "pass",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["id"] is None
+    assert body["source"] == "ai_mailbox"
+    assert body["trust_state"] == "quarantined"
+    assert body["attachment_intake_count"] == 0
+    assert session.scalar(select(InboundMessage)) is None
+    assert session.scalar(select(StoredDocument)) is None
+    assert session.scalar(select(DocumentIntake)) is None
+
+
 def test_ai_mailbox_webhook_quarantines_trusted_sender_when_dkim_fails(
     client: TestClient,
     session: Session,
@@ -3670,6 +3722,224 @@ def test_ai_mailbox_webhook_quarantines_trusted_sender_when_dkim_fails(
     assert row.auth_result == {"dkim": "fail", "spf": "pass"}
     assert row.inbound_metadata["quarantine_reason"] == "auth_not_passed"
     assert row.classification_kind is None
+
+
+def test_ai_mailbox_webhook_stores_raw_email_provenance_document(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Trusted ai@ mail keeps raw provenance as a document, not Smart Intake."""
+
+    entity = _entity(session)
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings, get_settings
+
+    def fake_triage(*, body, settings):  # noqa: ANN001, ARG001
+        return (
+            {
+                "kind": "compliance_or_insurance",
+                "confidence": 0.88,
+                "summary": "Broker forwarded insurance evidence for review.",
+                "suggested_target_kind": "smart_intake",
+            },
+            "resp-ai-mailbox-raw",
+        )
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fake_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            openai_api_key="sk-test",
+            sendgrid_inbound_secret="inbound-secret",
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": get_settings().dev_user_email,
+            "to": "ai@leasium.ai",
+            "subject": "Fwd: Insurance renewal",
+            "text": (
+                "---------- Forwarded message ---------\n"
+                "From: Broker Team <broker@external.example>\n\n"
+                "Please review the attached certificate."
+            ),
+            "html": "<p>Please review the attached certificate.</p>",
+            "SPF": "pass",
+            "dkim": "{@external.example : pass}",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    message_id = UUID(body["id"])
+    document_id = UUID(body["raw_email_document_id"])
+
+    message = session.get(InboundMessage, message_id)
+    assert message is not None
+    assert message.inbound_metadata["raw_email_document_id"] == str(document_id)
+
+    document = session.get(StoredDocument, document_id)
+    assert document is not None
+    assert document.entity_id == entity.id
+    assert document.content_type == "message/rfc822"
+    assert document.byte_size == len(document.file_data)
+    assert document.document_metadata["source"] == "ai_mailbox_raw_email"
+    assert document.document_metadata["inbound_message_id"] == str(message_id)
+    assert document.document_metadata["trust_state"] == "trusted"
+    assert document.document_metadata["original_sender"] == "broker@external.example"
+    raw_text = document.file_data.decode()
+    assert "From: " in raw_text
+    assert "To: ai@leasium.ai" in raw_text
+    assert "Subject: Fwd: Insurance renewal" in raw_text
+    assert "Please review the attached certificate." in raw_text
+    assert "inbound-secret" not in raw_text
+    assert session.scalar(select(DocumentIntake)) is None
+
+
+def test_inbound_messages_list_surfaces_quarantine_without_body(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Mailbox rows are readable for review without exposing full body in lists."""
+
+    entity = _entity(session)
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("quarantined mailbox mail must not call AI triage")
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fail_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            openai_api_key="sk-test",
+            sendgrid_inbound_secret="inbound-secret",
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": "unknown@external.example",
+            "to": "ai@leasium.ai",
+            "subject": "Payment change",
+            "text": "Create an urgent payment change and email the tenant.",
+            "SPF": "pass",
+            "dkim": "pass",
+        },
+    )
+    assert response.status_code == 202
+    message_id = response.json()["id"]
+
+    list_response = client.get(
+        "/api/v1/comms/inbound-messages",
+        params={
+            "entity_id": str(entity.id),
+            "source": "ai_mailbox",
+            "trust_state": "quarantined",
+        },
+    )
+
+    assert list_response.status_code == 200
+    rows = list_response.json()["messages"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == message_id
+    assert row["entity_id"] == str(entity.id)
+    assert row["source"] == "ai_mailbox"
+    assert row["trust_state"] == "quarantined"
+    assert row["quarantine_reason"] == "sender_not_trusted"
+    assert row["auth_result"] == {"dkim": "pass", "spf": "pass"}
+    assert row["attachment_intake_count"] == 0
+    assert "urgent payment change" in row["body_preview"]
+    assert "body_text" not in row
+    assert "body_html" not in row
+    assert "raw_payload" not in row
+    assert "raw_email_document_id" not in row
+    assert "raw_email_download_path" not in row
+
+
+def test_inbound_message_detail_is_entity_scoped_and_returns_body(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Detail reads are role-gated and can expose the review body."""
+
+    entity = _entity(session)
+    hidden_entity = Entity(
+        organisation_id=entity.organisation_id,
+        name="Hidden Mailbox Entity",
+    )
+    session.add(hidden_entity)
+    session.flush()
+    raw_document = StoredDocument(
+        entity_id=entity.id,
+        filename="ai-mailbox-visible.eml",
+        content_type="message/rfc822",
+        byte_size=18,
+        file_data=b"Visible raw email.",
+        category=DocumentCategory.other,
+        notes="AI mailbox raw email provenance",
+        document_metadata={"source": "ai_mailbox_raw_email"},
+    )
+    session.add(raw_document)
+    session.flush()
+    visible = InboundMessage(
+        entity_id=entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="quarantined",
+        auth_result={"spf": "pass", "dkim": "fail"},
+        from_address="sender@example.test",
+        to_address="ai@leasium.ai",
+        subject="Visible quarantine",
+        body_text="Visible mailbox body for operator review.",
+        inbound_metadata={
+            "quarantine_reason": "auth_not_passed",
+            "raw_email_document_id": str(raw_document.id),
+            "attachment_intake_count": 0,
+        },
+    )
+    hidden = InboundMessage(
+        entity_id=hidden_entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="quarantined",
+        auth_result={},
+        subject="Hidden quarantine",
+        body_text="Hidden body.",
+        inbound_metadata={"quarantine_reason": "sender_not_trusted"},
+    )
+    session.add_all([visible, hidden])
+    session.commit()
+
+    detail = client.get(f"/api/v1/comms/inbound-messages/{visible.id}")
+
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["id"] == str(visible.id)
+    assert body["body_text"] == "Visible mailbox body for operator review."
+    assert body["body_html"] is None
+    assert body["raw_email_document_id"] == str(raw_document.id)
+    assert body["raw_email_download_path"] == (
+        f"/api/v1/documents/{raw_document.id}/download"
+    )
+
+    forbidden = client.get(f"/api/v1/comms/inbound-messages/{hidden.id}")
+
+    assert forbidden.status_code == 403
 
 
 def test_trusted_senders_create_and_list_are_organisation_scoped(

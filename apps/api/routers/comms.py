@@ -63,7 +63,13 @@ from stewart.core.models import (
 from stewart.core.settings import Settings, get_settings
 from stewart.integrations.communications import render_template_string
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.comms import (
     CommsCandidate,
     CommsContractorCorrespondenceRead,
@@ -72,6 +78,9 @@ from apps.api.schemas.comms import (
     CommsDismissRead,
     CommsDispatchCreate,
     CommsDispatchRead,
+    CommsInboundMessageDetailRead,
+    CommsInboundMessageRead,
+    CommsInboundMessagesRead,
     CommsMaintenanceWorkOrderCorrespondenceRead,
     CommsOutboundLogRead,
     CommsQueueCountsRead,
@@ -2013,6 +2022,82 @@ def get_comms_queue_counts(
     return result
 
 
+@router.get("/inbound-messages", response_model=CommsInboundMessagesRead)
+def list_inbound_messages(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    entity_id: UUID | None = None,
+    source: str | None = None,
+    trust_state: str | None = None,
+    limit: int = 50,
+) -> CommsInboundMessagesRead:
+    """Read captured inbound messages for operator review.
+
+    Read-only. This does not send, acknowledge, trust, discard, reprocess, or
+    promote any mailbox row; it only projects stored inbound-message metadata.
+    """
+
+    if source is not None and source not in {"tenant_channel", "ai_mailbox"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="source must be tenant_channel or ai_mailbox.",
+        )
+    if trust_state is not None and trust_state not in {
+        "trusted",
+        "quarantined",
+        "discarded",
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="trust_state must be trusted, quarantined, or discarded.",
+        )
+
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        entity_ids = [entity_id]
+    else:
+        entity_ids = readable_entity_ids(session, user, READ_ROLES)
+
+    statement = select(InboundMessage).where(
+        InboundMessage.entity_id.in_(entity_ids),
+        InboundMessage.deleted_at.is_(None),
+    )
+    if source is not None:
+        statement = statement.where(InboundMessage.source == source)
+    if trust_state is not None:
+        statement = statement.where(InboundMessage.trust_state == trust_state)
+    rows = session.scalars(
+        statement.order_by(InboundMessage.created_at.desc()).limit(
+            max(0, min(limit, 100))
+        )
+    ).all()
+    return CommsInboundMessagesRead(
+        messages=[_inbound_message_read(row) for row in rows],
+        generated_at=utcnow(),
+    )
+
+
+@router.get(
+    "/inbound-messages/{message_id}",
+    response_model=CommsInboundMessageDetailRead,
+)
+def get_inbound_message(
+    message_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsInboundMessageDetailRead:
+    """Read one captured inbound message for operator review."""
+
+    message = session.get(InboundMessage, message_id)
+    if message is None or message.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inbound message not found.",
+        )
+    assert_entity_role(session, user, message.entity_id, READ_ROLES)
+    return _inbound_message_detail_read(message)
+
+
 @router.get("/trusted-senders", response_model=list[TrustedSenderRead])
 def list_trusted_senders(
     entity_id: UUID,
@@ -2121,6 +2206,94 @@ def _body_preview(value: str | None, *, limit: int = 180) -> str | None:
     if len(text) <= limit:
         return text
     return f"{text[: limit - 1].rstrip()}…"
+
+
+def _metadata_uuid(value: Any) -> UUID | None:
+    if value is None:
+        return None
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _metadata_uuid_list(value: Any) -> list[UUID]:
+    if not isinstance(value, list):
+        return []
+    parsed: list[UUID] = []
+    for item in value:
+        item_id = _metadata_uuid(item)
+        if item_id is not None:
+            parsed.append(item_id)
+    return parsed
+
+
+def _metadata_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(result, 0)
+
+
+def _inbound_message_base(message: InboundMessage) -> dict[str, Any]:
+    metadata = message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+    quarantine_reason = metadata.get("quarantine_reason")
+    confidence = message.classification_confidence
+    return {
+        "id": message.id,
+        "entity_id": message.entity_id,
+        "channel": message.channel,
+        "provider": message.provider,
+        "source": message.source,
+        "trust_state": message.trust_state,
+        "quarantine_reason": quarantine_reason
+        if isinstance(quarantine_reason, str)
+        else None,
+        "from_address": message.from_address,
+        "to_address": message.to_address,
+        "original_sender": message.original_sender,
+        "subject": message.subject,
+        "body_preview": _body_preview(message.body_text),
+        "auth_result": {
+            str(key): str(value) for key, value in (message.auth_result or {}).items()
+        },
+        "classification_kind": message.classification_kind,
+        "classification_confidence": float(confidence) if confidence is not None else None,
+        "classification_summary": message.classification_summary,
+        "classification_target_kind": message.classification_target_kind,
+        "attributed_tenant_id": message.attributed_tenant_id,
+        "attachment_intake_count": _metadata_int(
+            metadata.get("attachment_intake_count")
+        ),
+        "attachment_document_ids": _metadata_uuid_list(
+            metadata.get("attachment_document_ids")
+        ),
+        "attachment_intake_ids": _metadata_uuid_list(metadata.get("attachment_intake_ids")),
+        "created_at": message.created_at,
+    }
+
+
+def _inbound_message_read(message: InboundMessage) -> CommsInboundMessageRead:
+    return CommsInboundMessageRead(**_inbound_message_base(message))
+
+
+def _inbound_message_detail_read(message: InboundMessage) -> CommsInboundMessageDetailRead:
+    metadata = message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+    raw_document_id = _metadata_uuid(metadata.get("raw_email_document_id"))
+    return CommsInboundMessageDetailRead(
+        **_inbound_message_base(message),
+        body_text=message.body_text,
+        body_html=message.body_html,
+        raw_email_document_id=raw_document_id,
+        raw_email_download_path=(
+            f"/api/v1/documents/{raw_document_id}/download"
+            if raw_document_id is not None
+            else None
+        ),
+    )
 
 
 def _primitive_metadata(
@@ -4022,6 +4195,77 @@ async def _promote_sendgrid_attachments_to_intake(
     return promoted
 
 
+def _raw_email_header_value(value: str | None) -> str:
+    return " ".join((value or "").splitlines()).strip()
+
+
+def _render_ai_mailbox_raw_email(message: InboundMessage) -> bytes:
+    metadata = message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+    lines = [
+        f"From: {_raw_email_header_value(message.from_address)}",
+        f"To: {_raw_email_header_value(message.to_address)}",
+        f"Subject: {_raw_email_header_value(message.subject)}",
+        f"Date: {message.created_at.isoformat()}",
+        "X-Leasium-Source: ai_mailbox",
+        f"X-Leasium-Trust-State: {_raw_email_header_value(message.trust_state)}",
+    ]
+    if message.original_sender:
+        lines.append(
+            f"X-Leasium-Original-Sender: {_raw_email_header_value(message.original_sender)}"
+        )
+    quarantine_reason = metadata.get("quarantine_reason")
+    if isinstance(quarantine_reason, str) and quarantine_reason:
+        lines.append(f"X-Leasium-Quarantine-Reason: {quarantine_reason}")
+    for key, value in sorted((message.auth_result or {}).items()):
+        lines.append(
+            f"X-Leasium-Auth-{_raw_email_header_value(str(key)).upper()}: "
+            f"{_raw_email_header_value(str(value))}"
+        )
+    lines.extend(["", message.body_text or ""])
+    if message.body_html:
+        lines.extend(["", "-- HTML body --", message.body_html])
+    return "\n".join(lines).encode()
+
+
+def _store_ai_mailbox_raw_email(
+    *,
+    message: InboundMessage,
+    session: Session,
+) -> StoredDocument:
+    payload = _render_ai_mailbox_raw_email(message)
+    metadata = message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+    quarantine_reason = metadata.get("quarantine_reason")
+    document = StoredDocument(
+        entity_id=message.entity_id,
+        filename=f"ai-mailbox-{message.id}.eml",
+        content_type="message/rfc822",
+        byte_size=len(payload),
+        file_data=payload,
+        category=DocumentCategory.other,
+        notes="AI mailbox raw email provenance",
+        document_metadata={
+            "source": "ai_mailbox_raw_email",
+            "inbound_message_id": str(message.id),
+            "trust_state": message.trust_state,
+            "quarantine_reason": quarantine_reason
+            if isinstance(quarantine_reason, str)
+            else None,
+            "auth_result": message.auth_result or {},
+            "original_sender": message.original_sender,
+            "redacted": True,
+            "attachment_document_ids": metadata.get("attachment_document_ids", []),
+            "attachment_intake_ids": metadata.get("attachment_intake_ids", []),
+        },
+    )
+    session.add(document)
+    session.flush()
+    message.inbound_metadata = {
+        **metadata,
+        "raw_email_document_id": str(document.id),
+    }
+    return document
+
+
 @router.post(
     "/webhooks/sendgrid-inbound",
     status_code=status.HTTP_202_ACCEPTED,
@@ -4182,6 +4426,13 @@ async def receive_sendgrid_inbound(
         ],
         "attachment_intake_ids": [str(intake.id) for intake in attachment_intakes],
     }
+    raw_email_document_id: str | None = None
+    if source == "ai_mailbox":
+        raw_email_document = _store_ai_mailbox_raw_email(
+            message=message,
+            session=session,
+        )
+        raw_email_document_id = str(raw_email_document.id)
     # Best-effort AI classification. Soft-fails: if OPENAI_API_KEY is missing
     # or the call errors, the row is still persisted and the operator can
     # classify manually from the comms queue. The body itself is never
@@ -4225,6 +4476,7 @@ async def receive_sendgrid_inbound(
             "source": source,
             "trust_state": trust_state,
             "quarantine_reason": quarantine_reason,
+            "raw_email_document_id": raw_email_document_id,
         },
         tool_output_summary=(
             f"inbound email received and classified as {message.classification_kind}"
@@ -4243,6 +4495,7 @@ async def receive_sendgrid_inbound(
         "trust_state": trust_state,
         "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
         "attachment_intake_count": len(attachment_intakes),
+        "raw_email_document_id": raw_email_document_id,
     }
 
 

@@ -32,6 +32,8 @@ CommsKind = Literal[
 CommsSeverity = Literal["info", "warning", "danger"]
 CommsCorrespondenceSource = Literal["inbound_message", "comms_audit"]
 CommsCorrespondenceDirection = Literal["inbound", "outbound", "internal"]
+CommsInboundMessageSource = Literal["tenant_channel", "ai_mailbox"]
+CommsInboundTrustState = Literal["trusted", "quarantined", "discarded"]
 
 
 class CommsCandidate(BaseModel):
@@ -102,6 +104,49 @@ class TrustedSenderRead(BaseModel):
     label: str | None = None
     added_by_user_id: UUID | None = None
     added_at: datetime
+
+
+class CommsInboundMessageRead(BaseModel):
+    """Safe list/detail projection for captured inbound messages."""
+
+    id: UUID
+    entity_id: UUID
+    channel: str
+    provider: str | None = None
+    source: CommsInboundMessageSource
+    trust_state: CommsInboundTrustState
+    quarantine_reason: str | None = None
+    from_address: str | None = None
+    to_address: str | None = None
+    original_sender: str | None = None
+    subject: str | None = None
+    body_preview: str | None = None
+    auth_result: dict[str, str] = Field(default_factory=dict)
+    classification_kind: str | None = None
+    classification_confidence: float | None = None
+    classification_summary: str | None = None
+    classification_target_kind: str | None = None
+    attributed_tenant_id: UUID | None = None
+    attachment_intake_count: int = 0
+    attachment_document_ids: list[UUID] = Field(default_factory=list)
+    attachment_intake_ids: list[UUID] = Field(default_factory=list)
+    created_at: datetime
+
+
+class CommsInboundMessagesRead(BaseModel):
+    """Read response for ``GET /api/v1/comms/inbound-messages``."""
+
+    messages: list[CommsInboundMessageRead]
+    generated_at: datetime
+
+
+class CommsInboundMessageDetailRead(CommsInboundMessageRead):
+    """Detail projection for one role-scoped inbound message."""
+
+    body_text: str | None = None
+    body_html: str | None = None
+    raw_email_document_id: UUID | None = None
+    raw_email_download_path: str | None = None
 
 
 class CommsCorrespondenceEvent(BaseModel):

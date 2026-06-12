@@ -19,11 +19,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   mailbox messages only run OpenAI triage and Smart Intake attachment promotion
   when the sender is authorised and SPF/DKIM pass; failures persist as
   quarantined rows when an entity can be resolved and never appear in the
-  Comms reply queue. Trusted sender list/create APIs are role-gated and
-  organisation-scoped. No acknowledgement email, tenant email, SendGrid send,
-  Twilio SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
-  provider mutation runs from intake. UI quarantine/source filters and
-  promote/apply actions remain Figma/Remba-pending follow-ups.
+  Comms reply queue. Every persisted AI mailbox row now stores a linked
+  `StoredDocument` raw-email provenance transcript for review evidence without
+  promoting it to Smart Intake. `GET /api/v1/comms/inbound-messages` and
+  `GET /api/v1/comms/inbound-messages/{id}` expose role-scoped mailbox rows;
+  list responses keep only safe previews/metadata without raw-document links,
+  while detail reads can show the body and raw-email download link. Trusted
+  sender list/create APIs are
+  role-gated and organisation-scoped. No acknowledgement email, tenant email,
+  SendGrid send, Twilio SMS, Xero/Basiq, payment, reconciliation, Smart Intake
+  apply, or provider mutation runs from intake. UI quarantine/source filters
+  and promote/apply actions remain Figma/Remba-pending follow-ups.
 - [x] **2026-06-12 All entities invoice drafts fan-out reduction v1:**
   `/invoice-drafts` now accepts omitted `entity_id` as an organisation-wide
   read scoped to the operator's readable entities, while explicit hidden-entity

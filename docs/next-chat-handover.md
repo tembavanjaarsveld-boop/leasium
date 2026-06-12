@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-12
 
-## Codex continuation - 2026-06-12 (AI Mailbox Intake foundation v1)
+## Codex continuation - 2026-06-12 (AI Mailbox Intake foundation/read v1)
 
 Temba restarted the AI Mailbox Intake product slice. Scope was deliberately
 backend/data first because `/inbox` quarantine/source filters and Settings
@@ -30,6 +30,20 @@ Shipped foundation:
   retry spam.
 - New `GET/POST /api/v1/comms/trusted-senders` APIs are role-gated and
   organisation-scoped.
+- Every persisted `source="ai_mailbox"` row now stores one linked
+  `StoredDocument` raw-email provenance transcript (`message/rfc822`) after an
+  entity is known. Trusted and quarantined rows both keep evidence; unrouteable
+  public-mailbox spam still returns 202 without creating an unscoped row or
+  document. The raw transcript is not promoted to Smart Intake and does not
+  include request headers, query tokens, webhook secrets, provider keys, or
+  attachment bytes.
+- New read-only mailbox APIs:
+  `GET /api/v1/comms/inbound-messages` and
+  `GET /api/v1/comms/inbound-messages/{message_id}`. List reads are role-scoped
+  by explicit `entity_id` or the operator's readable entities, support
+  `source`, `trust_state`, and bounded `limit`, and expose only preview-safe
+  metadata without raw-document links. Detail reads are entity-gated and can
+  show the stored body plus the raw-email document download path.
 - Inbox triage accepts the new operator-mailbox kinds:
   `property_update`, `compliance_or_insurance`, `task_or_reminder`, and
   `owner_or_entity_admin`.
@@ -37,7 +51,7 @@ Shipped foundation:
 Guardrail stance: no acknowledgement reply, no SendGrid/Twilio send, no tenant
 email, no Xero/Basiq/payment/reconciliation write, no Smart Intake apply, and
 no provider mutation from intake. Quarantined mail does not call OpenAI or
-promote attachments.
+promote attachments; the only new artifact is inert evidence storage.
 
 Docs updated: `docs/ai-mailbox-intake-design.md`,
 `docs/product-roadmap.md`, `docs/deployment.md`, and this handover. No
@@ -55,19 +69,25 @@ Verification recorded so far:
   and clearer scope wording in the AI Mailbox design doc.
 - Focused AI Mailbox / trusted sender / legacy inbound tests passed **8/8**:
   `.venv/bin/python -m pytest tests/integration/test_comms_api.py -k "ai_mailbox or trusted_senders or inbound_webhook_persists_and_attributes_tenant or inbound_webhook_classifies_with_ai_triage" -q`.
-- Full Comms API integration file passed **68/68**:
+- Focused raw provenance/read API tests passed **5/5** after a red run proved
+  the old code lacked `raw_email_document_id` and the read routes:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -k 'ai_mailbox_webhook_quarantines_untrusted_sender_before_ai_or_attachments or ai_mailbox_webhook_stores_raw_email_provenance_document or ai_mailbox_webhook_drops_unrouteable_public_mail_without_rows or inbound_messages_list_surfaces_quarantine_without_body or inbound_message_detail_is_entity_scoped_and_returns_body'`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/comms.py apps/api/schemas/comms.py tests/integration/test_comms_api.py docs/product-roadmap.md docs/next-chat-handover.md docs/ai-mailbox-intake-design.md`.
+- Full Comms API integration file passed **72/72**:
   `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q`.
-- Full backend suite passed **634 passed, 1 skipped**:
+- Full backend suite passed **638 passed, 1 skipped**:
   `.venv/bin/python -m pytest -q`.
 
 Next recommended AI Mailbox slice:
 
-1. Add backend read APIs for mailbox/quarantine rows (likely org-scoped, with
-   entity filter) and raw-email provenance storage.
-2. Pull Figma frame `03 Screens / AI Mailbox Intake 82:2`, get Temba sign-off,
+1. Pull Figma frame `03 Screens / AI Mailbox Intake 82:2`, get Temba sign-off,
    then build `/inbox` source filter + quarantine bucket + provenance display.
-3. Add review-first actions: trust sender from quarantine, discard, then
+2. Add review-first actions: trust sender from quarantine, discard, then
    promote to task/work order/property note/critical date without auto-apply.
+3. Consider a mailbox-specific route alias (`/comms/mailbox/messages`) only if
+   the frontend wants a clearer product URL; the shipped backend route is the
+   generic inbound-message read API above.
 
 ## Codex continuation - 2026-06-12 (All entities invoice drafts fan-out reduction)
 

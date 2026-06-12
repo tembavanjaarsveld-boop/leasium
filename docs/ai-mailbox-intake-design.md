@@ -1,6 +1,6 @@
 # AI Mailbox Intake — ai@leasium.ai
 
-Status: Backend foundation started · UI/promotion flow pending Temba + Remba review · 2026-06-12
+Status: Backend foundation/read APIs started · UI/promotion flow pending Temba + Remba review · 2026-06-12
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; production UI
 implementation still requires Temba sign-off in Figma first.
@@ -34,6 +34,10 @@ place, with the operator approving the result.
   list/create API, and AI mailbox trust/quarantine handling on the existing
   SendGrid inbound webhook. Quarantined rows do not run OpenAI triage or Smart
   Intake attachment promotion.
+- 2026-06-12 read/provenance follow-up: every persisted AI mailbox row stores a
+  linked raw-email `StoredDocument` transcript for evidence, and read-only
+  `GET /api/v1/comms/inbound-messages` endpoints expose role-scoped list/detail
+  projections for mailbox review without returning raw provider payloads.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -76,8 +80,8 @@ derives only from the authenticated forwarder.
 
 1. Webhook receives email → auth + allowlist check → persist
    `InboundMessage` with `inbound_metadata.source = "ai_mailbox"`.
-2. Future: store the raw email (.eml or rendered text) as a `StoredDocument` for
-   provenance, linked from the message.
+2. Store a rendered `.eml`-style raw-email `StoredDocument` for provenance once
+   the message has a safe entity, linked from `inbound_metadata`.
 3. Trusted messages: attachments → existing `DocumentIntake` promotion path
    unchanged. Quarantined messages do not promote attachments.
 4. Body triage → existing `triage_inbox`, extended with operator-context
@@ -118,6 +122,13 @@ Decision for foundation v1: (a) no acknowledgement reply.
 - Webhook: accept org-level routing when `entity_id` is absent (resolve via
   sender); keep the existing per-entity tenant path untouched.
 - `GET/POST /api/v1/comms/trusted-senders` (operator-auth, org-scoped).
+- `GET /api/v1/comms/inbound-messages` lists captured inbound rows with
+  optional `entity_id`, `source`, `trust_state`, and bounded `limit` filters.
+  Lists expose body previews and metadata only, never `raw_payload`, raw bytes,
+  provider secrets, or attachment bytes.
+- `GET /api/v1/comms/inbound-messages/{message_id}` reads a single
+  role-scoped message with body text/html and raw-email document link for
+  operator review.
 - Future promote endpoints: add the new promote kinds listed above.
 
 ## UI
@@ -134,18 +145,20 @@ Decision for foundation v1: (a) no acknowledgement reply.
 
 In: ai@leasium.ai routing, sender trust + quarantine, sender-auth metadata,
 forwarded original-sender provenance, body triage with operator kinds,
-trusted-message attachment path reuse, and trusted-senders API.
+trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
+role-scoped read APIs, and trusted-senders API.
 
-Out (next slices): raw-email `StoredDocument` provenance, `/inbox` quarantine
-UI, Settings trusted-sender panel, promote/apply actions, auto-ack replies,
-reply-by-email threads, plus-addressing hints, agent-facing confirmations,
-cross-org agent senders, auto-apply of any kind.
+Out (next slices): `/inbox` quarantine UI, Settings trusted-sender panel,
+promote/apply actions, auto-ack replies, reply-by-email threads,
+plus-addressing hints, agent-facing confirmations, cross-org agent senders,
+auto-apply of any kind.
 
 ## Test plan
 
 - Backend: webhook happy path (trusted sender → message + triage),
   quarantine path (unknown sender, SPF fail), forwarded-email provenance
-  extraction, trusted-senders CRUD + auth, promote kinds. Mock OpenAI and
+  extraction, raw-email evidence document linking, list/detail read APIs with
+  entity scoping, trusted-senders CRUD + auth, promote kinds. Mock OpenAI and
   SendGrid throughout.
 - Smoke: inbox source filter, quarantine row, trust-sender action, promote
   flow fixture.
