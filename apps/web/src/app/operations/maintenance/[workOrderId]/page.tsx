@@ -685,6 +685,16 @@ function contractorLabelById(
   return contractor ? contractorOptionLabel(contractor) : contractorId;
 }
 
+function contractorById(
+  contractors: ContractorRecord[],
+  contractorId: string | null | undefined,
+) {
+  if (!contractorId) {
+    return null;
+  }
+  return contractors.find((row) => row.id === contractorId) ?? null;
+}
+
 function preferredVendorPortalContractorId(
   workOrder: MaintenanceWorkOrderRecord,
   contractors: ContractorRecord[],
@@ -2991,6 +3001,10 @@ function ContractorMessagesCard({
   draft,
   onDraftChange,
   onSend,
+  notifyEmailApproved,
+  notifySmsApproved,
+  onNotifyEmailApprovedChange,
+  onNotifySmsApprovedChange,
   pending,
   error,
 }: {
@@ -2999,11 +3013,23 @@ function ContractorMessagesCard({
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  notifyEmailApproved: boolean;
+  notifySmsApproved: boolean;
+  onNotifyEmailApprovedChange: (value: boolean) => void;
+  onNotifySmsApprovedChange: (value: boolean) => void;
   pending: boolean;
   error: unknown;
 }) {
   const messages = contractorComments(workOrder);
   const isShared = vendorPortalVisible(workOrder);
+  const sharedContractorId = vendorPortalContractorId(workOrder);
+  const sharedContractor = contractorById(contractors, sharedContractorId);
+  const contractorEmail = sharedContractorId
+    ? (sharedContractor?.email ?? null)
+    : workOrder.contractor_email;
+  const contractorPhone = sharedContractorId
+    ? (sharedContractor?.phone ?? null)
+    : workOrder.contractor_phone;
   const contractorLabel =
     contractorLabelById(contractors, vendorPortalContractorId(workOrder)) ??
     workOrder.contractor_name ??
@@ -3073,6 +3099,32 @@ function ContractorMessagesCard({
                 placeholder="e.g. Please confirm your attendance window."
               />
             </label>
+            <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground sm:grid-cols-2">
+              <label className="flex min-h-11 items-center gap-2 text-slate">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border-border text-primary focus:ring-primary"
+                  checked={notifyEmailApproved}
+                  disabled={pending || !contractorEmail}
+                  onChange={(event) =>
+                    onNotifyEmailApprovedChange(event.target.checked)
+                  }
+                />
+                <span>Send approved email notification</span>
+              </label>
+              <label className="flex min-h-11 items-center gap-2 text-slate">
+                <input
+                  type="checkbox"
+                  className="size-4 rounded border-border text-primary focus:ring-primary"
+                  checked={notifySmsApproved}
+                  disabled={pending || !contractorPhone}
+                  onChange={(event) =>
+                    onNotifySmsApprovedChange(event.target.checked)
+                  }
+                />
+                <span>Send approved SMS notification</span>
+              </label>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={!draft.trim() || pending}>
                 {pending ? (
@@ -3083,7 +3135,8 @@ function ContractorMessagesCard({
                 Send message
               </Button>
               <span className="text-xs text-muted-foreground">
-                In-app only — no email or SMS is sent.
+                Posts to the portal. Email/SMS notifications need explicit
+                approval.
               </span>
             </div>
             {error ? (
@@ -3627,6 +3680,10 @@ function MaintenanceDetailRoute() {
   const [vendorPortalTitleDraft, setVendorPortalTitleDraft] = useState("");
   const [vendorPortalCommentDraft, setVendorPortalCommentDraft] = useState("");
   const [contractorMessageDraft, setContractorMessageDraft] = useState("");
+  const [contractorMessageEmailApproved, setContractorMessageEmailApproved] =
+    useState(false);
+  const [contractorMessageSmsApproved, setContractorMessageSmsApproved] =
+    useState(false);
   const lastVendorPortalSyncKey = useRef<string | null>(null);
 
   const workOrderQuery = useQuery({
@@ -4245,13 +4302,21 @@ function MaintenanceDetailRoute() {
   };
 
   const contractorMessageMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (payload: {
+      body: string;
+      notifyEmailApproved: boolean;
+      notifySmsApproved: boolean;
+    }) =>
       addMaintenanceWorkOrderComment(workOrderId, {
-        body: contractorMessageDraft,
+        body: payload.body,
         visibility: "contractor",
+        notify_contractor_email_approved: payload.notifyEmailApproved,
+        notify_contractor_sms_approved: payload.notifySmsApproved,
       }),
     onSuccess: () => {
       setContractorMessageDraft("");
+      setContractorMessageEmailApproved(false);
+      setContractorMessageSmsApproved(false);
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
@@ -5343,7 +5408,17 @@ function MaintenanceDetailRoute() {
                 contractors={contractors}
                 draft={contractorMessageDraft}
                 onDraftChange={setContractorMessageDraft}
-                onSend={() => contractorMessageMutation.mutate()}
+                notifyEmailApproved={contractorMessageEmailApproved}
+                notifySmsApproved={contractorMessageSmsApproved}
+                onNotifyEmailApprovedChange={setContractorMessageEmailApproved}
+                onNotifySmsApprovedChange={setContractorMessageSmsApproved}
+                onSend={() =>
+                  contractorMessageMutation.mutate({
+                    body: contractorMessageDraft,
+                    notifyEmailApproved: contractorMessageEmailApproved,
+                    notifySmsApproved: contractorMessageSmsApproved,
+                  })
+                }
                 pending={contractorMessageMutation.isPending}
                 error={contractorMessageMutation.error}
               />

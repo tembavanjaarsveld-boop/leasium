@@ -4608,6 +4608,8 @@ export function addMaintenanceWorkOrderComment(
   payload: {
     body: string;
     visibility?: "internal" | "contractor" | "tenant";
+    notify_contractor_email_approved?: boolean;
+    notify_contractor_sms_approved?: boolean;
   },
 ) {
   return request<MaintenanceWorkOrderRecord>(

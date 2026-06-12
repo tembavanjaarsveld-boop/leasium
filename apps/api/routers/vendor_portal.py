@@ -126,6 +126,9 @@ VENDOR_PORTAL_CONTRACTOR_ID_KEY = "vendor_portal_contractor_id"
 VENDOR_PORTAL_TITLE_KEY = "vendor_portal_title"
 VENDOR_PORTAL_ACCEPTED_AT_KEY = "vendor_portal_accepted_at"
 VENDOR_PORTAL_ACCEPTED_BY_KEY = "vendor_portal_accepted_by_contractor_id"
+VENDOR_PORTAL_SHARED_BY_USER_ID_KEY = "vendor_portal_shared_by_user_id"
+VENDOR_PORTAL_NOTIFICATIONS_KEY = "vendor_portal_notifications"
+WORK_ASSIGNMENT_KEY = "work_assignment"
 COMMENTS_KEY = "comments"
 ACTIVITY_HISTORY_KEY = "activity_history"
 
@@ -157,6 +160,14 @@ def _metadata_text(value: object) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _metadata_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _metadata_list(value: object) -> list[object]:
+    return list(value) if isinstance(value, list) else []
 
 
 def _normalise_text(value: str | None) -> str:
@@ -583,6 +594,59 @@ def _append_activity_history(
     return updated
 
 
+def _record_contractor_reply_operator_notification(
+    metadata: dict[str, object],
+    *,
+    now: datetime,
+) -> dict[str, object]:
+    updated = dict(metadata or {})
+    assignment = _metadata_dict(updated.get(WORK_ASSIGNMENT_KEY))
+    recipient_user_id = _metadata_text(assignment.get("assigned_user_id")) or _metadata_text(
+        updated.get(VENDOR_PORTAL_SHARED_BY_USER_ID_KEY)
+    )
+    recipient_name = _metadata_text(assignment.get("assigned_user_name"))
+    recipient_email = _metadata_text(assignment.get("assigned_user_email"))
+    notifications = _metadata_dict(updated.get(VENDOR_PORTAL_NOTIFICATIONS_KEY))
+    current = _metadata_dict(notifications.get("operator_reply"))
+    history = _metadata_list(current.get("history"))
+    previous_attempt_count = _metadata_int(current.get("delivery_attempt_count"))
+    if previous_attempt_count is None:
+        previous_attempt_count = len(history)
+    attempt_count = previous_attempt_count + 1
+    status_value = "ready" if recipient_user_id else "skipped"
+    detail = (
+        "Contractor replied in the vendor portal."
+        if recipient_user_id
+        else "Contractor replied, but no assigned or sharing operator was available."
+    )
+    receipt = {
+        "event": "vendor_portal_reply_received",
+        "channel": "in_app",
+        "provider": "leasium",
+        "status": status_value,
+        "at": now.isoformat(),
+        "recipient_user_id": recipient_user_id,
+        "recipient_name": recipient_name,
+        "recipient_email": recipient_email,
+        "summary": detail,
+        "delivery_attempt_count": attempt_count,
+    }
+    notifications["operator_reply"] = {
+        "channel": "in_app",
+        "provider": "leasium",
+        "status": status_value,
+        "detail": detail,
+        "recipient_user_id": recipient_user_id,
+        "recipient_name": recipient_name,
+        "recipient_email": recipient_email,
+        "attempted_at": now.isoformat(),
+        "delivery_attempt_count": attempt_count,
+        "history": [receipt, *history][:10],
+    }
+    updated[VENDOR_PORTAL_NOTIFICATIONS_KEY] = notifications
+    return updated
+
+
 def _assert_actionable(work_order: MaintenanceWorkOrder) -> None:
     if work_order.status in VENDOR_PORTAL_CLOSED_STATUSES:
         raise HTTPException(
@@ -978,6 +1042,7 @@ def comment_vendor_portal_work_order(
         summary="Contractor posted a job update.",
         now=now,
     )
+    metadata = _record_contractor_reply_operator_notification(metadata, now=now)
     work_order.work_order_metadata = metadata
     _audit_account_action(
         session,
@@ -985,8 +1050,9 @@ def comment_vendor_portal_work_order(
         work_order=work_order,
         action_name="comment",
         summary=(
-            "Contractor posted a job update; no message was sent, no provider, "
-            "billing, payment, or reconciliation action ran."
+            "Contractor posted a job update and Leasium recorded an operator "
+            "in-app cue; no email/SMS, provider, billing, payment, or "
+            "reconciliation action ran."
         ),
     )
     account.last_seen_at = now

@@ -209,10 +209,17 @@ def test_maintenance_work_order_tracks_documents_assignment_and_approval(
         "created",
         "updated",
         "comment_added",
+        "contractor_email_attempted",
     ]
     assert commented["metadata"]["activity_history"][2]["summary"] == (
         "Contractor confirmed they can attend tomorrow morning."
     )
+    email_delivery = commented["metadata"]["contractor_delivery"]["email"]
+    assert email_delivery["send"]["status"] == "skipped"
+    assert email_delivery["send"]["error"] == (
+        "Contractor email notification needs explicit operator approval."
+    )
+    assert email_delivery["receipts"][0]["retry_count"] == 1
     blank_comment_response = client.post(
         f"/api/v1/maintenance/work-orders/{work_order_id}/comments",
         json={"body": "   "},

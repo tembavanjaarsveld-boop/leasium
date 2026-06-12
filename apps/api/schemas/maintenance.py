@@ -339,6 +339,8 @@ class MaintenanceWorkOrderUpdate(BaseModel):
 class MaintenanceWorkOrderCommentCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
     visibility: MaintenanceCommentVisibility = "internal"
+    notify_contractor_email_approved: bool = False
+    notify_contractor_sms_approved: bool = False
 
 
 MaintenanceCompletionReviewParty = Literal["owner", "tenant"]

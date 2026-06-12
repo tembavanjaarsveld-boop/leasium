@@ -279,6 +279,8 @@ def _contractor_work_order_email(
     work_order: MaintenanceWorkOrder,
     payload: MaintenanceWorkOrderContractorEmailSend,
     session: Session,
+    *,
+    contractor: Contractor | None = None,
 ) -> ContractorWorkOrderEmail:
     settings = get_settings()
     prop = session.get(Property, work_order.property_id) if work_order.property_id else None
@@ -289,6 +291,11 @@ def _contractor_work_order_email(
     tenant_name = None
     if tenant is not None:
         tenant_name = tenant.trading_name or tenant.legal_name
+    contractor_name = work_order.contractor_name
+    contractor_email = work_order.contractor_email
+    if contractor is not None:
+        contractor_name = contractor.company_name or contractor.name
+        contractor_email = contractor.email
     return ContractorWorkOrderEmail(
         work_order_id=work_order.id,
         entity_id=work_order.entity_id,
@@ -300,8 +307,8 @@ def _contractor_work_order_email(
         property_address=_property_address(prop),
         unit_label=unit.unit_label if unit is not None else None,
         tenant_name=tenant_name,
-        contractor_name=work_order.contractor_name,
-        contractor_email=work_order.contractor_email,
+        contractor_name=contractor_name,
+        contractor_email=contractor_email,
         due_date=work_order.due_date,
         subject=payload.subject.strip()
         if payload.subject and payload.subject.strip()
@@ -316,6 +323,8 @@ def _contractor_work_order_sms(
     work_order: MaintenanceWorkOrder,
     payload: MaintenanceWorkOrderContractorSmsSend,
     session: Session,
+    *,
+    contractor: Contractor | None = None,
 ) -> ContractorWorkOrderSms:
     settings = get_settings()
     prop = session.get(Property, work_order.property_id) if work_order.property_id else None
@@ -326,6 +335,11 @@ def _contractor_work_order_sms(
     tenant_name = None
     if tenant is not None:
         tenant_name = tenant.trading_name or tenant.legal_name
+    contractor_name = work_order.contractor_name
+    contractor_phone = work_order.contractor_phone
+    if contractor is not None:
+        contractor_name = contractor.company_name or contractor.name
+        contractor_phone = contractor.phone
     return ContractorWorkOrderSms(
         work_order_id=work_order.id,
         entity_id=work_order.entity_id,
@@ -337,12 +351,166 @@ def _contractor_work_order_sms(
         property_address=_property_address(prop),
         unit_label=unit.unit_label if unit is not None else None,
         tenant_name=tenant_name,
-        contractor_name=work_order.contractor_name,
-        contractor_phone=work_order.contractor_phone,
+        contractor_name=contractor_name,
+        contractor_phone=contractor_phone,
         due_date=work_order.due_date,
         body=payload.body.strip(),
         template_key=settings.contractor_sms_template_key,
         template_version=settings.contractor_sms_template_version,
+    )
+
+
+def _contractor_for_vendor_portal_metadata(
+    work_order: MaintenanceWorkOrder,
+    metadata: dict[str, Any] | None,
+    session: Session,
+) -> Contractor | None:
+    contractor_id_value = (metadata or {}).get(VENDOR_PORTAL_CONTRACTOR_ID_KEY)
+    if not isinstance(contractor_id_value, str):
+        return None
+    try:
+        contractor_id = UUID(contractor_id_value)
+    except ValueError:
+        return None
+    contractor = session.get(Contractor, contractor_id)
+    if contractor is None or contractor.entity_id != work_order.entity_id:
+        return None
+    return contractor
+
+
+def _contractor_contact_preferences(contractor: Contractor | None) -> dict[str, Any]:
+    if contractor is None:
+        return {}
+    metadata = (
+        contractor.contractor_metadata
+        if isinstance(contractor.contractor_metadata, dict)
+        else {}
+    )
+    preferences = metadata.get("contact_preferences") or metadata.get("notification_preferences")
+    return dict(preferences) if isinstance(preferences, dict) else {}
+
+
+def _contractor_email_preference_enabled(contractor: Contractor | None) -> bool:
+    preferences = _contractor_contact_preferences(contractor)
+    enabled = preferences.get("email_enabled")
+    if isinstance(enabled, bool):
+        return enabled
+    enabled = preferences.get("vendor_portal_email_enabled")
+    return enabled if isinstance(enabled, bool) else True
+
+
+def _contractor_sms_preference_enabled(contractor: Contractor | None) -> bool:
+    preferences = _contractor_contact_preferences(contractor)
+    enabled = preferences.get("sms_enabled")
+    if isinstance(enabled, bool):
+        return enabled
+    enabled = preferences.get("vendor_portal_sms_enabled")
+    return enabled if isinstance(enabled, bool) else False
+
+
+def _skipped_contractor_delivery_result(
+    *,
+    channel: str,
+    provider: str,
+    recipient: str | None,
+    error: str,
+) -> DeliveryResult:
+    return DeliveryResult(
+        channel=channel,  # type: ignore[arg-type]
+        status="skipped",
+        provider=provider,
+        recipient=recipient,
+        error=error,
+    )
+
+
+def _record_contractor_comment_notifications(
+    work_order: MaintenanceWorkOrder,
+    metadata: dict[str, Any],
+    *,
+    body: str,
+    payload: MaintenanceWorkOrderCommentCreate,
+    user: CurrentUser,
+    session: Session,
+) -> dict[str, Any]:
+    if payload.visibility != "contractor":
+        return metadata
+
+    contractor = _contractor_for_vendor_portal_metadata(work_order, metadata, session)
+    email_payload = MaintenanceWorkOrderContractorEmailSend(
+        subject=None,
+        body=body,
+        include_comment=False,
+    )
+    email_invite = _contractor_work_order_email(
+        work_order,
+        email_payload,
+        session,
+        contractor=contractor,
+    )
+    if not payload.notify_contractor_email_approved:
+        email_result = _skipped_contractor_delivery_result(
+            channel="email",
+            provider="sendgrid",
+            recipient=email_invite.contractor_email,
+            error="Contractor email notification needs explicit operator approval.",
+        )
+    elif not email_invite.contractor_email:
+        email_result = _skipped_contractor_delivery_result(
+            channel="email",
+            provider="sendgrid",
+            recipient=None,
+            error="Contractor email address is missing.",
+        )
+    elif not _contractor_email_preference_enabled(contractor):
+        email_result = _skipped_contractor_delivery_result(
+            channel="email",
+            provider="sendgrid",
+            recipient=email_invite.contractor_email,
+            error="Contractor email disabled by contractor preference.",
+        )
+    else:
+        email_result = send_contractor_work_order_email(email_invite, get_settings())
+    metadata = _record_contractor_provider_delivery(
+        work_order,
+        metadata,
+        invite=email_invite,
+        result=email_result,
+        user=user,
+    )
+
+    if not payload.notify_contractor_sms_approved:
+        return metadata
+
+    sms_payload = MaintenanceWorkOrderContractorSmsSend(body=body, include_comment=False)
+    sms_invite = _contractor_work_order_sms(
+        work_order,
+        sms_payload,
+        session,
+        contractor=contractor,
+    )
+    if not sms_invite.contractor_phone:
+        sms_result = _skipped_contractor_delivery_result(
+            channel="sms",
+            provider="twilio",
+            recipient=None,
+            error="Contractor phone is missing.",
+        )
+    elif not _contractor_sms_preference_enabled(contractor):
+        sms_result = _skipped_contractor_delivery_result(
+            channel="sms",
+            provider="twilio",
+            recipient=sms_invite.contractor_phone,
+            error="Contractor SMS disabled by contractor preference.",
+        )
+    else:
+        sms_result = send_contractor_work_order_sms(sms_invite, get_settings())
+    return _record_contractor_sms_provider_delivery(
+        work_order,
+        metadata,
+        invite=sms_invite,
+        result=sms_result,
+        user=user,
     )
 
 
@@ -378,7 +546,7 @@ def _record_contractor_provider_delivery(
         "sent_at": recorded_at if delivered else None,
         "sent_by_user_id": str(user.id),
         "provider_message_id": result_dict.get("provider_message_id"),
-        "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
+        "recipient_email": result_dict.get("recipient") or invite.contractor_email,
         "subject": invite.subject,
         "body": invite.body,
         "error": result_dict.get("error"),
@@ -394,7 +562,7 @@ def _record_contractor_provider_delivery(
             "channel": "email",
             "status": status_value,
             "provider": result_dict.get("provider") or "sendgrid",
-            "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
+            "recipient_email": result_dict.get("recipient") or invite.contractor_email,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
             "subject": invite.subject,
@@ -410,7 +578,7 @@ def _record_contractor_provider_delivery(
             "user_id": str(user.id),
             "provider": result_dict.get("provider") or "sendgrid",
             "status": status_value,
-            "recipient_email": result_dict.get("recipient") or work_order.contractor_email,
+            "recipient_email": result_dict.get("recipient") or invite.contractor_email,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
             "subject": invite.subject,
@@ -467,7 +635,7 @@ def _record_contractor_sms_provider_delivery(
         "sent_at": recorded_at if delivered else None,
         "sent_by_user_id": str(user.id),
         "provider_message_id": result_dict.get("provider_message_id"),
-        "recipient_phone": result_dict.get("recipient") or work_order.contractor_phone,
+        "recipient_phone": result_dict.get("recipient") or invite.contractor_phone,
         "body": invite.body,
         "error": result_dict.get("error"),
         "template_key": invite.template_key,
@@ -482,7 +650,7 @@ def _record_contractor_sms_provider_delivery(
             "channel": "sms",
             "status": status_value,
             "provider": result_dict.get("provider") or "twilio",
-            "recipient_phone": result_dict.get("recipient") or work_order.contractor_phone,
+            "recipient_phone": result_dict.get("recipient") or invite.contractor_phone,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
             "template_key": invite.template_key,
@@ -497,7 +665,7 @@ def _record_contractor_sms_provider_delivery(
             "user_id": str(user.id),
             "provider": result_dict.get("provider") or "twilio",
             "status": status_value,
-            "recipient_phone": result_dict.get("recipient") or work_order.contractor_phone,
+            "recipient_phone": result_dict.get("recipient") or invite.contractor_phone,
             "provider_message_id": result_dict.get("provider_message_id"),
             "error": result_dict.get("error"),
             "template_key": invite.template_key,
@@ -1138,11 +1306,19 @@ def add_work_order_comment(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Comment cannot be blank.",
         )
-    work_order.work_order_metadata = _append_comment(
+    metadata = _append_comment(
         work_order.work_order_metadata,
         actor=user.actor,
         body=body,
         visibility=payload.visibility,
+    )
+    work_order.work_order_metadata = _record_contractor_comment_notifications(
+        work_order,
+        metadata,
+        body=body,
+        payload=payload,
+        user=user,
+        session=session,
     )
     audit_log(
         session,

@@ -2,6 +2,53 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (Vendor message notifications)
+
+Ticket 3 from the 2026-06-12 next-build instructions is implemented locally:
+vendor portal message notifications, not a new messaging system. Operator
+contractor-visible maintenance messages now carry two explicit approval
+checkboxes for contractor email/SMS notification. With no approval, the backend
+records a skipped contractor email notification receipt and does not call
+SendGrid/Twilio. With approval, the existing contractor delivery receipt,
+attempt-count, provider-history, and channel-evidence projection records the
+queued provider attempt. Contractor replies from the vendor portal now record a
+local operator in-app cue on the work order, targeting the assigned operator
+from `work_assignment` or the operator who shared the vendor portal item.
+
+Guardrail stance: vendor account posting still does not send email/SMS or call
+providers; operator-side provider delivery remains explicit via the new approval
+checkboxes. Tests mock provider sends.
+
+Verification recorded so far:
+
+- RED backend notification tests first failed for missing `contractor_delivery`
+  / `vendor_portal_notifications`, then passed **3/3**.
+- Code review agent caught a stale-recipient bug before commit: approved
+  message notifications were using cached work-order contractor contact fields
+  instead of the vendor portal's saved contractor record. The backend now builds
+  approved email/SMS invites and delivery evidence from the saved contractor
+  record first, and the UI approval controls enable from the same saved vendor
+  contact. Regression coverage includes stale work-order email and missing
+  work-order phone cases.
+- Vendor portal messaging API passed **11/11**:
+  `.venv/bin/python -m pytest tests/integration/test_vendor_portal_messages_api.py -q`.
+- Full backend suite passed **624 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+- Existing contractor delivery regressions passed **2/2**:
+  `.venv/bin/python -m pytest tests/integration/test_maintenance_arrears_api.py -k "maintenance_work_order_sends_contractor_email_and_records_receipt or maintenance_work_order_sends_contractor_sms_and_records_receipt or work_order_assignment_notification" -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/maintenance.py apps/api/routers/vendor_portal.py apps/api/schemas/maintenance.py tests/integration/test_vendor_portal_messages_api.py tests/integration/test_maintenance_arrears_api.py`.
+- RED frontend smoke first failed on the missing approval controls/copy, then
+  focused vendor messaging smoke passed **3/3**:
+  `NODE_ENV=development ./node_modules/.bin/playwright test tests/smoke/vendor-portal-messaging.spec.ts --workers=1`.
+- Targeted frontend ESLint passed for maintenance detail, API types, vendor
+  messaging smoke, and API mocks.
+- Frontend typecheck passed: `./node_modules/.bin/tsc --noEmit --pretty false`.
+- Production build passed: `npm run build` in `apps/web`.
+
+Docs updated: `docs/product-roadmap.md` and `docs/design-governance.md` mark the
+slice `[~]`/Remba-pending.
+
 ## Codex continuation - 2026-06-12 (Comms send-time templates)
 
 Ticket 1 from the 2026-06-12 next-build instructions is implemented locally:

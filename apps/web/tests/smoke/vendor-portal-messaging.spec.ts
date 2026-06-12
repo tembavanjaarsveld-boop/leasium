@@ -62,7 +62,9 @@ test("maintenance detail shows contractor message thread with in-app-only notice
     messagesPanel.getByText("Confirmed — on site Friday from 8am."),
   ).toBeVisible();
   await expect(
-    messagesPanel.getByText("In-app only — no email or SMS is sent."),
+    messagesPanel.getByText(
+      "Posts to the portal. Email/SMS notifications need explicit approval.",
+    ),
   ).toBeVisible();
 
   expect(unsafeRequests).toEqual([]);
@@ -103,15 +105,31 @@ test("operator sends a contractor-visible message from the thread", async ({
   await page
     .getByLabel("Message to contractor")
     .fill("Parts have arrived; attend any time Friday.");
+  await page.getByLabel("Send approved email notification").check();
   await page.getByRole("button", { name: "Send message" }).click();
 
   await expect(
     messagesPanel.getByText("Parts have arrived; attend any time Friday."),
   ).toBeVisible();
+  await page.getByText("Channel evidence").click();
+  const channelEvidence = page
+    .locator("details")
+    .filter({ has: page.getByText("Channel evidence") })
+    .first();
+  await expect(channelEvidence).toContainText("Contractor email");
+  await expect(channelEvidence).toContainText("Sendgrid");
+  await expect(channelEvidence).toContainText("Queued");
+  await expect(channelEvidence).toContainText("ID sg-vendor-message-1");
+  await channelEvidence.getByText("Message preview").click();
+  await expect(
+    channelEvidence.getByText("Parts have arrived; attend any time Friday."),
+  ).toBeVisible();
   expect(commentPayloads).toHaveLength(1);
   expect(commentPayloads[0]).toMatchObject({
     body: "Parts have arrived; attend any time Friday.",
     visibility: "contractor",
+    notify_contractor_email_approved: true,
+    notify_contractor_sms_approved: false,
   });
 
   expect(unsafeRequests).toEqual([]);

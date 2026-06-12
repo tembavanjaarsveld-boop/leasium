@@ -8574,9 +8574,19 @@ export async function mockLeasiumApi(
       const payload = request.postDataJSON() as {
         body?: string;
         visibility?: string;
+        notify_contractor_email_approved?: boolean;
+        notify_contractor_sms_approved?: boolean;
       };
       const body = (payload.body ?? "").trim();
       const timestamp = "2026-05-20T01:15:00.000Z";
+      const emailApproved = payload.notify_contractor_email_approved === true;
+      const emailStatus = emailApproved ? "queued" : "skipped";
+      const emailDetail = emailApproved
+        ? null
+        : "Contractor email notification needs explicit operator approval.";
+      const emailProviderMessageId = emailApproved
+        ? "sg-vendor-message-1"
+        : null;
       const metadata = {
         ...maintenanceWorkOrders[0].metadata,
         comments: [
@@ -8601,9 +8611,116 @@ export async function mockLeasiumApi(
             summary: body,
           },
         ],
+        contractor_delivery: {
+          ...(jsonRecord(maintenanceWorkOrders[0].metadata.contractor_delivery) ??
+            {}),
+          email: {
+            send: {
+              status: emailStatus,
+              provider: "sendgrid",
+              attempted_at: timestamp,
+              sent_at: emailApproved ? timestamp : null,
+              sent_by_user_id: operatorId,
+              provider_message_id: emailProviderMessageId,
+              recipient_email: "service@coolair.example",
+              subject: "Maintenance update: Air conditioning fault",
+              body,
+              error: emailDetail,
+              template_key: "maintenance_contractor_update",
+              template_version: "v1",
+              retry_count: 2,
+            },
+            receipts: [
+              {
+                received_at: timestamp,
+                channel: "email",
+                status: emailStatus,
+                provider: "sendgrid",
+                recipient_email: "service@coolair.example",
+                provider_message_id: emailProviderMessageId,
+                error: emailDetail,
+                subject: "Maintenance update: Air conditioning fault",
+                template_key: "maintenance_contractor_update",
+                template_version: "v1",
+                retry_count: 2,
+              },
+            ],
+            history: [
+              {
+                event: "provider_delivery_attempted",
+                at: timestamp,
+                user_id: operatorId,
+                channel: "email",
+                provider: "sendgrid",
+                status: emailStatus,
+                recipient_email: "service@coolair.example",
+                provider_message_id: emailProviderMessageId,
+                error: emailDetail,
+                subject: "Maintenance update: Air conditioning fault",
+                template_key: "maintenance_contractor_update",
+                template_version: "v1",
+                retry_count: 2,
+              },
+            ],
+          },
+        },
       };
       Object.assign(maintenanceWorkOrders[0], {
         metadata,
+        channel_receipts: [
+          {
+            channel: "email",
+            label: "Contractor email",
+            provider: "sendgrid",
+            status: emailStatus,
+            detail: emailDetail,
+            recipient_email: "service@coolair.example",
+            recipient_phone: null,
+            provider_message_id: emailProviderMessageId,
+            template_key: "maintenance_contractor_update",
+            template_version: "v1",
+            attempted_at: timestamp,
+            sent_at: emailApproved ? timestamp : null,
+            receipt_at: timestamp,
+            last_event: emailStatus,
+            delivery_trigger: null,
+            delivery_attempt_count: 2,
+            message_sent: emailApproved,
+            action_available: false,
+            provider_history: [
+              {
+                event: "provider_delivery_attempted",
+                channel: "email",
+                status: emailStatus,
+                raw_event: null,
+                provider: "sendgrid",
+                attempted_at: timestamp,
+                received_at: null,
+                recipient_email: "service@coolair.example",
+                recipient_phone: null,
+                provider_message_id: emailProviderMessageId,
+                error: emailDetail,
+                template_key: "maintenance_contractor_update",
+                template_version: "v1",
+                delivery_trigger: null,
+                recovery_of_generated_at: null,
+                delivery_attempt_count: 2,
+              },
+            ],
+            rendered_message_preview: {
+              channel: "email",
+              provider: "sendgrid",
+              recipient_email: "service@coolair.example",
+              recipient_phone: null,
+              subject: "Maintenance update: Air conditioning fault",
+              body_text: body,
+              template_key: "maintenance_contractor_update",
+              template_version: "v1",
+              action_label: null,
+              action_url: null,
+            },
+          },
+        ],
         updated_at: timestamp,
       });
       await fulfillJson(route, maintenanceWorkOrders[0]);

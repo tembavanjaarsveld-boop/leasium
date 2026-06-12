@@ -8,6 +8,16 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-12 Vendor portal message notifications v1:** operator
+  contractor-visible maintenance messages can now explicitly approve a
+  contractor email/SMS notification from the existing message panel. Without
+  approval the backend records a skipped contractor email notification receipt
+  and never calls SendGrid/Twilio; with approval the existing contractor
+  delivery receipt/attempt-count machinery records the queued provider attempt.
+  Contractor replies in the vendor portal now record a local operator in-app
+  cue on the work order, targeted to the assigned operator or sharing operator
+  where available. Pending Remba review of the message-panel checkbox density
+  and channel-evidence placement.
 - [~] **2026-06-12 Comms send-time template consumption v1:** `/comms` now
   previews matching active stored templates for visible email drafts without
   dispatching, and approved unedited drafts render the requested template on the
@@ -870,8 +880,11 @@ Equifax/illion; RTBA/state RTAs).
   a signed-in dashboard with accept / post-update / upload-photo per shared job,
   and an operator "generate login link" control on `/vendor-portal/[contractorId]`.
   Verified by frontend eslint + tsc + production build (account-flow Playwright
-  smoke written for the operator invite-link path). Vendor messaging remains
-  future work.
+  smoke written for the operator invite-link path). 2026-06-12 follow-up:
+  operator contractor-visible messages can explicitly approve contractor
+  email/SMS notification receipts, and contractor replies record a local
+  operator in-app cue. Pending Remba review of message-panel notification
+  controls.
 - [x] eSign → lease (DocuSign): fully built and tested — provider helper
   (`stewart/integrations/docusign.py`: JWT grant, envelope create, signed-PDF
   download, soft-skip when unconfigured), the lease-signing state machine

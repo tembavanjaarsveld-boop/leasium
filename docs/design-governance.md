@@ -840,6 +840,16 @@ back-filled in Figma before code.
   SendGrid/Twilio still run only from explicit `Approve & send`. Remba should review the
   inline preview density, disclosure placement, guardrail wording, and the conservative
   Comms-kind-to-template mapping before this is marked `[x]`.
+- **Vendor portal message notifications (2026-06-12, Remba pending):**
+  maintenance work-order detail now adds explicit approved email/SMS notification
+  checkboxes to the contractor message form. The default is no provider send:
+  backend records a skipped contractor email notification receipt unless the
+  operator checks an approval box. Approved email/SMS paths reuse the existing
+  contractor delivery/channel-evidence receipt shape, while contractor replies
+  from the vendor portal record a local operator in-app cue on the work order.
+  Remba should review checkbox density, disabled states for missing contractor
+  contact details, the "Email/SMS notifications need explicit approval" copy,
+  and whether channel evidence is close enough to the message form.
 - **Comms tenant lifecycle signed-agreement settle (2026-06-07, prototype mode, no Remba gate):**
   `/comms` no longer surfaces a stale "DocuSign setup needed" tenant lifecycle draft when
   the lease agreement already has a recorded signed timestamp, even if older provider metadata

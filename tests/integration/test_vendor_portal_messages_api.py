@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any
 from uuid import uuid4
 
 from apps.api.main import app
@@ -12,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.auth import ClerkIdentity
 from stewart.core.models import (
+    AppUser,
     Contractor,
     Entity,
     MaintenancePriority,
@@ -21,6 +23,7 @@ from stewart.core.models import (
     PropertyType,
 )
 from stewart.core.settings import Settings, get_settings
+from stewart.integrations.communications import DeliveryResult
 
 BEARER = {"Authorization": "Bearer vendor-subject-one"}
 
@@ -122,10 +125,17 @@ def _operator_comment(
     body: str,
     *,
     visibility: str = "contractor",
+    notify_contractor_email_approved: bool = False,
+    notify_contractor_sms_approved: bool = False,
 ) -> None:
     response = client.post(
         f"/api/v1/maintenance/work-orders/{work_order.id}/comments",
-        json={"body": body, "visibility": visibility},
+        json={
+            "body": body,
+            "visibility": visibility,
+            "notify_contractor_email_approved": notify_contractor_email_approved,
+            "notify_contractor_sms_approved": notify_contractor_sms_approved,
+        },
     )
     assert response.status_code == 200, response.text
 
@@ -278,6 +288,206 @@ def test_get_messages_returns_404_for_unshared_or_unknown_work_order(
         headers=BEARER,
     )
     assert unknown.status_code == 404
+
+
+def test_operator_contractor_message_without_approval_records_skipped_notification_only(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    _contractor, work_order = _setup_account(client, session, monkeypatch)
+
+    def fail_send(*_args: Any, **_kwargs: Any) -> DeliveryResult:
+        raise AssertionError("Contractor email must not send without approval.")
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_contractor_work_order_email",
+        fail_send,
+    )
+
+    _operator_comment(client, work_order, "Please confirm access for Friday.")
+
+    session.refresh(work_order)
+    metadata = work_order.work_order_metadata
+    comments = metadata["comments"]
+    assert comments[-1]["body"] == "Please confirm access for Friday."
+    assert comments[-1]["visibility"] == "contractor"
+    email_delivery = metadata["contractor_delivery"]["email"]
+    assert email_delivery["send"]["status"] == "skipped"
+    assert email_delivery["send"]["error"] == (
+        "Contractor email notification needs explicit operator approval."
+    )
+    assert email_delivery["send"]["retry_count"] == 1
+    assert email_delivery["receipts"][0]["status"] == "skipped"
+    assert email_delivery["history"][0]["event"] == "provider_delivery_attempted"
+
+
+def test_operator_contractor_message_with_email_approval_queues_contractor_email(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    _contractor, work_order = _setup_account(client, session, monkeypatch)
+    work_order.contractor_email = "stale-contractor@example.test"
+    session.commit()
+    sent_invites: list[Any] = []
+
+    def fake_send(invite: Any, settings: Any) -> DeliveryResult:  # noqa: ARG001
+        sent_invites.append(invite)
+        assert invite.contractor_email == "contractor@example.test"
+        assert invite.body == "Parts have arrived; please attend Friday."
+        assert invite.template_key == "maintenance_contractor_update"
+        return DeliveryResult(
+            channel="email",
+            status="queued",
+            provider="sendgrid",
+            recipient=invite.contractor_email,
+            provider_message_id="sg-vendor-message-1",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_contractor_work_order_email",
+        fake_send,
+    )
+
+    _operator_comment(
+        client,
+        work_order,
+        "Parts have arrived; please attend Friday.",
+        notify_contractor_email_approved=True,
+    )
+
+    assert len(sent_invites) == 1
+    session.refresh(work_order)
+    email_delivery = work_order.work_order_metadata["contractor_delivery"]["email"]
+    assert email_delivery["send"]["status"] == "queued"
+    assert email_delivery["send"]["recipient_email"] == "contractor@example.test"
+    assert email_delivery["send"]["provider_message_id"] == "sg-vendor-message-1"
+    assert email_delivery["send"]["retry_count"] == 1
+    assert email_delivery["receipts"][0]["template_key"] == "maintenance_contractor_update"
+    assert work_order.work_order_metadata["comments"][-1]["body"] == (
+        "Parts have arrived; please attend Friday."
+    )
+
+
+def test_operator_contractor_message_respects_contractor_email_preference(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    contractor, work_order = _setup_account(client, session, monkeypatch)
+    contractor.contractor_metadata = {"contact_preferences": {"email_enabled": False}}
+    session.commit()
+
+    def fail_send(*_args: Any, **_kwargs: Any) -> DeliveryResult:
+        raise AssertionError("Disabled contractor email preference must not send.")
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_contractor_work_order_email",
+        fail_send,
+    )
+
+    _operator_comment(
+        client,
+        work_order,
+        "Please confirm whether Friday still works.",
+        notify_contractor_email_approved=True,
+    )
+
+    session.refresh(work_order)
+    email_delivery = work_order.work_order_metadata["contractor_delivery"]["email"]
+    assert email_delivery["send"]["status"] == "skipped"
+    assert email_delivery["send"]["error"] == (
+        "Contractor email disabled by contractor preference."
+    )
+    assert email_delivery["receipts"][0]["status"] == "skipped"
+
+
+def test_operator_contractor_message_with_sms_approval_queues_contractor_sms(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    contractor, work_order = _setup_account(client, session, monkeypatch)
+    contractor.contractor_metadata = {"contact_preferences": {"sms_enabled": True}}
+    work_order.contractor_phone = None
+    session.commit()
+    sent_invites: list[Any] = []
+
+    def fake_send(invite: Any, settings: Any) -> DeliveryResult:  # noqa: ARG001
+        sent_invites.append(invite)
+        assert invite.contractor_phone == "+61 400 111 222"
+        assert invite.body == "Please text when you are ten minutes out."
+        assert invite.template_key == "maintenance_contractor_sms"
+        return DeliveryResult(
+            channel="sms",
+            status="queued",
+            provider="twilio",
+            recipient=invite.contractor_phone,
+            provider_message_id="tw-vendor-message-1",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.maintenance.send_contractor_work_order_sms",
+        fake_send,
+    )
+
+    _operator_comment(
+        client,
+        work_order,
+        "Please text when you are ten minutes out.",
+        notify_contractor_sms_approved=True,
+    )
+
+    assert len(sent_invites) == 1
+    session.refresh(work_order)
+    sms_delivery = work_order.work_order_metadata["contractor_delivery"]["sms"]
+    assert sms_delivery["send"]["status"] == "queued"
+    assert sms_delivery["send"]["recipient_phone"] == "+61 400 111 222"
+    assert sms_delivery["send"]["provider_message_id"] == "tw-vendor-message-1"
+    assert sms_delivery["send"]["retry_count"] == 1
+    assert sms_delivery["receipts"][0]["template_key"] == "maintenance_contractor_sms"
+
+
+def test_contractor_reply_records_operator_in_app_notification_cue(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    _contractor, work_order = _setup_account(client, session, monkeypatch)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    metadata = dict(work_order.work_order_metadata or {})
+    metadata["work_assignment"] = {
+        "assigned_user_id": str(assignee.id),
+        "assigned_user_name": assignee.display_name,
+        "assigned_user_email": assignee.email,
+        "notification": {
+            "channel": "in_app",
+            "provider": "leasium",
+            "status": "ready",
+            "detail": "Assignment notification is ready inside Leasium.",
+        },
+        "history": [],
+    }
+    work_order.work_order_metadata = metadata
+    session.commit()
+
+    _contractor_comment(client, work_order, "Confirmed for Friday morning.")
+
+    session.refresh(work_order)
+    notifications = work_order.work_order_metadata["vendor_portal_notifications"]
+    operator_reply = notifications["operator_reply"]
+    assert operator_reply["channel"] == "in_app"
+    assert operator_reply["provider"] == "leasium"
+    assert operator_reply["status"] == "ready"
+    assert operator_reply["recipient_user_id"] == str(assignee.id)
+    assert operator_reply["delivery_attempt_count"] == 1
+    assert operator_reply["history"][0]["event"] == "vendor_portal_reply_received"
+    assert operator_reply["history"][0]["summary"] == (
+        "Contractor replied in the vendor portal."
+    )
 
 
 def test_get_messages_requires_bearer_token(
