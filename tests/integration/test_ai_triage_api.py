@@ -17,9 +17,12 @@ from stewart.core.models import (
     ArrearsCase,
     AuditAction,
     Contractor,
+    DocumentCategory,
     DocumentIntake,
     Entity,
+    InboundMessage,
     MaintenanceWorkOrder,
+    StoredDocument,
     Tenant,
 )
 
@@ -89,6 +92,50 @@ def _lease_context(client: TestClient, session: Session) -> dict[str, str]:
         "tenant_id": tenant_id,
         "lease_id": lease_response.json()["id"],
     }
+
+
+def _trusted_mailbox_message(
+    session: Session,
+    context: dict[str, str],
+    *,
+    trust_state: str = "trusted",
+) -> tuple[InboundMessage, StoredDocument]:
+    raw_document = StoredDocument(
+        entity_id=UUID(context["entity_id"]),
+        filename="ai-mailbox-test.eml",
+        content_type="message/rfc822",
+        byte_size=27,
+        file_data=b"raw trusted mailbox message",
+        category=DocumentCategory.other,
+        notes="AI mailbox raw email provenance",
+        document_metadata={"source": "ai_mailbox_raw_email"},
+    )
+    session.add(raw_document)
+    session.flush()
+    message = InboundMessage(
+        entity_id=UUID(context["entity_id"]),
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state=trust_state,
+        auth_result={"spf": "pass", "dkim": "pass"},
+        original_sender="broker@external.example",
+        from_address="temba@leasium.test",
+        to_address="ai@leasium.ai",
+        subject="Fwd: Kitchen tap leak",
+        body_text=(
+            "Tenant says the kitchen tap at Unit 3 is leaking and the cabinet"
+            " is starting to swell. Please arrange a plumber this week."
+        ),
+        classification_kind="maintenance_request",
+        classification_confidence=0.91,
+        classification_summary="Tenant reports a non-urgent tap leak.",
+        classification_target_kind="maintenance_work_order",
+        inbound_metadata={"raw_email_document_id": str(raw_document.id)},
+    )
+    session.add(message)
+    session.flush()
+    return message, raw_document
 
 
 def test_inbox_triage_returns_classification_and_audits(
@@ -319,6 +366,109 @@ def test_promote_maintenance_request_creates_work_order(
     )
     assert audit_row is not None
     assert audit_row.target_table == "maintenance_work_order"
+
+
+def test_promote_trusted_mailbox_message_links_raw_provenance_without_retriage(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(session, context)
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "maintenance_request",
+            "summary": "Tenant reports a non-urgent tap leak.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    work_order = session.scalar(
+        select(MaintenanceWorkOrder).where(
+            MaintenanceWorkOrder.id == UUID(body["target_id"])
+        )
+    )
+    assert work_order is not None
+    ai_metadata = work_order.work_order_metadata["ai_inbox"]
+    assert ai_metadata["kind"] == "maintenance_request"
+    assert ai_metadata["mailbox"]["inbound_message_id"] == str(message.id)
+    assert ai_metadata["mailbox"]["raw_email_document_id"] == str(raw_document.id)
+    assert ai_metadata["mailbox"]["subject"] == "Fwd: Kitchen tap leak"
+    assert ai_metadata["mailbox"]["sender"] == "broker@external.example"
+    assert ai_metadata["mailbox"]["classification_confidence"] == 0.91
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(AuditAction.tool_name == "ai_inbox_promote")
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.tool_input["inbound_message_id"] == str(message.id)
+
+    duplicate = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "maintenance_request",
+            "summary": "Tenant reports a non-urgent tap leak.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert duplicate.status_code == 422
+    assert "already" in duplicate.json()["detail"].lower()
+
+
+def test_promote_rejects_quarantined_mailbox_message_without_draft(
+    client: TestClient, session: Session
+) -> None:
+    context = _lease_context(client, session)
+    message, _raw_document = _trusted_mailbox_message(
+        session, context, trust_state="quarantined"
+    )
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "maintenance_request",
+            "summary": "Tenant reports a non-urgent tap leak.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 422
+    assert "trusted" in response.json()["detail"].lower()
+
+    work_order = session.scalar(
+        select(MaintenanceWorkOrder).where(
+            MaintenanceWorkOrder.title == "Tenant reports a non-urgent tap leak."
+        )
+    )
+    assert work_order is None
+    session.refresh(message)
+    assert message.processed_at is None
 
 
 def test_promote_arrears_requires_matched_tenant(

@@ -164,14 +164,21 @@ only for authenticated `sender_not_trusted` quarantines and trusts the
 authenticated `from_address`; failed-auth rows can be discarded but not
 trusted from that email. AI mailbox rows stay out of the generic Comms reply
 queue/dispatch path. Settings → Organisation now also has local trusted-sender
-list/add/revoke management backed by an audited soft-delete endpoint. The
-visible UI/action placement and Settings panel still owe the in-loop UX pass.
+list/add/revoke management backed by an audited soft-delete endpoint. Trusted
+mailbox rows now support Review email → Review promotion into the existing
+local draft promote panel using the stored mailbox classification (no
+`/ai/triage` re-run). The promote payload carries `inbound_message_id`; the
+backend validates source/trust/entity/kind, stamps raw-email provenance into
+target metadata/audit, and marks the mailbox row processed after a successful
+local draft. The visible UI/action placement, promote provenance card, and
+Settings panel still owe the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
-from the old migration plan. Remaining product slice is reviewed promote/apply
-actions. Do not add acknowledgement replies, provider sends, Smart Intake
-apply, tenant email, Xero/Basiq, payment, or reconciliation mutation without
-explicit operator approval.
+from the old migration plan. Remaining product slices are richer promote/apply
+variants for compliance/property/task/owner-admin kinds and optional filters
+if mailbox volume grows. Do not add acknowledgement replies, provider sends,
+Smart Intake apply, tenant email, Xero/Basiq, payment, or reconciliation
+mutation without explicit operator approval.
 
 ---
 

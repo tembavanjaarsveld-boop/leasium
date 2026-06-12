@@ -44,6 +44,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
+    InboundMessage,
     Lease,
     LeaseStatus,
     MaintenanceWorkOrder,
@@ -1006,6 +1007,82 @@ def _truncate_title(text: str, *, limit: int = 120) -> str:
     return text[: limit - 1].rstrip() + "…"
 
 
+def _mailbox_promote_context(
+    payload: InboxPromoteRequest,
+    session: Session,
+    promoted_at,
+) -> tuple[InboundMessage | None, dict[str, Any] | None]:
+    if payload.inbound_message_id is None:
+        return None, None
+
+    message = session.scalar(
+        select(InboundMessage)
+        .where(InboundMessage.id == payload.inbound_message_id)
+        .with_for_update()
+    )
+    if message is None or message.entity_id != payload.entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inbound message not found.",
+        )
+    if message.source != "ai_mailbox":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only AI mailbox messages can be linked to inbox promote.",
+        )
+    if message.trust_state != "trusted":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only trusted AI mailbox messages can be promoted.",
+        )
+    if message.processed_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="AI mailbox message has already been promoted.",
+        )
+    if message.classification_kind != payload.kind:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Mailbox stored classification must match the promote kind.",
+        )
+
+    message.processed_at = promoted_at
+    metadata = (
+        message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+    )
+    raw_email_document_id = metadata.get("raw_email_document_id")
+    confidence = message.classification_confidence
+    return message, {
+        "inbound_message_id": str(message.id),
+        "raw_email_document_id": str(raw_email_document_id)
+        if raw_email_document_id
+        else None,
+        "sender": message.original_sender or message.from_address,
+        "from_address": message.from_address,
+        "original_sender": message.original_sender,
+        "subject": message.subject,
+        "classification_kind": message.classification_kind,
+        "classification_confidence": float(confidence)
+        if confidence is not None
+        else None,
+        "classification_summary": message.classification_summary,
+        "classification_target_kind": message.classification_target_kind,
+    }
+
+
+def _promote_audit_input(
+    *,
+    kind: str,
+    summary: str,
+    mailbox_metadata: dict[str, Any] | None,
+    **extra: Any,
+) -> dict[str, Any]:
+    data = {"kind": kind, "summary_length": len(summary), **extra}
+    if mailbox_metadata is not None:
+        data["inbound_message_id"] = mailbox_metadata["inbound_message_id"]
+    return data
+
+
 @router.post("/triage/promote", response_model=InboxPromoteRead)
 def promote_triage(
     payload: InboxPromoteRequest,
@@ -1037,15 +1114,23 @@ def promote_triage(
 
     summary = payload.summary.strip()
     title = _truncate_title(summary)
+    promoted_at = utcnow()
+    _mailbox_message, mailbox_metadata = _mailbox_promote_context(
+        payload,
+        session,
+        promoted_at,
+    )
 
     promote_metadata = {
         "ai_inbox": {
             "kind": payload.kind,
             "summary": summary,
-            "promoted_at": utcnow().isoformat(),
+            "promoted_at": promoted_at.isoformat(),
             "promoted_by_user_id": str(user.id),
         }
     }
+    if mailbox_metadata is not None:
+        promote_metadata["ai_inbox"]["mailbox"] = mailbox_metadata
 
     if payload.kind == "maintenance_request":
         work_order = MaintenanceWorkOrder(
@@ -1070,7 +1155,11 @@ def promote_triage(
             target_table="maintenance_work_order",
             target_id=work_order.id,
             tool_name="ai_inbox_promote",
-            tool_input={"kind": payload.kind, "summary_length": len(summary)},
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+            ),
             tool_output_summary="Promoted inbox message to maintenance work order.",
             data_classification="internal",
         )
@@ -1109,7 +1198,11 @@ def promote_triage(
             target_table="arrears_case",
             target_id=case.id,
             tool_name="ai_inbox_promote",
-            tool_input={"kind": payload.kind, "summary_length": len(summary)},
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+            ),
             tool_output_summary="Promoted inbox message to arrears case.",
             data_classification="internal",
         )
@@ -1164,6 +1257,8 @@ def promote_triage(
                 "fields": sorted(approved_updates.keys()),
             },
         ]
+        if mailbox_metadata is not None:
+            history[-1]["mailbox"] = mailbox_metadata
         metadata["ai_inbox_contact_promotions"] = history
         tenant.tenant_metadata = metadata
 
@@ -1176,12 +1271,13 @@ def promote_triage(
             target_table="tenant",
             target_id=tenant.id,
             tool_name="ai_inbox_promote",
-            tool_input={
-                "kind": payload.kind,
-                "summary_length": len(summary),
-                "fields": sorted(approved_updates.keys()),
-                "previous_values_present": sorted(previous_values.keys()),
-            },
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+                fields=sorted(approved_updates.keys()),
+                previous_values_present=sorted(previous_values.keys()),
+            ),
             tool_output_summary=(
                 "Promoted inbox message to tenant contact update"
                 f" ({len(approved_updates)} field(s))."
@@ -1213,7 +1309,11 @@ def promote_triage(
             file_data=body_bytes,
             category=DocumentCategory.lease,
             notes="Created from AI inbox triage promote.",
-            document_metadata={"source": "ai_inbox_promote", "summary": summary},
+            document_metadata={
+                "source": "ai_inbox_promote",
+                "summary": summary,
+                **({"mailbox": mailbox_metadata} if mailbox_metadata else {}),
+            },
         )
         session.add(document)
         session.flush()
@@ -1224,7 +1324,10 @@ def promote_triage(
         # uploaded status with the warning so the operator can fill in the
         # fields manually inside Smart Intake.
         extracted_data: dict[str, Any] = {}
-        review_data: dict[str, Any] = {"source": "ai_inbox_promote"}
+        review_data: dict[str, Any] = {
+            "source": "ai_inbox_promote",
+            **({"mailbox": mailbox_metadata} if mailbox_metadata else {}),
+        }
         intake_status = DocumentIntakeStatus.uploaded
         intake_summary = summary
         intake_confidence: float | None = None
@@ -1284,11 +1387,12 @@ def promote_triage(
             target_table="document_intake",
             target_id=intake.id,
             tool_name="ai_inbox_promote",
-            tool_input={
-                "kind": payload.kind,
-                "summary_length": len(summary),
-                "extraction": extraction_outcome,
-            },
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+                extraction=extraction_outcome,
+            ),
             tool_output_summary=(
                 "Promoted inbox message to Smart Intake draft"
                 f" ({extraction_outcome})."
@@ -1319,11 +1423,12 @@ def promote_triage(
                 target_table="contractor",
                 target_id=existing.id,
                 tool_name="ai_inbox_promote",
-                tool_input={
-                    "kind": payload.kind,
-                    "summary_length": len(summary),
-                    "match": "existing",
-                },
+                tool_input=_promote_audit_input(
+                    kind=payload.kind,
+                    summary=summary,
+                    mailbox_metadata=mailbox_metadata,
+                    match="existing",
+                ),
                 tool_output_summary=(
                     "Routed inbox message to existing contractor profile."
                 ),
@@ -1349,6 +1454,7 @@ def promote_triage(
             "contractor_metadata": {
                 "source": "ai_inbox_promote",
                 "summary": summary,
+                **({"mailbox": mailbox_metadata} if mailbox_metadata else {}),
             },
         }
 
@@ -1402,12 +1508,13 @@ def promote_triage(
             target_table="contractor",
             target_id=contractor.id,
             tool_name="ai_inbox_promote",
-            tool_input={
-                "kind": payload.kind,
-                "summary_length": len(summary),
-                "extraction": extraction_outcome,
-                "match": "new",
-            },
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+                extraction=extraction_outcome,
+                match="new",
+            ),
             tool_output_summary=(
                 "Promoted inbox message to new contractor directory entry"
                 f" ({extraction_outcome})."

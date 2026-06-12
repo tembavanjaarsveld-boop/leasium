@@ -2795,6 +2795,37 @@ export async function mockLeasiumApi(
       added_at: "2026-06-12T00:30:00.000Z",
     },
   ];
+  const mailboxTrustedOneDetail = () => ({
+    id: "mailbox-trusted-1",
+    entity_id: entityId,
+    channel: "email",
+    provider: "sendgrid",
+    source: "ai_mailbox",
+    trust_state: "trusted",
+    quarantine_reason: null,
+    from_address: "temba@leasium.test",
+    to_address: "ai@leasium.ai",
+    original_sender: "broker@external.example",
+    subject: "Fwd: Kitchen tap leak — Unit 3",
+    body_preview:
+      "Tenant says the kitchen tap is leaking and the cabinet is starting to swell.",
+    auth_result: { spf: "pass", dkim: "pass" },
+    classification_kind: "maintenance_request",
+    classification_confidence: 0.91,
+    classification_summary: "Tenant reports a non-urgent tap leak.",
+    classification_target_kind: "maintenance_work_order",
+    attributed_tenant_id: null,
+    attachment_intake_count: 0,
+    attachment_document_ids: [],
+    attachment_intake_ids: [],
+    created_at: "2026-06-12T01:00:00.000Z",
+    body_text:
+      "Tenant says the kitchen tap is leaking and the cabinet is starting to swell.\n\nRaw email provenance is stored for operator review.",
+    body_html: null,
+    raw_email_document_id: "raw-email-doc-trusted",
+    raw_email_download_path:
+      "/api/v1/documents/raw-email-doc-trusted/download",
+  });
   const mailboxQuarantineOneDetail = () => {
     const trusted = trustedMailboxMessageIds.has("mailbox-quarantine-1");
     return {
@@ -5794,15 +5825,14 @@ export async function mockLeasiumApi(
           from_address: "temba@leasium.test",
           to_address: "ai@leasium.ai",
           original_sender: "broker@external.example",
-          subject: "Fwd: Insurance renewal — 12 Banksia Ct",
+          subject: "Fwd: Kitchen tap leak — Unit 3",
           body_preview:
-            "The certificate of currency is ready for review and one compliance obligation should be checked.",
+            "Tenant says the kitchen tap is leaking and the cabinet is starting to swell.",
           auth_result: { spf: "pass", dkim: "pass" },
-          classification_kind: "compliance_or_insurance",
+          classification_kind: "maintenance_request",
           classification_confidence: 0.91,
-          classification_summary:
-            "Forwarded broker note suggests one insurance obligation and one task.",
-          classification_target_kind: "smart_intake",
+          classification_summary: "Tenant reports a non-urgent tap leak.",
+          classification_target_kind: "maintenance_work_order",
           attributed_tenant_id: null,
           attachment_intake_count: 0,
           attachment_document_ids: [],
@@ -5885,6 +5915,14 @@ export async function mockLeasiumApi(
           ),
         generated_at: "2026-06-12T01:05:00.000Z",
       });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/comms/inbound-messages/mailbox-trusted-1"
+    ) {
+      await fulfillJson(route, mailboxTrustedOneDetail());
       return;
     }
 

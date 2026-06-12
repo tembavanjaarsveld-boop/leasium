@@ -3839,6 +3839,7 @@ export function promoteInboxMessage(payload: {
   kind: InboxPromoteKind;
   summary: string;
   body: string;
+  inbound_message_id?: string | null;
   property_id?: string | null;
   tenant_id?: string | null;
   lease_id?: string | null;

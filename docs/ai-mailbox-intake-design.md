@@ -1,8 +1,9 @@
 # AI Mailbox Intake — ai@leasium.ai
 
 Status: Backend foundation/read APIs + `/inbox` UI foundation + local
-trust/discard decisions + Settings trusted-sender management shipped · promote
-flows pending design/UX gate · 2026-06-12
+trust/discard decisions + Settings trusted-sender management + trusted-row
+reviewed promote handoff shipped · richer promote/apply variants pending
+design/UX gate · 2026-06-12
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
 UI implemented from this frame, with trust/discard action placement and the
@@ -64,6 +65,16 @@ place, with the operator approving the result.
   audit row. The panel and endpoint do not process waiting mail, send
   acknowledgements, re-run OpenAI, promote/apply Smart Intake, call providers,
   touch payments, or reconcile anything.
+- 2026-06-12 reviewed promote handoff follow-up: trusted mailbox rows now
+  open a provenance detail and can hand their stored classification into the
+  existing `/inbox` promote panel without re-running triage. The final promote
+  call carries `inbound_message_id`, so local drafts/audit metadata link back
+  to the mailbox row, sender, subject, confidence, and raw-email document;
+  the mailbox row is marked processed only after the local draft succeeds.
+  Quarantined or non-mailbox rows are refused. This creates only local drafts
+  through the existing review-first promote route; it does not send email/SMS,
+  dispatch providers, apply Smart Intake, call Xero/Basiq, touch payments, or
+  reconcile anything.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -162,6 +173,10 @@ Decision for foundation v1: (a) no acknowledgement reply.
   Trust requires passing SPF/DKIM and `sender_not_trusted`; discard preserves
   evidence and does not delete the row. AI mailbox rows are excluded from the
   generic Comms reply queue/dispatch path.
+- `POST /api/v1/ai/triage/promote` accepts optional `inbound_message_id` for
+  trusted AI mailbox rows. The route validates source/trust/entity/kind,
+  persists raw-email provenance in target metadata/audit, and marks the
+  mailbox row processed after a successful local draft.
 - Future promote endpoints: add the new promote kinds listed above.
 
 ## UI
@@ -173,8 +188,14 @@ Decision for foundation v1: (a) no acknowledgement reply.
   review-first guardrail note.
 - Shipped on Settings → Organisation: AI mailbox trusted-senders panel with
   list/add/revoke actions for the local organisation allowlist.
-- Still pending: source/trust-state filters if the queue grows, and reviewed
-  promote actions.
+- Shipped on `/inbox`: trusted rows now expose Review email → Review
+  promotion. The panel uses the stored mailbox classification, shows source
+  sender/subject/confidence/raw email inside the promote approval step, and
+  calls the existing local draft promote route only after the operator clicks
+  Promote to draft.
+- Still pending: source/trust-state filters if the queue grows, richer
+  promote/apply variants for non-existing target kinds, and the design review
+  of the inline action placement.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
   82:2` for promote variants before implementation; sync the shipped Settings
   allowlist panel through the in-loop UX pass/design debt track
@@ -187,11 +208,13 @@ forwarded original-sender provenance, body triage with operator kinds,
 trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
 role-scoped read APIs, trusted-senders API, `/inbox` queue + quarantine
 provenance UI, local trust/discard decisions, and Settings trusted-sender
-management.
+management, plus trusted-row reviewed promote handoff into existing local
+draft creation.
 
-Out (next slices): promote/apply actions, auto-ack replies, reply-by-email
-threads, plus-addressing hints, agent-facing confirmations, cross-org agent
-senders, auto-apply of any kind.
+Out (next slices): new promote/apply kinds beyond the existing AI inbox
+promote route, auto-ack replies, reply-by-email threads, plus-addressing
+hints, agent-facing confirmations, cross-org agent senders, auto-apply of any
+kind.
 
 ## Test plan
 
@@ -199,10 +222,12 @@ senders, auto-apply of any kind.
   quarantine path (unknown sender, SPF fail), forwarded-email provenance
   extraction, raw-email evidence document linking, list/detail read APIs with
   entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
-  promote kinds. Mock OpenAI and SendGrid throughout.
+  trusted-row promote provenance, and promote kinds. Mock OpenAI and SendGrid
+  throughout.
 - Smoke: shipped inbox queue + quarantine provenance, trust-sender action,
-  discard action, Settings trusted-sender management; future source filter and
-  promote flow fixtures when those actions land.
+  discard action, Settings trusted-sender management, and trusted-row reviewed
+  promote handoff with forbidden provider/triage re-run guardrails; future
+  source filter fixtures when those actions land.
 
 ## Open decisions for Temba
 

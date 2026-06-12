@@ -2730,9 +2730,11 @@ from Figma frame `03 Screens / AI Mailbox Intake 82:2`: copy address,
 trusted mailbox queue, quarantine bucket, and a selected-message provenance
 detail with sender/auth result, stored body text, raw-email download link, and
 local Trust sender / Discard controls. Settings → Organisation now adds the
-local trusted-sender allowlist panel with add/revoke controls. Promote/apply,
-acknowledgement, and provider-send controls remain omitted; those need a
-reviewed action variant before implementation.
+local trusted-sender allowlist panel with add/revoke controls. Reviewed
+promote handoff now lets trusted rows open the existing promote panel with
+stored mailbox classification and raw-email provenance; richer promote/apply,
+acknowledgement, and provider-send controls remain omitted and need reviewed
+action variants before implementation.
 
 1. Remba should review the panel's placement above the existing paste classifier,
    the visual distinction between trusted rows and quarantine rows, the
@@ -2740,3 +2742,7 @@ reviewed action variant before implementation.
    shipped trust/discard controls plus future promote controls should live
    inline, in a drawer, or in a dedicated mailbox route. Also review the
    Settings trusted-sender panel density and placement in Organisation settings.
+2. Remba should review the trusted-row Review email / Review promotion action
+   placement/copy, the source-email provenance card inside the promote panel,
+   and desktop/mobile density before expanding beyond the existing local draft
+   promote kinds.

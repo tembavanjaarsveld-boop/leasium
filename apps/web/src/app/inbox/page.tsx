@@ -30,12 +30,14 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  type CommsInboundMessageDetailRecord,
   type CommsInboundMessageRecord,
   type InboxPromoteKind,
   type InboxTenantContactField,
   type InboxTenantContactPreviewRecord,
   type InboxTriageKind,
   type InboxTriageRecord,
+  type InboxTriageTargetKind,
   discardCommsInboundMessage,
   documentDownloadUrlFromPath,
   getCommsInboundMessage,
@@ -80,6 +82,14 @@ const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
   vendor_or_contractor: "Add to contractor directory",
 };
 
+const PROMOTE_TARGET_KIND: Record<InboxPromoteKind, InboxTriageTargetKind> = {
+  maintenance_request: "maintenance_work_order",
+  payment_or_arrears: "arrears_case",
+  lease_change: "smart_intake",
+  tenant_contact: "tenant",
+  vendor_or_contractor: "none",
+};
+
 function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
   return (
     kind === "maintenance_request" ||
@@ -88,6 +98,10 @@ function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
     kind === "tenant_contact" ||
     kind === "vendor_or_contractor"
   );
+}
+
+function isInboxTriageKind(value: string | null): value is InboxTriageKind {
+  return value !== null && value in KIND_LABEL;
 }
 
 const KIND_TONE: Record<InboxTriageKind, StatusTone> = {
@@ -116,6 +130,16 @@ Sarah (tenant, Acme Bakery)
 `;
 
 const MAILBOX_ADDRESS = "ai@leasium.ai";
+
+type MailboxReviewSource = {
+  messageId: string;
+  subject: string;
+  sender: string;
+  originalSender: string | null;
+  rawEmailDownloadPath: string | null;
+  classificationConfidence: number | null;
+  classificationSummary: string | null;
+};
 
 function confidenceLabel(confidence: number): string {
   if (confidence >= 0.8) return "High confidence";
@@ -183,12 +207,66 @@ function mailboxAuthPassed(message: CommsInboundMessageRecord): boolean {
   );
 }
 
+function mailboxReviewSource(
+  message: CommsInboundMessageDetailRecord,
+): MailboxReviewSource {
+  return {
+    messageId: message.id,
+    subject: mailboxSubject(message),
+    sender: mailboxSender(message),
+    originalSender: message.original_sender,
+    rawEmailDownloadPath: message.raw_email_download_path,
+    classificationConfidence: message.classification_confidence,
+    classificationSummary: message.classification_summary,
+  };
+}
+
+function mailboxStoredTriageResult(
+  message: CommsInboundMessageDetailRecord,
+): InboxTriageRecord | null {
+  if (!isInboxTriageKind(message.classification_kind)) return null;
+  const confidence = Math.max(
+    0,
+    Math.min(1, message.classification_confidence ?? 0),
+  );
+  const summary =
+    message.classification_summary?.trim() ||
+    `${KIND_LABEL[message.classification_kind]} from AI mailbox.`;
+  return {
+    kind: message.classification_kind,
+    confidence,
+    summary,
+    suggested_action: isPromotable(message.classification_kind)
+      ? "Review the stored mailbox classification, choose any target records, then promote a local draft."
+      : "Review the stored mailbox classification and handle from the appropriate surface.",
+    suggested_target_kind: isPromotable(message.classification_kind)
+      ? PROMOTE_TARGET_KIND[message.classification_kind]
+      : "none",
+    suggested_target_href: null,
+    suggested_property: null,
+    suggested_tenant: null,
+    suggested_lease: null,
+    suggested_contractor: null,
+    key_facts: [
+      { label: "Source", value: "AI mailbox" },
+      { label: "Sender", value: mailboxSender(message) },
+    ],
+    warnings: [],
+    guardrails: [
+      "Stored AI mailbox classification is review-first. It creates only a local draft after operator approval and never sends email, syncs Xero, reconciles payments, or applies Smart Intake automatically.",
+    ],
+    response_id: null,
+  };
+}
+
 function InboxWorkspace() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [body, setBody] = useState("");
   const [result, setResult] = useState<InboxTriageRecord | null>(null);
+  const [mailboxReview, setMailboxReview] =
+    useState<MailboxReviewSource | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [promotePropertyId, setPromotePropertyId] = useState("");
   const [promoteTenantId, setPromoteTenantId] = useState("");
@@ -401,12 +479,14 @@ function InboxWorkspace() {
     event.preventDefault();
     const trimmed = body.trim();
     if (!trimmed || !scopedEntityId) return;
+    setMailboxReview(null);
     triageMutation.mutate({ entity_id: scopedEntityId, body: trimmed });
   }
 
   function handleReset() {
     setBody("");
     setResult(null);
+    setMailboxReview(null);
     setError(null);
     setPromoteError(null);
     setPromotePropertyId("");
@@ -420,6 +500,7 @@ function InboxWorkspace() {
   function handleSample() {
     setBody(SAMPLE_BODY);
     setResult(null);
+    setMailboxReview(null);
     setError(null);
     setPromoteError(null);
     setTenantContactPreview(null);
@@ -454,6 +535,7 @@ function InboxWorkspace() {
       kind: result.kind,
       summary: result.summary,
       body: body.trim(),
+      inbound_message_id: mailboxReview?.messageId,
       property_id: promotePropertyId || null,
       tenant_id: promoteTenantId || null,
       lease_id: promoteLeaseId || null,
@@ -479,6 +561,38 @@ function InboxWorkspace() {
   function handleDiscardMailboxMessage() {
     if (!selectedMailboxMessage) return;
     discardMailboxMutation.mutate(selectedMailboxMessage.id);
+  }
+
+  function handleReviewMailboxMessage() {
+    if (!selectedMailboxMessage || !scopedEntityId) return;
+    const reviewBody = (
+      selectedMailboxMessage.body_text ||
+      selectedMailboxMessage.body_preview ||
+      ""
+    ).trim();
+    if (!reviewBody) {
+      setMailboxActionError("No stored message body is available to review.");
+      return;
+    }
+    const storedResult = mailboxStoredTriageResult(selectedMailboxMessage);
+    if (!storedResult) {
+      setMailboxActionError(
+        "No stored mailbox classification is available to review.",
+      );
+      return;
+    }
+    setBody(reviewBody);
+    setResult(storedResult);
+    setPromoteError(null);
+    setPromotePropertyId("");
+    setPromoteTenantId(selectedMailboxMessage.attributed_tenant_id ?? "");
+    setPromoteLeaseId("");
+    setPromoteContractorId("");
+    setTenantContactPreview(null);
+    setSelectedTenantContactFields({});
+    setMailboxActionMessage(null);
+    setMailboxActionError(null);
+    setMailboxReview(mailboxReviewSource(selectedMailboxMessage));
   }
 
   const showPromote = result !== null && isPromotable(result.kind);
@@ -686,6 +800,15 @@ function InboxWorkspace() {
                           </span>
                         ) : null}
                       </div>
+                      <div className="flex justify-end">
+                        <SecondaryButton
+                          type="button"
+                          onClick={() => setSelectedMailboxMessageId(message.id)}
+                        >
+                          <FileText size={14} />
+                          Review email
+                        </SecondaryButton>
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -872,6 +995,22 @@ function InboxWorkspace() {
                         </SecondaryButton>
                       </div>
                     ) : null}
+                    {selectedMailboxMessage.trust_state === "trusted" ? (
+                      <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/20 bg-primary-soft/30 p-3">
+                        <Button
+                          type="button"
+                          onClick={handleReviewMailboxMessage}
+                          disabled={!scopedEntityId}
+                        >
+                          <Sparkles size={14} />
+                          Review promotion
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Opens the stored mailbox classification for review.
+                          Nothing is applied, sent, or synced.
+                        </p>
+                      </div>
+                    ) : null}
                     {mailboxActionMessage ? (
                       <div
                         role="status"
@@ -940,7 +1079,12 @@ function InboxWorkspace() {
             <Field label="Message body">
               <textarea
                 value={body}
-                onChange={(event) => setBody(event.target.value)}
+                onChange={(event) => {
+                  setBody(event.target.value);
+                  if (mailboxReview) {
+                    setMailboxReview(null);
+                  }
+                }}
                 rows={10}
                 placeholder="Paste the email or message here…"
                 disabled={triageMutation.isPending}
@@ -1040,6 +1184,66 @@ function InboxWorkspace() {
                       </p>
                     </div>
                   </div>
+
+                  {mailboxReview ? (
+                    <div
+                      className="grid gap-2 rounded-md border border-primary/25 bg-white p-3 text-xs text-muted-foreground"
+                      data-testid="mailbox-review-provenance"
+                    >
+                      <div className="font-semibold uppercase tracking-wide text-primary">
+                        Source email
+                      </div>
+                      <div className="grid gap-1 sm:grid-cols-2">
+                        <div>
+                          From:{" "}
+                          <span className="font-medium text-foreground">
+                            {mailboxReview.sender}
+                          </span>
+                        </div>
+                        <div>
+                          Subject:{" "}
+                          <span className="font-medium text-foreground">
+                            {mailboxReview.subject}
+                          </span>
+                        </div>
+                        {mailboxReview.originalSender ? (
+                          <div>
+                            Original sender:{" "}
+                            <span className="font-medium text-foreground">
+                              {mailboxReview.originalSender}
+                            </span>
+                          </div>
+                        ) : null}
+                        {mailboxReview.classificationConfidence !== null ? (
+                          <div>
+                            Stored mailbox confidence:{" "}
+                            <span className="font-medium text-foreground">
+                              {Math.round(
+                                mailboxReview.classificationConfidence * 100,
+                              )}
+                              %
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                      {mailboxReview.classificationSummary ? (
+                        <p>{mailboxReview.classificationSummary}</p>
+                      ) : null}
+                      {mailboxReview.rawEmailDownloadPath ? (
+                        <a
+                          href={documentDownloadUrlFromPath(
+                            mailboxReview.rawEmailDownloadPath,
+                          )}
+                          className="inline-flex min-h-11 w-fit items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-semibold text-primary transition hover:bg-primary/10"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <FileText size={14} />
+                          Open raw email
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     {promoteShowsContractorPicker ? (

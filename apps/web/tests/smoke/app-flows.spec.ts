@@ -1026,7 +1026,7 @@ test("AI mailbox surfaces queue and quarantine provenance", async ({
   ).toBeVisible();
   await expect(page.getByText("MAILBOX QUEUE — 1")).toBeVisible();
   await expect(
-    page.getByText("Fwd: Insurance renewal — 12 Banksia Ct"),
+    page.getByText("Fwd: Kitchen tap leak — Unit 3"),
   ).toBeVisible();
   await expect(
     page.getByText("QUARANTINE — AWAITING TRUST DECISION — 2"),
@@ -1042,7 +1042,13 @@ test("AI mailbox surfaces queue and quarantine provenance", async ({
     page.getByRole("link", { name: forbiddenMailboxActions }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "View email" }).first().click();
+  const quarantinePanel = page.locator("section").filter({
+    has: page.getByText("QUARANTINE — AWAITING TRUST DECISION — 2"),
+  });
+  await quarantinePanel
+    .getByRole("button", { name: "View email", exact: true })
+    .first()
+    .click();
 
   await expect(
     page.getByRole("heading", { name: "Council rates notice — Collins St" }),
@@ -1066,7 +1072,13 @@ test("AI mailbox trusts authenticated senders and discards failed-auth rows loca
 
   await page.goto("/inbox");
 
-  await page.getByRole("button", { name: "View email" }).first().click();
+  const quarantinePanel = page.locator("section").filter({
+    has: page.getByText("QUARANTINE — AWAITING TRUST DECISION — 2"),
+  });
+  await quarantinePanel
+    .getByRole("button", { name: "View email", exact: true })
+    .first()
+    .click();
   await expect(
     page.getByRole("heading", { name: "Council rates notice — Collins St" }),
   ).toBeVisible();
@@ -1082,7 +1094,12 @@ test("AI mailbox trusts authenticated senders and discards failed-auth rows loca
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
-  await page.getByRole("button", { name: "View email" }).click();
+  const reducedQuarantinePanel = page.locator("section").filter({
+    has: page.getByText("QUARANTINE — AWAITING TRUST DECISION — 1"),
+  });
+  await reducedQuarantinePanel
+    .getByRole("button", { name: "View email", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Urgent payment update" }),
   ).toBeVisible();
@@ -1101,6 +1118,97 @@ test("AI mailbox trusts authenticated senders and discards failed-auth rows loca
   await expect(
     page.getByText("QUARANTINE — AWAITING TRUST DECISION — 0"),
   ).toBeVisible();
+  expect(forbiddenRequests).toEqual([]);
+});
+
+test("AI mailbox hands trusted rows into reviewed promote flow with provenance", async ({
+  page,
+}) => {
+  const forbiddenRequests: string[] = [];
+  const promoteRequests: Record<string, unknown>[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const isMutation = method !== "GET" && method !== "HEAD";
+    const allowedExplicitPromote =
+      method === "POST" && path === "/api/v1/ai/triage/promote";
+    if (allowedExplicitPromote) {
+      promoteRequests.push(
+        JSON.parse(request.postData() ?? "{}") as Record<string, unknown>,
+      );
+    }
+    const forbiddenMutation =
+      isMutation &&
+      !allowedExplicitPromote &&
+      (path.startsWith("/api/v1/comms/") ||
+        path.startsWith("/api/v1/documents") ||
+        path === "/api/v1/ai/triage" ||
+        path.includes("/document-intakes/") ||
+        path.includes("/lease-intakes/") ||
+        path.includes("/tenant-contact-preview") ||
+        path.includes("/provider-dispatch") ||
+        path.includes("/provider-history") ||
+        path.includes("/xero/") ||
+        path.includes("/basiq/") ||
+        path.includes("/payments/") ||
+        path.includes("/reconciliation"));
+    const providerCall =
+      path.includes("/api/v1/sendgrid") || path.includes("/api/v1/twilio");
+    if (forbiddenMutation || providerCall) {
+      forbiddenRequests.push(`${method} ${url.toString()}`);
+    }
+  });
+
+  await page.goto("/inbox");
+
+  const trustedQueue = page.locator("section").filter({
+    has: page.getByText("MAILBOX QUEUE — 1"),
+  });
+  await trustedQueue
+    .locator("div")
+    .filter({ hasText: "Fwd: Kitchen tap leak — Unit 3" })
+    .getByRole("button", { name: "Review email" })
+    .click();
+
+  await expect(
+    page.getByRole("heading", { name: "Fwd: Kitchen tap leak — Unit 3" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open raw email" }),
+  ).toHaveAttribute(
+    "href",
+    /\/api\/v1\/documents\/raw-email-doc-trusted\/download$/,
+  );
+
+  await page.getByRole("button", { name: "Review promotion" }).click();
+
+  const promotePanel = page.getByTestId("promote-panel");
+  await expect(promotePanel).toBeVisible();
+  const provenance = promotePanel.getByTestId("mailbox-review-provenance");
+  await expect(provenance).toBeVisible();
+  await expect(
+    provenance.getByText("broker@external.example").first(),
+  ).toBeVisible();
+  await expect(
+    provenance.getByText("Fwd: Kitchen tap leak — Unit 3"),
+  ).toBeVisible();
+  await expect(provenance.getByText("91%")).toBeVisible();
+  await expect(
+    provenance.getByRole("link", { name: "Open raw email" }),
+  ).toHaveAttribute(
+    "href",
+    /\/api\/v1\/documents\/raw-email-doc-trusted\/download$/,
+  );
+  await expect(
+    promotePanel.getByText(/nothing is sent until you approve/i),
+  ).toBeVisible();
+  await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
+  await expect(page).toHaveURL(
+    /\/operations\/maintenance\/99999999-9999-9999-9999-999999999999/,
+  );
+  expect(promoteRequests).toHaveLength(1);
+  expect(promoteRequests[0].inbound_message_id).toBe("mailbox-trusted-1");
   expect(forbiddenRequests).toEqual([]);
 });
 

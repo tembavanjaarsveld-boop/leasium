@@ -157,6 +157,7 @@ class InboxPromoteRequest(BaseModel):
     kind: InboxPromoteKind
     summary: str = Field(min_length=1, max_length=400)
     body: str = Field(min_length=10, max_length=8000)
+    inbound_message_id: UUID | None = None
     property_id: UUID | None = None
     tenant_id: UUID | None = None
     lease_id: UUID | None = None

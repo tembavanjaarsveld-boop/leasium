@@ -8,6 +8,20 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-12 AI Mailbox reviewed promote handoff v1:**
+  trusted mailbox rows now expose Review email -> Review promotion on `/inbox`.
+  The review step uses the stored mailbox classification instead of re-running
+  AI triage, shows sender/subject/confidence/raw-email provenance inside the
+  existing promote panel, and calls `POST /api/v1/ai/triage/promote` only when
+  the operator clicks Promote to draft. The promote payload carries
+  `inbound_message_id`; the backend validates source/trust/entity/kind,
+  persists mailbox provenance on the local target metadata/audit, and marks
+  the mailbox row processed only after the draft succeeds. Quarantined rows are
+  refused. No acknowledgement email, tenant email, SendGrid/Twilio send,
+  Xero/Basiq, payment, reconciliation, Smart Intake apply, attachment
+  promotion, or OpenAI re-triage runs from this handoff. Pending Remba review
+  for inline action placement/copy, the provenance card, and richer promote
+  variants.
 - [~] **2026-06-12 AI Mailbox Settings trusted-senders v1:**
   Settings -> Organisation now includes an AI mailbox trusted-senders panel for
   the selected entity's organisation. Operators can list existing allowlist

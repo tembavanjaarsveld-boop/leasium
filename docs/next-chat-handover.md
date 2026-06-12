@@ -2,6 +2,50 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox reviewed promote handoff v1)
+
+Follow-up to AI Mailbox trusted-sender management. Temba asked to continue
+and use agents. Two read-only agents checked the backend/provenance shape and
+the frontend/smoke/docs shape; main thread kept the TDD path local.
+
+Shipped:
+
+- Trusted mailbox rows on `/inbox` now expose Review email → Review
+  promotion. Review promotion uses the stored mailbox classification and body
+  rather than calling `/api/v1/ai/triage` again.
+- The existing promote panel now shows a source-email provenance card when the
+  review came from AI Mailbox: sender/original sender, subject, stored mailbox
+  confidence/summary, and raw-email link.
+- `POST /api/v1/ai/triage/promote` accepts optional `inbound_message_id`.
+  The backend validates the row is an AI mailbox message, trusted, scoped to
+  the same entity, and matches the promote kind; quarantined rows are refused.
+- Successful local draft promotion stamps mailbox provenance into target
+  metadata/audit and marks the mailbox row `processed_at`. This is local draft
+  creation only: no acknowledgement email, tenant email, SendGrid/Twilio send,
+  Xero/Basiq, payments, reconciliation, Smart Intake apply, attachment
+  promotion, or OpenAI re-triage runs from the handoff.
+- Smoke fixture now covers a trusted maintenance mailbox row and asserts the
+  promote payload carries `inbound_message_id` while `/api/v1/ai/triage` stays
+  forbidden.
+
+Verification so far:
+
+- TDD red first: backend mailbox promote tests failed until provenance was
+  persisted/rejected; smoke failed until trusted-row Review email existed.
+- Focused backend green:
+  `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q -k "mailbox_message"`
+- Focused smoke green:
+  `npm run test:smoke -- --grep "trusted rows into reviewed promote"` in
+  `apps/web`.
+
+Next AI Mailbox slices:
+
+1. Richer promote/apply variants for compliance/property/task/owner-admin kinds
+   beyond the existing AI inbox promote route.
+2. Source/trust-state filters if mailbox volume grows.
+3. UX debt: run/sync the `/inbox` 1440/390 pass for trust/discard placement,
+   Review email / Review promotion copy, and the promote provenance card.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox Settings trusted-senders v1)
 
 Follow-up to AI Mailbox trust/discard. Temba asked to continue and use
