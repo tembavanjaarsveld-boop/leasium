@@ -189,7 +189,7 @@ export function EntityPicker({
       {open ? (
         <div
           onKeyDown={onPopoverKeyDown}
-          className="absolute left-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-leasiumMd border border-white/10 bg-leasium-navy-800 shadow-leasiumLg"
+          className="absolute left-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-leasiumMd border border-white/15 bg-leasium-slate-700 shadow-[0_16px_40px_rgba(0,0,0,0.55),0_2px_8px_rgba(0,0,0,0.4)]"
         >
           {showFilter ? (
             <div className="border-b border-white/10 p-1.5">
