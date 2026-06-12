@@ -623,6 +623,44 @@ class UserEntityRole(Base):
     )
 
 
+class TrustedSender(Base):
+    """Organisation allowlist for AI Mailbox Intake senders.
+
+    Operator `app_user` emails are trusted through their entity role. This
+    table covers external agent/contact addresses that an operator has decided
+    may forward into the review-first mailbox.
+    """
+
+    __tablename__ = "trusted_sender"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    organisation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
+    added_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    organisation: Mapped[Organisation] = relationship()
+    added_by_user: Mapped["AppUser | None"] = relationship()
+
+
+Index(
+    "trusted_sender_org_email_active_idx",
+    TrustedSender.organisation_id,
+    TrustedSender.email,
+    unique=True,
+    postgresql_where=TrustedSender.deleted_at.is_(None),
+    sqlite_where=TrustedSender.deleted_at.is_(None),
+)
+
+
 class InsightsSnapshot(Base):
     __tablename__ = "insights_snapshot"
 
@@ -1361,6 +1399,12 @@ class InboundMessage(Base):
     )
     channel: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="tenant_channel")
+    auth_result: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    trust_state: Mapped[str] = mapped_column(Text, nullable=False, default="trusted")
+    original_sender: Mapped[str | None] = mapped_column(Text)
     from_address: Mapped[str | None] = mapped_column(Text)
     from_name: Mapped[str | None] = mapped_column(Text)
     to_address: Mapped[str | None] = mapped_column(Text)
@@ -1419,6 +1463,14 @@ Index(
     "inbound_message_tenant_idx",
     InboundMessage.attributed_tenant_id,
     postgresql_where=InboundMessage.deleted_at.is_(None),
+)
+Index(
+    "inbound_message_entity_source_trust_idx",
+    InboundMessage.entity_id,
+    InboundMessage.source,
+    InboundMessage.trust_state,
+    postgresql_where=InboundMessage.deleted_at.is_(None),
+    sqlite_where=InboundMessage.deleted_at.is_(None),
 )
 
 

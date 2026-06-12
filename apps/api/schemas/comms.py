@@ -86,6 +86,24 @@ class CommsQueueCountsRead(BaseModel):
     generated_at: datetime
 
 
+class TrustedSenderCreate(BaseModel):
+    """Create or refresh an organisation-scoped AI mailbox trusted sender."""
+
+    email: str = Field(min_length=3, max_length=320)
+    label: str | None = Field(default=None, max_length=160)
+
+
+class TrustedSenderRead(BaseModel):
+    """Trusted sender allowlist entry for AI Mailbox Intake."""
+
+    id: UUID
+    organisation_id: UUID
+    email: str
+    label: str | None = None
+    added_by_user_id: UUID | None = None
+    added_at: datetime
+
+
 class CommsCorrespondenceEvent(BaseModel):
     """Read-only event in a tenant-linked correspondence timeline."""
 

@@ -41,6 +41,10 @@ InboxKind = Literal[
     "lease_change",
     "tenant_contact",
     "vendor_or_contractor",
+    "property_update",
+    "compliance_or_insurance",
+    "task_or_reminder",
+    "owner_or_entity_admin",
     "general",
     "spam_or_noise",
 ]

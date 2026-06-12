@@ -8,6 +8,22 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 AI Mailbox Intake foundation v1:**
+  `ai@leasium.ai` now has backend trust/quarantine foundations on the existing
+  SendGrid inbound path. A new `trusted_sender` table stores organisation
+  allowlisted external forwarders, and `InboundMessage` now records
+  `source`, SPF/DKIM `auth_result`, `trust_state`, and forwarded
+  `original_sender` provenance. The SendGrid inbound webhook keeps the old
+  tenant-channel `entity_id` route intact, but AI mailbox mail can resolve an
+  operator sender to the organisation's entity without a URL routing key. AI
+  mailbox messages only run OpenAI triage and Smart Intake attachment promotion
+  when the sender is authorised and SPF/DKIM pass; failures persist as
+  quarantined rows when an entity can be resolved and never appear in the
+  Comms reply queue. Trusted sender list/create APIs are role-gated and
+  organisation-scoped. No acknowledgement email, tenant email, SendGrid send,
+  Twilio SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, or
+  provider mutation runs from intake. UI quarantine/source filters and
+  promote/apply actions remain Figma/Remba-pending follow-ups.
 - [x] **2026-06-12 All entities invoice drafts fan-out reduction v1:**
   `/invoice-drafts` now accepts omitted `entity_id` as an organisation-wide
   read scoped to the operator's readable entities, while explicit hidden-entity
@@ -15,8 +31,8 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   the linked billing draft's entity to be readable. Billing Readiness and
   Operations `All entities` now load invoice drafts through one org-wide call,
   and Billing Readiness invoice-draft caches refresh across scoped and
-  org-wide views after existing invoice-draft-affecting actions. Payments,
-  owner disbursements, and AI Mailbox Intake stay deferred. Read-only
+  org-wide views after existing invoice-draft-affecting actions. Payments and
+  owner disbursements stay deferred. Read-only
   performance work on list loading only: no provider send, email/SMS,
   Xero/Basiq, payment, reconciliation, Smart Intake apply, billing draft
   generation, invoice draft creation, invoice dispatch, or workflow mutation
@@ -29,9 +45,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   readable. Billing Readiness and Portfolio QA `All entities` now load billing
   drafts through one org-wide call, and billing-draft list caches refresh
   across scoped and org-wide Billing Readiness/Portfolio QA views after existing
-  draft-affecting actions. Invoice drafts, payments, owner disbursements, and
-  AI Mailbox Intake stay deferred. Read-only performance work on list loading
-  only: no provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+  draft-affecting actions. Invoice drafts, payments, and owner disbursements
+  stayed deferred for this performance slice; AI Mailbox Intake foundation now
+  ships separately above. Read-only performance work on list loading only:
+  no provider send, email/SMS, Xero/Basiq, payment, reconciliation,
   Smart Intake apply, billing draft generation, invoice draft creation, invoice
   dispatch, or workflow mutation path changed by viewing the list.
 - [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
@@ -1046,6 +1063,7 @@ The 2026-05-23 [automation strategy](automation-strategy-2026-05-23.md) frames e
 **Near-term (next 1-3 sprints):**
 
 - [~] **Scheduled comms loop v1 + v2 + dispatch.** `/api/v1/comms/queue` now returns draft communications for arrears, insurance expiry, lease renewal, inbound email/SMS, compliance obligations, rent reviews, and maintenance forwarding drafts. SendGrid inbound email attachments now store as source documents and create Smart Intake review rows tied back to the inbound message/attributed tenant; when OpenAI is configured they pre-extract into review-ready Smart Intake rows, and extraction errors soft-fail without losing the stored attachment. The comms queue detail and CSV call out attachment counts routed to Smart Intake. `POST /api/v1/comms/dispatch` sends the operator-approved draft via the matching channel (SendGrid for email candidates, Twilio for `inbound_sms`; Approve click = explicit provider-mutation approval). `POST /api/v1/comms/dismiss` records the deferral. `/comms` operator page renders queue-generated freshness with a manual refresh action, a local `comms-queue-review-{date}.csv` export from already-loaded candidates, session-local remaining/settled counts that reconcile against refreshed queue candidates, filter-band progress summary, each candidate as an editable card with channel badges, edited-draft badges plus pending-safe reset-to-staged-draft action, post-action badges, due/drafted timing chips, Approve / Dismiss, provider-and-recipient dispatch receipts plus deferred-until dismiss receipts announced as statuses, post-action field locking and locked-state guidance, phone-recipient SMS handling, accessible inline approval blockers for missing recipient/subject/body, per-kind filter tabs with a visible "showing X of Y" summary for narrowing the working queue without changing global counts, and scoped keyboard review flow (`j`/`k` or arrows move focused draft rows; Enter jumps into the first editable field; typing inside fields is not intercepted). The CSV export does not call dispatch, dismiss, evidence upload, SendGrid/Twilio sends, provider-history writes, candidate settlement, queue mutation, or provider refresh paths. Pending Remba review of the queue density, keyboard affordance, severity-tier copy, and whether the CSV handoff is plain enough for daily operator review.
+- [x] **AI Mailbox Intake foundation v1.** The existing SendGrid inbound webhook now recognises `ai@leasium.ai` as an operator mailbox source. Trusted operator senders can route without `entity_id`; trusted external senders are stored in an organisation-scoped `trusted_sender` allowlist. AI mailbox rows stamp sender auth (`spf`/`dkim`), trust state, source, and forwarded original-sender provenance. Unknown or auth-failed messages are quarantined before OpenAI triage or attachment promotion and are not surfaced as Comms reply drafts. A public unknown sender without an entity or trusted/org match cannot be made visible to the right organisation yet, so v1 returns 202 without processing rather than guessing. `/inbox` quarantine UI, Settings trusted-sender UI, raw-email document storage, and review-first promote/apply actions remain the next design-approved slices.
 - [x] **DocuSign provider helper v1.** `stewart/integrations/docusign.py` + four `DOCUSIGN_*` settings now soft-skip with `not_configured` until credentials are set, then use JWT grant, envelope create, and completed combined-PDF download for the attached lease document. Setup steps in `docs/deployment.md`; remaining work is live provider-console verification.
 - [x] **Evidence attach on `/comms` compliance candidates.** Compliance obligation cards now have a dedicated Attach evidence panel. Primary CTA: prominent "Upload via Smart Intake" Link to `/intake` (recommended). Secondary muted button: "Or attach a file manually" — opens a hidden file picker, uploads via the existing `uploadDocument` endpoint with `category=other` attributed to entity + tenant + source obligation. Manual uploads now back-attribute the stored document id into `obligation_metadata.evidence_document_ids[]`, append compact `evidence_history[]`, and stamp the document metadata with `source=manual_comms_evidence_upload` plus the source obligation id. Inline copy tells operators the manual fallback is linked to the compliance obligation for audit follow-up. Backend coverage proves the source document and obligation evidence history link; smoke coverage now exercises the compliance card, Smart Intake handoff, manual upload receipt, and reviewed SendGrid approval path without provider mutation when SendGrid is unconfigured.
 - [x] **In-app comms badge on the sidebar Work nav.** New `/api/v1/comms/queue/counts` lightweight endpoint + sidebar badge that shows `urgent` count in danger-red when > 0, otherwise total in muted white. AppHeader reads localStorage `leasium.entity_id`, can refresh from same-tab entity-change events, queries counts on mount with 60s staleTime, and `/comms` emits that event plus refreshes the count after queue refresh, approve, or dismiss actions. Satisfies the "compliance reminders fire as in-app notifications" intent while Comms is folded under Work in the trimmed sidebar. Backend counts coverage proves urgent/by-kind totals, and browser smoke verifies the Work nav label exposes the comms queue count.

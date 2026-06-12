@@ -2,11 +2,78 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox Intake foundation v1)
+
+Temba restarted the AI Mailbox Intake product slice. Scope was deliberately
+backend/data first because `/inbox` quarantine/source filters and Settings
+trusted-sender UI are design-facing and the Figma/Remba path is still pending.
+
+Shipped foundation:
+
+- `trusted_sender` table + migration `20260612_0043`, organisation-scoped with
+  normalised email, optional label, adding operator, and soft-delete-ready
+  unique active index.
+- `InboundMessage` now has `source`, `auth_result`, `trust_state`, and
+  `original_sender`; existing tenant-channel rows default to
+  `tenant_channel` / `trusted`.
+- `POST /api/v1/comms/webhooks/sendgrid-inbound` still supports the old
+  per-entity tenant route unchanged, and now recognises `ai@leasium.ai`.
+- AI mailbox mail can omit `entity_id` when the sender resolves to exactly one
+  safe organisation/entity via an active operator account or a trusted sender.
+- AI mailbox messages only run OpenAI triage and Smart Intake attachment
+  promotion when the sender is authorised, `SENDGRID_INBOUND_SECRET` is
+  configured/validated, and SPF/DKIM both pass. The DKIM parser accepts
+  SendGrid's domain-result form such as `{@example.com : pass}`. Untrusted,
+  auth-failed, or missing-secret mail is quarantined when an entity is known
+  and skipped from the Comms reply queue. If no safe organisation can be
+  inferred, the webhook returns 202 without processing so SendGrid does not
+  retry spam.
+- New `GET/POST /api/v1/comms/trusted-senders` APIs are role-gated and
+  organisation-scoped.
+- Inbox triage accepts the new operator-mailbox kinds:
+  `property_update`, `compliance_or_insurance`, `task_or_reminder`, and
+  `owner_or_entity_admin`.
+
+Guardrail stance: no acknowledgement reply, no SendGrid/Twilio send, no tenant
+email, no Xero/Basiq/payment/reconciliation write, no Smart Intake apply, and
+no provider mutation from intake. Quarantined mail does not call OpenAI or
+promote attachments.
+
+Docs updated: `docs/ai-mailbox-intake-design.md`,
+`docs/product-roadmap.md`, `docs/deployment.md`, and this handover. No
+`docs/design-governance.md` entry was added because this slice ships backend
+plumbing only; the existing Figma AI Mailbox concept frame (`82:2`) remains the
+design gate for the visible UI.
+
+Verification recorded so far:
+
+- RED test collection failed on missing `TrustedSender`, then passed after
+  implementation.
+- Code-review fixes added after reviewer feedback: realistic SendGrid DKIM
+  result parsing, AI mailbox fail-closed quarantine when
+  `SENDGRID_INBOUND_SECRET` is not configured, DKIM-fail quarantine coverage,
+  and clearer scope wording in the AI Mailbox design doc.
+- Focused AI Mailbox / trusted sender / legacy inbound tests passed **8/8**:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -k "ai_mailbox or trusted_senders or inbound_webhook_persists_and_attributes_tenant or inbound_webhook_classifies_with_ai_triage" -q`.
+- Full Comms API integration file passed **68/68**:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q`.
+- Full backend suite passed **634 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+
+Next recommended AI Mailbox slice:
+
+1. Add backend read APIs for mailbox/quarantine rows (likely org-scoped, with
+   entity filter) and raw-email provenance storage.
+2. Pull Figma frame `03 Screens / AI Mailbox Intake 82:2`, get Temba sign-off,
+   then build `/inbox` source filter + quarantine bucket + provenance display.
+3. Add review-first actions: trust sender from quarantine, discard, then
+   promote to task/work order/property note/critical date without auto-apply.
+
 ## Codex continuation - 2026-06-12 (All entities invoice drafts fan-out reduction)
 
 Sixth non-payment performance follow-up from the 2026-06-12 next-build
-instructions. Payments, owner-disbursement workflow, and AI Mailbox Intake
-remain deferred per Temba.
+instructions. Payments and owner-disbursement workflow remain deferred; AI
+Mailbox Intake was restarted in the foundation slice above.
 
 Scope stayed to `/invoice-drafts` list reads plus cache refresh for existing
 Billing Readiness invoice-draft-affecting success paths. Recon agents confirmed
@@ -314,8 +381,9 @@ workflow ordering.
 ## Codex continuation - 2026-06-12 (All entities directory fan-out reduction)
 
 Non-payment performance follow-up from the 2026-06-12 next-build instructions.
-Payments, owner-disbursement workflow, and AI Mailbox Intake remain deferred per
-Temba.
+Payments and owner-disbursement workflow remain deferred. AI Mailbox Intake was
+deferred for this older performance slice, but the foundation slice above has
+now restarted it.
 
 Scope stayed to the low-risk directory/list batch. `/properties`, `/tenants`,
 and `/contractors` now support omitted `entity_id` as an org-wide readable

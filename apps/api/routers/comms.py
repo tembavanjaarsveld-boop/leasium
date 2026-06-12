@@ -14,23 +14,26 @@ records on each call.
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.ai.inbox import INBOX_KINDS, InboxTriageError, triage_inbox
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    AppUser,
     ArrearsCase,
     ArrearsCaseStatus,
     AuditAction,
@@ -53,6 +56,8 @@ from stewart.core.models import (
     TenancyUnit,
     Tenant,
     TenantOnboarding,
+    TrustedSender,
+    UserEntityRole,
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
@@ -74,6 +79,8 @@ from apps.api.schemas.comms import (
     CommsTemplatePreviewCreate,
     CommsTemplatePreviewRead,
     CommsTenantCorrespondenceRead,
+    TrustedSenderCreate,
+    TrustedSenderRead,
 )
 from apps.api.tenant_lease_agreement import lease_agreement_signed
 from apps.api.webhook_auth import twilio_signature_valid
@@ -94,6 +101,8 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 DEFAULT_DISMISS_DAYS = 7
 DISMISS_METADATA_KEY = "comms_dismiss"
 SENDGRID_INBOUND_SECRET_DETAIL = "SendGrid inbound secret is invalid."
+AI_MAILBOX_RECIPIENTS = {"ai@leasium.ai"}
+_FORWARDED_FROM_RE = re.compile(r"(?im)^\s*From:\s*(?P<value>.+)$")
 COMMS_TEMPLATE_PREVIEW_GUARDRAILS = [
     "Template preview is review-only; it saves nothing and never sends any message.",
     "Approve & send remains the only provider-mutation action for this draft.",
@@ -1795,6 +1804,8 @@ def _inbound_email_candidates(
                 InboundMessage.deleted_at.is_(None),
                 InboundMessage.processed_at.is_(None),
                 InboundMessage.archived_at.is_(None),
+                InboundMessage.trust_state != "quarantined",
+                InboundMessage.trust_state != "discarded",
             )
             .order_by(InboundMessage.created_at.desc())
         ).all()
@@ -2000,6 +2011,107 @@ def get_comms_queue_counts(
     )
     _queue_counts_cache[entity_id] = (time.monotonic(), result)
     return result
+
+
+@router.get("/trusted-senders", response_model=list[TrustedSenderRead])
+def list_trusted_senders(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> list[TrustedSenderRead]:
+    """List organisation allowlist entries for AI Mailbox Intake.
+
+    Read-only. This does not send an email, call SendGrid, or process any
+    waiting inbound message; it only exposes the existing trust list.
+    """
+
+    assert_entity_role(session, user, entity_id, READ_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entity not found.",
+        )
+    rows = session.scalars(
+        select(TrustedSender)
+        .where(
+            TrustedSender.organisation_id == entity.organisation_id,
+            TrustedSender.deleted_at.is_(None),
+        )
+        .order_by(TrustedSender.email.asc())
+    ).all()
+    return [
+        TrustedSenderRead(
+            id=row.id,
+            organisation_id=row.organisation_id,
+            email=row.email,
+            label=row.label,
+            added_by_user_id=row.added_by_user_id,
+            added_at=row.added_at,
+        )
+        for row in rows
+    ]
+
+
+@router.post(
+    "/trusted-senders",
+    response_model=TrustedSenderRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_trusted_sender(
+    payload: TrustedSenderCreate,
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TrustedSenderRead:
+    """Allow an external sender to forward into AI Mailbox Intake.
+
+    This is review/setup only. It does not send an acknowledgement or process
+    quarantined mail; future UI actions can decide when to re-run intake.
+    """
+
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entity not found.",
+        )
+    email = _normalize_email_address(payload.email)
+    if email is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Trusted sender email is invalid.",
+        )
+    label = (payload.label or "").strip() or None
+    existing = _trusted_sender_for_org(
+        organisation_id=entity.organisation_id,
+        email=email,
+        session=session,
+    )
+    if existing is None:
+        existing = TrustedSender(
+            organisation_id=entity.organisation_id,
+            email=email,
+            label=label,
+            added_by_user_id=user.id,
+            added_at=utcnow(),
+        )
+        session.add(existing)
+    else:
+        existing.label = label
+        existing.added_by_user_id = user.id
+        existing.added_at = utcnow()
+    session.commit()
+    session.refresh(existing)
+    return TrustedSenderRead(
+        id=existing.id,
+        organisation_id=existing.organisation_id,
+        email=existing.email,
+        label=existing.label,
+        added_by_user_id=existing.added_by_user_id,
+        added_at=existing.added_at,
+    )
 
 
 def _body_preview(value: str | None, *, limit: int = 180) -> str | None:
@@ -3382,6 +3494,267 @@ def dismiss_comms_candidate(
     )
 
 
+@dataclass(frozen=True)
+class _AiMailboxRoute:
+    entity: Entity | None
+    trusted: bool
+    reason: str | None
+    metadata: dict[str, str]
+
+
+def _normalize_email_address(value: str | None) -> str | None:
+    parsed = parseaddr((value or "").strip())[1] or (value or "").strip()
+    cleaned = parsed.strip().lower()
+    if not cleaned or "@" not in cleaned:
+        return None
+    return cleaned
+
+
+def _ai_mailbox_recipient(to_address: str | None) -> bool:
+    raw = (to_address or "").strip()
+    if not raw:
+        return False
+    for part in raw.split(","):
+        cleaned = _normalize_email_address(part)
+        if cleaned in AI_MAILBOX_RECIPIENTS:
+            return True
+    return False
+
+
+def _form_text(form: Any | None, *keys: str) -> str | None:
+    if form is None:
+        return None
+    for key in keys:
+        try:
+            value = form.get(key)
+        except AttributeError:
+            value = None
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _sendgrid_inbound_auth_result(form: Any | None) -> dict[str, str]:
+    spf = _form_text(form, "SPF", "spf", "sender_ip_spf")
+    dkim = _form_text(form, "dkim", "DKIM", "dkim_result")
+    result: dict[str, str] = {}
+    if spf:
+        result["spf"] = _sendgrid_auth_status(spf)
+    if dkim:
+        result["dkim"] = _sendgrid_auth_status(dkim)
+    return result
+
+
+def _sendgrid_auth_status(value: str) -> str:
+    lowered = value.strip().lower()
+    if lowered in {"pass", "fail", "softfail", "neutral", "none"}:
+        return lowered
+    if re.search(r"(^|[\s:{;,])pass($|[\s}:;,])", lowered):
+        return "pass"
+    if re.search(r"(^|[\s:{;,])fail($|[\s}:;,])", lowered):
+        return "fail"
+    return lowered[:80]
+
+
+def _ai_mailbox_auth_passed(auth_result: dict[str, str]) -> bool:
+    return auth_result.get("spf") == "pass" and auth_result.get("dkim") == "pass"
+
+
+def _extract_forwarded_original_sender(body: str | None) -> str | None:
+    if not body:
+        return None
+    match = _FORWARDED_FROM_RE.search(body)
+    if match is None:
+        return None
+    return _normalize_email_address(match.group("value"))
+
+
+def _active_entities_for_org(
+    organisation_id: UUID,
+    session: Session,
+    *,
+    user_id: UUID | None = None,
+) -> list[Entity]:
+    statement = select(Entity).where(
+        Entity.organisation_id == organisation_id,
+        Entity.deleted_at.is_(None),
+    )
+    if user_id is not None:
+        statement = statement.join(UserEntityRole, UserEntityRole.entity_id == Entity.id)
+        statement = statement.where(
+            UserEntityRole.user_id == user_id,
+            UserEntityRole.role.in_(READ_ROLES),
+        )
+    return list(session.scalars(statement.order_by(Entity.name.asc())).all())
+
+
+def _choose_ai_mailbox_entity(
+    entities: list[Entity],
+) -> tuple[Entity | None, str | None]:
+    if len(entities) == 1:
+        return entities[0], None
+    managing = [entity for entity in entities if entity.is_managing_entity is True]
+    if len(managing) == 1:
+        return managing[0], None
+    if not entities:
+        return None, "entity_not_found"
+    return None, "entity_ambiguous"
+
+
+def _trusted_sender_for_org(
+    *,
+    organisation_id: UUID,
+    email: str,
+    session: Session,
+) -> TrustedSender | None:
+    return session.scalar(
+        select(TrustedSender).where(
+            TrustedSender.organisation_id == organisation_id,
+            TrustedSender.email == email,
+            TrustedSender.deleted_at.is_(None),
+        )
+    )
+
+
+def _resolve_ai_mailbox_route(
+    *,
+    from_address: str | None,
+    entity: Entity | None,
+    session: Session,
+) -> _AiMailboxRoute:
+    cleaned = _normalize_email_address(from_address)
+    if cleaned is None:
+        return _AiMailboxRoute(
+            entity=entity,
+            trusted=False,
+            reason="sender_missing",
+            metadata={},
+        )
+
+    if entity is not None:
+        app_user = session.scalar(
+            select(AppUser)
+            .join(UserEntityRole, UserEntityRole.user_id == AppUser.id)
+            .where(
+                func.lower(AppUser.email) == cleaned,
+                AppUser.organisation_id == entity.organisation_id,
+                AppUser.is_active.is_(True),
+                UserEntityRole.entity_id == entity.id,
+                UserEntityRole.role.in_(READ_ROLES),
+            )
+        )
+        if app_user is not None:
+            return _AiMailboxRoute(
+                entity=entity,
+                trusted=True,
+                reason=None,
+                metadata={
+                    "trusted_via": "app_user",
+                    "trusted_app_user_id": str(app_user.id),
+                },
+            )
+        trusted_sender = _trusted_sender_for_org(
+            organisation_id=entity.organisation_id,
+            email=cleaned,
+            session=session,
+        )
+        if trusted_sender is not None:
+            return _AiMailboxRoute(
+                entity=entity,
+                trusted=True,
+                reason=None,
+                metadata={
+                    "trusted_via": "trusted_sender",
+                    "trusted_sender_id": str(trusted_sender.id),
+                },
+            )
+        return _AiMailboxRoute(
+            entity=entity,
+            trusted=False,
+            reason="sender_not_trusted",
+            metadata={},
+        )
+
+    app_users = list(
+        session.scalars(
+            select(AppUser).where(
+                func.lower(AppUser.email) == cleaned,
+                AppUser.is_active.is_(True),
+            )
+        ).all()
+    )
+    for app_user in app_users:
+        candidate_entities = _active_entities_for_org(
+            app_user.organisation_id,
+            session,
+            user_id=app_user.id,
+        )
+        selected, reason = _choose_ai_mailbox_entity(candidate_entities)
+        if selected is not None:
+            return _AiMailboxRoute(
+                entity=selected,
+                trusted=True,
+                reason=None,
+                metadata={
+                    "trusted_via": "app_user",
+                    "trusted_app_user_id": str(app_user.id),
+                },
+            )
+        if reason is not None:
+            return _AiMailboxRoute(
+                entity=None,
+                trusted=False,
+                reason=reason,
+                metadata={"trusted_via": "app_user"},
+            )
+
+    trusted_senders = list(
+        session.scalars(
+            select(TrustedSender).where(
+                TrustedSender.email == cleaned,
+                TrustedSender.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    if len(trusted_senders) == 1:
+        trusted_sender = trusted_senders[0]
+        selected, reason = _choose_ai_mailbox_entity(
+            _active_entities_for_org(trusted_sender.organisation_id, session)
+        )
+        if selected is not None:
+            return _AiMailboxRoute(
+                entity=selected,
+                trusted=True,
+                reason=None,
+                metadata={
+                    "trusted_via": "trusted_sender",
+                    "trusted_sender_id": str(trusted_sender.id),
+                },
+            )
+        return _AiMailboxRoute(
+            entity=None,
+            trusted=False,
+            reason=reason,
+            metadata={"trusted_via": "trusted_sender"},
+        )
+    if len(trusted_senders) > 1:
+        return _AiMailboxRoute(
+            entity=None,
+            trusted=False,
+            reason="organisation_ambiguous",
+            metadata={"trusted_via": "trusted_sender"},
+        )
+    return _AiMailboxRoute(
+        entity=None,
+        trusted=False,
+        reason="sender_not_trusted",
+        metadata={},
+    )
+
+
 def _attribute_inbound_tenant(
     entity_id: UUID, from_address: str | None, session: Session
 ) -> Tenant | None:
@@ -3656,7 +4029,7 @@ async def _promote_sendgrid_attachments_to_intake(
 async def receive_sendgrid_inbound(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
-    entity_id: UUID,
+    entity_id: UUID | None = None,
     from_address: Annotated[str | None, Form(alias="from")] = None,
     to: str | None = Form(default=None),
     subject: str | None = Form(default=None),
@@ -3677,23 +4050,14 @@ async def receive_sendgrid_inbound(
     persisted.
     """
 
-    # Validate the entity exists before persisting anything.
-    entity = session.get(Entity, entity_id)
-    if entity is None or entity.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entity not found.",
-        )
+    settings = get_settings()
+    _verify_sendgrid_inbound_secret(request, settings)
 
-    cleaned_from = (from_address or "").strip()
+    cleaned_from = _normalize_email_address(from_address) or (from_address or "").strip()
     cleaned_to = (to or "").strip()
     cleaned_subject = (subject or "").strip() or None
     cleaned_text = (text or "").strip() or None
     cleaned_html = (html or "").strip() or None
-
-    tenant = _attribute_inbound_tenant(entity_id, cleaned_from, session)
-    settings = get_settings()
-    _verify_sendgrid_inbound_secret(request, settings)
 
     # Capture remaining form fields for later debugging without dragging
     # them into structured columns. We never log the body in audit metadata
@@ -3705,12 +4069,90 @@ async def receive_sendgrid_inbound(
             key: str(value)[:2000] for key, value in form.items()
         }
     except Exception:  # pragma: no cover - defensive against odd payloads
+        form = None
         raw_payload = {}
 
+    source = "ai_mailbox" if _ai_mailbox_recipient(cleaned_to) else "tenant_channel"
+    explicit_entity: Entity | None = None
+    if entity_id is not None:
+        explicit_entity = session.get(Entity, entity_id)
+        if explicit_entity is None or explicit_entity.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entity not found.",
+            )
+    elif source != "ai_mailbox":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="entity_id is required for tenant-channel inbound email.",
+        )
+
+    auth_result = (
+        _sendgrid_inbound_auth_result(form) if source == "ai_mailbox" else {}
+    )
+    inbound_secret_configured = bool(settings.sendgrid_inbound_secret.strip())
+    trust_state = "trusted"
+    quarantine_reason: str | None = None
+    route_metadata: dict[str, str] = {}
+    entity = explicit_entity
+    if source == "ai_mailbox":
+        route = _resolve_ai_mailbox_route(
+            from_address=cleaned_from,
+            entity=explicit_entity,
+            session=session,
+        )
+        route_metadata = route.metadata
+        entity = route.entity
+        if entity is None:
+            # There is no safe organisation to attach this public-mailbox row to.
+            # Return 202 so SendGrid does not retry, but do not run AI or create
+            # review records for an unrouteable sender.
+            return {
+                "id": None,
+                "source": source,
+                "trust_state": "quarantined",
+                "detail": route.reason or "sender_not_routable",
+                "attributed_tenant_id": None,
+                "attachment_intake_count": 0,
+            }
+        if not route.trusted:
+            trust_state = "quarantined"
+            quarantine_reason = route.reason or "sender_not_trusted"
+        elif not inbound_secret_configured:
+            trust_state = "quarantined"
+            quarantine_reason = "inbound_secret_not_configured"
+        elif not _ai_mailbox_auth_passed(auth_result):
+            trust_state = "quarantined"
+            quarantine_reason = "auth_not_passed"
+
+    assert entity is not None
+    tenant = (
+        None
+        if source == "ai_mailbox"
+        else _attribute_inbound_tenant(entity.id, cleaned_from, session)
+    )
+    original_sender = (
+        _extract_forwarded_original_sender(cleaned_text or cleaned_html)
+        if source == "ai_mailbox"
+        else None
+    )
+    inbound_metadata: dict[str, Any] = {
+        "received_via": "sendgrid_inbound_parse",
+        "source": source,
+    }
+    if route_metadata:
+        inbound_metadata.update(route_metadata)
+    if quarantine_reason is not None:
+        inbound_metadata["quarantine_reason"] = quarantine_reason
+
     message = InboundMessage(
-        entity_id=entity_id,
+        entity_id=entity.id,
         channel="email",
         provider="sendgrid",
+        source=source,
+        auth_result=auth_result,
+        trust_state=trust_state,
+        original_sender=original_sender,
         from_address=cleaned_from or None,
         to_address=cleaned_to or None,
         subject=cleaned_subject,
@@ -3718,18 +4160,20 @@ async def receive_sendgrid_inbound(
         body_html=cleaned_html,
         attributed_tenant_id=tenant.id if tenant is not None else None,
         raw_payload=raw_payload,
-        inbound_metadata={"received_via": "sendgrid_inbound_parse"},
+        inbound_metadata=inbound_metadata,
     )
     session.add(message)
     session.flush()
-    attachment_intakes = await _promote_sendgrid_attachments_to_intake(
-        form=form,
-        message=message,
-        tenant=tenant,
-        session=session,
-        max_bytes=settings.document_max_bytes,
-        settings=settings,
-    )
+    attachment_intakes: list[DocumentIntake] = []
+    if trust_state == "trusted":
+        attachment_intakes = await _promote_sendgrid_attachments_to_intake(
+            form=form,
+            message=message,
+            tenant=tenant,
+            session=session,
+            max_bytes=settings.document_max_bytes,
+            settings=settings,
+        )
     message.inbound_metadata = {
         **(message.inbound_metadata or {}),
         "attachment_intake_count": len(attachment_intakes),
@@ -3744,7 +4188,7 @@ async def receive_sendgrid_inbound(
     # audited — only kind + confidence — so the inbound classifier matches
     # the existing /ai/triage guardrail.
     classification_summary: str | None = None
-    if cleaned_text and settings.openai_api_key:
+    if trust_state == "trusted" and cleaned_text and settings.openai_api_key:
         try:
             result, _ = triage_inbox(body=cleaned_text, settings=settings)
         except InboxTriageError:
@@ -3769,7 +4213,7 @@ async def receive_sendgrid_inbound(
     audit_log(
         session,
         actor="sendgrid.inbound_parse",
-        entity_id=entity_id,
+        entity_id=entity.id,
         action="receive",
         target_table="inbound_message",
         target_id=message.id,
@@ -3778,18 +4222,25 @@ async def receive_sendgrid_inbound(
             "from_domain": cleaned_from.split("@")[-1] if "@" in cleaned_from else None,
             "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
             "classification_kind": message.classification_kind,
+            "source": source,
+            "trust_state": trust_state,
+            "quarantine_reason": quarantine_reason,
         },
         tool_output_summary=(
             f"inbound email received and classified as {message.classification_kind}"
             if message.classification_kind
+            else f"inbound email quarantined: {quarantine_reason}"
+            if trust_state == "quarantined"
             else "inbound email received"
         ),
-        outcome=AuditOutcome.success,
+        outcome=AuditOutcome.blocked if trust_state == "quarantined" else AuditOutcome.success,
         data_classification="confidential",
     )
     session.commit()
     return {
         "id": str(message.id),
+        "source": source,
+        "trust_state": trust_state,
         "attributed_tenant_id": str(tenant.id) if tenant is not None else None,
         "attachment_intake_count": len(attachment_intakes),
     }

@@ -48,6 +48,10 @@ INBOX_KINDS = [
     "lease_change",
     "tenant_contact",
     "vendor_or_contractor",
+    "property_update",
+    "compliance_or_insurance",
+    "task_or_reminder",
+    "owner_or_entity_admin",
     "general",
     "spam_or_noise",
 ]
@@ -145,7 +149,11 @@ def triage_inbox(
         "\n1. Read-only. Never instruct the operator to send a message,"
         " post an invoice, or reconcile a payment. Always route them to a"
         " reviewed Leasium workflow instead."
-        "\n2. Pick exactly one `kind` from the enum. If the message is"
+        "\n2. Pick exactly one `kind` from the enum. Tenant/vendor messages"
+        " usually use maintenance_request, payment_or_arrears, lease_change,"
+        " tenant_contact, or vendor_or_contractor. Operator-forwarded mailbox"
+        " messages may use property_update, compliance_or_insurance,"
+        " task_or_reminder, or owner_or_entity_admin. If the message is"
         " unclear, use `general` and add a low-confidence warning."
         "\n3. The `summary` is one sentence (max 220 chars) describing"
         " what the sender wants. Do not echo personal contact details"
