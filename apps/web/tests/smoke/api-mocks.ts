@@ -5644,6 +5644,134 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/comms/inbound-messages") {
+      const source = url.searchParams.get("source");
+      const trustState = url.searchParams.get("trust_state");
+      const baseMessages = [
+        {
+          id: "mailbox-trusted-1",
+          entity_id: entityId,
+          channel: "email",
+          provider: "sendgrid",
+          source: "ai_mailbox",
+          trust_state: "trusted",
+          quarantine_reason: null,
+          from_address: "temba@leasium.test",
+          to_address: "ai@leasium.ai",
+          original_sender: "broker@external.example",
+          subject: "Fwd: Insurance renewal — 12 Banksia Ct",
+          body_preview:
+            "The certificate of currency is ready for review and one compliance obligation should be checked.",
+          auth_result: { spf: "pass", dkim: "pass" },
+          classification_kind: "compliance_or_insurance",
+          classification_confidence: 0.91,
+          classification_summary:
+            "Forwarded broker note suggests one insurance obligation and one task.",
+          classification_target_kind: "smart_intake",
+          attributed_tenant_id: null,
+          attachment_intake_count: 0,
+          attachment_document_ids: [],
+          attachment_intake_ids: [],
+          created_at: "2026-06-12T01:00:00.000Z",
+        },
+        {
+          id: "mailbox-quarantine-1",
+          entity_id: entityId,
+          channel: "email",
+          provider: "sendgrid",
+          source: "ai_mailbox",
+          trust_state: "quarantined",
+          quarantine_reason: "sender_not_trusted",
+          from_address: "offers@marketing-blast.com",
+          to_address: "ai@leasium.ai",
+          original_sender: null,
+          subject: "Urgent payment update",
+          body_preview:
+            "Please change the payment account before the next rent run.",
+          auth_result: { spf: "fail", dkim: "none" },
+          classification_kind: null,
+          classification_confidence: null,
+          classification_summary: null,
+          classification_target_kind: null,
+          attributed_tenant_id: null,
+          attachment_intake_count: 0,
+          attachment_document_ids: [],
+          attachment_intake_ids: [],
+          created_at: "2026-06-12T00:45:00.000Z",
+        },
+        {
+          id: "mailbox-quarantine-2",
+          entity_id: entityId,
+          channel: "email",
+          provider: "sendgrid",
+          source: "ai_mailbox",
+          trust_state: "quarantined",
+          quarantine_reason: "auth_not_passed",
+          from_address: "unknown.agent@gmail.com",
+          to_address: "ai@leasium.ai",
+          original_sender: null,
+          subject: "Council rates notice — Collins St",
+          body_preview: "Property match uncertain. Pick property before applying.",
+          auth_result: { spf: "pass", dkim: "fail" },
+          classification_kind: null,
+          classification_confidence: null,
+          classification_summary: null,
+          classification_target_kind: null,
+          attributed_tenant_id: null,
+          attachment_intake_count: 0,
+          attachment_document_ids: [],
+          attachment_intake_ids: [],
+          created_at: "2026-06-11T23:00:00.000Z",
+        },
+      ];
+      await fulfillJson(route, {
+        messages: baseMessages.filter(
+          (message) =>
+            (!source || message.source === source) &&
+            (!trustState || message.trust_state === trustState),
+        ),
+        generated_at: "2026-06-12T01:05:00.000Z",
+      });
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/comms/inbound-messages/mailbox-quarantine-1"
+    ) {
+      await fulfillJson(route, {
+        id: "mailbox-quarantine-1",
+        entity_id: entityId,
+        channel: "email",
+        provider: "sendgrid",
+        source: "ai_mailbox",
+        trust_state: "quarantined",
+        quarantine_reason: "sender_not_trusted",
+        from_address: "offers@marketing-blast.com",
+        to_address: "ai@leasium.ai",
+        original_sender: null,
+        subject: "Urgent payment update",
+        body_preview:
+          "Please change the payment account before the next rent run.",
+        auth_result: { spf: "fail", dkim: "none" },
+        classification_kind: null,
+        classification_confidence: null,
+        classification_summary: null,
+        classification_target_kind: null,
+        attributed_tenant_id: null,
+        attachment_intake_count: 0,
+        attachment_document_ids: [],
+        attachment_intake_ids: [],
+        created_at: "2026-06-12T00:45:00.000Z",
+        body_text:
+          "Please change the payment account before the next rent run.\n\nThis sender is not trusted.",
+        body_html: null,
+        raw_email_document_id: "raw-email-doc-1",
+        raw_email_download_path: "/api/v1/documents/raw-email-doc-1/download",
+      });
+      return;
+    }
+
     if (method === "POST" && path === "/comms/dispatch") {
       const payload = request.postDataJSON() as {
         kind?: string;

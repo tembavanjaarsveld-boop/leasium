@@ -4,8 +4,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
+  Copy,
+  FileText,
   Loader2,
   Mail,
+  RefreshCw,
+  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,12 +30,16 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  type CommsInboundMessageRecord,
   type InboxPromoteKind,
   type InboxTenantContactField,
   type InboxTenantContactPreviewRecord,
   type InboxTriageKind,
   type InboxTriageRecord,
+  documentDownloadUrlFromPath,
+  getCommsInboundMessage,
   listContractors,
+  listCommsInboundMessages,
   listEntities,
   listLeasesByTenant,
   listProperties,
@@ -54,6 +62,10 @@ const KIND_LABEL: Record<InboxTriageKind, string> = {
   lease_change: "Lease change",
   tenant_contact: "Tenant contact",
   vendor_or_contractor: "Vendor / contractor",
+  property_update: "Property update",
+  compliance_or_insurance: "Compliance / insurance",
+  task_or_reminder: "Task or reminder",
+  owner_or_entity_admin: "Owner / entity admin",
   general: "General enquiry",
   spam_or_noise: "Spam or noise",
 };
@@ -82,6 +94,10 @@ const KIND_TONE: Record<InboxTriageKind, StatusTone> = {
   lease_change: "primary",
   tenant_contact: "primary",
   vendor_or_contractor: "neutral",
+  property_update: "primary",
+  compliance_or_insurance: "warning",
+  task_or_reminder: "primary",
+  owner_or_entity_admin: "neutral",
   general: "neutral",
   spam_or_noise: "neutral",
 };
@@ -97,6 +113,8 @@ Thanks,
 Sarah (tenant, Acme Bakery)
 `;
 
+const MAILBOX_ADDRESS = "ai@leasium.ai";
+
 function confidenceLabel(confidence: number): string {
   if (confidence >= 0.8) return "High confidence";
   if (confidence >= 0.5) return "Medium confidence";
@@ -107,6 +125,40 @@ function confidenceTone(confidence: number): StatusTone {
   if (confidence >= 0.8) return "success";
   if (confidence >= 0.5) return "primary";
   return "warning";
+}
+
+function mailboxSubject(message: CommsInboundMessageRecord): string {
+  return message.subject?.trim() || "(No subject)";
+}
+
+function mailboxSender(message: CommsInboundMessageRecord): string {
+  return (
+    message.original_sender?.trim() ||
+    message.from_address?.trim() ||
+    "Unknown sender"
+  );
+}
+
+function formatMailboxReason(value: string | null): string {
+  return value ? value.replaceAll("_", " ") : "No reason recorded";
+}
+
+function quarantineSummaryLabel(value: string | null): string {
+  if (value === "sender_not_trusted") return "Untrusted sender";
+  if (value === "auth_not_passed") return "Authentication failed";
+  if (value === "inbound_secret_not_configured") return "Mailbox not configured";
+  return "Quarantined";
+}
+
+function formatMailboxKind(value: string | null): string {
+  return value ? value.replaceAll("_", " ") : "Awaiting review";
+}
+
+function mailboxAuthLabel(
+  authResult: Record<string, string>,
+  key: "spf" | "dkim",
+): string {
+  return `${key.toUpperCase()} ${authResult[key] ?? "unknown"}`;
 }
 
 function InboxWorkspace() {
@@ -124,6 +176,9 @@ function InboxWorkspace() {
   const [selectedTenantContactFields, setSelectedTenantContactFields] =
     useState<Partial<Record<InboxTenantContactField, boolean>>>({});
   const [promoteError, setPromoteError] = useState<string | null>(null);
+  const [selectedMailboxMessageId, setSelectedMailboxMessageId] =
+    useState<string | null>(null);
+  const [mailboxAddressCopied, setMailboxAddressCopied] = useState(false);
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -137,6 +192,28 @@ function InboxWorkspace() {
   // needed. scopedEntityId is the safe id to feed the API.
   const allMode = isAllEntities(selectedEntityId);
   const scopedEntityId = scopeEntityId(selectedEntityId);
+
+  const mailboxQuery = useQuery({
+    queryKey: ["inbox-ai-mailbox", selectedEntityId],
+    queryFn: () =>
+      listCommsInboundMessages({
+        entity_id: scopedEntityId || undefined,
+        source: "ai_mailbox",
+        limit: 25,
+      }),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const selectedMailboxMessageQuery = useQuery({
+    queryKey: ["inbox-ai-mailbox-message", selectedMailboxMessageId],
+    queryFn: () => {
+      if (!selectedMailboxMessageId) {
+        throw new Error("Missing mailbox message id.");
+      }
+      return getCommsInboundMessage(selectedMailboxMessageId);
+    },
+    enabled: Boolean(selectedMailboxMessageId),
+  });
 
   const propertiesQuery = useQuery({
     queryKey: ["inbox-promote-properties", scopedEntityId],
@@ -190,6 +267,10 @@ function InboxWorkspace() {
     if (selectedEntityId) {
       window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
     }
+  }, [selectedEntityId]);
+
+  useEffect(() => {
+    setSelectedMailboxMessageId(null);
   }, [selectedEntityId]);
 
   const triageMutation = useMutation({
@@ -273,6 +354,16 @@ function InboxWorkspace() {
     setSelectedTenantContactFields({});
   }
 
+  async function handleCopyMailboxAddress() {
+    try {
+      await navigator.clipboard.writeText(MAILBOX_ADDRESS);
+      setMailboxAddressCopied(true);
+      window.setTimeout(() => setMailboxAddressCopied(false), 1600);
+    } catch {
+      setMailboxAddressCopied(false);
+    }
+  }
+
   function handlePromote() {
     if (!result || !scopedEntityId) return;
     if (!isPromotable(result.kind)) return;
@@ -338,6 +429,18 @@ function InboxWorkspace() {
     return PROMOTE_KIND_LABEL[result.kind];
   }, [result, promoteContractorId]);
 
+  const mailboxMessages = mailboxQuery.data?.messages ?? [];
+  const trustedMailboxMessages = mailboxMessages.filter(
+    (message) => message.trust_state === "trusted",
+  );
+  const quarantinedMailboxMessages = mailboxMessages.filter(
+    (message) => message.trust_state === "quarantined",
+  );
+  const selectedMailboxMessage = selectedMailboxMessageQuery.data ?? null;
+  const mailboxStatusText = mailboxQuery.isLoading
+    ? "Loading mailbox"
+    : `${trustedMailboxMessages.length} ready · ${quarantinedMailboxMessages.length} quarantined`;
+
   const submitDisabled =
     !scopedEntityId || !body.trim() || triageMutation.isPending;
 
@@ -374,6 +477,307 @@ function InboxWorkspace() {
                 AI will never act on a message without you.
               </p>
             </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 rounded-2xl border border-primary/20 bg-white px-5 py-4 shadow-leasiumXs">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="grid gap-1">
+              <div className="flex items-center gap-2">
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-primary-soft text-primary">
+                  <ShieldCheck size={17} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold">AI Mailbox</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Forward an email to ai@leasium.ai. Review what Leasium
+                    found. Apply only what you approve.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-primary-soft/30 p-4">
+                <p className="text-sm font-semibold text-foreground">
+                  Forward anything — agent updates, notices, quotes, renewals
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Trusted senders only. Leasium reads the email, suggests where
+                  details and tasks belong, and waits for your approval.
+                </p>
+              </div>
+            </div>
+            <div className="grid min-w-[220px] justify-items-start gap-2 sm:justify-items-end">
+              <Button type="button" onClick={handleCopyMailboxAddress}>
+                <Copy size={14} />
+                {mailboxAddressCopied ? "Copied" : "Copy address"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {MAILBOX_ADDRESS} · {mailboxStatusText}
+              </p>
+            </div>
+          </div>
+
+          {mailboxQuery.isError ? (
+            <div
+              role="alert"
+              className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+            >
+              Mailbox unavailable: {friendlyError(mailboxQuery.error)}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SectionPanel
+              title={`MAILBOX QUEUE — ${trustedMailboxMessages.length}`}
+              description="Trusted mailbox rows that are ready for operator review."
+              icon={<Mail size={17} className="text-primary" />}
+              actions={
+                <SecondaryButton
+                  type="button"
+                  onClick={() => mailboxQuery.refetch()}
+                  disabled={mailboxQuery.isFetching}
+                >
+                  {mailboxQuery.isFetching ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={14} />
+                  )}
+                  Refresh
+                </SecondaryButton>
+              }
+            >
+              <div className="grid gap-2 p-4">
+                {mailboxQuery.isError ? (
+                  <EmptyState
+                    icon={<Mail size={18} />}
+                    title="Mailbox unavailable."
+                    description="Refresh the mailbox after the API is reachable again."
+                  />
+                ) : trustedMailboxMessages.length ? (
+                  trustedMailboxMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className="grid gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">
+                            {mailboxSubject(message)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {mailboxSender(message)}
+                          </div>
+                        </div>
+                        <StatusBadge tone="success">Trusted</StatusBadge>
+                      </div>
+                      {message.classification_summary ? (
+                        <p className="text-xs text-muted-foreground">
+                          {message.classification_summary}
+                        </p>
+                      ) : message.body_preview ? (
+                        <p className="text-xs text-muted-foreground">
+                          {message.body_preview}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                        <span>{formatMailboxKind(message.classification_kind)}</span>
+                        {message.classification_confidence !== null ? (
+                          <span>
+                            ·{" "}
+                            {Math.round(
+                              message.classification_confidence * 100,
+                            )}
+                            %
+                          </span>
+                        ) : null}
+                        {message.attachment_intake_count ? (
+                          <span>
+                            · {message.attachment_intake_count} attachment
+                            {message.attachment_intake_count === 1 ? "" : "s"}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={<Mail size={18} />}
+                    title={
+                      mailboxQuery.isLoading
+                        ? "Checking mailbox."
+                        : "No trusted mailbox rows."
+                    }
+                    description="Forwarded emails from trusted senders will appear here after Leasium has stored the raw email provenance."
+                  />
+                )}
+              </div>
+            </SectionPanel>
+
+            <SectionPanel
+              title={`QUARANTINE — AWAITING TRUST DECISION — ${quarantinedMailboxMessages.length}`}
+              description="Blocked rows keep provenance visible without trusting the sender."
+              icon={<ShieldCheck size={17} className="text-warning" />}
+            >
+              <div className="grid gap-2 p-4">
+                {mailboxQuery.isError ? (
+                  <EmptyState
+                    icon={<ShieldCheck size={18} />}
+                    title="Quarantine unavailable."
+                    description="Refresh the mailbox after the API is reachable again."
+                  />
+                ) : quarantinedMailboxMessages.length ? (
+                  quarantinedMailboxMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">
+                            {mailboxSubject(message)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {mailboxSender(message)}
+                          </div>
+                        </div>
+                        <StatusBadge tone="warning">Quarantined</StatusBadge>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                          <span>
+                            {quarantineSummaryLabel(
+                              message.quarantine_reason,
+                            )}
+                          </span>
+                          <span>
+                            · Auth {message.auth_result.spf ?? "unknown"} /{" "}
+                            {message.auth_result.dkim ?? "unknown"}
+                          </span>
+                        </div>
+                        <SecondaryButton
+                          type="button"
+                          onClick={() => setSelectedMailboxMessageId(message.id)}
+                        >
+                          <FileText size={14} />
+                          View email
+                        </SecondaryButton>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={<ShieldCheck size={18} />}
+                    title={
+                      mailboxQuery.isLoading
+                        ? "Checking quarantine."
+                        : "No quarantined mailbox rows."
+                    }
+                    description="Untrusted senders and failed authentication stay here until a future trust decision flow."
+                  />
+                )}
+              </div>
+            </SectionPanel>
+          </div>
+
+          {selectedMailboxMessageId ? (
+            <SectionPanel
+              title={
+                selectedMailboxMessage
+                  ? mailboxSubject(selectedMailboxMessage)
+                  : "Loading email"
+              }
+              description="Raw message detail is read-only in this slice."
+              icon={<FileText size={17} className="text-primary" />}
+              actions={
+                <SecondaryButton
+                  type="button"
+                  onClick={() => setSelectedMailboxMessageId(null)}
+                >
+                  Close
+                </SecondaryButton>
+              }
+            >
+              <div className="grid gap-3 p-4">
+                {selectedMailboxMessageQuery.isLoading ? (
+                  <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 size={14} className="animate-spin" />
+                    Loading email provenance
+                  </div>
+                ) : selectedMailboxMessageQuery.isError ? (
+                  <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+                    {friendlyError(selectedMailboxMessageQuery.error)}
+                  </div>
+                ) : selectedMailboxMessage ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge tone="warning">
+                        {formatMailboxReason(
+                          selectedMailboxMessage.quarantine_reason,
+                        )}
+                      </StatusBadge>
+                      <StatusBadge tone="neutral">
+                        {mailboxAuthLabel(
+                          selectedMailboxMessage.auth_result,
+                          "spf",
+                        )}
+                      </StatusBadge>
+                      <StatusBadge tone="neutral">
+                        {mailboxAuthLabel(
+                          selectedMailboxMessage.auth_result,
+                          "dkim",
+                        )}
+                      </StatusBadge>
+                    </div>
+                    <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                      <div>
+                        From:{" "}
+                        <span className="font-medium text-foreground">
+                          {selectedMailboxMessage.from_address ??
+                            "Unknown sender"}
+                        </span>
+                      </div>
+                      <div>
+                        To:{" "}
+                        <span className="font-medium text-foreground">
+                          {selectedMailboxMessage.to_address ?? MAILBOX_ADDRESS}
+                        </span>
+                      </div>
+                      {selectedMailboxMessage.original_sender ? (
+                        <div>
+                          Original sender:{" "}
+                          <span className="font-medium text-foreground">
+                            {selectedMailboxMessage.original_sender}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="whitespace-pre-wrap rounded-md border border-border bg-white p-3 text-sm text-foreground">
+                      {selectedMailboxMessage.body_text ||
+                        selectedMailboxMessage.body_preview ||
+                        "No body text was stored for this message."}
+                    </div>
+                    {selectedMailboxMessage.raw_email_download_path ? (
+                      <a
+                        href={documentDownloadUrlFromPath(
+                          selectedMailboxMessage.raw_email_download_path,
+                        )}
+                        className="inline-flex min-h-11 w-fit items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-semibold text-primary transition hover:bg-primary/10"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <FileText size={14} />
+                        Open raw email
+                      </a>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            </SectionPanel>
+          ) : null}
+
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary-soft/30 px-3 py-1 text-xs font-semibold text-primary">
+            <ShieldCheck size={13} />
+            Email intake is review-first — senders verified, nothing applies
+            without you.
           </div>
         </section>
 

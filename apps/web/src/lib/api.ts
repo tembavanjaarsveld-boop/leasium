@@ -3608,6 +3608,10 @@ export type InboxTriageKind =
   | "lease_change"
   | "tenant_contact"
   | "vendor_or_contractor"
+  | "property_update"
+  | "compliance_or_insurance"
+  | "task_or_reminder"
+  | "owner_or_entity_admin"
   | "general"
   | "spam_or_noise";
 
@@ -3655,6 +3659,70 @@ export function triageInboxMessage(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export type CommsInboundMessageSource = "tenant_channel" | "ai_mailbox";
+
+export type CommsInboundTrustState = "trusted" | "quarantined" | "discarded";
+
+export type CommsInboundMessageRecord = {
+  id: string;
+  entity_id: string;
+  channel: string;
+  provider: string | null;
+  source: CommsInboundMessageSource;
+  trust_state: CommsInboundTrustState;
+  quarantine_reason: string | null;
+  from_address: string | null;
+  to_address: string | null;
+  original_sender: string | null;
+  subject: string | null;
+  body_preview: string | null;
+  auth_result: Record<string, string>;
+  classification_kind: string | null;
+  classification_confidence: number | null;
+  classification_summary: string | null;
+  classification_target_kind: string | null;
+  attributed_tenant_id: string | null;
+  attachment_intake_count: number;
+  attachment_document_ids: string[];
+  attachment_intake_ids: string[];
+  created_at: string;
+};
+
+export type CommsInboundMessagesRecord = {
+  messages: CommsInboundMessageRecord[];
+  generated_at: string;
+};
+
+export type CommsInboundMessageDetailRecord = CommsInboundMessageRecord & {
+  body_text: string | null;
+  body_html: string | null;
+  raw_email_document_id: string | null;
+  raw_email_download_path: string | null;
+};
+
+export function listCommsInboundMessages(params: {
+  entity_id?: string;
+  source?: CommsInboundMessageSource;
+  trust_state?: CommsInboundTrustState;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params.entity_id) search.set("entity_id", params.entity_id);
+  if (params.source) search.set("source", params.source);
+  if (params.trust_state) search.set("trust_state", params.trust_state);
+  if (params.limit !== undefined) search.set("limit", String(params.limit));
+  const query = search.toString();
+  return request<CommsInboundMessagesRecord>(
+    `/comms/inbound-messages${query ? `?${query}` : ""}`,
+  );
+}
+
+export function getCommsInboundMessage(messageId: string) {
+  return request<CommsInboundMessageDetailRecord>(
+    `/comms/inbound-messages/${messageId}`,
+  );
 }
 
 export type InboxPromoteKind =
@@ -4993,6 +5061,15 @@ export function uploadDocument(payload: {
 
 export function documentDownloadUrl(documentId: string) {
   return `${API_BASE}/documents/${documentId}/download`;
+}
+
+export function documentDownloadUrlFromPath(path: string) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return path.startsWith("/api/v1")
+    ? `${API_ROOT}${path}`
+    : `${API_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 export async function downloadDocumentBlob(documentId: string) {

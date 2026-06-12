@@ -1,9 +1,12 @@
 # AI Mailbox Intake — ai@leasium.ai
 
-Status: Backend foundation/read APIs started · UI/promotion flow pending Temba + Remba review · 2026-06-12
+Status: Backend foundation/read APIs + read-only `/inbox` UI foundation
+shipped · trust/discard/settings/promote flows pending Remba review ·
+2026-06-12
 Figma: concept frame exists in "Leasium — Design Source of Truth"
-(PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; production UI
-implementation still requires Temba sign-off in Figma first.
+(PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
+read-only UI implemented from this frame, with action variants still requiring
+Remba/Temba review before code.
 
 ## Problem
 
@@ -38,6 +41,10 @@ place, with the operator approving the result.
   linked raw-email `StoredDocument` transcript for evidence, and read-only
   `GET /api/v1/comms/inbound-messages` endpoints expose role-scoped list/detail
   projections for mailbox review without returning raw provider payloads.
+- 2026-06-12 UI foundation follow-up: `/inbox` now has a read-only AI Mailbox
+  panel with copy address, trusted queue, quarantine bucket, selected-message
+  provenance detail, auth result, body text, and raw-email link. It deliberately
+  omits trust/discard/promote actions until those flows are reviewed.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -133,25 +140,29 @@ Decision for foundation v1: (a) no acknowledgement reply.
 
 ## UI
 
-- `/inbox` gains: source filter (Tenant / AI mailbox), trust state chips,
-  quarantine bucket, provenance disclosure (forwarder, original sender,
-  auth result, raw email link), and the new promote actions.
-- Settings → Organisation: Trusted senders panel.
-- Figma first: add "AI Mailbox Intake" frame(s) to 03 Screens (desktop
-  1440×900 + mobile 390×844) using Horizon shell/components; Temba sign-off
-  in Figma before code (design-governance §Figma-First).
+- Shipped on `/inbox`: read-only AI Mailbox panel with copy-address affordance,
+  trusted mailbox queue, quarantine bucket, provenance disclosure for selected
+  quarantined rows (forwarder/original sender where available, SPF/DKIM result,
+  body text, raw email link), and a review-first guardrail note.
+- Still pending: source/trust-state filters if the queue grows, Settings →
+  Organisation trusted-senders panel, trust/discard actions, and reviewed
+  promote actions.
+- Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
+  82:2` for trust/discard/promote variants, then implement after Remba/Temba
+  sign-off (design-governance §Figma-First).
 
 ## Foundation v1 scope cut
 
 In: ai@leasium.ai routing, sender trust + quarantine, sender-auth metadata,
 forwarded original-sender provenance, body triage with operator kinds,
 trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
-role-scoped read APIs, and trusted-senders API.
+role-scoped read APIs, trusted-senders API, and read-only `/inbox` queue +
+quarantine provenance UI.
 
-Out (next slices): `/inbox` quarantine UI, Settings trusted-sender panel,
-promote/apply actions, auto-ack replies, reply-by-email threads,
-plus-addressing hints, agent-facing confirmations, cross-org agent senders,
-auto-apply of any kind.
+Out (next slices): Settings trusted-sender panel, trust/discard decisions,
+promote/apply actions, auto-ack replies, reply-by-email threads, plus-addressing
+hints, agent-facing confirmations, cross-org agent senders, auto-apply of any
+kind.
 
 ## Test plan
 
@@ -160,8 +171,9 @@ auto-apply of any kind.
   extraction, raw-email evidence document linking, list/detail read APIs with
   entity scoping, trusted-senders CRUD + auth, promote kinds. Mock OpenAI and
   SendGrid throughout.
-- Smoke: inbox source filter, quarantine row, trust-sender action, promote
-  flow fixture.
+- Smoke: shipped read-only inbox queue + quarantine provenance; future source
+  filter, trust-sender action, and promote flow fixtures when those actions
+  land.
 
 ## Open decisions for Temba
 

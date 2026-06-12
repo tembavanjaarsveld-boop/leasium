@@ -28,15 +28,24 @@ function watchForbiddenCommsReadOnlyRequests(page: Page) {
   page.on("request", (request) => {
     const url = new URL(request.url());
     const path = url.pathname;
+    const method = request.method();
+    const isMutation = method !== "GET" && method !== "HEAD";
     const mutatesLocalComms =
-      request.method() !== "GET" &&
+      isMutation &&
       (path.startsWith("/api/v1/comms/") ||
         path.startsWith("/api/v1/documents") ||
+        path === "/api/v1/ai/triage/promote" ||
+        path.includes("/tenant-contact-preview") ||
+        path.includes("/contact-change-requests/") ||
+        path.includes("/document-intakes/") ||
+        path.includes("/lease-intakes/") ||
         path.includes("/provider-history") ||
         path.includes("/provider-dispatch"));
     const callsProviders =
       path.includes("/api/v1/sendgrid") ||
       path.includes("/api/v1/twilio") ||
+      path.includes("/api/v1/xero") ||
+      path.includes("/api/v1/basiq") ||
       path.includes("/provider-refresh");
     if (mutatesLocalComms || callsProviders) {
       requests.push(`${request.method()} ${url.toString()}`);
@@ -993,6 +1002,54 @@ test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   const handoffLink = page.getByRole("link", { name: /Take it from here/ });
   await expect(handoffLink).toBeVisible();
   await expectTouchTarget(handoffLink);
+});
+
+test("AI mailbox surfaces read-only queue and quarantine provenance", async ({
+  page,
+}) => {
+  const forbiddenRequests = watchForbiddenCommsReadOnlyRequests(page);
+
+  await page.goto("/inbox");
+
+  await expect(page.getByRole("heading", { name: "AI Mailbox" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Forward an email to ai@leasium.ai. Review what Leasium found. Apply only what you approve.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("MAILBOX QUEUE — 1")).toBeVisible();
+  await expect(
+    page.getByText("Fwd: Insurance renewal — 12 Banksia Ct"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("QUARANTINE — AWAITING TRUST DECISION — 2"),
+  ).toBeVisible();
+  await expect(page.getByText("offers@marketing-blast.com")).toBeVisible();
+  await expect(page.getByText("unknown.agent@gmail.com")).toBeVisible();
+  const forbiddenMailboxActions =
+    /Trust sender|Discard|Promote|Apply|Approve & send|Send email|Run Smart Intake/;
+  await expect(
+    page.getByRole("button", { name: forbiddenMailboxActions }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: forbiddenMailboxActions }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "View email" }).first().click();
+
+  await expect(
+    page.getByRole("heading", { name: "Urgent payment update" }),
+  ).toBeVisible();
+  await expect(page.getByText("sender not trusted")).toBeVisible();
+  await expect(page.getByText("SPF fail")).toBeVisible();
+  await expect(page.getByText("DKIM none")).toBeVisible();
+  await expect(
+    page.getByText("Please change the payment account before the next rent run."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open raw email" }),
+  ).toHaveAttribute("href", /\/api\/v1\/documents\/raw-email-doc-1\/download$/);
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("AI inbox promotes a classified message into a maintenance draft", async ({

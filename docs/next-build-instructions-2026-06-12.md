@@ -5,8 +5,8 @@ repo on 2026-06-12 (three parallel read-only recon agents). Two of Codex's
 five claims needed correction; tickets below reflect actual repo state.
 
 These instructions assume the CLAUDE.md baseline: review-first provider
-guardrail (§2.1), Remba-pending for design-facing changes (§2.2), test
-discipline (§2.8), and agent-first execution (§1.5).
+guardrail (§2.1), the in-loop UX gate for design-facing changes (§2.2),
+test discipline (§2.8), and agent-first execution (§1.5).
 
 ---
 
@@ -101,7 +101,7 @@ authenticated the same way as existing SendGrid/Twilio webhooks.
 **Tests:** adapter unit tests with mocked provider; integration tests for
 intent creation, webhook receipt idempotency, and the 503 unconfigured path;
 tenant-portal smoke for the Pay now surface (mocked API). Tenant portal UI is
-Remba-pending → design-governance entry.
+design-facing → in-loop UX gate + UX Pass Log entry (design-governance.md).
 
 ---
 
@@ -151,25 +151,30 @@ then reuse the Ticket 2 payment-rail adapter rather than a second rail.
 
 ---
 
-## Ticket 5 [parked] — AI Mailbox Intake
+## Ticket 5 [partially shipped] — AI Mailbox Intake
 
-**Verified state:** design only (`docs/ai-mailbox-intake-design.md`, currently
-untracked — commit it if keeping). No `source`/trust fields on
-`InboundMessage`, no trusted-sender table, no quarantine, no operator-sender
-routing in the SendGrid inbound webhook.
+**Verified state:** Temba explicitly revived this slice on 2026-06-12.
+Backend foundations are shipped: `trusted_sender`, `InboundMessage.source`,
+`auth_result`, `trust_state`, `original_sender`, ai@ mailbox routing/auth,
+trusted-sender APIs, quarantine-before-AI, raw-email evidence storage, and
+role-scoped read APIs. `/inbox` now has a read-only AI Mailbox panel with copy
+address, trusted queue, quarantine bucket, selected-message provenance, auth
+detail, and raw-email link. The visible UI is Remba-pending.
 
-**Instruction:** stays parked per the handover note unless Temba explicitly
-brings it back. If revived: the design doc is the spec; build order is
-migration (trusted_sender + InboundMessage columns) → webhook routing/auth →
-triage kinds → /inbox quarantine UI; review-first promote actions only.
+**Instruction:** next work should start from the shipped read-only state, not
+from the old migration plan. Remaining slices are Settings trusted-sender
+management, review-first trust/discard actions, and reviewed promote/apply
+actions. Do not add acknowledgement replies, provider sends, Smart Intake
+apply, tenant email, Xero/Basiq, payment, or reconciliation mutation without
+explicit operator approval.
 
 ---
 
 ## Suggested order
 
-1 (comms templates) → 2 step 1 (payments decision brief, can run as research
-agents in parallel with Ticket 1) → 2 step 2 (adapter + Pay now) → 3 (vendor
-notifications). Ticket 4 and 5 stay parked.
+1 (comms templates) → 3 (vendor notifications) → AI Mailbox trust/settings
+actions if Temba keeps this slice active. Payments step 1/2 remains deferred
+per Temba's latest instruction; Ticket 4 stays parked until managing-agent GTM.
 
 Perf follow-up from 2026-06-12 (separate track, pick up if any page still
 feels slow): extend org-wide list scope to the remaining fan-out endpoints —

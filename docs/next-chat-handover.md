@@ -2,6 +2,54 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox Intake read-only UI v1)
+
+Follow-up to the backend/read foundation below. Temba said "Go" after asking
+to start the AI Mailbox product slice; the visible work used Figma frame
+`03 Screens / AI Mailbox Intake 82:2` as the design reference and is
+Remba-pending by default.
+
+Shipped UI/API client:
+
+- `apps/web/src/lib/api.ts` now has typed client helpers for
+  `GET /api/v1/comms/inbound-messages` and
+  `GET /api/v1/comms/inbound-messages/{message_id}`, plus a helper for
+  backend-returned `/api/v1/documents/.../download` paths.
+- `/inbox` now keeps the existing paste-and-classify workflow and adds a
+  read-only AI Mailbox panel above it: copy-address affordance for
+  `ai@leasium.ai`, trusted mailbox queue, quarantine bucket, and selected
+  quarantined-email provenance detail with sender/auth result, stored body
+  text, and raw-email download link.
+- The panel is deliberately read-only. It does not trust senders, discard
+  messages, promote/apply suggestions, acknowledge emails, dispatch providers,
+  run Smart Intake apply, send tenant email, send Twilio SMS, call Xero/Basiq,
+  touch payments, or reconcile anything.
+- Smoke fixture coverage now includes AI mailbox list/detail rows and asserts
+  that Trust sender / Discard controls are absent.
+- Docs updated: `docs/product-roadmap.md`,
+  `docs/design-governance.md`, `docs/ai-mailbox-intake-design.md`,
+  `docs/next-build-instructions-2026-06-12.md`, and this handover.
+
+Verification:
+
+- Red smoke first failed because `/inbox` had no `AI Mailbox` heading.
+- Focused smoke passed:
+  `NODE_ENV=development PORT=3113 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "AI mailbox surfaces read-only queue" --workers=1`.
+- Frontend lint passed after clearing generated Playwright report artifacts:
+  `npm run lint -- --max-warnings=0`.
+- Production build/type check passed:
+  `npm run build`.
+
+Next AI Mailbox slices:
+
+1. Design and implement review-first trust/discard actions for quarantined
+   senders. Keep provider calls mocked in tests and do not run SendGrid/Twilio
+   sends from those actions.
+2. Add Settings → Organisation trusted-sender management once the control shape
+   is reviewed.
+3. Add reviewed promote/apply paths from mailbox rows only after the operator
+   can inspect source, confidence, and raw-email provenance.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake foundation/read v1)
 
 Temba restarted the AI Mailbox Intake product slice. Scope was deliberately
@@ -79,12 +127,11 @@ Verification recorded so far:
 - Full backend suite passed **638 passed, 1 skipped**:
   `.venv/bin/python -m pytest -q`.
 
-Next recommended AI Mailbox slice:
+Next recommended AI Mailbox slice after the read-only UI:
 
-1. Pull Figma frame `03 Screens / AI Mailbox Intake 82:2`, get Temba sign-off,
-   then build `/inbox` source filter + quarantine bucket + provenance display.
-2. Add review-first actions: trust sender from quarantine, discard, then
+1. Add review-first actions: trust sender from quarantine, discard, then
    promote to task/work order/property note/critical date without auto-apply.
+2. Add Settings → Organisation trusted-sender management.
 3. Consider a mailbox-specific route alias (`/comms/mailbox/messages`) only if
    the frontend wants a clearer product URL; the shipped backend route is the
    generic inbound-message read API above.
