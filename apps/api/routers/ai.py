@@ -1067,6 +1067,136 @@ def _mailbox_promote_context(
         else None,
         "classification_summary": message.classification_summary,
         "classification_target_kind": message.classification_target_kind,
+        "attachment_document_ids": _mailbox_metadata_uuid_strings(
+            metadata.get("attachment_document_ids")
+        ),
+        "attachment_intake_ids": _mailbox_metadata_uuid_strings(
+            metadata.get("attachment_intake_ids")
+        ),
+    }
+
+
+def _mailbox_metadata_uuid_strings(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    ids: list[str] = []
+    for item in value:
+        try:
+            ids.append(str(UUID(str(item))))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def _mailbox_attachment_intakes(
+    message: InboundMessage,
+    payload: InboxPromoteRequest,
+    session: Session,
+) -> list[DocumentIntake]:
+    metadata = (
+        message.inbound_metadata if isinstance(message.inbound_metadata, dict) else {}
+    )
+    raw_intake_ids = metadata.get("attachment_intake_ids")
+    if not isinstance(raw_intake_ids, list) or not raw_intake_ids:
+        return []
+
+    intake_ids: list[UUID] = []
+    for raw_id in raw_intake_ids:
+        try:
+            intake_ids.append(UUID(str(raw_id)))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="AI mailbox attachment intake metadata is invalid.",
+            ) from exc
+
+    intakes: list[DocumentIntake] = []
+    for intake_id in intake_ids:
+        intake = session.scalar(
+            select(DocumentIntake)
+            .where(
+                DocumentIntake.id == intake_id,
+                DocumentIntake.entity_id == payload.entity_id,
+                DocumentIntake.deleted_at.is_(None),
+            )
+            .with_for_update()
+        )
+        if intake is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="AI mailbox attachment intake was not found.",
+            )
+        document = intake.document
+        if document is None or document.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="AI mailbox attachment intake has no active document.",
+            )
+        if document.entity_id != payload.entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="AI mailbox attachment intake is outside this entity.",
+            )
+        if (
+            str((document.document_metadata or {}).get("inbound_message_id"))
+            != str(message.id)
+            and str((intake.review_data or {}).get("inbound_message_id"))
+            != str(message.id)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="AI mailbox attachment intake is not linked to this message.",
+            )
+        if intake.status == DocumentIntakeStatus.applied:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="AI mailbox attachment intake has already been applied.",
+            )
+        for field in ("property_id", "tenant_id", "lease_id"):
+            requested = getattr(payload, field)
+            current = getattr(document, field)
+            if requested is not None and current is not None and current != requested:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="AI mailbox attachment intake is scoped to another record.",
+                )
+        intakes.append(intake)
+    return intakes
+
+
+def _stamp_mailbox_promote_on_intake(
+    *,
+    intake: DocumentIntake,
+    payload: InboxPromoteRequest,
+    summary: str,
+    mailbox_metadata: dict[str, Any],
+    promoted_at,
+    user: CurrentUser,
+) -> None:
+    document = intake.document
+    if payload.property_id is not None:
+        document.property_id = payload.property_id
+    if payload.tenant_id is not None:
+        document.tenant_id = payload.tenant_id
+    if payload.lease_id is not None:
+        document.lease_id = payload.lease_id
+    if not intake.summary:
+        intake.summary = summary
+
+    stamp = {
+        "candidate": "compliance_or_insurance",
+        "summary": summary,
+        "promoted_at": promoted_at.isoformat(),
+        "promoted_by_user_id": str(user.id),
+        "mailbox": mailbox_metadata,
+    }
+    intake.review_data = {
+        **(intake.review_data or {}),
+        "ai_inbox_promote": stamp,
+    }
+    document.document_metadata = {
+        **(document.document_metadata or {}),
+        "ai_inbox_promote": stamp,
     }
 
 
@@ -1115,7 +1245,7 @@ def promote_triage(
     summary = payload.summary.strip()
     title = _truncate_title(summary)
     promoted_at = utcnow()
-    _mailbox_message, mailbox_metadata = _mailbox_promote_context(
+    mailbox_message, mailbox_metadata = _mailbox_promote_context(
         payload,
         session,
         promoted_at,
@@ -1416,6 +1546,61 @@ def promote_triage(
                     "a trusted AI mailbox message."
                 ),
             )
+
+        if mailbox_message is not None:
+            attachment_intakes = _mailbox_attachment_intakes(
+                mailbox_message, payload, session
+            )
+            if attachment_intakes:
+                for attachment_intake in attachment_intakes:
+                    _stamp_mailbox_promote_on_intake(
+                        intake=attachment_intake,
+                        payload=payload,
+                        summary=summary,
+                        mailbox_metadata=mailbox_metadata,
+                        promoted_at=promoted_at,
+                        user=user,
+                    )
+                attachment_intake = attachment_intakes[0]
+                session.flush()
+                audit_log(
+                    session,
+                    actor=user.actor,
+                    user_id=user.id,
+                    entity_id=payload.entity_id,
+                    action="update",
+                    target_table="document_intake",
+                    target_id=attachment_intake.id,
+                    tool_name="ai_inbox_promote",
+                    tool_input=_promote_audit_input(
+                        kind=payload.kind,
+                        summary=summary,
+                        mailbox_metadata=mailbox_metadata,
+                        source="attachment_intake",
+                        attachment_intake_id=str(attachment_intake.id),
+                        attachment_intake_ids=[
+                            str(intake.id) for intake in attachment_intakes
+                        ],
+                    ),
+                    tool_output_summary=(
+                        "Linked AI mailbox compliance/insurance message to "
+                        "existing Smart Intake attachment review."
+                    ),
+                    data_classification="internal",
+                )
+                session.commit()
+                return InboxPromoteRead(
+                    target_kind="document_intake",
+                    target_id=attachment_intake.id,
+                    target_href=(
+                        f"/intake?entity_id={payload.entity_id}"
+                        f"&review={attachment_intake.id}"
+                    ),
+                    target_label=(
+                        attachment_intake.summary
+                        or attachment_intake.document.filename
+                    ),
+                )
 
         body_bytes = payload.body.strip().encode("utf-8")
         document = StoredDocument(

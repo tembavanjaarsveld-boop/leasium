@@ -15,9 +15,11 @@ Shipped:
   existing `/inbox` Review email → Review promotion path.
 - `POST /api/v1/ai/triage/promote` now accepts
   `kind="compliance_or_insurance"` only with `inbound_message_id`. The backend
-  validates the mailbox row source/trust/entity/kind, creates a local
+  validates the mailbox row source/trust/entity/kind, reuses existing
+  attachment Smart Intake reviews when `attachment_intake_ids` are present,
+  fails closed on stale attachment metadata, and otherwise creates a local
   text/plain `StoredDocument` from the email body plus an uploaded
-  `DocumentIntake` review draft, stamps mailbox provenance into document
+  `DocumentIntake` review draft. It stamps mailbox provenance into document
   metadata, intake review data, and audit, and marks the mailbox row processed
   after the local draft succeeds.
 - The Smart Intake draft deep-links to
@@ -31,8 +33,10 @@ Shipped:
 
 Verification:
 
-- TDD red first: backend compliance promote tests failed on the API enum; smoke
-  failed before the allow-list/fixture route were fixed.
+- TDD red first: backend compliance promote tests failed on the API enum, then
+  attachment reuse failed by creating a duplicate email-body review, and stale
+  attachment metadata failed by silently falling back. Smoke failed before the
+  allow-list/fixture route were fixed.
 - Focused backend green:
   `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q -k "compliance"`
 - Backend lint green:
@@ -49,11 +53,8 @@ Verification:
 Next AI Mailbox slices:
 
 1. Property/task/owner-admin promote variants.
-2. Reuse existing attachment Smart Intake rows for compliance mailbox messages
-   that already produced `attachment_intake_ids`, instead of synthesising the
-   email body as the review document.
-3. Source/trust-state filters if mailbox volume grows.
-4. UX debt: in-loop review of the compliance/insurance promote copy and Smart
+2. Source/trust-state filters if mailbox volume grows.
+3. UX debt: in-loop review of the compliance/insurance promote copy and Smart
    Intake handoff placement.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox reviewed promote handoff v1)

@@ -1243,9 +1243,9 @@ test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
     classification_summary: "Insurance certificate needs compliance review.",
     classification_target_kind: "smart_intake",
     attributed_tenant_id: null,
-    attachment_intake_count: 0,
-    attachment_document_ids: [],
-    attachment_intake_ids: [],
+    attachment_intake_count: 1,
+    attachment_document_ids: ["mailbox-compliance-attachment-document-1"],
+    attachment_intake_ids: ["mailbox-compliance-attachment-intake-1"],
     created_at: "2026-06-12T01:10:00.000Z",
   };
   const fulfillJson = async (
@@ -1304,9 +1304,9 @@ test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
     );
     await fulfillJson(route, {
       target_kind: "document_intake",
-      target_id: "smart-intake-mailbox-compliance-1",
+      target_id: "mailbox-compliance-attachment-intake-1",
       target_href:
-        "/intake?entity_id=entity-1&review=smart-intake-mailbox-compliance-1",
+        "/intake?entity_id=entity-1&review=mailbox-compliance-attachment-intake-1",
       target_label: "Insurance certificate needs compliance review.",
     });
   });
@@ -1345,6 +1345,7 @@ test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
   const trustedQueue = page.locator("section").filter({
     has: page.getByText("MAILBOX QUEUE — 1"),
   });
+  await expect(trustedQueue.getByText("1 attachment")).toBeVisible();
   await trustedQueue
     .locator("div")
     .filter({ hasText: "Fwd: Updated public liability certificate" })
@@ -1377,7 +1378,7 @@ test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
   await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
 
   await expect(page).toHaveURL(
-    /\/intake\?entity_id=entity-1&review=smart-intake-mailbox-compliance-1/,
+    /\/intake\?entity_id=entity-1&review=mailbox-compliance-attachment-intake-1/,
   );
   expect(promoteRequests).toHaveLength(1);
   expect(promoteRequests[0].kind).toBe("compliance_or_insurance");

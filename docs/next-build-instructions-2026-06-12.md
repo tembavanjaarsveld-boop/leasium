@@ -172,15 +172,16 @@ backend validates source/trust/entity/kind, stamps raw-email provenance into
 target metadata/audit, and marks the mailbox row processed after a successful
 local draft. First richer variant shipped: trusted
 `compliance_or_insurance` rows create a local uploaded Smart Intake review
-draft with mailbox provenance and no extraction/apply/provider mutation. The
-visible UI/action placement, promote provenance card, compliance/insurance
-copy, and Settings panel still owe the in-loop UX pass.
+draft with mailbox provenance and no extraction/apply/provider mutation,
+reusing existing attachment Smart Intake reviews when `attachment_intake_ids`
+are present and failing closed on stale attachment metadata. The visible
+UI/action placement, promote provenance card, compliance/insurance copy, and
+Settings panel still owe the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
 from the old migration plan. Remaining product slices are richer promote/apply
-variants for property/task/owner-admin kinds, possible attachment-intake reuse
-for compliance mail with existing Smart Intake attachments, and optional
-filters if mailbox volume grows. Do not add acknowledgement replies, provider
+variants for property/task/owner-admin kinds and optional filters if mailbox
+volume grows. Do not add acknowledgement replies, provider
 sends, Smart Intake apply, tenant email, Xero/Basiq, payment, or
 reconciliation mutation without explicit operator approval.
 

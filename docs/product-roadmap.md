@@ -13,8 +13,10 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   existing Review email -> Review promotion path on `/inbox` and create a
   local uploaded Smart Intake review draft at
   `/intake?entity_id=...&review=...`. The backend requires
-  `inbound_message_id`, validates source/trust/entity/kind, stores the email
-  body as a local text `StoredDocument`, stamps mailbox provenance into
+  `inbound_message_id`, validates source/trust/entity/kind, reuses existing
+  attachment Smart Intake reviews when `attachment_intake_ids` are present,
+  fails closed on stale attachment metadata, and otherwise stores the email
+  body as a local text `StoredDocument`. It stamps mailbox provenance into
   document metadata, intake review data, and audit, then marks the mailbox row
   processed only after the draft succeeds. The handoff uses the stored mailbox
   classification and does not re-run `/api/v1/ai/triage`, extract/apply Smart

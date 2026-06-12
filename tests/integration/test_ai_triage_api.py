@@ -143,6 +143,64 @@ def _trusted_mailbox_message(
     return message, raw_document
 
 
+def _mailbox_attachment_intake(
+    session: Session,
+    context: dict[str, str],
+    message: InboundMessage,
+) -> tuple[StoredDocument, DocumentIntake]:
+    document = StoredDocument(
+        entity_id=UUID(context["entity_id"]),
+        property_id=UUID(context["property_id"]),
+        tenant_id=UUID(context["tenant_id"]),
+        lease_id=UUID(context["lease_id"]),
+        filename="public-liability-certificate.pdf",
+        content_type="application/pdf",
+        byte_size=42,
+        file_data=b"%PDF-1.4 public liability certificate",
+        category=DocumentCategory.other,
+        notes="SendGrid inbound email attachment",
+        document_metadata={
+            "source": "sendgrid_inbound_parse",
+            "inbound_message_id": str(message.id),
+            "original_filename": "public-liability-certificate.pdf",
+        },
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=UUID(context["entity_id"]),
+        document_id=document.id,
+        status="uploaded",
+        extracted_data={},
+        review_data={
+            "source": "sendgrid_inbound_parse",
+            "candidate": "inbound_email_attachment",
+            "inbound_message_id": str(message.id),
+            "inbound_subject": message.subject,
+            "inbound_sender": message.from_address,
+            "guardrail": (
+                "No tenant data, lease data, provider action, or payment record "
+                "is changed until an operator applies the Smart Intake review."
+            ),
+        },
+    )
+    session.add(intake)
+    session.flush()
+    document.document_metadata = {
+        **document.document_metadata,
+        "smart_intake_id": str(intake.id),
+        "smart_intake_promoted": True,
+    }
+    message.inbound_metadata = {
+        **(message.inbound_metadata or {}),
+        "attachment_intake_count": 1,
+        "attachment_document_ids": [str(document.id)],
+        "attachment_intake_ids": [str(intake.id)],
+    }
+    session.flush()
+    return document, intake
+
+
 def test_inbox_triage_returns_classification_and_audits(
     client: TestClient, session: Session, monkeypatch
 ) -> None:
@@ -519,6 +577,127 @@ def test_promote_compliance_mailbox_message_creates_smart_intake_review(
     assert audit_row.target_table == "document_intake"
     assert audit_row.tool_input["kind"] == "compliance_or_insurance"
     assert audit_row.tool_input["inbound_message_id"] == str(message.id)
+
+
+def test_promote_compliance_mailbox_message_reuses_attachment_intake(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind="compliance_or_insurance",
+        classification_summary="Insurance certificate needs compliance review.",
+        classification_target_kind="smart_intake",
+        subject="Fwd: Updated public liability certificate",
+        body_text=(
+            "Please review the attached public liability certificate rather than "
+            "using this email body as the evidence document."
+        ),
+    )
+    attachment_document, attachment_intake = _mailbox_attachment_intake(
+        session, context, message
+    )
+    existing_document_ids = set(session.scalars(select(StoredDocument.id)).all())
+    existing_intake_ids = set(session.scalars(select(DocumentIntake.id)).all())
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "compliance_or_insurance",
+            "summary": "Insurance certificate needs compliance review.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "document_intake"
+    assert body["target_id"] == str(attachment_intake.id)
+    assert body["target_href"] == (
+        f"/intake?entity_id={context['entity_id']}&review={attachment_intake.id}"
+    )
+
+    assert set(session.scalars(select(StoredDocument.id)).all()) == existing_document_ids
+    assert set(session.scalars(select(DocumentIntake.id)).all()) == existing_intake_ids
+
+    session.refresh(attachment_document)
+    session.refresh(attachment_intake)
+    assert attachment_document.filename == "public-liability-certificate.pdf"
+    assert attachment_intake.review_data["source"] == "sendgrid_inbound_parse"
+    assert attachment_intake.review_data["candidate"] == "inbound_email_attachment"
+    promote_data = attachment_intake.review_data["ai_inbox_promote"]
+    assert promote_data["candidate"] == "compliance_or_insurance"
+    assert promote_data["mailbox"]["inbound_message_id"] == str(message.id)
+    assert promote_data["mailbox"]["raw_email_document_id"] == str(raw_document.id)
+    assert attachment_document.document_metadata["ai_inbox_promote"][
+        "mailbox"
+    ]["inbound_message_id"] == str(message.id)
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(AuditAction.tool_name == "ai_inbox_promote")
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.target_table == "document_intake"
+    assert audit_row.target_id == attachment_intake.id
+    assert audit_row.tool_input["source"] == "attachment_intake"
+    assert audit_row.tool_input["attachment_intake_id"] == str(attachment_intake.id)
+
+
+def test_promote_compliance_rejects_stale_attachment_metadata_without_synthesis(
+    client: TestClient, session: Session
+) -> None:
+    context = _lease_context(client, session)
+    message, _raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind="compliance_or_insurance",
+        classification_summary="Insurance certificate needs compliance review.",
+        classification_target_kind="smart_intake",
+        subject="Fwd: Updated public liability certificate",
+        body_text="The certificate is attached, but the stored intake id is stale.",
+    )
+    message.inbound_metadata = {
+        **(message.inbound_metadata or {}),
+        "attachment_intake_count": 1,
+        "attachment_document_ids": [str(uuid4())],
+        "attachment_intake_ids": [str(uuid4())],
+    }
+    session.flush()
+    existing_document_ids = set(session.scalars(select(StoredDocument.id)).all())
+    existing_intake_ids = set(session.scalars(select(DocumentIntake.id)).all())
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "compliance_or_insurance",
+            "summary": "Insurance certificate needs compliance review.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 422
+    assert "attachment" in response.json()["detail"].lower()
+    assert set(session.scalars(select(StoredDocument.id)).all()) == existing_document_ids
+    assert set(session.scalars(select(DocumentIntake.id)).all()) == existing_intake_ids
 
 
 def test_promote_compliance_requires_mailbox_provenance(

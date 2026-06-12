@@ -76,12 +76,14 @@ place, with the operator approving the result.
   dispatch providers, apply Smart Intake, call Xero/Basiq, touch payments, or
   reconcile anything.
 - 2026-06-12 compliance/insurance promote follow-up: trusted mailbox rows
-  classified as `compliance_or_insurance` can now create an uploaded Smart
-  Intake review draft from the email body, carrying mailbox provenance into
-  the backing document metadata, intake review data, and audit row. This path
-  requires `inbound_message_id`, does not re-run triage or extraction, and
-  does not apply Smart Intake, create obligations/checks, send providers,
-  touch payments, or reconcile anything.
+  classified as `compliance_or_insurance` can now reuse existing uploaded
+  Smart Intake attachment reviews when `attachment_intake_ids` are present,
+  carrying mailbox provenance into the backing document metadata, intake
+  review data, and audit row. If no attachment review exists, the route falls
+  back to an uploaded review draft from the email body. This path requires
+  `inbound_message_id`, does not re-run triage or extraction, and does not
+  apply Smart Intake, create obligations/checks, send providers, touch
+  payments, or reconcile anything.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -203,8 +205,9 @@ Decision for foundation v1: (a) no acknowledgement reply.
   calls the existing local draft promote route only after the operator clicks
   Promote to draft.
 - Shipped on `/inbox`: trusted `compliance_or_insurance` rows use that same
-  review step to create a local Smart Intake review draft at
-  `/intake?entity_id=...&review=...`; the draft starts uploaded and waits for
+  review step to open a local Smart Intake review at
+  `/intake?entity_id=...&review=...`; existing attachment reviews are reused
+  first, otherwise a new email-body draft starts uploaded and waits for
   explicit Smart Intake extraction/review/apply.
 - Still pending: source/trust-state filters if the queue grows, richer
   promote/apply variants for property/task/owner-admin target kinds, and the
@@ -222,7 +225,8 @@ trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
 role-scoped read APIs, trusted-senders API, `/inbox` queue + quarantine
 provenance UI, local trust/discard decisions, and Settings trusted-sender
 management, plus trusted-row reviewed promote handoff into existing local
-draft creation and compliance/insurance Smart Intake review drafts.
+draft creation and compliance/insurance Smart Intake review drafts, including
+attachment-intake reuse when the mailbox email already routed attachments.
 
 Out (next slices): property/task/owner-admin promote/apply variants beyond the
 existing AI inbox promote route, auto-ack replies, reply-by-email threads,
@@ -236,12 +240,13 @@ auto-apply of any kind.
   extraction, raw-email evidence document linking, list/detail read APIs with
   entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
   trusted-row promote provenance, compliance/insurance Smart Intake handoff,
-  and promote kinds. Mock OpenAI and SendGrid throughout.
+  attachment-intake reuse/fail-closed stale metadata, and promote kinds. Mock
+  OpenAI and SendGrid throughout.
 - Smoke: shipped inbox queue + quarantine provenance, trust-sender action,
   discard action, Settings trusted-sender management, and trusted-row reviewed
-  promote handoff including compliance/insurance Smart Intake review with
-  forbidden provider/triage re-run/apply guardrails; future source filter
-  fixtures when those actions land.
+  promote handoff including compliance/insurance Smart Intake review and
+  attachment-review reuse with forbidden provider/triage re-run/apply
+  guardrails; future source filter fixtures when those actions land.
 
 ## Open decisions for Temba
 
