@@ -1,13 +1,13 @@
 # AI Mailbox Intake — ai@leasium.ai
 
 Status: Backend foundation/read APIs + `/inbox` UI foundation + local
-trust/discard decisions shipped · settings/promote flows pending Remba
-review · 2026-06-12
+trust/discard decisions + Settings trusted-sender management shipped · promote
+flows pending design/UX gate · 2026-06-12
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
-UI implemented from this frame, with trust/discard action placement shipped
-pending Remba/Temba review and Settings/promote variants still requiring review
-before code.
+UI implemented from this frame, with trust/discard action placement and the
+Settings allowlist panel tracked in the UX Debt Register for the in-loop UX
+pass; promote variants still require review before code.
 
 ## Problem
 
@@ -57,6 +57,13 @@ place, with the operator approving the result.
   evidence readable. Neither action re-runs OpenAI, promotes attachments,
   applies Smart Intake, creates a Comms reply draft, sends email/SMS, calls
   Xero/Basiq, touches payments, or reconciles anything.
+- 2026-06-12 Settings trusted-sender management follow-up: Settings →
+  Organisation now lists the organisation allowlist for the selected entity,
+  lets operators add/refresh a sender label, and revokes entries through a
+  soft-delete `DELETE /api/v1/comms/trusted-senders/{id}` action with a local
+  audit row. The panel and endpoint do not process waiting mail, send
+  acknowledgements, re-run OpenAI, promote/apply Smart Intake, call providers,
+  touch payments, or reconcile anything.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -140,7 +147,9 @@ Decision for foundation v1: (a) no acknowledgement reply.
 
 - Webhook: accept org-level routing when `entity_id` is absent (resolve via
   sender); keep the existing per-entity tenant path untouched.
-- `GET/POST /api/v1/comms/trusted-senders` (operator-auth, org-scoped).
+- `GET/POST /api/v1/comms/trusted-senders` and
+  `DELETE /api/v1/comms/trusted-senders/{trusted_sender_id}` (operator-auth,
+  org-scoped; delete is soft-delete + audit only).
 - `GET /api/v1/comms/inbound-messages` lists captured inbound rows with
   optional `entity_id`, `source`, `trust_state`, and bounded `limit` filters.
   Lists expose body previews and metadata only, never `raw_payload`, raw bytes,
@@ -162,11 +171,14 @@ Decision for foundation v1: (a) no acknowledgement reply.
   quarantined rows (forwarder/original sender where available, SPF/DKIM result,
   body text, raw email link), local Trust sender / Discard decisions, and a
   review-first guardrail note.
-- Still pending: source/trust-state filters if the queue grows, Settings →
-  Organisation trusted-senders panel, and reviewed promote actions.
+- Shipped on Settings → Organisation: AI mailbox trusted-senders panel with
+  list/add/revoke actions for the local organisation allowlist.
+- Still pending: source/trust-state filters if the queue grows, and reviewed
+  promote actions.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
-  82:2` for Settings/promote variants, then implement after Remba/Temba
-  sign-off (design-governance §Figma-First).
+  82:2` for promote variants before implementation; sync the shipped Settings
+  allowlist panel through the in-loop UX pass/design debt track
+  (design-governance §Figma-First).
 
 ## Foundation v1 scope cut
 
@@ -174,11 +186,12 @@ In: ai@leasium.ai routing, sender trust + quarantine, sender-auth metadata,
 forwarded original-sender provenance, body triage with operator kinds,
 trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
 role-scoped read APIs, trusted-senders API, `/inbox` queue + quarantine
-provenance UI, and local trust/discard decisions.
+provenance UI, local trust/discard decisions, and Settings trusted-sender
+management.
 
-Out (next slices): Settings trusted-sender panel, promote/apply actions,
-auto-ack replies, reply-by-email threads, plus-addressing hints, agent-facing
-confirmations, cross-org agent senders, auto-apply of any kind.
+Out (next slices): promote/apply actions, auto-ack replies, reply-by-email
+threads, plus-addressing hints, agent-facing confirmations, cross-org agent
+senders, auto-apply of any kind.
 
 ## Test plan
 
@@ -188,18 +201,20 @@ confirmations, cross-org agent senders, auto-apply of any kind.
   entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
   promote kinds. Mock OpenAI and SendGrid throughout.
 - Smoke: shipped inbox queue + quarantine provenance, trust-sender action,
-  discard action; future source filter and promote flow fixtures when those
-  actions land.
+  discard action, Settings trusted-sender management; future source filter and
+  promote flow fixtures when those actions land.
 
 ## Open decisions for Temba
 
 1. Ack reply: closed for v1 as none; revisit only with an explicit
    transactional-email carve-out.
-2. Trusted external agents in v1, or operators-only first?
+2. Trusted external agents in v1, or operators-only first? Closed 2026-06-12:
+   org-managed external trusted senders are in v1.
 3. `ai@leasium.ai` directly vs `ai@inbound.leasium.ai` (root-domain MX has
    interplay with normal mail routing for @leasium.ai — needs a check
    before pointing MX at SendGrid).
-4. Does quarantine live on /inbox or stay API-only in v1?
+4. Does quarantine live on /inbox or stay API-only in v1? Closed 2026-06-12:
+   quarantine lives on `/inbox`.
 
 ## Risks
 

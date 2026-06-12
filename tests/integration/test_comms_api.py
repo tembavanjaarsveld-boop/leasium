@@ -4356,6 +4356,79 @@ def test_trusted_senders_create_requires_write_role(
     assert session.scalar(select(TrustedSender)) is None
 
 
+def test_trusted_senders_revoke_soft_deletes_allowlist_entry(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Operators can revoke AI mailbox trust without touching providers."""
+
+    entity = _entity(session)
+    trusted_sender = TrustedSender(
+        organisation_id=entity.organisation_id,
+        email="agent@example.com",
+        label="Managing agent",
+        added_by_user_id=get_settings().dev_user_id,
+    )
+    session.add(trusted_sender)
+    session.commit()
+    trusted_sender_id = trusted_sender.id
+
+    response = client.delete(
+        f"/api/v1/comms/trusted-senders/{trusted_sender_id}",
+        params={"entity_id": str(entity.id)},
+    )
+
+    assert response.status_code == 204
+    session.refresh(trusted_sender)
+    assert trusted_sender.deleted_at is not None
+
+    list_response = client.get(
+        "/api/v1/comms/trusted-senders",
+        params={"entity_id": str(entity.id)},
+    )
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "revoke_trusted_sender",
+            AuditAction.target_table == "trusted_sender",
+            AuditAction.target_id == trusted_sender_id,
+        )
+    )
+    assert audit is not None
+    assert audit.tool_name == "comms.trusted_sender.revoke"
+
+
+def test_trusted_senders_revoke_requires_write_role(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Viewer roles may read but cannot revoke AI mailbox trusted senders."""
+
+    entity = _entity(session)
+    trusted_sender = TrustedSender(
+        organisation_id=entity.organisation_id,
+        email="agent@example.com",
+        label="Managing agent",
+        added_by_user_id=get_settings().dev_user_id,
+    )
+    session.add(trusted_sender)
+    role = session.get(UserEntityRole, (get_settings().dev_user_id, entity.id))
+    assert role is not None
+    role.role = UserRole.viewer
+    session.commit()
+
+    response = client.delete(
+        f"/api/v1/comms/trusted-senders/{trusted_sender.id}",
+        params={"entity_id": str(entity.id)},
+    )
+
+    assert response.status_code == 403
+    session.refresh(trusted_sender)
+    assert trusted_sender.deleted_at is None
+
+
 def test_comms_queue_returns_compliance_obligation_candidate(
     client: TestClient,
     session: Session,

@@ -3739,6 +3739,42 @@ export function discardCommsInboundMessage(messageId: string) {
   );
 }
 
+
+export type TrustedSenderRecord = {
+  id: string;
+  organisation_id: string;
+  email: string;
+  label: string | null;
+  added_by_user_id: string | null;
+  added_at: string;
+};
+
+export function listCommsTrustedSenders(entityId: string) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<TrustedSenderRecord[]>(`/comms/trusted-senders?${params}`);
+}
+
+export function createCommsTrustedSender(
+  entityId: string,
+  payload: { email: string; label?: string | null },
+) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<TrustedSenderRecord>(`/comms/trusted-senders?${params}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function revokeCommsTrustedSender(
+  entityId: string,
+  trustedSenderId: string,
+) {
+  const params = new URLSearchParams({ entity_id: entityId });
+  return request<void>(`/comms/trusted-senders/${trustedSenderId}?${params}`, {
+    method: "DELETE",
+  });
+}
+
 export type InboxPromoteKind =
   | "maintenance_request"
   | "payment_or_arrears"

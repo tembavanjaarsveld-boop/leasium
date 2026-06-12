@@ -163,19 +163,21 @@ raw-email link, and local trust/discard decisions. Trust sender is available
 only for authenticated `sender_not_trusted` quarantines and trusts the
 authenticated `from_address`; failed-auth rows can be discarded but not
 trusted from that email. AI mailbox rows stay out of the generic Comms reply
-queue/dispatch path. The visible UI/action placement is review-pending.
+queue/dispatch path. Settings → Organisation now also has local trusted-sender
+list/add/revoke management backed by an audited soft-delete endpoint. The
+visible UI/action placement and Settings panel still owe the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
-from the old migration plan. Remaining slices are Settings trusted-sender
-management and reviewed promote/apply actions. Do not add acknowledgement
-replies, provider sends, Smart Intake apply, tenant email, Xero/Basiq, payment,
-or reconciliation mutation without explicit operator approval.
+from the old migration plan. Remaining product slice is reviewed promote/apply
+actions. Do not add acknowledgement replies, provider sends, Smart Intake
+apply, tenant email, Xero/Basiq, payment, or reconciliation mutation without
+explicit operator approval.
 
 ---
 
 ## Suggested order
 
-1 (comms templates) → 3 (vendor notifications) → AI Mailbox Settings/promote
+1 (comms templates) → 3 (vendor notifications) → AI Mailbox promote/apply
 actions if Temba keeps this slice active. Payments step 1/2 remains deferred
 per Temba's latest instruction; Ticket 4 stays parked until managing-agent GTM.
 

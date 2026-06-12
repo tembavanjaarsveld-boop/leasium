@@ -10,6 +10,15 @@ type JsonBody =
 
 type MockOperatingMode = "self_managed_owner" | "managing_agent" | "hybrid";
 
+type MockTrustedSender = {
+  id: string;
+  organisation_id: string;
+  email: string;
+  label: string | null;
+  added_by_user_id: string | null;
+  added_at: string;
+};
+
 type XeroContactMapping = {
   target_type: "tenant" | "property";
   target_id: string;
@@ -2775,6 +2784,17 @@ export async function mockLeasiumApi(
   let complianceChecks = jsonClone(initialComplianceChecks);
   const trustedMailboxMessageIds = new Set<string>();
   const discardedMailboxMessageIds = new Set<string>();
+  let trustedSenderSequence = 2;
+  let trustedSenders: MockTrustedSender[] = [
+    {
+      id: "trusted-sender-1",
+      organisation_id: "org-1",
+      email: "temba@leasium.test",
+      label: "Operator forwarder",
+      added_by_user_id: "user-1",
+      added_at: "2026-06-12T00:30:00.000Z",
+    },
+  ];
   const mailboxQuarantineOneDetail = () => {
     const trusted = trustedMailboxMessageIds.has("mailbox-quarantine-1");
     return {
@@ -5708,6 +5728,54 @@ export async function mockLeasiumApi(
         },
         generated_at: "2026-05-27T02:00:00.000Z",
       });
+      return;
+    }
+
+
+    if (method === "GET" && path === "/comms/trusted-senders") {
+      await fulfillJson(route, trustedSenders);
+      return;
+    }
+
+    if (method === "POST" && path === "/comms/trusted-senders") {
+      const payload = request.postDataJSON() as {
+        email?: string;
+        label?: string | null;
+      };
+      const email = String(payload.email ?? "").trim().toLowerCase();
+      if (!email) {
+        await fulfillJson(route, { detail: "Trusted sender email is invalid." }, 422);
+        return;
+      }
+      const existing = trustedSenders.find((sender) => sender.email === email);
+      if (existing) {
+        existing.label = payload.label?.trim() || null;
+        existing.added_at = "2026-06-12T02:00:00.000Z";
+        await fulfillJson(route, existing, 201);
+        return;
+      }
+      const sender = {
+        id: `trusted-sender-${trustedSenderSequence}`,
+        organisation_id: "org-1",
+        email,
+        label: payload.label?.trim() || null,
+        added_by_user_id: "user-1",
+        added_at: "2026-06-12T02:00:00.000Z",
+      };
+      trustedSenderSequence += 1;
+      trustedSenders = [...trustedSenders, sender];
+      await fulfillJson(route, sender, 201);
+      return;
+    }
+
+    const trustedSenderDeleteMatch = path.match(
+      /^\/comms\/trusted-senders\/([^/]+)$/,
+    );
+    if (method === "DELETE" && trustedSenderDeleteMatch) {
+      trustedSenders = trustedSenders.filter(
+        (sender) => sender.id !== trustedSenderDeleteMatch[1],
+      );
+      await route.fulfill({ headers: corsHeaders, status: 204 });
       return;
     }
 

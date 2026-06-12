@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-12 AI Mailbox Settings trusted-senders v1:**
+  Settings -> Organisation now includes an AI mailbox trusted-senders panel for
+  the selected entity's organisation. Operators can list existing allowlist
+  entries, add/refresh an email + label, and revoke an entry. Backend
+  `DELETE /api/v1/comms/trusted-senders/{id}` is write-role gated,
+  organisation-scoped from the selected `entity_id`, soft-deletes the row, and
+  writes a local audit receipt; list/create remain read/write role gated.
+  Smoke coverage exercises list/add/revoke and forbids AI triage, comms
+  dispatch, SendGrid/Twilio, Xero/Basiq, provider refresh/dispatch, payment, or
+  reconciliation side effects. Pending Remba review for the Settings allowlist
+  panel density and placement.
 - [~] **2026-06-12 AI Mailbox Intake trust/discard v1:**
   quarantined AI Mailbox rows now have local-only decisions from the selected
   email detail panel. `POST /api/v1/comms/inbound-messages/{id}/trust-sender`
@@ -57,9 +68,9 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   role-gated and organisation-scoped. No acknowledgement email, tenant email,
   SendGrid send, Twilio SMS, Xero/Basiq, payment, reconciliation, Smart Intake
   apply, or provider mutation runs from intake. The read-only `/inbox` mailbox
-  queue now ships separately above; Settings trusted-sender UI plus
-  promote/apply actions remain Figma/Remba-pending follow-ups; trust/discard
-  now ships separately above.
+  queue, trust/discard decisions, and Settings trusted-sender management now
+  ship separately above; review-first promote/apply actions remain the next
+  Figma/Remba-reviewed mailbox product slice.
 - [x] **2026-06-12 All entities invoice drafts fan-out reduction v1:**
   `/invoice-drafts` now accepts omitted `entity_id` as an organisation-wide
   read scoped to the operator's readable entities, while explicit hidden-entity

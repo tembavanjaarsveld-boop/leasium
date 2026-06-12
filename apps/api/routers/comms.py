@@ -2409,6 +2409,58 @@ def create_trusted_sender(
     )
 
 
+@router.delete(
+    "/trusted-senders/{trusted_sender_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def revoke_trusted_sender(
+    trusted_sender_id: UUID,
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    """Revoke an AI mailbox trusted sender without touching providers."""
+
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entity not found.",
+        )
+    trusted_sender = session.get(TrustedSender, trusted_sender_id)
+    if (
+        trusted_sender is None
+        or trusted_sender.organisation_id != entity.organisation_id
+        or trusted_sender.deleted_at is not None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trusted sender not found.",
+        )
+
+    now = utcnow()
+    trusted_sender.deleted_at = now
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="revoke_trusted_sender",
+        target_table="trusted_sender",
+        target_id=trusted_sender.id,
+        tool_name="comms.trusted_sender.revoke",
+        tool_input={
+            "email": trusted_sender.email,
+            "label": trusted_sender.label,
+        },
+        tool_output_summary="AI mailbox trusted sender revoked.",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+
+
 def _body_preview(value: str | None, *, limit: int = 180) -> str | None:
     text = " ".join((value or "").split())
     if not text:

@@ -107,7 +107,7 @@ map for agents:
 | 03 Screens / People 61:580 | `apps/web/src/app/people/page.tsx` — Horizon People v1 |
 | 03 Screens / Money 61:842 | `apps/web/src/app/money/page.tsx` — Horizon Money v1 |
 | 03 Screens / Insights 61:1063 | `apps/web/src/app/insights/page.tsx` — Horizon Insights v1 |
-| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 (copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions); pending Remba review of action placement/copy before Settings/promote actions |
+| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 (copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions); pending Remba review of action placement/copy and Settings allowlist panel before promote actions |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -2729,12 +2729,14 @@ Status: pending Remba review. `/inbox` now adds an AI Mailbox panel
 from Figma frame `03 Screens / AI Mailbox Intake 82:2`: copy address,
 trusted mailbox queue, quarantine bucket, and a selected-message provenance
 detail with sender/auth result, stored body text, raw-email download link, and
-local Trust sender / Discard controls. Promote/apply, acknowledgement, and
-provider-send controls remain omitted; those need a reviewed action variant
-before implementation.
+local Trust sender / Discard controls. Settings → Organisation now adds the
+local trusted-sender allowlist panel with add/revoke controls. Promote/apply,
+acknowledgement, and provider-send controls remain omitted; those need a
+reviewed action variant before implementation.
 
 1. Remba should review the panel's placement above the existing paste classifier,
    the visual distinction between trusted rows and quarantine rows, the
    provenance-detail density, the copy-address/status text, and whether the
    shipped trust/discard controls plus future promote controls should live
-   inline, in a drawer, or in a dedicated mailbox route.
+   inline, in a drawer, or in a dedicated mailbox route. Also review the
+   Settings trusted-sender panel density and placement in Organisation settings.

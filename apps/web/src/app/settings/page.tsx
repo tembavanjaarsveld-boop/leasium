@@ -62,6 +62,7 @@ import {
 } from "@/lib/appearance";
 import {
   applyBasiqReconciliation,
+  createCommsTrustedSender,
   applyXeroContactPreview,
   applyXeroPaymentReconciliation,
   approveXeroInvoicePosting,
@@ -84,6 +85,7 @@ import {
   applyOwnershipSplit,
   entityTypeLabel,
   getEntitiesXeroOverview,
+  listCommsTrustedSenders,
   getOwnershipSplitPlan,
   listBrandedCommunicationTemplates,
   listEntities,
@@ -94,6 +96,7 @@ import {
   previewXeroInvoicePosting,
   previewXeroPaymentReconciliation,
   resendSecurityMemberInvite,
+  revokeCommsTrustedSender,
   setOperatingMode,
   startXeroOAuth,
   updatePaymentInstructions,
@@ -134,6 +137,7 @@ import {
   type WorkAssignmentNotificationTemplateRecord,
   type PaymentInstructionPayload,
   type PaymentInstructionRecord,
+  type TrustedSenderRecord,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
@@ -2131,6 +2135,156 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
         {data?.guardrails.length ? (
           <p className="text-xs text-muted-foreground">{data.guardrails[0]}</p>
         ) : null}
+      </div>
+    </SectionPanel>
+  );
+}
+
+
+function TrustedSendersPanel({ entityId }: { entityId: string }) {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [label, setLabel] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const trustedSendersQuery = useQuery({
+    queryKey: ["comms-trusted-senders", entityId],
+    queryFn: () => listCommsTrustedSenders(entityId),
+    enabled: Boolean(entityId),
+  });
+
+  const invalidateTrustedSenders = () =>
+    queryClient.invalidateQueries({
+      queryKey: ["comms-trusted-senders", entityId],
+    });
+
+  const addMutation = useMutation({
+    mutationFn: () =>
+      createCommsTrustedSender(entityId, {
+        email: email.trim(),
+        label: label.trim() || null,
+      }),
+    onSuccess: (sender) => {
+      setEmail("");
+      setLabel("");
+      setNotice(`${sender.email} trusted locally.`);
+      void invalidateTrustedSenders();
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (sender: TrustedSenderRecord) =>
+      revokeCommsTrustedSender(entityId, sender.id),
+    onSuccess: (_, sender) => {
+      setNotice(`${sender.email} revoked.`);
+      void invalidateTrustedSenders();
+    },
+  });
+
+  const trustedSenders = trustedSendersQuery.data ?? [];
+  const canAdd = email.trim().length > 0 && !addMutation.isPending;
+
+  return (
+    <SectionPanel
+      title="AI mailbox trusted senders"
+      description="Organisation allowlist for authenticated forwarding senders. Changes are local and do not process waiting mail."
+      icon={<MailCheck size={17} className="text-primary" />}
+      actions={<StatusBadge tone="primary">Local allowlist</StatusBadge>}
+    >
+      <div className="grid gap-4 p-4">
+        <form
+          className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canAdd) {
+              setNotice(null);
+              addMutation.mutate();
+            }
+          }}
+        >
+          <Field label="Sender email">
+            <Input
+              type="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setNotice(null);
+              }}
+              placeholder="agent@example.com"
+              autoComplete="email"
+            />
+          </Field>
+          <Field label="Label (optional)">
+            <Input
+              value={label}
+              onChange={(event) => {
+                setLabel(event.target.value);
+                setNotice(null);
+              }}
+              placeholder="Managing agent"
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button type="submit" disabled={!canAdd}>
+              {addMutation.isPending ? "Adding..." : "Add sender"}
+            </Button>
+          </div>
+        </form>
+
+        {notice ? <p className="text-sm text-success">{notice}</p> : null}
+        {addMutation.error || revokeMutation.error ? (
+          <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            <AlertTriangle size={16} />
+            {friendlyError(addMutation.error ?? revokeMutation.error)}
+          </p>
+        ) : null}
+
+        <div className="overflow-hidden rounded-2xl border border-border bg-white">
+          {trustedSendersQuery.isLoading ? (
+            <p className="p-4 text-sm text-muted-foreground">
+              Loading trusted senders...
+            </p>
+          ) : trustedSenders.length === 0 ? (
+            <EmptyState
+              title="No trusted senders yet"
+              description="Forwarders stay quarantined until an operator adds the sender here or trusts a reviewed mailbox row."
+              icon={<MailCheck size={18} />}
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {trustedSenders.map((sender) => {
+                const isRevoking = revokeMutation.variables?.id === sender.id;
+                return (
+                  <li
+                    key={sender.id}
+                    className="flex flex-wrap items-center justify-between gap-3 p-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground">
+                        {sender.email}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {sender.label ? <span>{sender.label}</span> : null}
+                        <span>Added {formatDateTime(sender.added_at)}</span>
+                      </div>
+                    </div>
+                    <SecondaryButton
+                      type="button"
+                      aria-label={`Revoke ${sender.email}`}
+                      disabled={revokeMutation.isPending}
+                      onClick={() => {
+                        setNotice(null);
+                        revokeMutation.mutate(sender);
+                      }}
+                    >
+                      {isRevoking ? "Revoking..." : "Revoke"}
+                    </SecondaryButton>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
     </SectionPanel>
   );
@@ -4970,7 +5124,10 @@ function SettingsWorkspace() {
             </SectionPanel>
 
             {selectedEntityId ? (
-              <PaymentInstructionsPanel entityId={selectedEntityId} />
+              <>
+                <PaymentInstructionsPanel entityId={selectedEntityId} />
+                <TrustedSendersPanel entityId={selectedEntityId} />
+              </>
             ) : null}
 
             <SectionPanel

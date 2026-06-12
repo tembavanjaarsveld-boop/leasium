@@ -1,7 +1,39 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi } from "./api-mocks";
+
+function watchForbiddenTrustedSenderSettingsRequests(page: Page) {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const isAllowedTrustedSenderManagement =
+      (path === "/api/v1/comms/trusted-senders" &&
+        (method === "GET" || method === "POST")) ||
+      (method === "DELETE" &&
+        /^\/api\/v1\/comms\/trusted-senders\/[^/]+$/.test(path));
+    const isUnexpectedCommsMutation =
+      method !== "GET" &&
+      method !== "HEAD" &&
+      path.startsWith("/api/v1/comms/") &&
+      !isAllowedTrustedSenderManagement;
+    const callsForbiddenSurface =
+      path.startsWith("/api/v1/sendgrid") ||
+      path.startsWith("/api/v1/twilio") ||
+      path.startsWith("/api/v1/xero") ||
+      path.startsWith("/api/v1/basiq") ||
+      path === "/api/v1/ai/triage" ||
+      path === "/api/v1/ai/triage/promote" ||
+      path.includes("/provider-dispatch") ||
+      path.includes("/provider-refresh");
+    if (isUnexpectedCommsMutation || callsForbiddenSurface) {
+      requests.push(`${method} ${path}`);
+    }
+  });
+  return requests;
+}
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -67,6 +99,54 @@ test("settings notifications tab opens the Horizon operator controls directly", 
       "Provider changes are review-first — nothing connects or sends without you.",
     ),
   ).toBeVisible();
+});
+
+test("settings manages AI mailbox trusted senders locally", async ({ page }) => {
+  const forbiddenRequests = watchForbiddenTrustedSenderSettingsRequests(page);
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+
+  const trustedSendersPanel = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "AI mailbox trusted senders",
+    }),
+  });
+  await expect(trustedSendersPanel).toBeVisible();
+  await expect(trustedSendersPanel.getByText("temba@leasium.test")).toBeVisible();
+  await expect(
+    trustedSendersPanel.getByText("Operator forwarder"),
+  ).toBeVisible();
+
+  await trustedSendersPanel
+    .getByLabel("Sender email")
+    .fill("new.agent@example.com");
+  await trustedSendersPanel
+    .getByLabel("Label (optional)")
+    .fill("Managing agent");
+  await trustedSendersPanel.getByRole("button", { name: "Add sender" }).click();
+
+  await expect(
+    trustedSendersPanel.getByText("new.agent@example.com trusted locally."),
+  ).toBeVisible();
+  await expect(
+    trustedSendersPanel.locator("li").filter({
+      hasText: "new.agent@example.com",
+    }),
+  ).toHaveCount(1);
+  await expect(trustedSendersPanel.getByText("Managing agent")).toBeVisible();
+
+  await trustedSendersPanel
+    .getByRole("button", { name: "Revoke temba@leasium.test" })
+    .click();
+
+  await expect(
+    trustedSendersPanel.getByText("temba@leasium.test revoked."),
+  ).toBeVisible();
+  await expect(
+    trustedSendersPanel.locator("li").filter({ hasText: "temba@leasium.test" }),
+  ).toHaveCount(0);
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("mobile settings keeps the approved compact tab rail", async ({ page }) => {

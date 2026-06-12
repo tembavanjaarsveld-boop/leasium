@@ -2,6 +2,44 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox Settings trusted-senders v1)
+
+Follow-up to AI Mailbox trust/discard. Temba asked to continue and use
+agents. Two read-only agents checked the backend and frontend/docs fit; main
+thread kept the backend revoke endpoint TDD path local.
+
+Shipped:
+
+- Settings -> Organisation now has an "AI mailbox trusted senders" panel for
+  the selected entity's organisation. It lists active trusted senders,
+  add/refreshes an email + optional label, and revokes rows.
+- New backend `DELETE /api/v1/comms/trusted-senders/{trusted_sender_id}` is
+  operator write-role gated, scopes the row through the selected `entity_id`'s
+  organisation, soft-deletes active rows, and writes a confidential audit row.
+  It does not mutate captured inbound evidence or reprocess waiting mail.
+- Frontend API helpers now cover list/create/revoke trusted senders.
+- Smoke fixture has a stateful trusted-sender allowlist. The Settings smoke
+  covers list/add/revoke and forbids AI triage, Comms dispatch, SendGrid,
+  Twilio, Xero, Basiq, provider refresh/dispatch, payment, or reconciliation
+  side effects.
+- Docs updated: `docs/ai-mailbox-intake-design.md`,
+  `docs/product-roadmap.md`, `docs/design-governance.md`,
+  `docs/next-build-instructions-2026-06-12.md`, and this handover.
+
+Verification so far:
+
+- TDD red first: focused backend revoke tests failed with 404 before endpoint.
+- Focused backend green:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q -k "trusted_senders"`
+- Focused Settings smoke green:
+  `npm run test:smoke -- --grep "trusted senders"` in `apps/web`.
+
+Next AI Mailbox slices:
+
+1. Reviewed promote/apply paths from mailbox rows, only after source,
+   confidence, and raw-email provenance are visible in the approval step.
+2. Optional source/trust-state filters if mailbox volume grows.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox trust/discard v1)
 
 Follow-up to the AI Mailbox read-only UI. Temba asked to use agents and keep
@@ -46,10 +84,9 @@ Verification so far:
 
 Next AI Mailbox slices:
 
-1. Settings → Organisation trusted-sender management.
-2. Reviewed promote/apply paths from mailbox rows, only after source,
-   confidence, and raw-email provenance are visible in the approval step.
-3. Optional source/trust-state filters if mailbox volume grows.
+Superseded: Settings → Organisation trusted-sender management shipped in the
+later entry above. Remaining mailbox product work is reviewed promote/apply
+plus optional filters if volume grows.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake read-only UI v1)
 
