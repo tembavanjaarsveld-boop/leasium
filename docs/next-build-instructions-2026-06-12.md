@@ -174,16 +174,22 @@ local draft. First richer variant shipped: trusted
 `compliance_or_insurance` rows create a local uploaded Smart Intake review
 draft with mailbox provenance and no extraction/apply/provider mutation,
 reusing existing attachment Smart Intake reviews when `attachment_intake_ids`
-are present and failing closed on stale attachment metadata. The visible
-UI/action placement, promote provenance card, compliance/insurance copy, and
-Settings panel still owe the in-loop UX pass.
+are present and failing closed on stale attachment metadata. Follow-up shipped:
+trusted `property_update` and `owner_or_entity_admin` rows now create local
+uploaded Smart Intake review packets, while trusted `task_or_reminder` rows
+create local requested Operations work orders. These paths are mailbox-only,
+use stored classification/provenance, and do not mutate property/owner records,
+assign contractors, send providers, apply Smart Intake, touch payments, or
+reconcile anything. The visible UI/action placement, promote provenance card,
+mailbox promote copy, and Settings panel still owe the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
-from the old migration plan. Remaining product slices are richer promote/apply
-variants for property/task/owner-admin kinds and optional filters if mailbox
-volume grows. Do not add acknowledgement replies, provider
-sends, Smart Intake apply, tenant email, Xero/Basiq, payment, or
-reconciliation mutation without explicit operator approval.
+from the old migration plan. Remaining product slices are optional filters if
+mailbox volume grows, attachment-intake reuse for the new property/admin review
+packets if evidence-heavy mail warrants it, and UX pass/design sync. Do not
+add acknowledgement replies, provider sends, Smart Intake apply, tenant email,
+Xero/Basiq, payment, or reconciliation mutation without explicit operator
+approval.
 
 ---
 

@@ -2,6 +2,59 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox local target variants v1)
+
+Follow-up to the compliance/insurance Smart Intake handoff. Temba said
+"Continue"; main thread used TDD while two read-only agents checked the
+backend target shape and frontend/smoke/docs seam.
+
+Shipped:
+
+- `POST /api/v1/ai/triage/promote` now accepts the remaining trusted AI
+  Mailbox operator kinds: `property_update`, `task_or_reminder`, and
+  `owner_or_entity_admin`.
+- These kinds are mailbox-only. The backend requires `inbound_message_id`,
+  validates source/trust/entity/kind through the existing mailbox promote
+  guard, uses the stored mailbox classification, stamps raw-email provenance,
+  and marks the mailbox row processed only after the local target succeeds.
+- `property_update` and `owner_or_entity_admin` create uploaded Smart Intake
+  review packets from the email body with `extraction="not_run"`. They do not
+  mutate property, owner, entity, billing, provider, payment, or reconciliation
+  records and do not apply Smart Intake.
+- `task_or_reminder` creates a requested Operations work order with
+  `source_reference="ai_inbox_promote"` and mailbox provenance. It does not
+  assign contractors, dispatch providers, send notifications, create invoice
+  drafts, or set approval/completion state.
+- `/inbox` now shows the existing Review email -> Review promotion panel for
+  these three trusted mailbox kinds only, with the same source-email
+  provenance card and forbidden provider/apply guardrails.
+
+Verification:
+
+- TDD red first: backend tests failed on the promote-kind API enum; frontend
+  smoke failed because the promote panel did not appear for `property_update`.
+- Focused backend green:
+  `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q -k "mailbox_property_update or mailbox_task_or_reminder or mailbox_owner_admin or mailbox_only_kind"`
+- Backend lint + full AI triage integration green:
+  `.venv/bin/python -m ruff check apps/api/routers/ai.py apps/api/schemas/ai.py tests/integration/test_ai_triage_api.py`
+  and `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q`
+- Frontend lint green:
+  `npm run lint -- --max-warnings=0` in `apps/web`.
+- Focused smoke green:
+  `npm run test:smoke -- --grep "AI mailbox promotes (property update|task reminder|owner admin) rows"` in `apps/web`.
+- AI mailbox smoke green:
+  `npm run test:smoke -- --grep "AI mailbox"` in `apps/web`.
+- Production build green:
+  `npm run build` in `apps/web`.
+
+Next AI Mailbox slices:
+
+1. Source/trust-state filters if mailbox volume grows.
+2. Optional attachment-intake reuse for property/admin mailbox rows if those
+   messages often arrive with evidence attachments.
+3. UX debt: in-loop review of the `/inbox` promote action placement, source
+   provenance card density, and per-kind copy.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox compliance/insurance handoff v1)
 
 Follow-up to AI Mailbox reviewed promote handoff. Temba asked to continue and

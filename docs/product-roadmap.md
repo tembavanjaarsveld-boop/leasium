@@ -8,6 +8,20 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-12 AI Mailbox property/task/owner-admin local target handoff v1:**
+  trusted mailbox rows classified as `property_update`, `task_or_reminder`,
+  or `owner_or_entity_admin` now use the existing Review email -> Review
+  promotion path on `/inbox`. The backend requires `inbound_message_id`,
+  validates source/trust/entity/kind, uses the stored mailbox classification,
+  stamps raw-email provenance into target metadata/audit, and marks the row
+  processed only after the local target succeeds. Property update and
+  owner/entity admin rows create uploaded Smart Intake review packets from the
+  email body with extraction/apply skipped; task/reminder rows create requested
+  Operations work orders. The slice does not mutate property/owner/entity
+  records, assign contractors, create invoices, send email/SMS, call providers,
+  apply Smart Intake, touch payments, or reconcile anything. Pending Remba
+  review of the expanded promote action placement, provenance-card density,
+  and per-kind copy.
 - [~] **2026-06-12 AI Mailbox compliance/insurance Smart Intake handoff v1:**
   trusted mailbox rows classified as `compliance_or_insurance` now expose the
   existing Review email -> Review promotion path on `/inbox` and create a

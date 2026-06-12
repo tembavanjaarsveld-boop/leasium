@@ -1200,6 +1200,104 @@ def _stamp_mailbox_promote_on_intake(
     }
 
 
+def _require_mailbox_promote(
+    *,
+    kind: str,
+    mailbox_metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if mailbox_metadata is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Promoting {kind.replace('_', ' ')} from inbox requires "
+                "a trusted AI mailbox message."
+            ),
+        )
+    return mailbox_metadata
+
+
+def _create_mailbox_review_intake(
+    *,
+    payload: InboxPromoteRequest,
+    summary: str,
+    title: str,
+    mailbox_metadata: dict[str, Any],
+    candidate: str,
+    filename: str,
+    guardrail: str,
+    session: Session,
+    user: CurrentUser,
+) -> InboxPromoteRead:
+    body_bytes = payload.body.strip().encode("utf-8")
+    document = StoredDocument(
+        entity_id=payload.entity_id,
+        property_id=payload.property_id,
+        tenant_id=payload.tenant_id,
+        lease_id=payload.lease_id,
+        filename=filename,
+        content_type="text/plain",
+        byte_size=len(body_bytes),
+        file_data=body_bytes,
+        category=DocumentCategory.other,
+        notes=f"Created from AI mailbox {candidate.replace('_', ' ')} promote.",
+        document_metadata={
+            "source": "ai_inbox_promote",
+            "summary": summary,
+            "candidate": candidate,
+            "mailbox": mailbox_metadata,
+        },
+    )
+    session.add(document)
+    session.flush()
+
+    intake = DocumentIntake(
+        entity_id=payload.entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.uploaded,
+        document_type=None,
+        summary=summary,
+        confidence=None,
+        extracted_data={},
+        review_data={
+            "source": "ai_inbox_promote",
+            "candidate": candidate,
+            "guardrail": guardrail,
+            "mailbox": mailbox_metadata,
+        },
+        openai_response_id=None,
+    )
+    session.add(intake)
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=payload.entity_id,
+        action="create",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_name="ai_inbox_promote",
+        tool_input=_promote_audit_input(
+            kind=payload.kind,
+            summary=summary,
+            mailbox_metadata=mailbox_metadata,
+            extraction="not_run",
+        ),
+        tool_output_summary=(
+            "Promoted AI mailbox message to local Smart Intake review without "
+            "extraction or apply."
+        ),
+        data_classification="internal",
+    )
+    session.commit()
+    return InboxPromoteRead(
+        target_kind="document_intake",
+        target_id=intake.id,
+        target_href=f"/intake?entity_id={payload.entity_id}&review={intake.id}",
+        target_label=title or summary,
+    )
+
+
 def _promote_audit_input(
     *,
     kind: str,
@@ -1291,6 +1389,51 @@ def promote_triage(
                 mailbox_metadata=mailbox_metadata,
             ),
             tool_output_summary="Promoted inbox message to maintenance work order.",
+            data_classification="internal",
+        )
+        session.commit()
+        return InboxPromoteRead(
+            target_kind="maintenance_work_order",
+            target_id=work_order.id,
+            target_href=f"/operations/maintenance/{work_order.id}",
+            target_label=work_order.title,
+        )
+
+    if payload.kind == "task_or_reminder":
+        mailbox_metadata = _require_mailbox_promote(
+            kind=payload.kind,
+            mailbox_metadata=mailbox_metadata,
+        )
+        work_order = MaintenanceWorkOrder(
+            entity_id=payload.entity_id,
+            property_id=payload.property_id,
+            tenant_id=payload.tenant_id,
+            lease_id=payload.lease_id,
+            title=title or "Task/reminder from AI mailbox",
+            description=payload.body.strip(),
+            status=MaintenanceWorkOrderStatus.requested,
+            source_reference="ai_inbox_promote",
+            work_order_metadata=promote_metadata,
+        )
+        session.add(work_order)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="maintenance_work_order",
+            target_id=work_order.id,
+            tool_name="ai_inbox_promote",
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+            ),
+            tool_output_summary=(
+                "Promoted AI mailbox task/reminder to local Operations work order."
+            ),
             data_classification="internal",
         )
         session.commit()
@@ -1537,6 +1680,27 @@ def promote_triage(
             target_label=title or "Lease change from inbox",
         )
 
+    if payload.kind == "property_update":
+        mailbox_metadata = _require_mailbox_promote(
+            kind=payload.kind,
+            mailbox_metadata=mailbox_metadata,
+        )
+        return _create_mailbox_review_intake(
+            payload=payload,
+            summary=summary,
+            title=title or "Property update from AI mailbox",
+            mailbox_metadata=mailbox_metadata,
+            candidate="property_update",
+            filename="inbox-property-update.txt",
+            guardrail=(
+                "Review in Smart Intake before changing any property record, "
+                "owner record, provider setup, billing, payment, or "
+                "reconciliation data."
+            ),
+            session=session,
+            user=user,
+        )
+
     if payload.kind == "compliance_or_insurance":
         if mailbox_metadata is None:
             raise HTTPException(
@@ -1672,6 +1836,26 @@ def promote_triage(
             target_id=intake.id,
             target_href=f"/intake?entity_id={payload.entity_id}&review={intake.id}",
             target_label=title or "Compliance / insurance from inbox",
+        )
+
+    if payload.kind == "owner_or_entity_admin":
+        mailbox_metadata = _require_mailbox_promote(
+            kind=payload.kind,
+            mailbox_metadata=mailbox_metadata,
+        )
+        return _create_mailbox_review_intake(
+            payload=payload,
+            summary=summary,
+            title=title or "Owner / entity admin from AI mailbox",
+            mailbox_metadata=mailbox_metadata,
+            candidate="owner_or_entity_admin",
+            filename="inbox-owner-admin.txt",
+            guardrail=(
+                "Review in Smart Intake before changing owner, entity, "
+                "operator, billing, provider, payment, or reconciliation data."
+            ),
+            session=session,
+            user=user,
         )
 
     if payload.kind == "vendor_or_contractor":

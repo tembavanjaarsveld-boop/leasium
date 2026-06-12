@@ -2751,3 +2751,7 @@ action variants before implementation.
 3. Remba should review the compliance/insurance promote copy and Smart Intake
    handoff placement before expanding this path to attachment-intake reuse or
    other mailbox target kinds.
+4. 2026-06-12 follow-up: property/task/owner-admin local target variants now
+   reuse the same promote panel. Remba should review the expanded per-kind
+   copy, source-email provenance density, property/tenant picker relevance,
+   and desktop/mobile action placement before richer mailbox actions land.

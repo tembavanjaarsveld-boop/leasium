@@ -6130,6 +6130,34 @@ export async function mockLeasiumApi(
         });
         return;
       }
+      if (
+        requestBody?.kind === "property_update" ||
+        requestBody?.kind === "owner_or_entity_admin"
+      ) {
+        const targetId =
+          requestBody.kind === "property_update"
+            ? "mailbox-property-review-1"
+            : "mailbox-owner-admin-review-1";
+        await fulfillJson(route, {
+          target_kind: "document_intake",
+          target_id: targetId,
+          target_href: `/intake?entity_id=${entityId}&review=${targetId}`,
+          target_label:
+            requestBody.kind === "property_update"
+              ? "Council rates notice needs property review."
+              : "Owner billing detail needs admin review.",
+        });
+        return;
+      }
+      if (requestBody?.kind === "task_or_reminder") {
+        await fulfillJson(route, {
+          target_kind: "maintenance_work_order",
+          target_id: "mailbox-task-work-order-1",
+          target_href: "/operations/maintenance/mailbox-task-work-order-1",
+          target_label: "Follow up the insurer next Tuesday.",
+        });
+        return;
+      }
       await fulfillJson(route, {
         target_kind: "maintenance_work_order",
         target_id: "99999999-9999-9999-9999-999999999999",

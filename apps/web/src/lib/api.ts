@@ -3781,7 +3781,10 @@ export type InboxPromoteKind =
   | "lease_change"
   | "tenant_contact"
   | "vendor_or_contractor"
-  | "compliance_or_insurance";
+  | "property_update"
+  | "compliance_or_insurance"
+  | "task_or_reminder"
+  | "owner_or_entity_admin";
 
 export type InboxPromoteTargetKind =
   | "maintenance_work_order"

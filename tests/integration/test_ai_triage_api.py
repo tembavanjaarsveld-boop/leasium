@@ -700,6 +700,229 @@ def test_promote_compliance_rejects_stale_attachment_metadata_without_synthesis(
     assert set(session.scalars(select(DocumentIntake.id)).all()) == existing_intake_ids
 
 
+def test_promote_mailbox_property_update_creates_review_intake(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind="property_update",
+        classification_summary="Council rates notice needs property review.",
+        classification_target_kind="property",
+        subject="Fwd: Council rates notice",
+        body_text=(
+            "Please review the attached council rates notice for Queen Street "
+            "Centre before updating any property records."
+        ),
+    )
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "property_update",
+            "summary": "Council rates notice needs property review.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "document_intake"
+    assert body["target_href"] == (
+        f"/intake?entity_id={context['entity_id']}&review={body['target_id']}"
+    )
+
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
+    )
+    assert intake is not None
+    assert intake.status.value == "uploaded"
+    assert intake.extracted_data == {}
+    assert intake.openai_response_id is None
+    assert intake.reviewed_at is None
+    assert intake.applied_at is None
+    assert intake.review_data["candidate"] == "property_update"
+    assert intake.review_data["mailbox"]["raw_email_document_id"] == str(
+        raw_document.id
+    )
+    assert intake.document.filename == "inbox-property-update.txt"
+    assert intake.document.property_id == UUID(context["property_id"])
+    assert intake.document.document_metadata["candidate"] == "property_update"
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(AuditAction.tool_name == "ai_inbox_promote")
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.target_table == "document_intake"
+    assert audit_row.tool_input["kind"] == "property_update"
+    assert audit_row.tool_input["inbound_message_id"] == str(message.id)
+
+
+def test_promote_mailbox_task_or_reminder_creates_operations_work_order(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind="task_or_reminder",
+        classification_summary="Follow up the insurer next Tuesday.",
+        classification_target_kind="maintenance_work_order",
+        subject="Fwd: Insurance follow-up reminder",
+        body_text=(
+            "Please remind me to follow up the insurer next Tuesday about the "
+            "Queen Street Centre claim response."
+        ),
+    )
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "task_or_reminder",
+            "summary": "Follow up the insurer next Tuesday.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "maintenance_work_order"
+    assert body["target_href"].startswith("/operations/maintenance/")
+
+    work_order = session.scalar(
+        select(MaintenanceWorkOrder).where(
+            MaintenanceWorkOrder.id == UUID(body["target_id"])
+        )
+    )
+    assert work_order is not None
+    assert work_order.status.value == "requested"
+    assert work_order.source_reference == "ai_inbox_promote"
+    assert work_order.contractor_name is None
+    assert work_order.contractor_email is None
+    assert work_order.contractor_phone is None
+    assert work_order.contractor_assigned_at is None
+    assert work_order.approved_at is None
+    assert work_order.invoice_draft_id is None
+    assert work_order.work_order_metadata["ai_inbox"]["kind"] == "task_or_reminder"
+    assert work_order.work_order_metadata["ai_inbox"]["mailbox"][
+        "raw_email_document_id"
+    ] == str(raw_document.id)
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(AuditAction.tool_name == "ai_inbox_promote")
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.target_table == "maintenance_work_order"
+    assert audit_row.tool_input["kind"] == "task_or_reminder"
+
+
+def test_promote_mailbox_owner_admin_creates_review_intake(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind="owner_or_entity_admin",
+        classification_summary="Owner billing detail needs admin review.",
+        classification_target_kind="smart_intake",
+        subject="Fwd: Owner billing detail",
+        body_text=(
+            "Please review this owner billing detail before changing any owner "
+            "or entity administration records."
+        ),
+    )
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "owner_or_entity_admin",
+            "summary": "Owner billing detail needs admin review.",
+            "body": message.body_text,
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "document_intake"
+
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
+    )
+    assert intake is not None
+    assert intake.status.value == "uploaded"
+    assert intake.extracted_data == {}
+    assert intake.openai_response_id is None
+    assert intake.reviewed_at is None
+    assert intake.applied_at is None
+    assert intake.review_data["candidate"] == "owner_or_entity_admin"
+    assert intake.review_data["mailbox"]["raw_email_document_id"] == str(
+        raw_document.id
+    )
+    assert intake.document.filename == "inbox-owner-admin.txt"
+    assert intake.document.document_metadata["candidate"] == "owner_or_entity_admin"
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+
+def test_promote_mailbox_only_kind_requires_mailbox_provenance(
+    client: TestClient, session: Session
+) -> None:
+    context = _lease_context(client, session)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "property_update",
+            "summary": "Council rates notice needs property review.",
+            "body": "Please review this council rates notice before updating records.",
+            "property_id": context["property_id"],
+        },
+    )
+    assert response.status_code == 422
+    assert "mailbox" in response.json()["detail"].lower()
+
+    intake = session.scalar(
+        select(DocumentIntake).where(
+            DocumentIntake.summary == "Council rates notice needs property review."
+        )
+    )
+    assert intake is None
+
+
 def test_promote_compliance_requires_mailbox_provenance(
     client: TestClient, session: Session
 ) -> None:

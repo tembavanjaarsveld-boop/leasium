@@ -1386,6 +1386,207 @@ test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
   expect(forbiddenRequests).toEqual([]);
 });
 
+const mailboxLocalPromoteCases = [
+  {
+    name: "property update",
+    kind: "property_update",
+    subject: "Fwd: Council rates notice",
+    summary: "Council rates notice needs property review.",
+    body:
+      "Please review the attached council rates notice before updating any property records.",
+    targetKind: "document_intake",
+    targetHref: "/intake?entity_id=entity-1&review=mailbox-property-review-1",
+    targetId: "mailbox-property-review-1",
+    targetLabel: "Council rates notice needs property review.",
+    promoteCopy: /Review property update/i,
+    finalUrl: /\/intake\?entity_id=entity-1&review=mailbox-property-review-1/,
+    classificationTargetKind: "property",
+  },
+  {
+    name: "task reminder",
+    kind: "task_or_reminder",
+    subject: "Fwd: Insurance follow-up reminder",
+    summary: "Follow up the insurer next Tuesday.",
+    body:
+      "Please remind me to follow up the insurer next Tuesday about the Queen Street Centre claim response.",
+    targetKind: "maintenance_work_order",
+    targetHref: "/operations/maintenance/mailbox-task-work-order-1",
+    targetId: "mailbox-task-work-order-1",
+    targetLabel: "Follow up the insurer next Tuesday.",
+    promoteCopy: /Create Operations task/i,
+    finalUrl: /\/operations\/maintenance\/mailbox-task-work-order-1/,
+    classificationTargetKind: "maintenance_work_order",
+  },
+  {
+    name: "owner admin",
+    kind: "owner_or_entity_admin",
+    subject: "Fwd: Owner billing detail",
+    summary: "Owner billing detail needs admin review.",
+    body:
+      "Please review this owner billing detail before changing owner or entity administration records.",
+    targetKind: "document_intake",
+    targetHref: "/intake?entity_id=entity-1&review=mailbox-owner-admin-review-1",
+    targetId: "mailbox-owner-admin-review-1",
+    targetLabel: "Owner billing detail needs admin review.",
+    promoteCopy: /Review owner \/ entity admin/i,
+    finalUrl:
+      /\/intake\?entity_id=entity-1&review=mailbox-owner-admin-review-1/,
+    classificationTargetKind: "smart_intake",
+  },
+] as const;
+
+for (const scenario of mailboxLocalPromoteCases) {
+  test(`AI mailbox promotes ${scenario.name} rows to local review targets`, async ({
+    page,
+  }) => {
+    const forbiddenRequests: string[] = [];
+    const promoteRequests: Record<string, unknown>[] = [];
+    const message = {
+      id: `mailbox-${scenario.kind}-1`,
+      entity_id: "entity-1",
+      channel: "email",
+      provider: "sendgrid",
+      source: "ai_mailbox",
+      trust_state: "trusted",
+      quarantine_reason: null,
+      from_address: "temba@leasium.test",
+      to_address: "ai@leasium.ai",
+      original_sender: "broker@external.example",
+      subject: scenario.subject,
+      body_preview: scenario.body,
+      auth_result: { spf: "pass", dkim: "pass" },
+      classification_kind: scenario.kind,
+      classification_confidence: 0.84,
+      classification_summary: scenario.summary,
+      classification_target_kind: scenario.classificationTargetKind,
+      attributed_tenant_id: null,
+      attachment_intake_count: 0,
+      attachment_document_ids: [],
+      attachment_intake_ids: [],
+      created_at: "2026-06-12T02:10:00.000Z",
+    };
+    const fulfillJson = async (
+      route: Route,
+      body: unknown,
+      status = 200,
+    ) =>
+      route.fulfill({
+        status,
+        headers: { "access-control-allow-origin": "*" },
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
+
+    await page.route(
+      /\/api\/v1\/comms\/inbound-messages(?:\/[^/?]+)?(?:\?.*)?$/,
+      async (route) => {
+        const request = route.request();
+        const url = new URL(request.url());
+        const path = url.pathname;
+        if (
+          request.method() === "GET" &&
+          path === "/api/v1/comms/inbound-messages"
+        ) {
+          await fulfillJson(route, {
+            messages: [message],
+            generated_at: "2026-06-12T02:15:00.000Z",
+          });
+          return;
+        }
+        if (
+          request.method() === "GET" &&
+          path === `/api/v1/comms/inbound-messages/${message.id}`
+        ) {
+          await fulfillJson(route, {
+            ...message,
+            body_text: scenario.body,
+            body_html: null,
+            raw_email_document_id: `raw-email-doc-${scenario.kind}`,
+            raw_email_download_path:
+              `/api/v1/documents/raw-email-doc-${scenario.kind}/download`,
+          });
+          return;
+        }
+        await route.fallback();
+      },
+    );
+
+    await page.route("**/api/v1/ai/triage/promote", async (route) => {
+      promoteRequests.push(
+        JSON.parse(route.request().postData() ?? "{}") as Record<
+          string,
+          unknown
+        >,
+      );
+      await fulfillJson(route, {
+        target_kind: scenario.targetKind,
+        target_id: scenario.targetId,
+        target_href: scenario.targetHref,
+        target_label: scenario.targetLabel,
+      });
+    });
+
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      const path = url.pathname;
+      const method = request.method();
+      const isMutation = method !== "GET" && method !== "HEAD";
+      const allowedExplicitPromote =
+        method === "POST" && path === "/api/v1/ai/triage/promote";
+      const forbiddenMutation =
+        isMutation &&
+        !allowedExplicitPromote &&
+        (path.startsWith("/api/v1/comms/") ||
+          path.startsWith("/api/v1/documents") ||
+          path === "/api/v1/ai/triage" ||
+          path.includes("/document-intakes/") ||
+          path.includes("/lease-intakes/") ||
+          path.includes("/tenant-contact-preview") ||
+          path.includes("/provider-dispatch") ||
+          path.includes("/provider-history") ||
+          path.includes("/xero/") ||
+          path.includes("/basiq/") ||
+          path.includes("/payments/") ||
+          path.includes("/reconciliation"));
+      const providerCall =
+        path.includes("/api/v1/sendgrid") || path.includes("/api/v1/twilio");
+      if (forbiddenMutation || providerCall) {
+        forbiddenRequests.push(`${method} ${url.toString()}`);
+      }
+    });
+
+    await page.goto("/inbox");
+
+    const trustedQueue = page.locator("section").filter({
+      has: page.getByText("MAILBOX QUEUE — 1"),
+    });
+    await trustedQueue
+      .locator("div")
+      .filter({ hasText: scenario.subject })
+      .getByRole("button", { name: "Review email" })
+      .click();
+
+    await expect(
+      page.getByRole("heading", { name: scenario.subject }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Review promotion" }).click();
+
+    const promotePanel = page.getByTestId("promote-panel");
+    await expect(promotePanel).toBeVisible();
+    await expect(promotePanel.getByText(scenario.promoteCopy)).toBeVisible();
+    await expect(
+      promotePanel.getByTestId("mailbox-review-provenance"),
+    ).toContainText("84%");
+    await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
+
+    await expect(page).toHaveURL(scenario.finalUrl);
+    expect(promoteRequests).toHaveLength(1);
+    expect(promoteRequests[0].kind).toBe(scenario.kind);
+    expect(promoteRequests[0].inbound_message_id).toBe(message.id);
+    expect(forbiddenRequests).toEqual([]);
+  });
+}
+
 test("AI inbox promotes a classified message into a maintenance draft", async ({
   page,
 }) => {

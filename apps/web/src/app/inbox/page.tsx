@@ -80,7 +80,10 @@ const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
   lease_change: "Send to Smart Intake review",
   tenant_contact: "Update tenant contact details",
   vendor_or_contractor: "Add to contractor directory",
+  property_update: "Review property update",
   compliance_or_insurance: "Send to Smart Intake review",
+  task_or_reminder: "Create Operations task",
+  owner_or_entity_admin: "Review owner / entity admin",
 };
 
 const PROMOTE_TARGET_KIND: Record<InboxPromoteKind, InboxTriageTargetKind> = {
@@ -89,7 +92,10 @@ const PROMOTE_TARGET_KIND: Record<InboxPromoteKind, InboxTriageTargetKind> = {
   lease_change: "smart_intake",
   tenant_contact: "tenant",
   vendor_or_contractor: "none",
+  property_update: "smart_intake",
   compliance_or_insurance: "smart_intake",
+  task_or_reminder: "maintenance_work_order",
+  owner_or_entity_admin: "smart_intake",
 };
 
 function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
@@ -99,7 +105,19 @@ function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
     kind === "lease_change" ||
     kind === "tenant_contact" ||
     kind === "vendor_or_contractor" ||
-    kind === "compliance_or_insurance"
+    kind === "property_update" ||
+    kind === "compliance_or_insurance" ||
+    kind === "task_or_reminder" ||
+    kind === "owner_or_entity_admin"
+  );
+}
+
+function requiresMailboxReview(kind: InboxTriageKind): boolean {
+  return (
+    kind === "property_update" ||
+    kind === "compliance_or_insurance" ||
+    kind === "task_or_reminder" ||
+    kind === "owner_or_entity_admin"
   );
 }
 
@@ -607,7 +625,7 @@ function InboxWorkspace() {
   const showPromote =
     result !== null &&
     isPromotable(result.kind) &&
-    (result.kind !== "compliance_or_insurance" || mailboxReview !== null);
+    (!requiresMailboxReview(result.kind) || mailboxReview !== null);
   const promoteRequiresTenant =
     result?.kind === "payment_or_arrears" || result?.kind === "tenant_contact";
   const promoteShowsLeasePicker = result?.kind === "lease_change";
