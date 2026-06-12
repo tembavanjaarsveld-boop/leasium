@@ -1813,6 +1813,7 @@ def _inbound_email_candidates(
                 InboundMessage.deleted_at.is_(None),
                 InboundMessage.processed_at.is_(None),
                 InboundMessage.archived_at.is_(None),
+                InboundMessage.source != "ai_mailbox",
                 InboundMessage.trust_state != "quarantined",
                 InboundMessage.trust_state != "discarded",
             )
@@ -2095,6 +2096,215 @@ def get_inbound_message(
             detail="Inbound message not found.",
         )
     assert_entity_role(session, user, message.entity_id, READ_ROLES)
+    return _inbound_message_detail_read(message)
+
+
+def _mailbox_message_for_write(
+    message_id: UUID,
+    user: CurrentUser,
+    session: Session,
+) -> InboundMessage:
+    message = session.get(InboundMessage, message_id)
+    if message is None or message.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Inbound message not found.",
+        )
+    assert_entity_role(session, user, message.entity_id, WRITE_ROLES)
+    if message.source != "ai_mailbox":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Only AI mailbox messages support this action.",
+        )
+    return message
+
+
+def _message_entity(message: InboundMessage, session: Session) -> Entity:
+    entity = session.get(Entity, message.entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entity not found.",
+        )
+    return entity
+
+
+def _trust_decision_history(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    history = metadata.get("trust_decision_history")
+    if not isinstance(history, list):
+        return []
+    return [dict(item) for item in history if isinstance(item, dict)]
+
+
+@router.post(
+    "/inbound-messages/{message_id}/trust-sender",
+    response_model=CommsInboundMessageDetailRead,
+)
+def trust_inbound_message_sender(
+    message_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsInboundMessageDetailRead:
+    """Trust an authenticated quarantined AI mailbox sender.
+
+    Local review-state only: creates/updates the organisation trusted-sender
+    entry and marks this row trusted. It does not run AI triage, promote
+    attachments, send email/SMS, or mutate any provider.
+    """
+
+    message = _mailbox_message_for_write(message_id, user, session)
+    metadata = (
+        dict(message.inbound_metadata)
+        if isinstance(message.inbound_metadata, dict)
+        else {}
+    )
+    if (
+        message.trust_state != "quarantined"
+        or metadata.get("quarantine_reason") != "sender_not_trusted"
+        or not _ai_mailbox_auth_passed(message.auth_result or {})
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Only sender-not-trusted quarantines with passing SPF/DKIM can "
+                "be trusted."
+            ),
+        )
+
+    email = _normalize_email_address(message.from_address)
+    if email is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Trusted sender email is invalid.",
+        )
+    entity = _message_entity(message, session)
+    now = utcnow()
+    trusted_sender = _trusted_sender_for_org(
+        organisation_id=entity.organisation_id,
+        email=email,
+        session=session,
+    )
+    if trusted_sender is None:
+        trusted_sender = TrustedSender(
+            organisation_id=entity.organisation_id,
+            email=email,
+            label=None,
+            added_by_user_id=user.id,
+            added_at=now,
+        )
+        session.add(trusted_sender)
+        session.flush()
+    else:
+        trusted_sender.added_by_user_id = user.id
+        trusted_sender.added_at = now
+
+    history = _trust_decision_history(metadata)
+    history.append(
+        {
+            "action": "trust_sender",
+            "at": now.isoformat(),
+            "by_user_id": str(user.id),
+            "sender": email,
+            "trusted_sender_id": str(trusted_sender.id),
+        }
+    )
+    metadata.pop("quarantine_reason", None)
+    metadata.update(
+        {
+            "trusted_sender_id": str(trusted_sender.id),
+            "trusted_at": now.isoformat(),
+            "trusted_by_user_id": str(user.id),
+            "trust_decision_history": history,
+        }
+    )
+    message.trust_state = "trusted"
+    message.archived_at = now
+    message.inbound_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=message.entity_id,
+        action="trust_sender",
+        target_table="inbound_message",
+        target_id=message.id,
+        tool_name="comms.inbound_message.trust_sender",
+        tool_input={
+            "sender": email,
+            "trusted_sender_id": str(trusted_sender.id),
+            "previous_trust_state": "quarantined",
+        },
+        tool_output_summary="AI mailbox sender trusted from quarantine.",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(message)
+    return _inbound_message_detail_read(message)
+
+
+@router.post(
+    "/inbound-messages/{message_id}/discard",
+    response_model=CommsInboundMessageDetailRead,
+)
+def discard_inbound_message(
+    message_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> CommsInboundMessageDetailRead:
+    """Mark an AI mailbox row discarded while preserving evidence."""
+
+    message = _mailbox_message_for_write(message_id, user, session)
+    if message.trust_state == "trusted":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Trusted mailbox messages cannot be discarded from quarantine.",
+        )
+
+    now = utcnow()
+    previous_trust_state = message.trust_state
+    metadata = (
+        dict(message.inbound_metadata)
+        if isinstance(message.inbound_metadata, dict)
+        else {}
+    )
+    history = _trust_decision_history(metadata)
+    history.append(
+        {
+            "action": "discard",
+            "at": now.isoformat(),
+            "by_user_id": str(user.id),
+        }
+    )
+    metadata.update(
+        {
+            "discarded_at": now.isoformat(),
+            "discarded_by_user_id": str(user.id),
+            "trust_decision_history": history,
+        }
+    )
+    message.trust_state = "discarded"
+    message.archived_at = now
+    message.inbound_metadata = metadata
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=message.entity_id,
+        action="discard",
+        target_table="inbound_message",
+        target_id=message.id,
+        tool_name="comms.inbound_message.discard",
+        tool_input={
+            "previous_trust_state": previous_trust_state,
+            "quarantine_reason": metadata.get("quarantine_reason"),
+        },
+        tool_output_summary="AI mailbox message discarded from quarantine.",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    session.commit()
+    session.refresh(message)
     return _inbound_message_detail_read(message)
 
 
@@ -2872,6 +3082,11 @@ def _resolve_dispatch_entity_id(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Inbound message not found.",
+            )
+        if message.source == "ai_mailbox":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="AI mailbox messages cannot be dispatched from Comms queue.",
             )
         return message.entity_id, message
     if (

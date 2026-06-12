@@ -2,6 +2,55 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox trust/discard v1)
+
+Follow-up to the AI Mailbox read-only UI. Temba asked to use agents and keep
+going on the product slice. Two recon agents checked backend and frontend/docs
+shape; main thread kept the TDD path local.
+
+Shipped:
+
+- `POST /api/v1/comms/inbound-messages/{message_id}/trust-sender` is
+  operator write-role gated, AI-mailbox-only, and only accepts quarantines
+  with `quarantine_reason = sender_not_trusted` plus SPF/DKIM pass. It trusts
+  the authenticated `from_address` only, creates/updates the organisation
+  `TrustedSender`, marks the row trusted, archives it out of the generic Comms
+  reply queue, clears the projected quarantine reason, and writes a
+  confidential audit row.
+- `POST /api/v1/comms/inbound-messages/{message_id}/discard` is
+  operator write-role gated, AI-mailbox-only, marks the row discarded +
+  archived, keeps `deleted_at = None`, preserves body/raw-email evidence, and
+  writes a confidential audit row.
+- Neither action re-runs OpenAI, promotes attachments, applies Smart Intake,
+  creates a Comms reply draft, sends email/SMS, calls Xero/Basiq, touches
+  payments, or reconciles anything. Raw `.eml` `StoredDocument` metadata
+  remains receipt-time provenance; current trust/discard state lives on
+  `InboundMessage` metadata and audit rows.
+- `/inbox` selected-message detail now shows Trust sender only for
+  authenticated `sender_not_trusted` quarantines, and Discard for quarantined
+  rows. Failed-auth rows can be discarded but not trusted from that email.
+- Smoke fixture is stateful for mailbox trust/discard and keeps the provider
+  guardrail watcher strict except for these two local action paths.
+- Docs updated: `docs/ai-mailbox-intake-design.md`,
+  `docs/product-roadmap.md`, `docs/design-governance.md`,
+  `docs/next-build-instructions-2026-06-12.md`, and this handover.
+
+Verification so far:
+
+- TDD red first: focused backend tests failed with 404 before endpoints.
+- Focused backend green:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -k "inbound_message_trust_sender or inbound_message_discard" -q`
+- Focused AI Mailbox smoke green via npm fallback because `pnpm` was not on
+  PATH:
+  `npm run test:smoke -- --grep "AI mailbox"` in `apps/web`.
+
+Next AI Mailbox slices:
+
+1. Settings → Organisation trusted-sender management.
+2. Reviewed promote/apply paths from mailbox rows, only after source,
+   confidence, and raw-email provenance are visible in the approval step.
+3. Optional source/trust-state filters if mailbox volume grows.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake read-only UI v1)
 
 Follow-up to the backend/read foundation below. Temba said "Go" after asking
@@ -20,12 +69,14 @@ Shipped UI/API client:
   `ai@leasium.ai`, trusted mailbox queue, quarantine bucket, and selected
   quarantined-email provenance detail with sender/auth result, stored body
   text, and raw-email download link.
-- The panel is deliberately read-only. It does not trust senders, discard
-  messages, promote/apply suggestions, acknowledge emails, dispatch providers,
-  run Smart Intake apply, send tenant email, send Twilio SMS, call Xero/Basiq,
-  touch payments, or reconcile anything.
-- Smoke fixture coverage now includes AI mailbox list/detail rows and asserts
-  that Trust sender / Discard controls are absent.
+- The panel was deliberately read-only in this slice. It did not trust senders,
+  discard messages, promote/apply suggestions, acknowledge emails, dispatch
+  providers, run Smart Intake apply, send tenant email, send Twilio SMS, call
+  Xero/Basiq, touch payments, or reconcile anything. Trust/discard now ships in
+  the newer section above.
+- Smoke fixture coverage initially included AI mailbox list/detail rows and
+  asserted that Trust sender / Discard controls were absent; the newer section
+  above replaces that with local trust/discard smoke coverage.
 - Docs updated: `docs/product-roadmap.md`,
   `docs/design-governance.md`, `docs/ai-mailbox-intake-design.md`,
   `docs/next-build-instructions-2026-06-12.md`, and this handover.
@@ -42,12 +93,9 @@ Verification:
 
 Next AI Mailbox slices:
 
-1. Design and implement review-first trust/discard actions for quarantined
-   senders. Keep provider calls mocked in tests and do not run SendGrid/Twilio
-   sends from those actions.
-2. Add Settings → Organisation trusted-sender management once the control shape
+1. Add Settings → Organisation trusted-sender management once the control shape
    is reviewed.
-3. Add reviewed promote/apply paths from mailbox rows only after the operator
+2. Add reviewed promote/apply paths from mailbox rows only after the operator
    can inspect source, confidence, and raw-email provenance.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake foundation/read v1)
@@ -127,11 +175,11 @@ Verification recorded so far:
 - Full backend suite passed **638 passed, 1 skipped**:
   `.venv/bin/python -m pytest -q`.
 
-Next recommended AI Mailbox slice after the read-only UI:
+Next recommended AI Mailbox slice after trust/discard v1:
 
-1. Add review-first actions: trust sender from quarantine, discard, then
-   promote to task/work order/property note/critical date without auto-apply.
-2. Add Settings → Organisation trusted-sender management.
+1. Add Settings → Organisation trusted-sender management.
+2. Add reviewed promote/apply actions to task/work order/property note/critical
+   date without auto-apply.
 3. Consider a mailbox-specific route alias (`/comms/mailbox/messages`) only if
    the frontend wants a clearer product URL; the shipped backend route is the
    generic inbound-message read API above.

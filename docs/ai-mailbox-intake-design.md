@@ -1,12 +1,13 @@
 # AI Mailbox Intake — ai@leasium.ai
 
-Status: Backend foundation/read APIs + read-only `/inbox` UI foundation
-shipped · trust/discard/settings/promote flows pending Remba review ·
-2026-06-12
+Status: Backend foundation/read APIs + `/inbox` UI foundation + local
+trust/discard decisions shipped · settings/promote flows pending Remba
+review · 2026-06-12
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
-read-only UI implemented from this frame, with action variants still requiring
-Remba/Temba review before code.
+UI implemented from this frame, with trust/discard action placement shipped
+pending Remba/Temba review and Settings/promote variants still requiring review
+before code.
 
 ## Problem
 
@@ -43,8 +44,19 @@ place, with the operator approving the result.
   projections for mailbox review without returning raw provider payloads.
 - 2026-06-12 UI foundation follow-up: `/inbox` now has a read-only AI Mailbox
   panel with copy address, trusted queue, quarantine bucket, selected-message
-  provenance detail, auth result, body text, and raw-email link. It deliberately
-  omits trust/discard/promote actions until those flows are reviewed.
+  provenance detail, auth result, body text, and raw-email link. The first UI
+  cut deliberately omitted trust/discard/promote actions until those flows were
+  separately reviewed.
+- 2026-06-12 trust/discard follow-up: quarantined AI mailbox rows now expose
+  local review decisions in the selected-message detail panel. Trusting a
+  sender only uses the authenticated `from_address`, requires the original row
+  to be `sender_not_trusted` with SPF/DKIM pass, creates/updates the
+  organisation `TrustedSender`, marks the current row trusted, archives it
+  out of the generic Comms reply queue, and writes audit metadata. Discard
+  marks the row discarded/archived while keeping the inbound body and raw-email
+  evidence readable. Neither action re-runs OpenAI, promotes attachments,
+  applies Smart Intake, creates a Comms reply draft, sends email/SMS, calls
+  Xero/Basiq, touches payments, or reconciles anything.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -136,19 +148,24 @@ Decision for foundation v1: (a) no acknowledgement reply.
 - `GET /api/v1/comms/inbound-messages/{message_id}` reads a single
   role-scoped message with body text/html and raw-email document link for
   operator review.
+- `POST /api/v1/comms/inbound-messages/{message_id}/trust-sender` and
+  `/discard` record local mailbox trust decisions behind operator write access.
+  Trust requires passing SPF/DKIM and `sender_not_trusted`; discard preserves
+  evidence and does not delete the row. AI mailbox rows are excluded from the
+  generic Comms reply queue/dispatch path.
 - Future promote endpoints: add the new promote kinds listed above.
 
 ## UI
 
-- Shipped on `/inbox`: read-only AI Mailbox panel with copy-address affordance,
+- Shipped on `/inbox`: AI Mailbox panel with copy-address affordance,
   trusted mailbox queue, quarantine bucket, provenance disclosure for selected
   quarantined rows (forwarder/original sender where available, SPF/DKIM result,
-  body text, raw email link), and a review-first guardrail note.
+  body text, raw email link), local Trust sender / Discard decisions, and a
+  review-first guardrail note.
 - Still pending: source/trust-state filters if the queue grows, Settings →
-  Organisation trusted-senders panel, trust/discard actions, and reviewed
-  promote actions.
+  Organisation trusted-senders panel, and reviewed promote actions.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
-  82:2` for trust/discard/promote variants, then implement after Remba/Temba
+  82:2` for Settings/promote variants, then implement after Remba/Temba
   sign-off (design-governance §Figma-First).
 
 ## Foundation v1 scope cut
@@ -156,24 +173,23 @@ Decision for foundation v1: (a) no acknowledgement reply.
 In: ai@leasium.ai routing, sender trust + quarantine, sender-auth metadata,
 forwarded original-sender provenance, body triage with operator kinds,
 trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
-role-scoped read APIs, trusted-senders API, and read-only `/inbox` queue +
-quarantine provenance UI.
+role-scoped read APIs, trusted-senders API, `/inbox` queue + quarantine
+provenance UI, and local trust/discard decisions.
 
-Out (next slices): Settings trusted-sender panel, trust/discard decisions,
-promote/apply actions, auto-ack replies, reply-by-email threads, plus-addressing
-hints, agent-facing confirmations, cross-org agent senders, auto-apply of any
-kind.
+Out (next slices): Settings trusted-sender panel, promote/apply actions,
+auto-ack replies, reply-by-email threads, plus-addressing hints, agent-facing
+confirmations, cross-org agent senders, auto-apply of any kind.
 
 ## Test plan
 
 - Backend: webhook happy path (trusted sender → message + triage),
   quarantine path (unknown sender, SPF fail), forwarded-email provenance
   extraction, raw-email evidence document linking, list/detail read APIs with
-  entity scoping, trusted-senders CRUD + auth, promote kinds. Mock OpenAI and
-  SendGrid throughout.
-- Smoke: shipped read-only inbox queue + quarantine provenance; future source
-  filter, trust-sender action, and promote flow fixtures when those actions
-  land.
+  entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
+  promote kinds. Mock OpenAI and SendGrid throughout.
+- Smoke: shipped inbox queue + quarantine provenance, trust-sender action,
+  discard action; future source filter and promote flow fixtures when those
+  actions land.
 
 ## Open decisions for Temba
 

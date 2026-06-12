@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -36,6 +36,7 @@ import {
   type InboxTenantContactPreviewRecord,
   type InboxTriageKind,
   type InboxTriageRecord,
+  discardCommsInboundMessage,
   documentDownloadUrlFromPath,
   getCommsInboundMessage,
   listContractors,
@@ -46,6 +47,7 @@ import {
   listTenants,
   previewTenantContactUpdate,
   promoteInboxMessage,
+  trustCommsInboundMessageSender,
   triageInboxMessage,
 } from "@/lib/api";
 import {
@@ -161,8 +163,29 @@ function mailboxAuthLabel(
   return `${key.toUpperCase()} ${authResult[key] ?? "unknown"}`;
 }
 
+function mailboxStateTone(
+  trustState: CommsInboundMessageRecord["trust_state"],
+): StatusTone {
+  if (trustState === "trusted") return "success";
+  if (trustState === "discarded") return "neutral";
+  return "warning";
+}
+
+function mailboxStateLabel(message: CommsInboundMessageRecord): string {
+  if (message.trust_state === "trusted") return "Trusted";
+  if (message.trust_state === "discarded") return "Discarded";
+  return formatMailboxReason(message.quarantine_reason);
+}
+
+function mailboxAuthPassed(message: CommsInboundMessageRecord): boolean {
+  return (
+    message.auth_result.spf === "pass" && message.auth_result.dkim === "pass"
+  );
+}
+
 function InboxWorkspace() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [body, setBody] = useState("");
   const [result, setResult] = useState<InboxTriageRecord | null>(null);
@@ -179,6 +202,12 @@ function InboxWorkspace() {
   const [selectedMailboxMessageId, setSelectedMailboxMessageId] =
     useState<string | null>(null);
   const [mailboxAddressCopied, setMailboxAddressCopied] = useState(false);
+  const [mailboxActionMessage, setMailboxActionMessage] = useState<
+    string | null
+  >(null);
+  const [mailboxActionError, setMailboxActionError] = useState<string | null>(
+    null,
+  );
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -273,6 +302,11 @@ function InboxWorkspace() {
     setSelectedMailboxMessageId(null);
   }, [selectedEntityId]);
 
+  useEffect(() => {
+    setMailboxActionMessage(null);
+    setMailboxActionError(null);
+  }, [selectedMailboxMessageId]);
+
   const triageMutation = useMutation({
     mutationFn: (payload: { entity_id: string; body: string }) =>
       triageInboxMessage(payload),
@@ -323,6 +357,44 @@ function InboxWorkspace() {
       );
     },
     onError: (err) => setPromoteError(friendlyError(err)),
+  });
+
+  const trustSenderMutation = useMutation({
+    mutationFn: trustCommsInboundMessageSender,
+    onMutate: () => {
+      setMailboxActionMessage(null);
+      setMailboxActionError(null);
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(
+        ["inbox-ai-mailbox-message", data.id],
+        data,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["inbox-ai-mailbox", selectedEntityId],
+      });
+      setMailboxActionMessage("Sender trusted for future authenticated mail.");
+    },
+    onError: (err) => setMailboxActionError(friendlyError(err)),
+  });
+
+  const discardMailboxMutation = useMutation({
+    mutationFn: discardCommsInboundMessage,
+    onMutate: () => {
+      setMailboxActionMessage(null);
+      setMailboxActionError(null);
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(
+        ["inbox-ai-mailbox-message", data.id],
+        data,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["inbox-ai-mailbox", selectedEntityId],
+      });
+      setMailboxActionMessage("Mailbox row discarded; evidence retained.");
+    },
+    onError: (err) => setMailboxActionError(friendlyError(err)),
   });
 
   function handleSubmit(event: React.FormEvent) {
@@ -399,6 +471,16 @@ function InboxWorkspace() {
     });
   }
 
+  function handleTrustMailboxSender() {
+    if (!selectedMailboxMessage) return;
+    trustSenderMutation.mutate(selectedMailboxMessage.id);
+  }
+
+  function handleDiscardMailboxMessage() {
+    if (!selectedMailboxMessage) return;
+    discardMailboxMutation.mutate(selectedMailboxMessage.id);
+  }
+
   const showPromote = result !== null && isPromotable(result.kind);
   const promoteRequiresTenant =
     result?.kind === "payment_or_arrears" || result?.kind === "tenant_contact";
@@ -437,6 +519,14 @@ function InboxWorkspace() {
     (message) => message.trust_state === "quarantined",
   );
   const selectedMailboxMessage = selectedMailboxMessageQuery.data ?? null;
+  const mailboxActionPending =
+    trustSenderMutation.isPending || discardMailboxMutation.isPending;
+  const canTrustSelectedMailboxSender =
+    selectedMailboxMessage?.trust_state === "quarantined" &&
+    selectedMailboxMessage.quarantine_reason === "sender_not_trusted" &&
+    mailboxAuthPassed(selectedMailboxMessage);
+  const canDiscardSelectedMailboxMessage =
+    selectedMailboxMessage?.trust_state === "quarantined";
   const mailboxStatusText = mailboxQuery.isLoading
     ? "Loading mailbox"
     : `${trustedMailboxMessages.length} ready · ${quarantinedMailboxMessages.length} quarantined`;
@@ -671,7 +761,7 @@ function InboxWorkspace() {
                         ? "Checking quarantine."
                         : "No quarantined mailbox rows."
                     }
-                    description="Untrusted senders and failed authentication stay here until a future trust decision flow."
+                    description="Untrusted senders and failed authentication stay here until you trust or discard them."
                   />
                 )}
               </div>
@@ -685,7 +775,7 @@ function InboxWorkspace() {
                   ? mailboxSubject(selectedMailboxMessage)
                   : "Loading email"
               }
-              description="Raw message detail is read-only in this slice."
+              description="Review sender, authentication, body, and raw evidence before deciding."
               icon={<FileText size={17} className="text-primary" />}
               actions={
                 <SecondaryButton
@@ -709,10 +799,12 @@ function InboxWorkspace() {
                 ) : selectedMailboxMessage ? (
                   <>
                     <div className="flex flex-wrap gap-2">
-                      <StatusBadge tone="warning">
-                        {formatMailboxReason(
-                          selectedMailboxMessage.quarantine_reason,
+                      <StatusBadge
+                        tone={mailboxStateTone(
+                          selectedMailboxMessage.trust_state,
                         )}
+                      >
+                        {mailboxStateLabel(selectedMailboxMessage)}
                       </StatusBadge>
                       <StatusBadge tone="neutral">
                         {mailboxAuthLabel(
@@ -750,6 +842,52 @@ function InboxWorkspace() {
                         </div>
                       ) : null}
                     </div>
+                    {canDiscardSelectedMailboxMessage ? (
+                      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 p-3">
+                        {canTrustSelectedMailboxSender ? (
+                          <Button
+                            type="button"
+                            onClick={handleTrustMailboxSender}
+                            disabled={mailboxActionPending}
+                          >
+                            {trustSenderMutation.isPending ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <ShieldCheck size={14} />
+                            )}
+                            Trust sender
+                          </Button>
+                        ) : null}
+                        <SecondaryButton
+                          type="button"
+                          onClick={handleDiscardMailboxMessage}
+                          disabled={mailboxActionPending}
+                        >
+                          {discardMailboxMutation.isPending ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <AlertTriangle size={14} />
+                          )}
+                          Discard
+                        </SecondaryButton>
+                      </div>
+                    ) : null}
+                    {mailboxActionMessage ? (
+                      <div
+                        role="status"
+                        className="rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success"
+                      >
+                        {mailboxActionMessage}
+                      </div>
+                    ) : null}
+                    {mailboxActionError ? (
+                      <div
+                        role="alert"
+                        className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+                      >
+                        {mailboxActionError}
+                      </div>
+                    ) : null}
                     <div className="whitespace-pre-wrap rounded-md border border-border bg-white p-3 text-sm text-foreground">
                       {selectedMailboxMessage.body_text ||
                         selectedMailboxMessage.body_preview ||

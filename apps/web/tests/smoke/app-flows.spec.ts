@@ -30,10 +30,17 @@ function watchForbiddenCommsReadOnlyRequests(page: Page) {
     const path = url.pathname;
     const method = request.method();
     const isMutation = method !== "GET" && method !== "HEAD";
+    const isAllowedMailboxTrustDecision =
+      method === "POST" &&
+      /^\/api\/v1\/comms\/inbound-messages\/[^/]+\/(trust-sender|discard)$/.test(
+        path,
+      );
     const mutatesLocalComms =
       isMutation &&
+      !isAllowedMailboxTrustDecision &&
       (path.startsWith("/api/v1/comms/") ||
         path.startsWith("/api/v1/documents") ||
+        path === "/api/v1/ai/triage" ||
         path === "/api/v1/ai/triage/promote" ||
         path.includes("/tenant-contact-preview") ||
         path.includes("/contact-change-requests/") ||
@@ -1004,7 +1011,7 @@ test("AI inbox classifies a pasted message and surfaces a deep-link", async ({
   await expectTouchTarget(handoffLink);
 });
 
-test("AI mailbox surfaces read-only queue and quarantine provenance", async ({
+test("AI mailbox surfaces queue and quarantine provenance", async ({
   page,
 }) => {
   const forbiddenRequests = watchForbiddenCommsReadOnlyRequests(page);
@@ -1024,10 +1031,10 @@ test("AI mailbox surfaces read-only queue and quarantine provenance", async ({
   await expect(
     page.getByText("QUARANTINE — AWAITING TRUST DECISION — 2"),
   ).toBeVisible();
+  await expect(page.getByText("new.agent@example.com")).toBeVisible();
   await expect(page.getByText("offers@marketing-blast.com")).toBeVisible();
-  await expect(page.getByText("unknown.agent@gmail.com")).toBeVisible();
   const forbiddenMailboxActions =
-    /Trust sender|Discard|Promote|Apply|Approve & send|Send email|Run Smart Intake/;
+    /Promote|Apply|Approve & send|Send email|Run Smart Intake/;
   await expect(
     page.getByRole("button", { name: forbiddenMailboxActions }),
   ).toHaveCount(0);
@@ -1038,17 +1045,62 @@ test("AI mailbox surfaces read-only queue and quarantine provenance", async ({
   await page.getByRole("button", { name: "View email" }).first().click();
 
   await expect(
-    page.getByRole("heading", { name: "Urgent payment update" }),
+    page.getByRole("heading", { name: "Council rates notice — Collins St" }),
   ).toBeVisible();
   await expect(page.getByText("sender not trusted")).toBeVisible();
-  await expect(page.getByText("SPF fail")).toBeVisible();
-  await expect(page.getByText("DKIM none")).toBeVisible();
+  await expect(page.getByText("SPF pass")).toBeVisible();
+  await expect(page.getByText("DKIM pass")).toBeVisible();
   await expect(
-    page.getByText("Please change the payment account before the next rent run."),
+    page.getByText("Property match uncertain. Pick property before applying."),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open raw email" }),
   ).toHaveAttribute("href", /\/api\/v1\/documents\/raw-email-doc-1\/download$/);
+  expect(forbiddenRequests).toEqual([]);
+});
+
+test("AI mailbox trusts authenticated senders and discards failed-auth rows locally", async ({
+  page,
+}) => {
+  const forbiddenRequests = watchForbiddenCommsReadOnlyRequests(page);
+
+  await page.goto("/inbox");
+
+  await page.getByRole("button", { name: "View email" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Council rates notice — Collins St" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Trust sender" }).click();
+
+  await expect(
+    page.getByText("Sender trusted for future authenticated mail."),
+  ).toBeVisible();
+  await expect(page.getByText("Trusted", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("MAILBOX QUEUE — 2")).toBeVisible();
+  await expect(
+    page.getByText("QUARANTINE — AWAITING TRUST DECISION — 1"),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "View email" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Urgent payment update" }),
+  ).toBeVisible();
+  await expect(page.getByText("DKIM fail")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Trust sender" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "Discard" }).click();
+
+  await expect(
+    page.getByText("Mailbox row discarded; evidence retained."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Discarded", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("QUARANTINE — AWAITING TRUST DECISION — 0"),
+  ).toBeVisible();
   expect(forbiddenRequests).toEqual([]);
 });
 

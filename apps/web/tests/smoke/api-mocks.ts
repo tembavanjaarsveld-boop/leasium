@@ -2773,6 +2773,73 @@ export async function mockLeasiumApi(
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
   let complianceChecks = jsonClone(initialComplianceChecks);
+  const trustedMailboxMessageIds = new Set<string>();
+  const discardedMailboxMessageIds = new Set<string>();
+  const mailboxQuarantineOneDetail = () => {
+    const trusted = trustedMailboxMessageIds.has("mailbox-quarantine-1");
+    return {
+      id: "mailbox-quarantine-1",
+      entity_id: entityId,
+      channel: "email",
+      provider: "sendgrid",
+      source: "ai_mailbox",
+      trust_state: trusted ? "trusted" : "quarantined",
+      quarantine_reason: trusted ? null : "sender_not_trusted",
+      from_address: "new.agent@example.com",
+      to_address: "ai@leasium.ai",
+      original_sender: null,
+      subject: "Council rates notice — Collins St",
+      body_preview: "Property match uncertain. Pick property before applying.",
+      auth_result: { spf: "pass", dkim: "pass" },
+      classification_kind: null,
+      classification_confidence: null,
+      classification_summary: null,
+      classification_target_kind: null,
+      attributed_tenant_id: null,
+      attachment_intake_count: 0,
+      attachment_document_ids: [],
+      attachment_intake_ids: [],
+      created_at: "2026-06-12T00:45:00.000Z",
+      body_text:
+        "Property match uncertain. Pick property before applying.\n\nThis sender has passed authentication but is not trusted yet.",
+      body_html: null,
+      raw_email_document_id: "raw-email-doc-1",
+      raw_email_download_path: "/api/v1/documents/raw-email-doc-1/download",
+    };
+  };
+  const mailboxQuarantineTwoDetail = () => {
+    const discarded = discardedMailboxMessageIds.has("mailbox-quarantine-2");
+    return {
+      id: "mailbox-quarantine-2",
+      entity_id: entityId,
+      channel: "email",
+      provider: "sendgrid",
+      source: "ai_mailbox",
+      trust_state: discarded ? "discarded" : "quarantined",
+      quarantine_reason: "auth_not_passed",
+      from_address: "offers@marketing-blast.com",
+      to_address: "ai@leasium.ai",
+      original_sender: null,
+      subject: "Urgent payment update",
+      body_preview:
+        "Please change the payment account before the next rent run.",
+      auth_result: { spf: "pass", dkim: "fail" },
+      classification_kind: null,
+      classification_confidence: null,
+      classification_summary: null,
+      classification_target_kind: null,
+      attributed_tenant_id: null,
+      attachment_intake_count: 0,
+      attachment_document_ids: [],
+      attachment_intake_ids: [],
+      created_at: "2026-06-11T23:00:00.000Z",
+      body_text:
+        "Please change the payment account before the next rent run.\n\nAuthentication failed.",
+      body_html: null,
+      raw_email_document_id: "raw-email-doc-2",
+      raw_email_download_path: "/api/v1/documents/raw-email-doc-2/download",
+    };
+  };
   if (options.operationsComplianceDemo) {
     maintenanceWorkOrders.unshift(inspectionWorkOrderFixture());
   }
@@ -5682,13 +5749,13 @@ export async function mockLeasiumApi(
           source: "ai_mailbox",
           trust_state: "quarantined",
           quarantine_reason: "sender_not_trusted",
-          from_address: "offers@marketing-blast.com",
+          from_address: "new.agent@example.com",
           to_address: "ai@leasium.ai",
           original_sender: null,
-          subject: "Urgent payment update",
+          subject: "Council rates notice — Collins St",
           body_preview:
-            "Please change the payment account before the next rent run.",
-          auth_result: { spf: "fail", dkim: "none" },
+            "Property match uncertain. Pick property before applying.",
+          auth_result: { spf: "pass", dkim: "pass" },
           classification_kind: null,
           classification_confidence: null,
           classification_summary: null,
@@ -5707,11 +5774,12 @@ export async function mockLeasiumApi(
           source: "ai_mailbox",
           trust_state: "quarantined",
           quarantine_reason: "auth_not_passed",
-          from_address: "unknown.agent@gmail.com",
+          from_address: "offers@marketing-blast.com",
           to_address: "ai@leasium.ai",
           original_sender: null,
-          subject: "Council rates notice — Collins St",
-          body_preview: "Property match uncertain. Pick property before applying.",
+          subject: "Urgent payment update",
+          body_preview:
+            "Please change the payment account before the next rent run.",
           auth_result: { spf: "pass", dkim: "fail" },
           classification_kind: null,
           classification_confidence: null,
@@ -5725,11 +5793,28 @@ export async function mockLeasiumApi(
         },
       ];
       await fulfillJson(route, {
-        messages: baseMessages.filter(
-          (message) =>
-            (!source || message.source === source) &&
-            (!trustState || message.trust_state === trustState),
-        ),
+        messages: baseMessages
+          .map((message) => {
+            if (trustedMailboxMessageIds.has(message.id)) {
+              return {
+                ...message,
+                trust_state: "trusted",
+                quarantine_reason: null,
+              };
+            }
+            if (discardedMailboxMessageIds.has(message.id)) {
+              return {
+                ...message,
+                trust_state: "discarded",
+              };
+            }
+            return message;
+          })
+          .filter(
+            (message) =>
+              (!source || message.source === source) &&
+              (!trustState || message.trust_state === trustState),
+          ),
         generated_at: "2026-06-12T01:05:00.000Z",
       });
       return;
@@ -5739,36 +5824,33 @@ export async function mockLeasiumApi(
       method === "GET" &&
       path === "/comms/inbound-messages/mailbox-quarantine-1"
     ) {
-      await fulfillJson(route, {
-        id: "mailbox-quarantine-1",
-        entity_id: entityId,
-        channel: "email",
-        provider: "sendgrid",
-        source: "ai_mailbox",
-        trust_state: "quarantined",
-        quarantine_reason: "sender_not_trusted",
-        from_address: "offers@marketing-blast.com",
-        to_address: "ai@leasium.ai",
-        original_sender: null,
-        subject: "Urgent payment update",
-        body_preview:
-          "Please change the payment account before the next rent run.",
-        auth_result: { spf: "fail", dkim: "none" },
-        classification_kind: null,
-        classification_confidence: null,
-        classification_summary: null,
-        classification_target_kind: null,
-        attributed_tenant_id: null,
-        attachment_intake_count: 0,
-        attachment_document_ids: [],
-        attachment_intake_ids: [],
-        created_at: "2026-06-12T00:45:00.000Z",
-        body_text:
-          "Please change the payment account before the next rent run.\n\nThis sender is not trusted.",
-        body_html: null,
-        raw_email_document_id: "raw-email-doc-1",
-        raw_email_download_path: "/api/v1/documents/raw-email-doc-1/download",
-      });
+      await fulfillJson(route, mailboxQuarantineOneDetail());
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      path === "/comms/inbound-messages/mailbox-quarantine-2"
+    ) {
+      await fulfillJson(route, mailboxQuarantineTwoDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/comms/inbound-messages/mailbox-quarantine-1/trust-sender"
+    ) {
+      trustedMailboxMessageIds.add("mailbox-quarantine-1");
+      await fulfillJson(route, mailboxQuarantineOneDetail());
+      return;
+    }
+
+    if (
+      method === "POST" &&
+      path === "/comms/inbound-messages/mailbox-quarantine-2/discard"
+    ) {
+      discardedMailboxMessageIds.add("mailbox-quarantine-2");
+      await fulfillJson(route, mailboxQuarantineTwoDetail());
       return;
     }
 

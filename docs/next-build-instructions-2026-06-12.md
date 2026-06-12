@@ -157,22 +157,25 @@ then reuse the Ticket 2 payment-rail adapter rather than a second rail.
 Backend foundations are shipped: `trusted_sender`, `InboundMessage.source`,
 `auth_result`, `trust_state`, `original_sender`, ai@ mailbox routing/auth,
 trusted-sender APIs, quarantine-before-AI, raw-email evidence storage, and
-role-scoped read APIs. `/inbox` now has a read-only AI Mailbox panel with copy
-address, trusted queue, quarantine bucket, selected-message provenance, auth
-detail, and raw-email link. The visible UI is Remba-pending.
+role-scoped read APIs. `/inbox` now has an AI Mailbox panel with copy address,
+trusted queue, quarantine bucket, selected-message provenance, auth detail,
+raw-email link, and local trust/discard decisions. Trust sender is available
+only for authenticated `sender_not_trusted` quarantines and trusts the
+authenticated `from_address`; failed-auth rows can be discarded but not
+trusted from that email. AI mailbox rows stay out of the generic Comms reply
+queue/dispatch path. The visible UI/action placement is review-pending.
 
 **Instruction:** next work should start from the shipped read-only state, not
 from the old migration plan. Remaining slices are Settings trusted-sender
-management, review-first trust/discard actions, and reviewed promote/apply
-actions. Do not add acknowledgement replies, provider sends, Smart Intake
-apply, tenant email, Xero/Basiq, payment, or reconciliation mutation without
-explicit operator approval.
+management and reviewed promote/apply actions. Do not add acknowledgement
+replies, provider sends, Smart Intake apply, tenant email, Xero/Basiq, payment,
+or reconciliation mutation without explicit operator approval.
 
 ---
 
 ## Suggested order
 
-1 (comms templates) → 3 (vendor notifications) → AI Mailbox trust/settings
+1 (comms templates) → 3 (vendor notifications) → AI Mailbox Settings/promote
 actions if Temba keeps this slice active. Payments step 1/2 remains deferred
 per Temba's latest instruction; Ticket 4 stays parked until managing-agent GTM.
 

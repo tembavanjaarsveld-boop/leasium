@@ -3725,6 +3725,20 @@ export function getCommsInboundMessage(messageId: string) {
   );
 }
 
+export function trustCommsInboundMessageSender(messageId: string) {
+  return request<CommsInboundMessageDetailRecord>(
+    `/comms/inbound-messages/${messageId}/trust-sender`,
+    { method: "POST" },
+  );
+}
+
+export function discardCommsInboundMessage(messageId: string) {
+  return request<CommsInboundMessageDetailRecord>(
+    `/comms/inbound-messages/${messageId}/discard`,
+    { method: "POST" },
+  );
+}
+
 export type InboxPromoteKind =
   | "maintenance_request"
   | "payment_or_arrears"

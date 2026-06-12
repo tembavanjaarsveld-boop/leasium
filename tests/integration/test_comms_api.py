@@ -3942,6 +3942,358 @@ def test_inbound_message_detail_is_entity_scoped_and_returns_body(
     assert forbidden.status_code == 403
 
 
+def test_inbound_message_trust_sender_marks_quarantine_trusted_without_processing(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Trusting a mailbox sender is local-only: allowlist + audit, no AI/promotion."""
+
+    entity = _entity(session)
+    from apps.api.routers import comms as comms_router
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("trusting a sender must not re-run AI triage")
+
+    def fail_extract(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("trusting a sender must not promote attachments")
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fail_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "extract_document_file",
+        fail_extract,
+        raising=False,
+    )
+
+    message = InboundMessage(
+        entity_id=entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="quarantined",
+        auth_result={"spf": "pass", "dkim": "pass"},
+        from_address="New.Agent@Example.COM",
+        to_address="ai@leasium.ai",
+        original_sender="broker@external.example",
+        subject="Forwarded insurance evidence",
+        body_text="Please review the attached certificate before month end.",
+        inbound_metadata={
+            "quarantine_reason": "sender_not_trusted",
+            "attachment_intake_count": 0,
+        },
+    )
+    session.add(message)
+    session.flush()
+    raw_document = StoredDocument(
+        entity_id=entity.id,
+        filename=f"ai-mailbox-{message.id}.eml",
+        content_type="message/rfc822",
+        byte_size=24,
+        file_data=b"raw quarantined evidence",
+        category=DocumentCategory.other,
+        notes="AI mailbox raw email provenance",
+        document_metadata={
+            "source": "ai_mailbox_raw_email",
+            "inbound_message_id": str(message.id),
+            "trust_state": "quarantined",
+            "quarantine_reason": "sender_not_trusted",
+        },
+    )
+    session.add(raw_document)
+    session.flush()
+    message.inbound_metadata = {
+        **message.inbound_metadata,
+        "raw_email_document_id": str(raw_document.id),
+    }
+    before_intake_ids = {row.id for row in session.scalars(select(DocumentIntake)).all()}
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/comms/inbound-messages/{message.id}/trust-sender",
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(message.id)
+    assert body["trust_state"] == "trusted"
+    assert body["quarantine_reason"] is None
+    assert body["classification_kind"] is None
+    assert body["attachment_intake_count"] == 0
+    assert body["raw_email_document_id"] == str(raw_document.id)
+
+    session.refresh(message)
+    session.refresh(raw_document)
+    assert message.trust_state == "trusted"
+    assert message.classification_kind is None
+    assert message.processed_at is None
+    assert message.archived_at is not None
+    assert message.inbound_metadata["trusted_by_user_id"] == str(
+        get_settings().dev_user_id
+    )
+    assert "quarantine_reason" not in message.inbound_metadata
+    assert raw_document.document_metadata["trust_state"] == "quarantined"
+    assert raw_document.document_metadata["quarantine_reason"] == "sender_not_trusted"
+    assert {row.id for row in session.scalars(select(DocumentIntake)).all()} == (
+        before_intake_ids
+    )
+
+    trusted_sender = session.scalar(
+        select(TrustedSender).where(TrustedSender.email == "new.agent@example.com")
+    )
+    assert trusted_sender is not None
+    assert trusted_sender.organisation_id == entity.organisation_id
+    assert trusted_sender.added_by_user_id == get_settings().dev_user_id
+    assert (
+        session.scalar(
+            select(TrustedSender).where(TrustedSender.email == "broker@external.example")
+        )
+        is None
+    )
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "trust_sender",
+            AuditAction.target_table == "inbound_message",
+            AuditAction.target_id == message.id,
+        )
+    )
+    assert audit is not None
+    assert audit.outcome == AuditOutcome.success
+    assert audit.tool_name == "comms.inbound_message.trust_sender"
+
+    queue = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(entity.id)},
+    )
+    assert queue.status_code == 200
+    assert [
+        candidate
+        for candidate in queue.json()["candidates"]
+        if candidate["kind"] == "inbound_email"
+        and candidate["target_id"] == str(message.id)
+    ] == []
+
+
+def test_ai_mailbox_inbound_message_cannot_dispatch_as_comms_reply(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """AI mailbox rows stay out of generic Comms reply dispatch."""
+
+    entity = _entity(session)
+    message = InboundMessage(
+        entity_id=entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="trusted",
+        auth_result={"spf": "pass", "dkim": "pass"},
+        from_address="new.agent@example.com",
+        to_address="ai@leasium.ai",
+        subject="Council rates notice",
+        body_text="Please review this notice.",
+        inbound_metadata={"attachment_intake_count": 0},
+    )
+    session.add(message)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/comms/dispatch",
+        json={
+            "kind": "inbound_email",
+            "target_kind": "inbound_message",
+            "target_id": str(message.id),
+            "subject": "Re: Council rates notice",
+            "body": "Thanks, we will review this.",
+            "recipient_email": "new.agent@example.com",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "AI mailbox messages cannot be dispatched from Comms queue."
+    )
+
+
+def test_inbound_message_discard_marks_quarantine_discarded_without_deleting_evidence(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Discard keeps the evidence/audit row but removes the quarantine from action."""
+
+    entity = _entity(session)
+    from apps.api.routers import comms as comms_router
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("discarding mailbox mail must not call AI triage")
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fail_triage)
+
+    message = InboundMessage(
+        entity_id=entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="quarantined",
+        auth_result={"spf": "pass", "dkim": "pass"},
+        from_address="spam@example.test",
+        to_address="ai@leasium.ai",
+        subject="Discard me",
+        body_text="Keep this body as discarded evidence.",
+        inbound_metadata={
+            "quarantine_reason": "sender_not_trusted",
+            "attachment_intake_count": 0,
+        },
+    )
+    session.add(message)
+    session.flush()
+    raw_document = StoredDocument(
+        entity_id=entity.id,
+        filename=f"ai-mailbox-{message.id}.eml",
+        content_type="message/rfc822",
+        byte_size=21,
+        file_data=b"raw discarded evidence",
+        category=DocumentCategory.other,
+        notes="AI mailbox raw email provenance",
+        document_metadata={
+            "source": "ai_mailbox_raw_email",
+            "inbound_message_id": str(message.id),
+            "trust_state": "quarantined",
+            "quarantine_reason": "sender_not_trusted",
+        },
+    )
+    session.add(raw_document)
+    session.flush()
+    message.inbound_metadata = {
+        **message.inbound_metadata,
+        "raw_email_document_id": str(raw_document.id),
+    }
+    before_intake_ids = {row.id for row in session.scalars(select(DocumentIntake)).all()}
+    session.commit()
+
+    response = client.post(f"/api/v1/comms/inbound-messages/{message.id}/discard")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(message.id)
+    assert body["trust_state"] == "discarded"
+    assert body["body_text"] == "Keep this body as discarded evidence."
+    assert body["raw_email_document_id"] == str(raw_document.id)
+
+    session.refresh(message)
+    session.refresh(raw_document)
+    assert message.trust_state == "discarded"
+    assert message.body_text == "Keep this body as discarded evidence."
+    assert message.archived_at is not None
+    assert message.deleted_at is None
+    assert message.inbound_metadata["discarded_by_user_id"] == str(
+        get_settings().dev_user_id
+    )
+    assert raw_document.document_metadata["trust_state"] == "quarantined"
+    assert raw_document.document_metadata["quarantine_reason"] == "sender_not_trusted"
+    assert session.scalar(select(TrustedSender)) is None
+    assert {row.id for row in session.scalars(select(DocumentIntake)).all()} == (
+        before_intake_ids
+    )
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "discard",
+            AuditAction.target_table == "inbound_message",
+            AuditAction.target_id == message.id,
+        )
+    )
+    assert audit is not None
+    assert audit.outcome == AuditOutcome.success
+    assert audit.tool_name == "comms.inbound_message.discard"
+
+
+def test_inbound_message_trust_sender_rejects_failed_auth_quarantine(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Failed SPF/DKIM quarantines cannot become trusted senders from that row."""
+
+    entity = _entity(session)
+    message = InboundMessage(
+        entity_id=entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="quarantined",
+        auth_result={"spf": "pass", "dkim": "fail"},
+        from_address="spoof@example.test",
+        to_address="ai@leasium.ai",
+        subject="Suspicious bank update",
+        body_text="Please update payment details urgently.",
+        inbound_metadata={
+            "quarantine_reason": "auth_not_passed",
+            "attachment_intake_count": 0,
+        },
+    )
+    session.add(message)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/comms/inbound-messages/{message.id}/trust-sender",
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Only sender-not-trusted quarantines with passing SPF/DKIM can be trusted."
+    )
+    session.refresh(message)
+    assert message.trust_state == "quarantined"
+    assert message.inbound_metadata["quarantine_reason"] == "auth_not_passed"
+    assert session.scalar(select(TrustedSender)) is None
+
+
+def test_inbound_message_trust_decisions_require_write_role(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Viewers may inspect mailbox evidence but cannot trust or discard rows."""
+
+    entity = _entity(session)
+    message = InboundMessage(
+        entity_id=entity.id,
+        channel="email",
+        provider="sendgrid",
+        source="ai_mailbox",
+        trust_state="quarantined",
+        auth_result={"spf": "pass", "dkim": "pass"},
+        from_address="agent@example.test",
+        to_address="ai@leasium.ai",
+        subject="Trust decision",
+        body_text="Please review this.",
+        inbound_metadata={
+            "quarantine_reason": "sender_not_trusted",
+            "attachment_intake_count": 0,
+        },
+    )
+    session.add(message)
+    role = session.get(UserEntityRole, (get_settings().dev_user_id, entity.id))
+    assert role is not None
+    role.role = UserRole.viewer
+    session.commit()
+
+    trust_response = client.post(
+        f"/api/v1/comms/inbound-messages/{message.id}/trust-sender",
+    )
+    discard_response = client.post(
+        f"/api/v1/comms/inbound-messages/{message.id}/discard",
+    )
+
+    assert trust_response.status_code == 403
+    assert discard_response.status_code == 403
+    session.refresh(message)
+    assert message.trust_state == "quarantined"
+    assert message.archived_at is None
+    assert session.scalar(select(TrustedSender)) is None
+
+
 def test_trusted_senders_create_and_list_are_organisation_scoped(
     client: TestClient,
     session: Session,
