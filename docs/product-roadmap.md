@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 All entities compliance fan-out reduction v1:**
+  `/compliance/checks` now accepts omitted `entity_id` as an organisation-wide
+  read scoped to the operator's readable entities, while explicit hidden-entity
+  reads still return 403. Operations `All entities` now loads recurring
+  compliance checks through one org-wide call and refreshes the org-wide cache
+  after completion/evidence actions. Billing drafts, invoice drafts,
+  maintenance work orders, and arrears cases stay deferred to their own
+  filter-aware slice. Read-only performance work only: no provider send,
+  email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply,
+  compliance completion, evidence linking, or workflow mutation path changed
+  by viewing the list.
 - [x] **2026-06-12 All entities directory fan-out reduction v1:**
   `/properties`, `/tenants`, and `/contractors` now accept omitted
   `entity_id` as an organisation-wide read scoped to the operator's readable

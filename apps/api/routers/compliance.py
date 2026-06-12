@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
@@ -25,7 +25,13 @@ from stewart.core.models import (
     UserRole,
 )
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.compliance import (
     ComplianceCheckComplete,
@@ -330,11 +336,17 @@ def _append_completion_history(
 def list_compliance_checks(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: UUID | None = None,
     include_deleted: bool = False,
 ) -> list[ComplianceCheck]:
-    _entity_for_access(entity_id, user, session, READ_ROLES)
-    statement = select(ComplianceCheck).where(ComplianceCheck.entity_id == entity_id)
+    statement = select(ComplianceCheck)
+    if entity_id is not None:
+        _entity_for_access(entity_id, user, session, READ_ROLES)
+        statement = statement.where(ComplianceCheck.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            ComplianceCheck.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if not include_deleted:
         statement = statement.where(ComplianceCheck.deleted_at.is_(None))
     return list(

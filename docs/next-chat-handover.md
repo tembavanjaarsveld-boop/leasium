@@ -2,6 +2,59 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (All entities compliance fan-out reduction)
+
+Second non-payment performance follow-up from the 2026-06-12 next-build
+instructions. Payments, owner-disbursement workflow, and AI Mailbox Intake
+remain deferred per Temba.
+
+Scope stayed to `/compliance/checks` only. Three read-only recon agents agreed
+this is the safest next fan-out slice: the endpoint has only `include_deleted`
+as a filter, no secondary property/tenant/lease filter to validate, and list
+reads do not complete checks, link evidence, send providers, or mutate workflow
+state. Billing drafts, invoice drafts, maintenance work orders, and arrears
+cases stay deferred to a later filter-aware pass.
+
+Backend behavior: omitted `entity_id` now returns compliance checks from the
+operator's readable entities via `readable_entity_ids`; explicit hidden
+`entity_id` still returns 403. Operations `All entities` now uses one
+org-wide `/compliance/checks` request instead of per-entity fan-out, and
+compliance completion/evidence success paths invalidate the
+`operations-compliance-checks` prefix so both scoped and org-wide caches
+refresh.
+
+Guardrail stance: read-only performance work on list loading. No provider send,
+email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, compliance
+completion, evidence linking, or workflow mutation path changed by viewing the
+list. Existing completion/evidence actions remain explicit operator actions.
+
+Verification recorded so far:
+
+- RED backend org-wide test failed on `/api/v1/compliance/checks` with 422
+  before the router change, then passed.
+- RED frontend smoke failed with compliance requests
+  `["entity-1", "entity-2"]`, then passed with an omitted-entity org-wide
+  request.
+- Backend compliance/org-wide tests passed **15/15**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py tests/integration/test_compliance_api.py -q`.
+- Full backend suite passed **624 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/compliance.py tests/integration/test_org_wide_scope_api.py`.
+- Targeted frontend ESLint passed for `src/lib/api.ts`,
+  `src/app/operations/page.tsx`, and `tests/smoke/app-flows.spec.ts`.
+- Frontend typecheck passed: `./node_modules/.bin/tsc --noEmit --pretty false`.
+- Focused Operations All-entities compliance smoke passed **1/1**:
+  `NODE_ENV=development PORT=3089 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "operations All entities compliance" --workers=1`.
+- Operations compliance smoke passed **6/6**:
+  `NODE_ENV=development PORT=3088 npm run test:smoke -- tests/smoke/operations-compliance.spec.ts --workers=1`.
+- Production web build passed: `npm run build` in `apps/web`.
+
+Docs updated: `docs/product-roadmap.md` and this handover. No
+`docs/design-governance.md` entry was added because this slice changes API
+scope/query strategy and test coverage, not visible design, copy, layout, or
+workflow ordering.
+
 ## Codex continuation - 2026-06-12 (All entities directory fan-out reduction)
 
 Non-payment performance follow-up from the 2026-06-12 next-build instructions.

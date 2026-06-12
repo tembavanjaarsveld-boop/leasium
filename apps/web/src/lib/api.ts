@@ -4450,10 +4450,13 @@ export function listObligations(filters: {
 }
 
 export function listComplianceChecks(filters: {
-  entity_id: string;
+  entity_id?: string;
   include_deleted?: boolean;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.include_deleted) {
     params.set("include_deleted", "true");
   }

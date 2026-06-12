@@ -3778,6 +3778,32 @@ test("fresh storage defaults a multi-entity org to All entities", async ({
   expect(countEntityIds).not.toContain("__all_entities__");
 });
 
+test("operations All entities compliance checks use one org-wide read", async ({
+  page,
+}) => {
+  const complianceEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/compliance/checks") {
+      complianceEntityRequests.push(url.searchParams.get("entity_id") ?? "");
+    }
+  });
+
+  await page.goto("/operations?tab=compliance");
+
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Compliance & inspections" }),
+  ).toBeVisible();
+  expect(
+    complianceEntityRequests.filter((entityId) => entityId === ""),
+  ).toHaveLength(1);
+  expect(complianceEntityRequests).not.toContain("entity-1");
+  expect(complianceEntityRequests).not.toContain("entity-2");
+});
+
 test("contractors All entities merges vendors across entities and gates add", async ({
   page,
 }) => {

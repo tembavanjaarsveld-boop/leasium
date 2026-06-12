@@ -2701,6 +2701,7 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-compliance-checks"],
     queryFn: (entityId) => listComplianceChecks({ entity_id: entityId }),
+    orgWideQueryFn: () => listComplianceChecks({}),
   });
   const onboardingFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -2740,7 +2741,7 @@ function OperationsWorkspace() {
       queryKey: ["operations-obligations", scopedEntityId],
     });
     queryClient.invalidateQueries({
-      queryKey: ["operations-compliance-checks", scopedEntityId],
+      queryKey: ["operations-compliance-checks"],
     });
     queryClient.invalidateQueries({
       queryKey: ["operations-maintenance", scopedEntityId],
