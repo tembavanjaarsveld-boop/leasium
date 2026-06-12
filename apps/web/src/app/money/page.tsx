@@ -23,7 +23,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { QueryProvider } from "@/components/query-provider";
-import { Select, SkeletonLine, StatusBadge } from "@/components/ui";
+import { SkeletonLine, StatusBadge } from "@/components/ui";
+import { EntityPicker } from "@/components/entity-picker";
 import {
   getBasiqConnectionStatus,
   getXeroStatus,
@@ -407,20 +408,13 @@ function MoneyContent() {
   return (
     <main className="min-h-screen bg-leasium-canvas">
       <AppHeader>
-        <Select
-          aria-label="Entity"
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-        >
-          <option value="" disabled>
-            Select an entity
-          </option>
-          {(entitiesQuery.data ?? []).map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+          allowAllEntities={false}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-6xl gap-4 px-5 py-6 md:px-9">

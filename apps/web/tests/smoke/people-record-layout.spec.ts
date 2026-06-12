@@ -162,7 +162,10 @@ test.describe("people record layout", () => {
     await expect(
       page.getByRole("heading", { name: "Bright Spark Electrical" }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByLabel("Select entity")).toHaveValue("entity-1");
+    await expect(page.getByLabel("Entity")).toHaveAttribute(
+      "data-value",
+      "entity-1",
+    );
   });
 
   test("vendor detail links to the vendor portal preview", async ({ page }) => {

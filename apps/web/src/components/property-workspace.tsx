@@ -74,6 +74,7 @@ import {
   Select,
   StatusBadge,
 } from "@/components/ui";
+import { EntityPicker } from "@/components/entity-picker";
 import {
   applyPropertyImage,
   applyPublicEnrichment,
@@ -4132,30 +4133,17 @@ function Workspace({
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <div className="flex items-center gap-2">
-          <Select
-            aria-label="Entity"
-            value={selectedEntityId}
-            onChange={(event) => {
-              setSelectedEntityId(event.target.value);
-              if (ownerTagFilter) {
-                clearOwnerTagFilter();
-              }
-            }}
-          >
-            <option value="">
-              {entitiesLoading ? "Checking entities" : "Select entity"}
-            </option>
-            {(entitiesQuery.data?.length ?? 0) > 1 ? (
-              <option value={ALL_ENTITIES_VALUE}>All entities</option>
-            ) : null}
-            {entitiesQuery.data?.map((entity) => (
-              <option key={entity.id} value={entity.id}>
-                {entity.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesLoading}
+          value={selectedEntityId}
+          onChange={(value) => {
+            setSelectedEntityId(value);
+            if (ownerTagFilter) {
+              clearOwnerTagFilter();
+            }
+          }}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-[1208px] gap-4 px-5 py-5 md:px-9 md:py-7">

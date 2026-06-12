@@ -48,6 +48,7 @@ import {
   SkeletonRows,
   StatusBadge,
 } from "@/components/ui";
+import { EntityPicker } from "@/components/entity-picker";
 import {
   getXeroStatus,
   listInvoiceDrafts,
@@ -1524,20 +1525,13 @@ function StatementsContent() {
   return (
     <main className="min-h-screen">
       <AppHeader>
-        <Select
+        <EntityPicker
+          entities={entitiesQuery.data}
+          loading={entitiesQuery.isLoading}
           value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-          aria-label="Select entity"
-        >
-          <option value="" disabled>
-            Select an entity
-          </option>
-          {(entitiesQuery.data ?? []).map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.name}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedEntityId}
+          allowAllEntities={false}
+        />
       </AppHeader>
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
