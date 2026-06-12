@@ -10105,7 +10105,16 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/invoice-drafts") {
-      await fulfillJson(route, localInvoiceDrafts);
+      const hasEntityId = url.searchParams.has("entity_id");
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        hasEntityId
+          ? localInvoiceDrafts.filter(
+              (draft) => draft.entity_id === requestedEntityId,
+            )
+          : localInvoiceDrafts,
+      );
       return;
     }
 

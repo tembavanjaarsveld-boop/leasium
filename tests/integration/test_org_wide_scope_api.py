@@ -13,6 +13,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     Entity,
+    InvoiceDraft,
     Lease,
     LeaseStatus,
     MaintenanceWorkOrder,
@@ -63,6 +64,21 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
     document_intake = DocumentIntake(entity_id=entity.id, document_id=document.id)
     session.add(document_intake)
     session.flush()
+    billing_draft = BillingDraft(
+        entity_id=entity.id,
+        property_id=prop.id,
+        tenancy_unit_id=unit.id,
+        tenant_id=tenant.id,
+        lease_id=lease.id,
+        document_id=document.id,
+        document_intake_id=document_intake.id,
+        title=f"{entity.name} billing draft",
+        issue_date=date(2026, 7, 1),
+        due_date=date(2026, 7, 15),
+        total_cents=154000,
+    )
+    session.add(billing_draft)
+    session.flush()
     session.add_all(
         [
             Obligation(
@@ -95,17 +111,20 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
                 title=f"{entity.name} repair",
                 description="Replace flickering tenancy lighting.",
             ),
-            BillingDraft(
+            InvoiceDraft(
                 entity_id=entity.id,
+                billing_draft_id=billing_draft.id,
                 property_id=prop.id,
                 tenancy_unit_id=unit.id,
                 tenant_id=tenant.id,
                 lease_id=lease.id,
                 document_id=document.id,
                 document_intake_id=document_intake.id,
-                title=f"{entity.name} billing draft",
+                title=f"{entity.name} invoice draft",
                 issue_date=date(2026, 7, 1),
                 due_date=date(2026, 7, 15),
+                subtotal_cents=140000,
+                gst_cents=14000,
                 total_cents=154000,
             ),
             Contractor(
@@ -162,6 +181,7 @@ def test_org_wide_lists_cover_readable_entities_only(
         "/api/v1/arrears/cases",
         "/api/v1/maintenance/work-orders",
         "/api/v1/billing-drafts",
+        "/api/v1/invoice-drafts",
     ):
         response = client.get(path)
         assert response.status_code == 200, path
@@ -192,6 +212,7 @@ def test_explicit_entity_scope_still_requires_entity_role(
         "/api/v1/arrears/cases",
         "/api/v1/maintenance/work-orders",
         "/api/v1/billing-drafts",
+        "/api/v1/invoice-drafts",
     ):
         response = client.get(path, params={"entity_id": str(hidden.id)})
         assert response.status_code == 403, path
@@ -409,3 +430,74 @@ def test_org_wide_billing_draft_filters_require_readable_links(
     ):
         response = client.get("/api/v1/billing-drafts", params=params)
         assert response.status_code == 403
+
+
+def test_org_wide_invoice_draft_filters_require_readable_billing_draft(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+
+    accessible = Entity(organisation_id=seeded.organisation_id, name="Visible Invoices")
+    readable_peer = Entity(
+        organisation_id=seeded.organisation_id, name="Other Visible Invoices"
+    )
+    hidden = Entity(organisation_id=seeded.organisation_id, name="Hidden Invoices")
+    session.add_all([accessible, readable_peer, hidden])
+    session.flush()
+    session.add_all(
+        [
+            UserEntityRole(
+                user_id=settings.dev_user_id,
+                entity_id=accessible.id,
+                role=UserRole.viewer,
+            ),
+            UserEntityRole(
+                user_id=settings.dev_user_id,
+                entity_id=readable_peer.id,
+                role=UserRole.viewer,
+            ),
+        ]
+    )
+    session.commit()
+    _seed_entity_records(session, accessible, token="invoice-filter-accessible")
+    _seed_entity_records(session, readable_peer, token="invoice-filter-peer")
+    _seed_entity_records(session, hidden, token="invoice-filter-hidden")
+
+    accessible_billing_draft = session.scalar(
+        select(BillingDraft).where(BillingDraft.entity_id == accessible.id)
+    )
+    readable_peer_billing_draft = session.scalar(
+        select(BillingDraft).where(BillingDraft.entity_id == readable_peer.id)
+    )
+    hidden_billing_draft = session.scalar(
+        select(BillingDraft).where(BillingDraft.entity_id == hidden.id)
+    )
+    assert accessible_billing_draft is not None
+    assert readable_peer_billing_draft is not None
+    assert hidden_billing_draft is not None
+
+    response = client.get(
+        "/api/v1/invoice-drafts",
+        params={"billing_draft_id": str(accessible_billing_draft.id)},
+    )
+    assert response.status_code == 200
+    entity_ids = {row["entity_id"] for row in response.json()}
+    assert entity_ids == {str(accessible.id)}
+
+    response = client.get(
+        "/api/v1/invoice-drafts",
+        params={
+            "entity_id": str(accessible.id),
+            "billing_draft_id": str(readable_peer_billing_draft.id),
+        },
+    )
+    assert response.status_code == 422
+
+    response = client.get(
+        "/api/v1/invoice-drafts",
+        params={"billing_draft_id": str(hidden_billing_draft.id)},
+    )
+    assert response.status_code == 403

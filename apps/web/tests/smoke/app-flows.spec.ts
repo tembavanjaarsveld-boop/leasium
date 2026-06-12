@@ -3931,6 +3931,68 @@ test("billing readiness All entities billing drafts use one org-wide read", asyn
   expect(billingDraftEntityRequests).toEqual(["__missing__"]);
 });
 
+test("operations All entities invoice drafts use one org-wide read", async ({
+  page,
+}) => {
+  const invoiceDraftEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/invoice-drafts") {
+      invoiceDraftEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/operations");
+
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        invoiceDraftEntityRequests.filter((entityId) => entityId === "__missing__")
+          .length,
+    )
+    .toBe(1);
+  await page.waitForTimeout(100);
+  expect(invoiceDraftEntityRequests).toEqual(["__missing__"]);
+});
+
+test("billing readiness All entities invoice drafts use one org-wide read", async ({
+  page,
+}) => {
+  const invoiceDraftEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/invoice-drafts") {
+      invoiceDraftEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/billing-readiness");
+
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        invoiceDraftEntityRequests.filter((entityId) => entityId === "__missing__")
+          .length,
+    )
+    .toBe(1);
+  await page.waitForTimeout(100);
+  expect(invoiceDraftEntityRequests).toEqual(["__missing__"]);
+});
+
 test("portfolio QA All entities billing drafts use one org-wide read", async ({
   page,
 }) => {

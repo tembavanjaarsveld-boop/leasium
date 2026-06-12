@@ -1845,6 +1845,7 @@ function BillingReadinessWorkspace() {
     enabled: allMode,
     keyPrefix: ["billing-readiness-invoice-drafts"],
     queryFn: (entityId) => listInvoiceDrafts({ entity_id: entityId }),
+    orgWideQueryFn: () => listInvoiceDrafts({}),
   });
   const maintenanceFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -1932,7 +1933,7 @@ function BillingReadinessWorkspace() {
     mutationFn: (draftId: string) => prepareInvoiceDraftDelivery(draftId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
     },
   });
@@ -1947,7 +1948,7 @@ function BillingReadinessWorkspace() {
     }) => updateInvoiceDraft(draftId, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
     },
   });
@@ -1957,7 +1958,7 @@ function BillingReadinessWorkspace() {
       recordInvoiceDraftDelivery(draftId, { method: "manual" }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
     },
   });
@@ -1966,7 +1967,7 @@ function BillingReadinessWorkspace() {
     mutationFn: (draftId: string) => sendInvoiceDraftDeliveryEmail(draftId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
     },
   });
@@ -1978,7 +1979,7 @@ function BillingReadinessWorkspace() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-xero-status", selectedEntityId],
@@ -2003,7 +2004,7 @@ function BillingReadinessWorkspace() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
       queryClient.invalidateQueries({
         queryKey: ["billing-readiness-xero-status", selectedEntityId],

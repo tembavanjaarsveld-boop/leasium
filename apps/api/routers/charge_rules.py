@@ -1765,13 +1765,19 @@ def create_invoice_draft_from_billing_draft(
 def list_invoice_drafts(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: Annotated[UUID | None, Query()] = None,
     billing_draft_id: UUID | None = None,
     draft_status: InvoiceDraftStatus | None = None,
     include_deleted: bool = False,
 ) -> list[InvoiceDraft]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    statement = select(InvoiceDraft).where(InvoiceDraft.entity_id == entity_id)
+    statement = select(InvoiceDraft)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        statement = statement.where(InvoiceDraft.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            InvoiceDraft.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if billing_draft_id is not None:
         billing_draft = _billing_draft_for_access(
             billing_draft_id,
@@ -1779,7 +1785,7 @@ def list_invoice_drafts(
             session,
             READ_ROLES,
         )
-        if billing_draft.entity_id != entity_id:
+        if entity_id is not None and billing_draft.entity_id != entity_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Billing draft must belong to the selected entity.",

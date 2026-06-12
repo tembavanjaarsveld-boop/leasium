@@ -2729,6 +2729,7 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-invoice-drafts"],
     queryFn: (entityId) => listInvoiceDrafts({ entity_id: entityId }),
+    orgWideQueryFn: () => listInvoiceDrafts({}),
   });
   const arrearsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,

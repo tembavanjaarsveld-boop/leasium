@@ -2,6 +2,75 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (All entities invoice drafts fan-out reduction)
+
+Sixth non-payment performance follow-up from the 2026-06-12 next-build
+instructions. Payments, owner-disbursement workflow, and AI Mailbox Intake
+remain deferred per Temba.
+
+Scope stayed to `/invoice-drafts` list reads plus cache refresh for existing
+Billing Readiness invoice-draft-affecting success paths. Recon agents confirmed
+the endpoint is read-only/provider-inert and that the only current linked
+filter needing org-wide access handling is `billing_draft_id`. Metadata-backed
+payment-status filtering and additional linked filters stay out of scope.
+
+Backend behavior: omitted `entity_id` now returns invoice drafts from the
+operator's readable entities via `readable_entity_ids`; explicit hidden
+`entity_id` still returns 403. Omitted-entity `billing_draft_id` filters now
+validate that the linked billing draft's own entity is readable before applying
+the filter, so hidden billing-draft ids return 403 instead of leaking or
+silently widening scope. Explicit accessible entity/filter mismatches remain
+422.
+
+Frontend behavior: Billing Readiness and Operations `All entities` now use one
+org-wide `/invoice-drafts` request instead of per-entity fan-out. Billing
+Readiness invoice-draft list cache invalidation now targets the prefix so
+scoped and org-wide caches refresh after existing invoice-draft-affecting
+actions. Operations only reads invoice drafts for linked work context, so no
+invoice-draft mutation path changed there. The smoke API mock now filters
+invoice drafts by `entity_id` when present and returns all fixture rows only
+when omitted.
+
+Guardrail stance: read-only performance work on list loading. No provider send,
+email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, billing
+draft generation, invoice draft creation, invoice dispatch, or workflow
+mutation path changed by viewing the list. Existing invoice delivery, Xero,
+and payment-status actions remain explicit operator actions.
+
+Verification recorded so far:
+
+- RED backend org-wide test failed on `/api/v1/invoice-drafts` with 422 before
+  the router change, then passed.
+- RED frontend smoke failed because there was no omitted-entity invoice-draft
+  request, then passed after Billing Readiness/Operations used
+  `orgWideQueryFn`.
+- Backend invoice/org-wide tests passed **6/6**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py -q`.
+- Related backend invoice lifecycle tests passed **3 passed, 27 deselected**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py tests/integration/test_document_intake_api.py -k "invoice" -q`.
+- Xero invoice-adjacent backend tests passed **9 passed, 21 deselected**:
+  `.venv/bin/python -m pytest tests/integration/test_xero_api.py -k "invoice" -q`.
+- Full backend suite passed **628 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/charge_rules.py tests/integration/test_org_wide_scope_api.py`.
+- Frontend ESLint passed: `npm run lint` in `apps/web`.
+- Frontend typecheck passed: `npx tsc --noEmit` in `apps/web`.
+- Focused Operations/Billing Readiness invoice-drafts smoke passed **2/2**:
+  `NODE_ENV=development PORT=3107 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "invoice drafts use one org-wide read" --workers=1`.
+- Broader All-entities org-wide read smoke passed **8/8**:
+  `NODE_ENV=development PORT=3108 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "All entities.*org-wide read" --workers=1`.
+- Billing Readiness + Operations UX smoke passed **24/24** after rerunning
+  without a concurrent build process:
+  `NODE_ENV=development PORT=3110 npm run test:smoke -- tests/smoke/billing-readiness-ux.spec.ts tests/smoke/operations-ux.spec.ts --workers=1`.
+- Production web build passed after clearing ignored `.next` artifacts:
+  `rm -rf apps/web/.next && npm run build` in `apps/web`.
+
+Docs updated: `docs/product-roadmap.md` and this handover. No
+`docs/design-governance.md` entry was added because this slice changes API
+scope/query strategy, cache refresh, and test coverage, not visible design,
+copy, layout, or workflow ordering.
+
 ## Codex continuation - 2026-06-12 (All entities billing drafts fan-out reduction)
 
 Fifth non-payment performance follow-up from the 2026-06-12 next-build

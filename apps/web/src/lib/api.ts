@@ -5637,11 +5637,14 @@ export function createBillingDraftsFromChargeRules(payload: {
 }
 
 export function listInvoiceDrafts(filters: {
-  entity_id: string;
+  entity_id?: string;
   billing_draft_id?: string;
   draft_status?: InvoiceDraftStatus;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.billing_draft_id) {
     params.set("billing_draft_id", filters.billing_draft_id);
   }
