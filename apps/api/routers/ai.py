@@ -1170,6 +1170,7 @@ def _stamp_mailbox_promote_on_intake(
     payload: InboxPromoteRequest,
     summary: str,
     mailbox_metadata: dict[str, Any],
+    candidate: str,
     promoted_at,
     user: CurrentUser,
 ) -> None:
@@ -1184,7 +1185,7 @@ def _stamp_mailbox_promote_on_intake(
         intake.summary = summary
 
     stamp = {
-        "candidate": "compliance_or_insurance",
+        "candidate": candidate,
         "summary": summary,
         "promoted_at": promoted_at.isoformat(),
         "promoted_by_user_id": str(user.id),
@@ -1198,6 +1199,68 @@ def _stamp_mailbox_promote_on_intake(
         **(document.document_metadata or {}),
         "ai_inbox_promote": stamp,
     }
+
+
+def _reuse_mailbox_attachment_review(
+    *,
+    mailbox_message: InboundMessage | None,
+    payload: InboxPromoteRequest,
+    summary: str,
+    mailbox_metadata: dict[str, Any],
+    promoted_at,
+    session: Session,
+    user: CurrentUser,
+) -> InboxPromoteRead | None:
+    if mailbox_message is None:
+        return None
+
+    attachment_intakes = _mailbox_attachment_intakes(mailbox_message, payload, session)
+    if not attachment_intakes:
+        return None
+
+    for attachment_intake in attachment_intakes:
+        _stamp_mailbox_promote_on_intake(
+            intake=attachment_intake,
+            payload=payload,
+            summary=summary,
+            mailbox_metadata=mailbox_metadata,
+            candidate=payload.kind,
+            promoted_at=promoted_at,
+            user=user,
+        )
+    attachment_intake = attachment_intakes[0]
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=payload.entity_id,
+        action="update",
+        target_table="document_intake",
+        target_id=attachment_intake.id,
+        tool_name="ai_inbox_promote",
+        tool_input=_promote_audit_input(
+            kind=payload.kind,
+            summary=summary,
+            mailbox_metadata=mailbox_metadata,
+            source="attachment_intake",
+            attachment_intake_id=str(attachment_intake.id),
+            attachment_intake_ids=[str(intake.id) for intake in attachment_intakes],
+        ),
+        tool_output_summary=(
+            "Linked AI mailbox message to existing Smart Intake attachment review."
+        ),
+        data_classification="internal",
+    )
+    session.commit()
+    return InboxPromoteRead(
+        target_kind="document_intake",
+        target_id=attachment_intake.id,
+        target_href=(
+            f"/intake?entity_id={payload.entity_id}&review={attachment_intake.id}"
+        ),
+        target_label=attachment_intake.summary or attachment_intake.document.filename,
+    )
 
 
 def _require_mailbox_promote(
@@ -1685,6 +1748,17 @@ def promote_triage(
             kind=payload.kind,
             mailbox_metadata=mailbox_metadata,
         )
+        attachment_review = _reuse_mailbox_attachment_review(
+            mailbox_message=mailbox_message,
+            payload=payload,
+            summary=summary,
+            mailbox_metadata=mailbox_metadata,
+            promoted_at=promoted_at,
+            session=session,
+            user=user,
+        )
+        if attachment_review is not None:
+            return attachment_review
         return _create_mailbox_review_intake(
             payload=payload,
             summary=summary,
@@ -1711,60 +1785,17 @@ def promote_triage(
                 ),
             )
 
-        if mailbox_message is not None:
-            attachment_intakes = _mailbox_attachment_intakes(
-                mailbox_message, payload, session
-            )
-            if attachment_intakes:
-                for attachment_intake in attachment_intakes:
-                    _stamp_mailbox_promote_on_intake(
-                        intake=attachment_intake,
-                        payload=payload,
-                        summary=summary,
-                        mailbox_metadata=mailbox_metadata,
-                        promoted_at=promoted_at,
-                        user=user,
-                    )
-                attachment_intake = attachment_intakes[0]
-                session.flush()
-                audit_log(
-                    session,
-                    actor=user.actor,
-                    user_id=user.id,
-                    entity_id=payload.entity_id,
-                    action="update",
-                    target_table="document_intake",
-                    target_id=attachment_intake.id,
-                    tool_name="ai_inbox_promote",
-                    tool_input=_promote_audit_input(
-                        kind=payload.kind,
-                        summary=summary,
-                        mailbox_metadata=mailbox_metadata,
-                        source="attachment_intake",
-                        attachment_intake_id=str(attachment_intake.id),
-                        attachment_intake_ids=[
-                            str(intake.id) for intake in attachment_intakes
-                        ],
-                    ),
-                    tool_output_summary=(
-                        "Linked AI mailbox compliance/insurance message to "
-                        "existing Smart Intake attachment review."
-                    ),
-                    data_classification="internal",
-                )
-                session.commit()
-                return InboxPromoteRead(
-                    target_kind="document_intake",
-                    target_id=attachment_intake.id,
-                    target_href=(
-                        f"/intake?entity_id={payload.entity_id}"
-                        f"&review={attachment_intake.id}"
-                    ),
-                    target_label=(
-                        attachment_intake.summary
-                        or attachment_intake.document.filename
-                    ),
-                )
+        attachment_review = _reuse_mailbox_attachment_review(
+            mailbox_message=mailbox_message,
+            payload=payload,
+            summary=summary,
+            mailbox_metadata=mailbox_metadata,
+            promoted_at=promoted_at,
+            session=session,
+            user=user,
+        )
+        if attachment_review is not None:
+            return attachment_review
 
         body_bytes = payload.body.strip().encode("utf-8")
         document = StoredDocument(
@@ -1843,6 +1874,17 @@ def promote_triage(
             kind=payload.kind,
             mailbox_metadata=mailbox_metadata,
         )
+        attachment_review = _reuse_mailbox_attachment_review(
+            mailbox_message=mailbox_message,
+            payload=payload,
+            summary=summary,
+            mailbox_metadata=mailbox_metadata,
+            promoted_at=promoted_at,
+            session=session,
+            user=user,
+        )
+        if attachment_review is not None:
+            return attachment_review
         return _create_mailbox_review_intake(
             payload=payload,
             summary=summary,

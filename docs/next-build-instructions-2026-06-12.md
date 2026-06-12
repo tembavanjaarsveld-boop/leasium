@@ -180,16 +180,17 @@ uploaded Smart Intake review packets, while trusted `task_or_reminder` rows
 create local requested Operations work orders. These paths are mailbox-only,
 use stored classification/provenance, and do not mutate property/owner records,
 assign contractors, send providers, apply Smart Intake, touch payments, or
-reconcile anything. The visible UI/action placement, promote provenance card,
-mailbox promote copy, and Settings panel still owe the in-loop UX pass.
+reconcile anything. Property and owner/admin rows now also reuse existing
+uploaded attachment Smart Intake reviews when `attachment_intake_ids` are
+present, and fail closed on stale attachment metadata instead of synthesising a
+fallback email-body review. The visible UI/action placement, promote provenance
+card, mailbox promote copy, and Settings panel still owe the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
 from the old migration plan. Remaining product slices are optional filters if
-mailbox volume grows, attachment-intake reuse for the new property/admin review
-packets if evidence-heavy mail warrants it, and UX pass/design sync. Do not
-add acknowledgement replies, provider sends, Smart Intake apply, tenant email,
-Xero/Basiq, payment, or reconciliation mutation without explicit operator
-approval.
+mailbox volume grows and UX pass/design sync. Do not add acknowledgement
+replies, provider sends, Smart Intake apply, tenant email, Xero/Basiq,
+payment, or reconciliation mutation without explicit operator approval.
 
 ---
 

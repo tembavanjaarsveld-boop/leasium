@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
 from apps.api.routers import ai as ai_router
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -769,6 +770,144 @@ def test_promote_mailbox_property_update_creates_review_intake(
     assert audit_row.target_table == "document_intake"
     assert audit_row.tool_input["kind"] == "property_update"
     assert audit_row.tool_input["inbound_message_id"] == str(message.id)
+
+
+@pytest.mark.parametrize(
+    ("kind", "classification_target_kind", "summary", "body_text"),
+    [
+        (
+            "property_update",
+            "property",
+            "Council rates notice needs property review.",
+            "Please review the attached council rates notice as the evidence.",
+        ),
+        (
+            "owner_or_entity_admin",
+            "smart_intake",
+            "Owner billing detail needs admin review.",
+            "Please review the attached owner billing detail as the evidence.",
+        ),
+    ],
+)
+def test_promote_mailbox_review_kinds_reuse_attachment_intake(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+    kind: str,
+    classification_target_kind: str,
+    summary: str,
+    body_text: str,
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind=kind,
+        classification_summary=summary,
+        classification_target_kind=classification_target_kind,
+        subject="Fwd: Attachment-backed mailbox review",
+        body_text=body_text,
+    )
+    attachment_document, attachment_intake = _mailbox_attachment_intake(
+        session, context, message
+    )
+    existing_document_ids = set(session.scalars(select(StoredDocument.id)).all())
+    existing_intake_ids = set(session.scalars(select(DocumentIntake.id)).all())
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": kind,
+            "summary": summary,
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "document_intake"
+    assert body["target_id"] == str(attachment_intake.id)
+    assert body["target_href"] == (
+        f"/intake?entity_id={context['entity_id']}&review={attachment_intake.id}"
+    )
+
+    assert set(session.scalars(select(StoredDocument.id)).all()) == existing_document_ids
+    assert set(session.scalars(select(DocumentIntake.id)).all()) == existing_intake_ids
+
+    session.refresh(attachment_document)
+    session.refresh(attachment_intake)
+    promote_data = attachment_intake.review_data["ai_inbox_promote"]
+    assert promote_data["candidate"] == kind
+    assert promote_data["mailbox"]["inbound_message_id"] == str(message.id)
+    assert promote_data["mailbox"]["raw_email_document_id"] == str(raw_document.id)
+    assert attachment_document.document_metadata["ai_inbox_promote"][
+        "candidate"
+    ] == kind
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(AuditAction.tool_name == "ai_inbox_promote")
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.target_table == "document_intake"
+    assert audit_row.target_id == attachment_intake.id
+    assert audit_row.tool_input["kind"] == kind
+    assert audit_row.tool_input["source"] == "attachment_intake"
+    assert audit_row.tool_input["attachment_intake_id"] == str(attachment_intake.id)
+
+
+@pytest.mark.parametrize("kind", ["property_update", "owner_or_entity_admin"])
+def test_promote_mailbox_review_kinds_reject_stale_attachment_metadata(
+    client: TestClient, session: Session, kind: str
+) -> None:
+    context = _lease_context(client, session)
+    message, _raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind=kind,
+        classification_summary="Attachment-backed mailbox review is stale.",
+        classification_target_kind="smart_intake",
+        subject="Fwd: Stale attachment-backed mailbox review",
+        body_text="The attachment id is stale and must not synthesize a fallback.",
+    )
+    message.inbound_metadata = {
+        **(message.inbound_metadata or {}),
+        "attachment_intake_count": 1,
+        "attachment_document_ids": [str(uuid4())],
+        "attachment_intake_ids": [str(uuid4())],
+    }
+    session.flush()
+    existing_document_ids = set(session.scalars(select(StoredDocument.id)).all())
+    existing_intake_ids = set(session.scalars(select(DocumentIntake.id)).all())
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": kind,
+            "summary": "Attachment-backed mailbox review is stale.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 422
+    assert "attachment" in response.json()["detail"].lower()
+    assert set(session.scalars(select(StoredDocument.id)).all()) == existing_document_ids
+    assert set(session.scalars(select(DocumentIntake.id)).all()) == existing_intake_ids
 
 
 def test_promote_mailbox_task_or_reminder_creates_operations_work_order(

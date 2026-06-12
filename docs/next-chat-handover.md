@@ -2,6 +2,40 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox property/admin attachment reuse v1)
+
+Follow-up to the local target variants. Temba said "Continue"; main thread
+used TDD while two read-only agents checked the backend reuse shape and
+test/docs coverage.
+
+Shipped:
+
+- `property_update` and `owner_or_entity_admin` mailbox promotes now reuse
+  existing uploaded Smart Intake attachment reviews when the mailbox row has
+  `attachment_intake_ids`.
+- The reused attachment review is stamped with the actual mailbox candidate,
+  source-email provenance, promoted timestamp/user, and audit metadata, then
+  the response deep-links to the existing `/intake?...&review=...` target.
+- If attachment metadata is stale, invalid, linked to another message, already
+  applied, deleted, or scoped to another record, the route fails closed with
+  422 instead of synthesising a fallback email-body review.
+- If there are no attachment review ids, property/admin rows keep the previous
+  local email-body Smart Intake review fallback. No extraction/apply, provider
+  send, record mutation, payment, or reconciliation is introduced.
+
+Verification:
+
+- TDD red first: property/admin attachment tests failed because the route
+  created a new email-body review and stale attachment metadata returned 200.
+- Focused backend green:
+  `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q -k "review_kinds_reuse_attachment_intake or review_kinds_reject_stale_attachment_metadata"`
+
+Next AI Mailbox slices:
+
+1. Source/trust-state filters if mailbox volume grows.
+2. UX debt: in-loop review of the `/inbox` promote action placement, source
+   provenance card density, and per-kind copy.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox local target variants v1)
 
 Follow-up to the compliance/insurance Smart Intake handoff. Temba said
@@ -50,9 +84,7 @@ Verification:
 Next AI Mailbox slices:
 
 1. Source/trust-state filters if mailbox volume grows.
-2. Optional attachment-intake reuse for property/admin mailbox rows if those
-   messages often arrive with evidence attachments.
-3. UX debt: in-loop review of the `/inbox` promote action placement, source
+2. UX debt: in-loop review of the `/inbox` promote action placement, source
    provenance card density, and per-kind copy.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox compliance/insurance handoff v1)

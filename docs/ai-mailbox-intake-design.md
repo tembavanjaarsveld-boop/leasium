@@ -87,12 +87,14 @@ place, with the operator approving the result.
 - 2026-06-12 property/task/owner-admin promote follow-up: trusted mailbox
   rows classified as `property_update`, `task_or_reminder`, or
   `owner_or_entity_admin` now use the same reviewed promote path. Property
-  update and owner/entity admin rows create local uploaded Smart Intake review
-  packets from the email body; task/reminder rows create requested Operations
-  work orders. These paths require `inbound_message_id`, use the stored
-  mailbox classification, and do not re-run triage, extract/apply Smart
-  Intake, mutate property/owner records, assign contractors, send providers,
-  touch payments, or reconcile anything.
+  update and owner/entity admin rows reuse existing uploaded Smart Intake
+  attachment reviews first when `attachment_intake_ids` are present, fail
+  closed on stale attachment metadata, and otherwise create local uploaded
+  Smart Intake review packets from the email body. Task/reminder rows create
+  requested Operations work orders. These paths require `inbound_message_id`,
+  use the stored mailbox classification, and do not re-run triage,
+  extract/apply Smart Intake, mutate property/owner records, assign
+  contractors, send providers, touch payments, or reconcile anything.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -221,7 +223,9 @@ Decision for foundation v1: (a) no acknowledgement reply.
 - Shipped on `/inbox`: trusted `property_update`, `task_or_reminder`, and
   `owner_or_entity_admin` rows are mailbox-only promotable kinds. They reuse
   the same provenance panel and create only local review targets after the
-  operator clicks Promote to draft.
+  operator clicks Promote to draft. Property/admin rows reuse existing
+  attachment reviews first, then fall back to email-body drafts when there is
+  no routed attachment review.
 - Still pending: source/trust-state filters if the queue grows and the design
   review of the inline action placement.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
@@ -239,7 +243,8 @@ provenance UI, local trust/discard decisions, and Settings trusted-sender
 management, plus trusted-row reviewed promote handoff into existing local
 draft creation and compliance/insurance Smart Intake review drafts, including
 attachment-intake reuse when the mailbox email already routed attachments, and
-property/task/owner-admin local review targets.
+property/task/owner-admin local review targets with property/admin attachment
+review reuse.
 
 Out (next slices): source/trust-state filters if volume grows, auto-ack
 replies, reply-by-email threads, plus-addressing hints, agent-facing
@@ -252,8 +257,9 @@ confirmations, cross-org agent senders, auto-apply of any kind.
   extraction, raw-email evidence document linking, list/detail read APIs with
   entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
   trusted-row promote provenance, compliance/insurance Smart Intake handoff,
-  attachment-intake reuse/fail-closed stale metadata, and property/task/
-  owner-admin mailbox-only promote kinds. Mock OpenAI and SendGrid throughout.
+  attachment-intake reuse/fail-closed stale metadata for compliance/property/
+  owner-admin review kinds, and property/task/owner-admin mailbox-only promote
+  kinds. Mock OpenAI and SendGrid throughout.
 - Smoke: shipped inbox queue + quarantine provenance, trust-sender action,
   discard action, Settings trusted-sender management, and trusted-row reviewed
   promote handoff including compliance/insurance Smart Intake review and

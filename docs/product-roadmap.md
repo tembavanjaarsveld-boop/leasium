@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 AI Mailbox property/admin attachment review reuse v1:**
+  trusted mailbox rows classified as `property_update` or
+  `owner_or_entity_admin` now reuse existing uploaded Smart Intake attachment
+  reviews when `attachment_intake_ids` are present. The backend stamps the
+  reused review with the actual candidate, mailbox/raw-email provenance, audit
+  metadata, and the promoted timestamp/user, then deep-links to the existing
+  review. Stale, invalid, wrong-message, applied, deleted, or wrong-scope
+  attachment metadata fails closed with 422 instead of creating a fallback
+  email-body draft. Rows without attachment reviews keep the local email-body
+  Smart Intake fallback; no extraction/apply, provider send, property/owner
+  mutation, payment, or reconciliation is introduced.
 - [~] **2026-06-12 AI Mailbox property/task/owner-admin local target handoff v1:**
   trusted mailbox rows classified as `property_update`, `task_or_reminder`,
   or `owner_or_entity_admin` now use the existing Review email -> Review
