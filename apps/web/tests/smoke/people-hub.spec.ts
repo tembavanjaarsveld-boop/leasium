@@ -130,7 +130,11 @@ test("people hub All entities merges tenants and vendors across entities", async
   await expect(
     switcher.getByRole("button", { name: "All entities" }),
   ).toHaveCount(0);
-  await switcher.getByLabel("Entity").selectOption("__all_entities__");
+  await switcher.getByLabel("Entity").click();
+  await switcher
+    .getByRole("listbox", { name: "Entities" })
+    .locator('[role="option"][data-value="__all_entities__"]')
+    .click();
 
   // Tenant from the primary entity and the secondary entity both render. The
   // secondary card is labelled with its entity (scoped to the card to avoid the

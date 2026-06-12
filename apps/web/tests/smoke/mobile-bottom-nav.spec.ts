@@ -183,7 +183,10 @@ test("desktop Horizon sidebar exposes the entity switcher and operator card", as
 
   const switcher = sidebar.getByRole("group", { name: "Workspace switcher" });
   await expect(switcher).toBeVisible();
-  await expect(switcher.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(switcher.getByLabel("Entity")).toHaveAttribute(
+    "data-value",
+    "entity-1",
+  );
   await expect(
     switcher.getByText("Acme Holdings", { exact: true }),
   ).toBeVisible();

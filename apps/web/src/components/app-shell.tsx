@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
-  ChevronDown,
   Command,
   FileUp,
   FileSpreadsheet,
@@ -811,7 +810,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       <div
         role="group"
         aria-label="Workspace switcher"
-        className="mx-3 mt-4 grid min-h-[50px] grid-cols-[28px_minmax(0,1fr)_12px] items-center gap-2 overflow-hidden rounded-xl bg-white/[0.06] px-3 py-2 text-white"
+        className="mx-3 mt-4 grid min-h-[50px] grid-cols-[28px_minmax(0,1fr)] items-center gap-2 rounded-xl bg-white/[0.06] px-3 py-2 text-white"
       >
         <LeasiumMark className="h-7 w-7 rounded-lg" />
         <div className="min-w-0">
@@ -820,9 +819,10 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               <p className="truncate text-[12px] font-semibold leading-4">
                 {orgName}
               </p>
-              <div className="-ml-px min-w-0 [&>div]:min-w-0 [&>div]:gap-1.5 [&_button]:min-h-6 [&_button]:rounded-md [&_button]:border-white/10 [&_button]:bg-white/10 [&_button]:px-2 [&_button]:text-[10px] [&_button]:font-semibold [&_button]:text-white [&_button_svg]:hidden [&_select]:min-h-6 [&_select]:min-w-0 [&_select]:rounded-none [&_select]:border-0 [&_select]:bg-transparent [&_select]:px-0 [&_select]:py-0 [&_select]:text-[11px] [&_select]:font-medium [&_select]:leading-4 [&_select]:text-leasium-slate-300 [&_select]:shadow-none [&_select]:focus-visible:ring-0 [&_option]:bg-white [&_option]:text-foreground">
-                {children}
-              </div>
+              {/* The page-owned EntityPicker renders its own Horizon trigger
+                  and popover; no style overrides needed here. The card must
+                  not be overflow-hidden or the popover would clip. */}
+              {children}
             </>
           ) : (
             <>
@@ -835,9 +835,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             </>
           )}
         </div>
-        {children ? (
-          <ChevronDown size={12} className="text-leasium-slate-300" />
-        ) : null}
       </div>
       <nav
         aria-label="Primary"

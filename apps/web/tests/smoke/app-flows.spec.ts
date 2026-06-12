@@ -64,10 +64,16 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 async function selectWorkspaceEntity(page: Page, value: string) {
+  // The entity picker is a custom popover listbox (no native select):
+  // open the trigger, then click the option row carrying the entity id.
   const switcher = page
     .getByRole("complementary", { name: "Primary navigation" })
     .getByRole("group", { name: "Workspace switcher" });
-  await switcher.getByLabel("Entity").selectOption(value);
+  await switcher.getByLabel("Entity").click();
+  await switcher
+    .getByRole("listbox", { name: "Entities" })
+    .locator(`[role="option"][data-value="${value}"]`)
+    .click();
 }
 
 async function selectAllEntitiesFromWorkspaceSwitcher(page: Page) {
@@ -151,7 +157,10 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("heading", { name: "Today's focus" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(page.getByLabel("Entity")).toHaveAttribute(
+    "data-value",
+    "entity-1",
+  );
   await expect(
     page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
   ).toHaveCount(0);
@@ -171,7 +180,8 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     name: "Workspace switcher",
   });
   await expect(shellEntitySwitcher).toBeVisible();
-  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveValue(
+  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveAttribute(
+    "data-value",
     "entity-1",
   );
   await expect(
@@ -2243,7 +2253,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(
     page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("Air conditioning fault").first()).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
   await expect(page.getByRole("region", { name: /Act now/ })).toBeVisible();
   await page
@@ -2476,7 +2486,7 @@ test("operations workspace keeps mobile rows compact", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(page.getByText("Air conditioning fault").first()).toBeVisible();
   await expectTouchTarget(page.getByRole("tab", { name: /Queue/ }));
   await expectTouchTarget(page.getByRole("tab", { name: /Maintenance/ }));
   await expectTouchTarget(page.getByRole("tab", { name: /Arrears/ }));
@@ -3704,7 +3714,10 @@ test("properties All entities view merges across entities and drops into one", a
   await secondaryCard
     .getByRole("button", { name: "Open property Rivergum Industrial Estate" })
     .click();
-  await expect(page.getByLabel("Entity")).toHaveValue("entity-2");
+  await expect(page.getByLabel("Entity")).toHaveAttribute(
+    "data-value",
+    "entity-2",
+  );
   await expect(page).toHaveURL(/property_id=property-secondary-1/);
   await expect(
     page.getByRole("heading", { name: "Rivergum Industrial Estate" }),
@@ -4259,7 +4272,10 @@ test("smart intake deep link selects the review entity", async ({ page }) => {
     "/intake?entity_id=entity-1&review=intake-tenant-upload-insurance-1",
   );
 
-  await expect(page.getByLabel("Entity")).toHaveValue("entity-1");
+  await expect(page.getByLabel("Entity")).toHaveAttribute(
+    "data-value",
+    "entity-1",
+  );
   await expect(
     page.getByRole("heading", { name: "Review document" }),
   ).toBeVisible();
@@ -5617,7 +5633,8 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     .first();
   const searchButton = page.getByRole("button", { name: "Open search" });
   await expect(shellEntitySwitcher).toBeVisible();
-  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveValue(
+  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveAttribute(
+    "data-value",
     "entity-1",
   );
   await expect(primaryNav).toBeVisible();

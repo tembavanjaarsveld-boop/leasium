@@ -250,6 +250,20 @@ back-filled in Figma before code.
   stay in the top utility bar. No provider, payment, reconciliation, Xero/Basiq,
   or workflow mutation path changed. Remba should review the entity switcher
   density, active rail contrast, mobile FAB placement, and operator-card fallback.
+- **Horizon entity switcher popover (2026-06-12, Remba pending):** the shared
+  `EntityPicker` is no longer a native `<select>` restyled via app-shell CSS
+  overrides; the open menu was the raw unstylable OS dropdown (flagged by Temba
+  against the 18-entity SKJ register). It is now a Horizon-styled popover
+  listbox in the sidebar workspace-switcher card: truncating trigger with
+  chevron, dark navy-800 panel, pinned "All entities" row, check on the
+  selected entity, keyboard navigation (arrows/Enter/Escape), and a type-ahead
+  filter that appears at 8+ entities. The app-shell `[&_select]`/`[&_button]`
+  override block was removed along with the card's `overflow-hidden` (would
+  clip the popover). Selection semantics, localStorage persistence, the
+  all-entities sentinel, and every page's entity-scoped queries are unchanged;
+  smoke specs moved from `selectOption`/`toHaveValue` to click-the-option and
+  `data-value` assertions. Remba should review popover width/density, the
+  filter threshold, and dark-panel contrast before this is marked `[x]`.
 - **Horizon Properties desktop v1 (2026-06-10, Remba pending):** production
   implementation from the approved Figma Properties target (`55:2`) on
   `/properties`. The page now opens on Cards with the Figma-style title/subtitle,
@@ -345,13 +359,19 @@ back-filled in Figma before code.
   closely: phones now hide the desktop filter/export rails from the first
   viewport and show compact readiness chips, Needs You action cards, and digest
   receipt cards above the fixed bottom nav while preserving the desktop
-  provider-console workflow. Verified locally with targeted ESLint,
+  provider-console workflow. Follow-up Work mobile polish matches `45:461` more
+  closely: phones now open the queue with the compact range pill, Act
+  now/Scheduled/Waiting chips, a three-card priority cap sized for the real app
+  shell, and compact Team workload above the fixed bottom nav while preserving
+  the existing Operations tabs, filters, assignments, exports, compliance,
+  arrears, digest, and desktop triage columns below or on wider screens. Verified
+  locally with targeted ESLint,
   `tsc --noEmit`, mobile/Horizon Playwright smokes, production build, and
   browser QA before push; Vercel proof is recorded per shipped follow-up. Remba
   should review the mobile density, first-viewport hierarchy, compact
   Properties row treatment, Smart Intake landing-first behavior, Settings
-  three-tab rail, Notifications compact card hierarchy, and bottom-nav
-  clearance before this is marked `[x]`.
+  three-tab rail, Notifications compact card hierarchy, Work three-card
+  first-viewport cap, and bottom-nav clearance before this is marked `[x]`.
 - **Horizon Tenant portal mobile v1 (2026-06-11, Remba pending):** production
   implementation from the approved Figma Tenant portal·Mobile target
   (`61:1251`) inside the authenticated tenant portal full account view. Mobile
