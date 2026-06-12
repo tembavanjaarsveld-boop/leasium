@@ -29,6 +29,18 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
   SendGrid/Twilio still run only from explicit `Approve & send`. Pending
   Remba/prototype review of inline preview density and Comms kind-to-template
   mapping.
+- [~] **2026-06-11 Horizon Work mobile first-viewport follow-up:** tightened
+  mobile `/operations` against the approved Work mobile frame
+  (`PO2jOANgmqgZHfqWZXOZGU`, node `45:461`). Phones now open the queue view
+  with the compact Work header/range pill, Act now/Scheduled/Waiting chips,
+  three priority work cards capped for the real app shell, and a compact Team
+  workload panel above the fixed Horizon bottom nav; the existing Operations
+  tabs, filters, assignment controls, exports, compliance, arrears, and desktop
+  triage columns remain available below or on wider screens. Frontend-only
+  presentation and smoke coverage: no API shape, provider send, email/SMS,
+  Xero/Basiq, payment, reconciliation, Smart Intake apply, work update,
+  obligation update, arrears update, assignment notification, digest, or
+  workflow mutation path changed. Pending Remba review.
 - [~] **2026-06-11 Horizon Dashboard mobile first-viewport follow-up:**
   tightened mobile `/` against the approved Dashboard mobile frame
   (`PO2jOANgmqgZHfqWZXOZGU`, node `45:371`). Phones now open with the compact

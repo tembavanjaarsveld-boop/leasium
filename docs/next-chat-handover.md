@@ -90,6 +90,63 @@ Active local tree note: there were pre-existing unrelated dirty files and
 untracked artifacts before this slice. Keep staging scoped to the
 Comms/template files unless Temba asks to bundle the older work.
 
+## Cowork continuation - 2026-06-11 (Horizon Work mobile first viewport - latest)
+
+Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.
+Figma source of truth was the approved Work mobile frame
+`PO2jOANgmqgZHfqWZXOZGU`, node `45:461`; 04 Concept stayed out of scope. A
+read-only scope agent confirmed that, excluding AI Mailbox Intake per Temba's
+instruction, this was the only practical remaining locked Horizon 03 Screens
+gap.
+
+Scope stayed inside `/operations` presentation and smoke coverage. Phones now
+open the default queue view with the compact Work header/range pill, Act
+now/Scheduled/Waiting chips, three priority work cards capped for the real
+production app shell, and compact Team workload above the fixed Horizon bottom
+nav. The existing Operations section tabs, saved views, assignment filters,
+lane columns, export/digest controls, compliance, arrears, maintenance, and
+desktop Work layout remain available below the first viewport or on wider
+screens.
+
+No API shape, provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+Smart Intake apply, work update, obligation update, arrears update, assignment
+notification, digest, export, or workflow mutation path changed.
+
+Verification recorded so far:
+
+- Figma source of truth pulled with `get_design_context` for Work mobile
+  `45:461`.
+- Read-only agents audited the remaining Horizon scope and current Work mobile
+  gaps; both pointed to Work mobile first-viewport fidelity as the next/only
+  practical slice, excluding AI Mailbox Intake.
+- RED mobile smoke failed before implementation because the compact mobile Work
+  Horizon summary stack did not exist.
+- Focused Work mobile smoke passed **1/1**:
+  `tests/smoke/operations-ux.spec.ts --grep "mobile Work first viewport matches the Horizon frame" --workers=1`.
+- Full Operations UX smoke passed **19/19**:
+  `NODE_ENV=development ./node_modules/.bin/playwright test tests/smoke/operations-ux.spec.ts --workers=1`.
+- Existing app-flow mobile compactness smoke passed **1/1**:
+  `tests/smoke/app-flows.spec.ts --grep "operations workspace keeps mobile rows compact" --workers=1`.
+- Targeted ESLint passed for `apps/web/src/app/operations/page.tsx`,
+  `apps/web/tests/smoke/operations-ux.spec.ts`, and
+  `apps/web/tests/smoke/app-flows.spec.ts`.
+- `./node_modules/.bin/tsc --noEmit --pretty false` passed.
+- `npm run build` passed.
+- In-app browser QA on `http://127.0.0.1:3031/operations` confirmed 390x844
+  and 1280x900 responsive shell behavior with horizontal overflow 0, mobile nav
+  visible only on phone, desktop sidebar visible only on desktop, and the
+  mobile-only Work summary hidden on desktop. The local live API was unavailable
+  outside the smoke harness (`Failed to fetch`), so seeded Work card/team-load
+  fidelity remains covered by Playwright mocks.
+
+Design-facing status: pending Remba review, not `[x]` complete. Remba should
+review the three-card Work mobile cap used to fit the real app shell while
+keeping Team workload above the fixed bottom nav.
+
+Next likely scoped polish: approved 03 Screens Horizon frames are current
+excluding AI Mailbox Intake, which Temba explicitly said not to worry about.
+Avoid `04 Concept — Horizon` unless Temba signs off a new production frame.
+
 ## Cowork continuation - 2026-06-11 (Horizon Dashboard mobile first viewport - latest)
 
 Follow-up mobile polish under the existing Horizon Mobile Polish v1 umbrella.

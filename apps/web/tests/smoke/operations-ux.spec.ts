@@ -29,6 +29,66 @@ async function expectTouchTarget(control: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+test("mobile Work first viewport matches the Horizon frame", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/operations");
+
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+  const workRange = page.getByRole("group", { name: "Work range" });
+  await expect(workRange.getByRole("button", { name: "Today" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(workRange.getByRole("button", { name: "Week" })).toBeVisible();
+  await expect(workRange.getByRole("button", { name: "All" })).toBeVisible();
+
+  const mobileSummary = page.getByTestId("work-mobile-horizon-summary");
+  await expect(mobileSummary).toBeVisible();
+  await expect(mobileSummary.getByText("Act now")).toBeVisible();
+  await expect(mobileSummary.getByText("Scheduled")).toBeVisible();
+  await expect(mobileSummary.getByText("Waiting")).toBeVisible();
+
+  const mobileCards = page.getByTestId("work-mobile-horizon-card");
+  await expect(mobileCards).toHaveCount(3);
+  const airconCard = mobileCards.filter({ hasText: "Air conditioning fault" });
+  await expect(airconCard).toBeVisible();
+  await expect(airconCard.getByRole("link", { name: "View" })).toBeVisible();
+  await expect(
+    mobileCards.filter({ has: page.getByRole("button", { name: "Complete" }) }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("work-mobile-team-load").getByRole("heading", {
+      name: "TEAM WORKLOAD",
+    }),
+  ).toBeVisible();
+
+  const bottomNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await expect(bottomNav).toBeVisible();
+  const teamLoadBox = await page.getByTestId("work-mobile-team-load").boundingBox();
+  const navBox = await bottomNav.boundingBox();
+  expect(teamLoadBox).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(teamLoadBox!.y + teamLoadBox!.height).toBeLessThan(navBox!.y);
+  const newWorkBox = await page
+    .getByRole("button", { name: "New work" })
+    .boundingBox();
+  expect(newWorkBox).not.toBeNull();
+  expect(newWorkBox!.y).toBeGreaterThan(navBox!.y);
+  const queueAssigneeBox = await page.getByLabel("Queue assignee").boundingBox();
+  expect(queueAssigneeBox).not.toBeNull();
+  expect(queueAssigneeBox!.y).toBeGreaterThan(teamLoadBox!.y);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
+});
+
 test("work horizon layout keeps queue exports local-only", async ({
   page,
 }) => {
@@ -182,7 +242,9 @@ test("work horizon layout keeps queue exports local-only", async ({
   await expect(workRange.getByRole("button", { name: "This week" })).toBeVisible();
   await expect(workRange.getByRole("button", { name: "All" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New work" })).toBeVisible();
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole("region", { name: /Act now/ }),
   ).toBeVisible();
@@ -298,7 +360,9 @@ test("maintenance inline undo toast controls stay touch-safe on mobile", async (
   ).toBeVisible();
 
   await page.getByRole("tab", { name: /Maintenance/ }).click();
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault/ }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Edit Status for Air conditioning fault" })
     .click();
@@ -332,7 +396,9 @@ test("operations queue assignment action stays touch-safe", async ({
   await mockLeasiumApi(page);
 
   await page.goto("/operations");
-  await expect(page.getByText("Air conditioning fault")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Air conditioning fault/ }),
+  ).toBeVisible();
 
   const assignOwner = page.getByRole("button", {
     name: "Assign owner for Air conditioning fault",

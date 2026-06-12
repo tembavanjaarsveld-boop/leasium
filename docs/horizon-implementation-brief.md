@@ -27,7 +27,7 @@ See `CLAUDE.md` §2.12 and `docs/design-governance.md` §Figma-First Design Stag
 | People | 61:580 | tenant/vendor cards; v1 shipped pending Remba review |
 | Money | 61:842 | billing readiness + approve-run; v1 shipped pending Remba review |
 | Insights | 61:1063 | value flow, compliance, what-changed; v1 shipped pending Remba review |
-| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, Dashboard/Properties/Smart Intake/Notifications/Settings/Tenant portal follow-ups shipped pending Remba review |
+| Mobile set | Dashboard 45:371; Work 45:461; Properties 59:427; Smart Intake 59:521; Notifications 59:594; Settings 59:677; Tenant portal 61:1251 | 390×844, Dashboard/Work/Properties/Smart Intake/Notifications/Settings/Tenant portal follow-ups shipped pending Remba review |
 | Dashboard · Dark | 62:696 | dark-mode reference |
 
 Components (02 Components): Horizon Sidebar 44:117, Command bar 44:155, Hero focus
@@ -54,13 +54,17 @@ extend the same pattern, never hardcode hex in components.
 5. **Notifications** (55:307) + **Settings** (55:439).
 6. **Mobile polish pass v1** against the 03 Screens mobile frames — shipped
    pending Remba review for Dashboard mobile first-viewport fidelity,
-   Work tabs/range targets, Notifications compact
+   Work tabs/range targets plus `45:461` first-viewport fidelity,
+   Notifications compact
    channel chips/send-retry target guards plus the `59:594` compact
    first-viewport stack, Settings compact tabs/touch targets plus the `59:677`
    three-tab mobile rail, Document review source/action/bottom nav safety,
    Properties default compact mobile board fidelity, and Smart Intake
    landing-first mobile fidelity. Work mobile toast bottom-nav clearance is
-   included as a follow-up under the same Remba-pending polish umbrella.
+   included as a follow-up under the same Remba-pending polish umbrella. The
+   Work first-viewport follow-up uses a three-card priority cap so Team workload
+   clears the fixed bottom nav inside the real production app shell; Remba
+   should review that compromise before `[x]` completion.
 7. **Dark mode token alignment v1** — shipped pending Remba review. The dark
    Leasium Color values from Dashboard · Dark `62:696` are wired through the
    existing `data-theme="dark"` CSS layer; next dark work should be visual
