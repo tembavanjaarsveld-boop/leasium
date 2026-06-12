@@ -80,6 +80,7 @@ const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
   lease_change: "Send to Smart Intake review",
   tenant_contact: "Update tenant contact details",
   vendor_or_contractor: "Add to contractor directory",
+  compliance_or_insurance: "Send to Smart Intake review",
 };
 
 const PROMOTE_TARGET_KIND: Record<InboxPromoteKind, InboxTriageTargetKind> = {
@@ -88,6 +89,7 @@ const PROMOTE_TARGET_KIND: Record<InboxPromoteKind, InboxTriageTargetKind> = {
   lease_change: "smart_intake",
   tenant_contact: "tenant",
   vendor_or_contractor: "none",
+  compliance_or_insurance: "smart_intake",
 };
 
 function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
@@ -96,7 +98,8 @@ function isPromotable(kind: InboxTriageKind): kind is InboxPromoteKind {
     kind === "payment_or_arrears" ||
     kind === "lease_change" ||
     kind === "tenant_contact" ||
-    kind === "vendor_or_contractor"
+    kind === "vendor_or_contractor" ||
+    kind === "compliance_or_insurance"
   );
 }
 
@@ -520,6 +523,12 @@ function InboxWorkspace() {
   function handlePromote() {
     if (!result || !scopedEntityId) return;
     if (!isPromotable(result.kind)) return;
+    if (result.kind === "compliance_or_insurance" && !mailboxReview) {
+      setPromoteError(
+        "Compliance or insurance promote requires a reviewed mailbox email.",
+      );
+      return;
+    }
     const tenantContactUpdates =
       result.kind === "tenant_contact" && tenantContactPreview
         ? Object.fromEntries(
@@ -595,7 +604,10 @@ function InboxWorkspace() {
     setMailboxReview(mailboxReviewSource(selectedMailboxMessage));
   }
 
-  const showPromote = result !== null && isPromotable(result.kind);
+  const showPromote =
+    result !== null &&
+    isPromotable(result.kind) &&
+    (result.kind !== "compliance_or_insurance" || mailboxReview !== null);
   const promoteRequiresTenant =
     result?.kind === "payment_or_arrears" || result?.kind === "tenant_contact";
   const promoteShowsLeasePicker = result?.kind === "lease_change";

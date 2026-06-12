@@ -107,6 +107,7 @@ InboxPromoteKind = Literal[
     "lease_change",
     "tenant_contact",
     "vendor_or_contractor",
+    "compliance_or_insurance",
 ]
 
 

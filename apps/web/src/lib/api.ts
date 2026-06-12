@@ -3780,7 +3780,8 @@ export type InboxPromoteKind =
   | "payment_or_arrears"
   | "lease_change"
   | "tenant_contact"
-  | "vendor_or_contractor";
+  | "vendor_or_contractor"
+  | "compliance_or_insurance";
 
 export type InboxPromoteTargetKind =
   | "maintenance_work_order"

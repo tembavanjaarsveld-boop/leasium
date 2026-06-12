@@ -2,6 +2,60 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (AI Mailbox compliance/insurance handoff v1)
+
+Follow-up to AI Mailbox reviewed promote handoff. Temba asked to continue and
+use agents. Two read-only agents checked the frontend allow-list/docs shape and
+the backend Smart Intake/document-category guardrails; main thread kept the TDD
+implementation local.
+
+Shipped:
+
+- Trusted AI Mailbox rows classified as `compliance_or_insurance` now use the
+  existing `/inbox` Review email → Review promotion path.
+- `POST /api/v1/ai/triage/promote` now accepts
+  `kind="compliance_or_insurance"` only with `inbound_message_id`. The backend
+  validates the mailbox row source/trust/entity/kind, creates a local
+  text/plain `StoredDocument` from the email body plus an uploaded
+  `DocumentIntake` review draft, stamps mailbox provenance into document
+  metadata, intake review data, and audit, and marks the mailbox row processed
+  after the local draft succeeds.
+- The Smart Intake draft deep-links to
+  `/intake?entity_id=...&review=...` and starts as uploaded. It does not run
+  Smart Intake extraction/apply, create obligations/checks, send email/SMS,
+  call SendGrid/Twilio/Xero/Basiq, touch payments, reconcile anything, or
+  re-run `/api/v1/ai/triage`.
+- `/inbox` now treats `compliance_or_insurance` as promotable only for a
+  reviewed mailbox row, keeping generic pasted classifications out of this
+  mailbox-provenance-specific path.
+
+Verification:
+
+- TDD red first: backend compliance promote tests failed on the API enum; smoke
+  failed before the allow-list/fixture route were fixed.
+- Focused backend green:
+  `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q -k "compliance"`
+- Backend lint green:
+  `.venv/bin/python -m ruff check apps/api/routers/ai.py apps/api/schemas/ai.py tests/integration/test_ai_triage_api.py`
+- Full AI triage integration green:
+  `.venv/bin/python -m pytest tests/integration/test_ai_triage_api.py -q`
+- Frontend lint green:
+  `npm run lint -- --max-warnings=0` in `apps/web`.
+- AI mailbox smoke green:
+  `npm run test:smoke -- --grep "AI mailbox"` in `apps/web`.
+- Production build green:
+  `npm run build` in `apps/web`.
+
+Next AI Mailbox slices:
+
+1. Property/task/owner-admin promote variants.
+2. Reuse existing attachment Smart Intake rows for compliance mailbox messages
+   that already produced `attachment_intake_ids`, instead of synthesising the
+   email body as the review document.
+3. Source/trust-state filters if mailbox volume grows.
+4. UX debt: in-loop review of the compliance/insurance promote copy and Smart
+   Intake handoff placement.
+
 ## Codex continuation - 2026-06-12 (AI Mailbox reviewed promote handoff v1)
 
 Follow-up to AI Mailbox trusted-sender management. Temba asked to continue

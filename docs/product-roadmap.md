@@ -8,6 +8,19 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [~] **2026-06-12 AI Mailbox compliance/insurance Smart Intake handoff v1:**
+  trusted mailbox rows classified as `compliance_or_insurance` now expose the
+  existing Review email -> Review promotion path on `/inbox` and create a
+  local uploaded Smart Intake review draft at
+  `/intake?entity_id=...&review=...`. The backend requires
+  `inbound_message_id`, validates source/trust/entity/kind, stores the email
+  body as a local text `StoredDocument`, stamps mailbox provenance into
+  document metadata, intake review data, and audit, then marks the mailbox row
+  processed only after the draft succeeds. The handoff uses the stored mailbox
+  classification and does not re-run `/api/v1/ai/triage`, extract/apply Smart
+  Intake, create obligations/checks, send email/SMS, call providers,
+  touch payments, or reconcile anything. Pending Remba review for the
+  compliance/insurance promote copy and Smart Intake handoff placement.
 - [~] **2026-06-12 AI Mailbox reviewed promote handoff v1:**
   trusted mailbox rows now expose Review email -> Review promotion on `/inbox`.
   The review step uses the stored mailbox classification instead of re-running

@@ -1,4 +1,10 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
@@ -1209,6 +1215,173 @@ test("AI mailbox hands trusted rows into reviewed promote flow with provenance",
   );
   expect(promoteRequests).toHaveLength(1);
   expect(promoteRequests[0].inbound_message_id).toBe("mailbox-trusted-1");
+  expect(forbiddenRequests).toEqual([]);
+});
+
+test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
+  page,
+}) => {
+  const forbiddenRequests: string[] = [];
+  const promoteRequests: Record<string, unknown>[] = [];
+  const complianceMessage = {
+    id: "mailbox-compliance-1",
+    entity_id: "entity-1",
+    channel: "email",
+    provider: "sendgrid",
+    source: "ai_mailbox",
+    trust_state: "trusted",
+    quarantine_reason: null,
+    from_address: "temba@leasium.test",
+    to_address: "ai@leasium.ai",
+    original_sender: "broker@external.example",
+    subject: "Fwd: Updated public liability certificate",
+    body_preview:
+      "Updated public liability certificate expires 30 June 2027.",
+    auth_result: { spf: "pass", dkim: "pass" },
+    classification_kind: "compliance_or_insurance",
+    classification_confidence: 0.86,
+    classification_summary: "Insurance certificate needs compliance review.",
+    classification_target_kind: "smart_intake",
+    attributed_tenant_id: null,
+    attachment_intake_count: 0,
+    attachment_document_ids: [],
+    attachment_intake_ids: [],
+    created_at: "2026-06-12T01:10:00.000Z",
+  };
+  const fulfillJson = async (
+    route: Route,
+    body: unknown,
+    status = 200,
+  ) =>
+    route.fulfill({
+      status,
+      headers: { "access-control-allow-origin": "*" },
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+
+  await page.route(
+    /\/api\/v1\/comms\/inbound-messages(?:\/[^/?]+)?(?:\?.*)?$/,
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      if (
+        request.method() === "GET" &&
+        path === "/api/v1/comms/inbound-messages"
+      ) {
+        await fulfillJson(route, {
+          messages: [complianceMessage],
+          generated_at: "2026-06-12T01:15:00.000Z",
+        });
+        return;
+      }
+      if (
+        request.method() === "GET" &&
+        path === "/api/v1/comms/inbound-messages/mailbox-compliance-1"
+      ) {
+        await fulfillJson(route, {
+          ...complianceMessage,
+          body_text:
+            "Attached is the updated public liability certificate for Unit 3. The certificate expires on 30 June 2027.",
+          body_html: null,
+          raw_email_document_id: "raw-email-doc-compliance",
+          raw_email_download_path:
+            "/api/v1/documents/raw-email-doc-compliance/download",
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.route("**/api/v1/ai/triage/promote", async (route) => {
+    promoteRequests.push(
+      JSON.parse(route.request().postData() ?? "{}") as Record<
+        string,
+        unknown
+      >,
+    );
+    await fulfillJson(route, {
+      target_kind: "document_intake",
+      target_id: "smart-intake-mailbox-compliance-1",
+      target_href:
+        "/intake?entity_id=entity-1&review=smart-intake-mailbox-compliance-1",
+      target_label: "Insurance certificate needs compliance review.",
+    });
+  });
+
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const isMutation = method !== "GET" && method !== "HEAD";
+    const allowedExplicitPromote =
+      method === "POST" && path === "/api/v1/ai/triage/promote";
+    const forbiddenMutation =
+      isMutation &&
+      !allowedExplicitPromote &&
+      (path.startsWith("/api/v1/comms/") ||
+        path.startsWith("/api/v1/documents") ||
+        path === "/api/v1/ai/triage" ||
+        path.includes("/document-intakes/") ||
+        path.includes("/lease-intakes/") ||
+        path.includes("/tenant-contact-preview") ||
+        path.includes("/provider-dispatch") ||
+        path.includes("/provider-history") ||
+        path.includes("/xero/") ||
+        path.includes("/basiq/") ||
+        path.includes("/payments/") ||
+        path.includes("/reconciliation"));
+    const providerCall =
+      path.includes("/api/v1/sendgrid") || path.includes("/api/v1/twilio");
+    if (forbiddenMutation || providerCall) {
+      forbiddenRequests.push(`${method} ${url.toString()}`);
+    }
+  });
+
+  await page.goto("/inbox");
+
+  const trustedQueue = page.locator("section").filter({
+    has: page.getByText("MAILBOX QUEUE — 1"),
+  });
+  await trustedQueue
+    .locator("div")
+    .filter({ hasText: "Fwd: Updated public liability certificate" })
+    .getByRole("button", { name: "Review email" })
+    .click();
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Fwd: Updated public liability certificate",
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Review promotion" }).click();
+
+  const promotePanel = page.getByTestId("promote-panel");
+  await expect(promotePanel).toBeVisible();
+  await expect(
+    promotePanel.getByText(/Send to Smart Intake review/i),
+  ).toBeVisible();
+  const provenance = promotePanel.getByTestId("mailbox-review-provenance");
+  await expect(
+    provenance.getByText("broker@external.example").first(),
+  ).toBeVisible();
+  await expect(provenance.getByText("86%")).toBeVisible();
+  await expect(
+    provenance.getByRole("link", { name: "Open raw email" }),
+  ).toHaveAttribute(
+    "href",
+    /\/api\/v1\/documents\/raw-email-doc-compliance\/download$/,
+  );
+  await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
+
+  await expect(page).toHaveURL(
+    /\/intake\?entity_id=entity-1&review=smart-intake-mailbox-compliance-1/,
+  );
+  expect(promoteRequests).toHaveLength(1);
+  expect(promoteRequests[0].kind).toBe("compliance_or_insurance");
+  expect(promoteRequests[0].inbound_message_id).toBe("mailbox-compliance-1");
   expect(forbiddenRequests).toEqual([]);
 });
 

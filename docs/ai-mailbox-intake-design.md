@@ -75,6 +75,13 @@ place, with the operator approving the result.
   through the existing review-first promote route; it does not send email/SMS,
   dispatch providers, apply Smart Intake, call Xero/Basiq, touch payments, or
   reconcile anything.
+- 2026-06-12 compliance/insurance promote follow-up: trusted mailbox rows
+  classified as `compliance_or_insurance` can now create an uploaded Smart
+  Intake review draft from the email body, carrying mailbox provenance into
+  the backing document metadata, intake review data, and audit row. This path
+  requires `inbound_message_id`, does not re-run triage or extraction, and
+  does not apply Smart Intake, create obligations/checks, send providers,
+  touch payments, or reconcile anything.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -177,7 +184,9 @@ Decision for foundation v1: (a) no acknowledgement reply.
   trusted AI mailbox rows. The route validates source/trust/entity/kind,
   persists raw-email provenance in target metadata/audit, and marks the
   mailbox row processed after a successful local draft.
-- Future promote endpoints: add the new promote kinds listed above.
+- First richer variant shipped: `compliance_or_insurance` creates a local
+  Smart Intake review draft only. Future promote endpoints: add property,
+  task/reminder, and owner/entity-admin variants listed above.
 
 ## UI
 
@@ -193,9 +202,13 @@ Decision for foundation v1: (a) no acknowledgement reply.
   sender/subject/confidence/raw email inside the promote approval step, and
   calls the existing local draft promote route only after the operator clicks
   Promote to draft.
+- Shipped on `/inbox`: trusted `compliance_or_insurance` rows use that same
+  review step to create a local Smart Intake review draft at
+  `/intake?entity_id=...&review=...`; the draft starts uploaded and waits for
+  explicit Smart Intake extraction/review/apply.
 - Still pending: source/trust-state filters if the queue grows, richer
-  promote/apply variants for non-existing target kinds, and the design review
-  of the inline action placement.
+  promote/apply variants for property/task/owner-admin target kinds, and the
+  design review of the inline action placement.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
   82:2` for promote variants before implementation; sync the shipped Settings
   allowlist panel through the in-loop UX pass/design debt track
@@ -209,12 +222,12 @@ trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
 role-scoped read APIs, trusted-senders API, `/inbox` queue + quarantine
 provenance UI, local trust/discard decisions, and Settings trusted-sender
 management, plus trusted-row reviewed promote handoff into existing local
-draft creation.
+draft creation and compliance/insurance Smart Intake review drafts.
 
-Out (next slices): new promote/apply kinds beyond the existing AI inbox
-promote route, auto-ack replies, reply-by-email threads, plus-addressing
-hints, agent-facing confirmations, cross-org agent senders, auto-apply of any
-kind.
+Out (next slices): property/task/owner-admin promote/apply variants beyond the
+existing AI inbox promote route, auto-ack replies, reply-by-email threads,
+plus-addressing hints, agent-facing confirmations, cross-org agent senders,
+auto-apply of any kind.
 
 ## Test plan
 
@@ -222,12 +235,13 @@ kind.
   quarantine path (unknown sender, SPF fail), forwarded-email provenance
   extraction, raw-email evidence document linking, list/detail read APIs with
   entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
-  trusted-row promote provenance, and promote kinds. Mock OpenAI and SendGrid
-  throughout.
+  trusted-row promote provenance, compliance/insurance Smart Intake handoff,
+  and promote kinds. Mock OpenAI and SendGrid throughout.
 - Smoke: shipped inbox queue + quarantine provenance, trust-sender action,
   discard action, Settings trusted-sender management, and trusted-row reviewed
-  promote handoff with forbidden provider/triage re-run guardrails; future
-  source filter fixtures when those actions land.
+  promote handoff including compliance/insurance Smart Intake review with
+  forbidden provider/triage re-run/apply guardrails; future source filter
+  fixtures when those actions land.
 
 ## Open decisions for Temba
 

@@ -2732,8 +2732,10 @@ detail with sender/auth result, stored body text, raw-email download link, and
 local Trust sender / Discard controls. Settings → Organisation now adds the
 local trusted-sender allowlist panel with add/revoke controls. Reviewed
 promote handoff now lets trusted rows open the existing promote panel with
-stored mailbox classification and raw-email provenance; richer promote/apply,
-acknowledgement, and provider-send controls remain omitted and need reviewed
+stored mailbox classification and raw-email provenance. Compliance/insurance
+mailbox rows can now create local Smart Intake review drafts from that reviewed
+promotion step; richer promote/apply, acknowledgement, and provider-send
+controls remain omitted and need reviewed
 action variants before implementation.
 
 1. Remba should review the panel's placement above the existing paste classifier,
@@ -2746,3 +2748,6 @@ action variants before implementation.
    placement/copy, the source-email provenance card inside the promote panel,
    and desktop/mobile density before expanding beyond the existing local draft
    promote kinds.
+3. Remba should review the compliance/insurance promote copy and Smart Intake
+   handoff placement before expanding this path to attachment-intake reuse or
+   other mailbox target kinds.

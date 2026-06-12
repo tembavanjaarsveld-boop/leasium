@@ -1407,6 +1407,88 @@ def promote_triage(
             target_label=title or "Lease change from inbox",
         )
 
+    if payload.kind == "compliance_or_insurance":
+        if mailbox_metadata is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Promoting compliance or insurance from inbox requires "
+                    "a trusted AI mailbox message."
+                ),
+            )
+
+        body_bytes = payload.body.strip().encode("utf-8")
+        document = StoredDocument(
+            entity_id=payload.entity_id,
+            property_id=payload.property_id,
+            tenant_id=payload.tenant_id,
+            lease_id=payload.lease_id,
+            filename="inbox-compliance-insurance.txt",
+            content_type="text/plain",
+            byte_size=len(body_bytes),
+            file_data=body_bytes,
+            category=DocumentCategory.other,
+            notes="Created from AI mailbox compliance/insurance promote.",
+            document_metadata={
+                "source": "ai_inbox_promote",
+                "summary": summary,
+                "candidate": "compliance_or_insurance",
+                "mailbox": mailbox_metadata,
+            },
+        )
+        session.add(document)
+        session.flush()
+
+        intake = DocumentIntake(
+            entity_id=payload.entity_id,
+            document_id=document.id,
+            status=DocumentIntakeStatus.uploaded,
+            document_type=None,
+            summary=summary,
+            confidence=None,
+            extracted_data={},
+            review_data={
+                "source": "ai_inbox_promote",
+                "candidate": "compliance_or_insurance",
+                "guardrail": (
+                    "Review in Smart Intake before applying any compliance "
+                    "or insurance obligation changes."
+                ),
+                "mailbox": mailbox_metadata,
+            },
+            openai_response_id=None,
+        )
+        session.add(intake)
+        session.flush()
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=payload.entity_id,
+            action="create",
+            target_table="document_intake",
+            target_id=intake.id,
+            tool_name="ai_inbox_promote",
+            tool_input=_promote_audit_input(
+                kind=payload.kind,
+                summary=summary,
+                mailbox_metadata=mailbox_metadata,
+                extraction="not_run",
+            ),
+            tool_output_summary=(
+                "Promoted AI mailbox compliance/insurance message to Smart "
+                "Intake review without extraction or apply."
+            ),
+            data_classification="internal",
+        )
+        session.commit()
+        return InboxPromoteRead(
+            target_kind="document_intake",
+            target_id=intake.id,
+            target_href=f"/intake?entity_id={payload.entity_id}&review={intake.id}",
+            target_label=title or "Compliance / insurance from inbox",
+        )
+
     if payload.kind == "vendor_or_contractor":
         # Matched contractor → no draft, just deep-link the operator into
         # the existing directory entry.

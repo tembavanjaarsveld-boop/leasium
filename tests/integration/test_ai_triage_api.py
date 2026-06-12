@@ -99,6 +99,14 @@ def _trusted_mailbox_message(
     context: dict[str, str],
     *,
     trust_state: str = "trusted",
+    classification_kind: str = "maintenance_request",
+    classification_summary: str = "Tenant reports a non-urgent tap leak.",
+    classification_target_kind: str = "maintenance_work_order",
+    subject: str = "Fwd: Kitchen tap leak",
+    body_text: str = (
+        "Tenant says the kitchen tap at Unit 3 is leaking and the cabinet"
+        " is starting to swell. Please arrange a plumber this week."
+    ),
 ) -> tuple[InboundMessage, StoredDocument]:
     raw_document = StoredDocument(
         entity_id=UUID(context["entity_id"]),
@@ -122,15 +130,12 @@ def _trusted_mailbox_message(
         original_sender="broker@external.example",
         from_address="temba@leasium.test",
         to_address="ai@leasium.ai",
-        subject="Fwd: Kitchen tap leak",
-        body_text=(
-            "Tenant says the kitchen tap at Unit 3 is leaking and the cabinet"
-            " is starting to swell. Please arrange a plumber this week."
-        ),
-        classification_kind="maintenance_request",
+        subject=subject,
+        body_text=body_text,
+        classification_kind=classification_kind,
         classification_confidence=0.91,
-        classification_summary="Tenant reports a non-urgent tap leak.",
-        classification_target_kind="maintenance_work_order",
+        classification_summary=classification_summary,
+        classification_target_kind=classification_target_kind,
         inbound_metadata={"raw_email_document_id": str(raw_document.id)},
     )
     session.add(message)
@@ -435,6 +440,115 @@ def test_promote_trusted_mailbox_message_links_raw_provenance_without_retriage(
     )
     assert duplicate.status_code == 422
     assert "already" in duplicate.json()["detail"].lower()
+
+
+def test_promote_compliance_mailbox_message_creates_smart_intake_review(
+    client: TestClient, session: Session, monkeypatch
+) -> None:
+    context = _lease_context(client, session)
+    message, raw_document = _trusted_mailbox_message(
+        session,
+        context,
+        classification_kind="compliance_or_insurance",
+        classification_summary="Insurance certificate needs compliance review.",
+        classification_target_kind="smart_intake",
+        subject="Fwd: Updated public liability certificate",
+        body_text=(
+            "Attached is the updated public liability certificate for Unit 3."
+            " The certificate expires on 30 June 2027 and should be checked"
+            " against the current lease obligation."
+        ),
+    )
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("mailbox promote must use stored classification")
+
+    monkeypatch.setattr(ai_router, "triage_inbox", fail_triage)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "compliance_or_insurance",
+            "summary": "Insurance certificate needs compliance review.",
+            "body": message.body_text,
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+            "inbound_message_id": str(message.id),
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_kind"] == "document_intake"
+    assert body["target_href"] == (
+        f"/intake?entity_id={context['entity_id']}&review={body['target_id']}"
+    )
+
+    intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.id == UUID(body["target_id"]))
+    )
+    assert intake is not None
+    assert intake.status.value == "uploaded"
+    assert intake.document_type is None
+    assert intake.summary == "Insurance certificate needs compliance review."
+    assert intake.extracted_data == {}
+    assert intake.review_data["source"] == "ai_inbox_promote"
+    assert intake.review_data["candidate"] == "compliance_or_insurance"
+    assert intake.review_data["mailbox"]["inbound_message_id"] == str(message.id)
+    assert intake.review_data["mailbox"]["raw_email_document_id"] == str(
+        raw_document.id
+    )
+    assert intake.document.category == DocumentCategory.other
+    assert intake.document.filename == "inbox-compliance-insurance.txt"
+    assert b"public liability certificate" in intake.document.file_data
+    assert intake.document.document_metadata["source"] == "ai_inbox_promote"
+    assert intake.document.document_metadata["mailbox"][
+        "inbound_message_id"
+    ] == str(message.id)
+
+    session.refresh(message)
+    assert message.processed_at is not None
+
+    audit_row = session.scalar(
+        select(AuditAction)
+        .where(AuditAction.tool_name == "ai_inbox_promote")
+        .order_by(AuditAction.occurred_at.desc())
+    )
+    assert audit_row is not None
+    assert audit_row.target_table == "document_intake"
+    assert audit_row.tool_input["kind"] == "compliance_or_insurance"
+    assert audit_row.tool_input["inbound_message_id"] == str(message.id)
+
+
+def test_promote_compliance_requires_mailbox_provenance(
+    client: TestClient, session: Session
+) -> None:
+    context = _lease_context(client, session)
+
+    response = client.post(
+        "/api/v1/ai/triage/promote",
+        json={
+            "entity_id": context["entity_id"],
+            "kind": "compliance_or_insurance",
+            "summary": "Insurance certificate needs compliance review.",
+            "body": (
+                "Attached is the updated public liability certificate for Unit 3."
+            ),
+            "property_id": context["property_id"],
+            "tenant_id": context["tenant_id"],
+            "lease_id": context["lease_id"],
+        },
+    )
+    assert response.status_code == 422
+    assert "mailbox" in response.json()["detail"].lower()
+
+    intake = session.scalar(
+        select(DocumentIntake).where(
+            DocumentIntake.summary == "Insurance certificate needs compliance review."
+        )
+    )
+    assert intake is None
 
 
 def test_promote_rejects_quarantined_mailbox_message_without_draft(

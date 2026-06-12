@@ -170,15 +170,19 @@ local draft promote panel using the stored mailbox classification (no
 `/ai/triage` re-run). The promote payload carries `inbound_message_id`; the
 backend validates source/trust/entity/kind, stamps raw-email provenance into
 target metadata/audit, and marks the mailbox row processed after a successful
-local draft. The visible UI/action placement, promote provenance card, and
-Settings panel still owe the in-loop UX pass.
+local draft. First richer variant shipped: trusted
+`compliance_or_insurance` rows create a local uploaded Smart Intake review
+draft with mailbox provenance and no extraction/apply/provider mutation. The
+visible UI/action placement, promote provenance card, compliance/insurance
+copy, and Settings panel still owe the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
 from the old migration plan. Remaining product slices are richer promote/apply
-variants for compliance/property/task/owner-admin kinds and optional filters
-if mailbox volume grows. Do not add acknowledgement replies, provider sends,
-Smart Intake apply, tenant email, Xero/Basiq, payment, or reconciliation
-mutation without explicit operator approval.
+variants for property/task/owner-admin kinds, possible attachment-intake reuse
+for compliance mail with existing Smart Intake attachments, and optional
+filters if mailbox volume grows. Do not add acknowledgement replies, provider
+sends, Smart Intake apply, tenant email, Xero/Basiq, payment, or
+reconciliation mutation without explicit operator approval.
 
 ---
 
