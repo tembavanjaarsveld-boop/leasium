@@ -3,14 +3,20 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import Property, UserRole
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.register import PropertyCreate, PropertyRead, PropertyUpdate
 
 router = APIRouter(prefix="/properties", tags=["properties"])
@@ -24,11 +30,17 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 def list_properties(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: UUID | None = None,
     include_deleted: bool = False,
 ) -> list[Property]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    statement = select(Property).where(Property.entity_id == entity_id)
+    statement = select(Property)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        statement = statement.where(Property.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            Property.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if not include_deleted:
         statement = statement.where(Property.deleted_at.is_(None))
     return list(session.scalars(statement.order_by(Property.name)))

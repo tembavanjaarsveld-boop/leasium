@@ -3677,6 +3677,18 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
 test("properties All entities view merges across entities and drops into one", async ({
   page,
 }) => {
+  const propertyRequests: string[] = [];
+  const propertyByEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/properties") {
+      propertyRequests.push(url.searchParams.get("entity_id") ?? "");
+    }
+    if (url.pathname.startsWith("/api/v1/premises/by-entity/")) {
+      propertyByEntityRequests.push(url.pathname);
+    }
+  });
+
   await page.goto("/properties?entity_id=entity-1");
 
   await expect(
@@ -3686,8 +3698,12 @@ test("properties All entities view merges across entities and drops into one", a
   await selectAllEntitiesFromWorkspaceSwitcher(page);
 
   await expect(
-    page.getByText("4 properties across 2 entities"),
+    page.getByText("4 properties across 2 entities").last(),
   ).toBeVisible();
+  expect(propertyRequests).toContain("");
+  expect(propertyByEntityRequests).not.toContain(
+    "/api/v1/premises/by-entity/entity-2",
+  );
   await expect(page).toHaveURL(/entity_id=__all_entities__/);
   await expect(page.getByRole("button", { name: "New property" })).toBeDisabled();
 
@@ -3743,7 +3759,7 @@ test("fresh storage defaults a multi-entity org to All entities", async ({
     page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
   await expect(
-    page.getByText("4 properties across 2 entities"),
+    page.getByText("4 properties across 2 entities").last(),
   ).toBeVisible();
   await expect(page).toHaveURL(/entity_id=__all_entities__/);
 
@@ -3765,6 +3781,14 @@ test("fresh storage defaults a multi-entity org to All entities", async ({
 test("contractors All entities merges vendors across entities and gates add", async ({
   page,
 }) => {
+  const contractorEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/contractors") {
+      contractorEntityRequests.push(url.searchParams.get("entity_id") ?? "");
+    }
+  });
+
   await page.goto("/contractors");
 
   await expect(
@@ -3780,6 +3804,8 @@ test("contractors All entities merges vendors across entities and gates add", as
   await expect(
     page.getByText("Rivergum Plumbing", { exact: true }),
   ).toBeVisible();
+  expect(contractorEntityRequests).toContain("");
+  expect(contractorEntityRequests).not.toContain("entity-2");
 
   // Add contractor needs a single entity, so it is disabled in all-mode.
   await expect(
@@ -3818,6 +3844,14 @@ test("contractor create form blocks submit after switching scopes", async ({
 test("tenants All entities merges tenants across entities and gates invite", async ({
   page,
 }) => {
+  const tenantEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/tenants") {
+      tenantEntityRequests.push(url.searchParams.get("entity_id") ?? "");
+    }
+  });
+
   await page.goto("/tenants");
 
   await expect(
@@ -3839,6 +3873,8 @@ test("tenants All entities merges tenants across entities and gates invite", asy
   await expect(
     rivergumRow.getByText("Secondary Holdings Pty Ltd"),
   ).toBeVisible();
+  expect(tenantEntityRequests).toContain("");
+  expect(tenantEntityRequests).not.toContain("entity-2");
 
   // Send invite needs a single entity, so it is disabled in all-mode.
   await expect(page.getByRole("button", { name: "Send invite" })).toBeDisabled();

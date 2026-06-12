@@ -203,6 +203,7 @@ function PeopleContent() {
     enabled: allMode,
     keyPrefix: ["tenants"],
     queryFn: listTenants,
+    orgWideQueryFn: () => listTenants(),
   });
   const tenants = allMode ? tenantsFanOut.data : (tenantsQuery.data ?? []);
   const tenantsLoading = allMode
@@ -220,6 +221,7 @@ function PeopleContent() {
     enabled: allMode,
     keyPrefix: ["contractors"],
     queryFn: listContractors,
+    orgWideQueryFn: () => listContractors(),
   });
   const contractors = allMode
     ? contractorsFanOut.data

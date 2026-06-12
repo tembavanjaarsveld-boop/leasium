@@ -2,6 +2,48 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (All entities directory fan-out reduction)
+
+Non-payment performance follow-up from the 2026-06-12 next-build instructions.
+Payments, owner-disbursement workflow, and AI Mailbox Intake remain deferred per
+Temba.
+
+Scope stayed to the low-risk directory/list batch. `/properties`, `/tenants`,
+and `/contractors` now support omitted `entity_id` as an org-wide readable
+entity query, and explicit hidden-entity reads still return 403. The existing
+All-entities views now use those single org-wide calls for directory data:
+Properties, Tenants, People, Contractors, Operations, and Portfolio QA.
+Filter-heavy billing, invoice, maintenance, arrears, and compliance fan-outs
+were left unchanged for a later dedicated pass.
+
+Guardrail stance: read-only performance work. No provider send, email/SMS,
+Xero/Basiq, payment, reconciliation, Smart Intake apply, contractor dispatch,
+or workflow mutation path changed.
+
+Verification:
+
+- Backend org-wide/register/contractor regressions passed **23/23**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py tests/integration/test_contractors_api.py tests/integration/test_register_api.py -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/properties.py apps/api/routers/tenants.py apps/api/routers/contractors.py tests/integration/test_org_wide_scope_api.py`.
+- Targeted frontend ESLint and typecheck passed for the touched pages, API
+  client, property workspace, and smoke mocks/specs.
+- App-flow All-entities smoke passed **4/4**:
+  `NODE_ENV=development PORT=3077 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "properties All entities|contractors All entities|tenants All entities|fresh storage defaults" --workers=1`.
+- Portfolio QA smoke passed **7/7**:
+  `NODE_ENV=development PORT=3078 npm run test:smoke -- tests/smoke/portfolio-qa-ux.spec.ts --workers=1`.
+- People hub All-entities smoke passed **1/1**:
+  `NODE_ENV=development PORT=3079 npm run test:smoke -- tests/smoke/people-hub.spec.ts --grep "All entities merges tenants and vendors" --workers=1`.
+- Production web build passed: `npm run build` in `apps/web`.
+- Review agent found one stale-cache risk after the org-wide keys were added;
+  directory mutation success paths now invalidate the matching directory prefix
+  so single-entity edits refresh both scoped and org-wide lists.
+
+Docs updated: `docs/product-roadmap.md` and this handover. No
+`docs/design-governance.md` entry was added because this slice changes API
+scope/query strategy and test coverage, not visible design, copy, layout, or
+workflow ordering.
+
 ## Codex continuation - 2026-06-12 (Vendor message notifications)
 
 Ticket 3 from the 2026-06-12 next-build instructions is implemented locally:

@@ -300,6 +300,7 @@ function TenantWorkspace() {
     enabled: allMode,
     keyPrefix: ["tenants"],
     queryFn: listTenants,
+    orgWideQueryFn: () => listTenants(),
   });
   const onboardingsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -517,7 +518,7 @@ function TenantWorkspace() {
       return { tenant, lease, onboarding: sent };
     },
     onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["tenants", variables.entityId] });
+      queryClient.invalidateQueries({ queryKey: ["tenants"] });
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", variables.entityId],
       });
@@ -573,6 +574,7 @@ function TenantWorkspace() {
       // update; trigger a background revalidation so other derived
       // queries (drawer, lease summaries) stay aligned.
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ["tenants", "org-wide"] });
     } catch (err) {
       if (previous) {
         queryClient.setQueryData(queryKey, previous);

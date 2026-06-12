@@ -56,7 +56,7 @@ export function PropertyMapUnmappedPanel({
       setLatInput("");
       setLngInput("");
       setError(null);
-      queryClient.invalidateQueries({ queryKey: ["properties", entityId] });
+      queryClient.invalidateQueries({ queryKey: ["properties"] });
       queryClient.invalidateQueries({ queryKey: ["property", property.id] });
     },
   });

@@ -192,6 +192,7 @@ function ContractorsContent() {
     enabled: allMode,
     keyPrefix: ["contractors"],
     queryFn: listContractors,
+    orgWideQueryFn: () => listContractors(),
   });
   const contractors = allMode
     ? contractorsFanOut.data
@@ -288,7 +289,7 @@ function ContractorsContent() {
             onSaved={() => {
               setShowCreate(false);
               queryClient.invalidateQueries({
-                queryKey: ["contractors", scopedEntityId],
+                queryKey: ["contractors"],
               });
             }}
           />
@@ -325,7 +326,7 @@ function ContractorsContent() {
             }
             onChanged={() =>
               queryClient.invalidateQueries({
-                queryKey: ["contractors", scopedEntityId],
+                queryKey: ["contractors"],
               })
             }
           />

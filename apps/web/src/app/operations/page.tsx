@@ -2680,12 +2680,14 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-properties"],
     queryFn: listProperties,
+    orgWideQueryFn: () => listProperties(),
   });
   const tenantsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["operations-tenants"],
     queryFn: listTenants,
+    orgWideQueryFn: () => listTenants(),
   });
   const obligationsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,

@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   useMutation,
-  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -2192,27 +2191,21 @@ function Workspace({
       ),
     [entitiesQuery.data],
   );
-  const allPropertiesQueries = useQueries({
-    queries: isAllEntities
-      ? allEntityIds.map((entityId) => ({
-          queryKey: ["properties", entityId],
-          queryFn: () => listProperties(entityId),
-        }))
-      : [],
+  const allPropertiesQuery = useQuery({
+    queryKey: ["properties", "org-wide"],
+    queryFn: () => listProperties(),
+    enabled: isAllEntities,
   });
   const allPropertiesRecords = useMemo(
     () =>
       isAllEntities
-        ? allPropertiesQueries.flatMap((query) => query.data ?? [])
+        ? (allPropertiesQuery.data ?? EMPTY_PROPERTY_RECORDS)
         : EMPTY_PROPERTY_RECORDS,
-    [isAllEntities, allPropertiesQueries],
+    [allPropertiesQuery.data, isAllEntities],
   );
-  const allPropertiesLoading =
-    isAllEntities &&
-    allPropertiesQueries.length > 0 &&
-    allPropertiesQueries.some((query) => query.isLoading);
+  const allPropertiesLoading = isAllEntities && allPropertiesQuery.isLoading;
   const allPropertiesError = isAllEntities
-    ? (allPropertiesQueries.find((query) => query.error)?.error ?? null)
+    ? (allPropertiesQuery.error ?? null)
     : null;
   const propertyRecords = useMemo(() => {
     if (isAllEntities) {
@@ -3240,7 +3233,7 @@ function Workspace({
     },
     onSuccess: (property) => {
       queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
+        queryKey: ["properties"],
       });
       // A new entity may have been created and the property may now live under
       // a different entity than the one in the global picker — refresh the
@@ -3282,6 +3275,7 @@ function Workspace({
     try {
       await updateProperty(propertyId, { [field]: next });
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ["properties", "org-wide"] });
     } catch (err) {
       if (previous) {
         queryClient.setQueryData(queryKey, previous);
@@ -3319,7 +3313,7 @@ function Workspace({
     onSuccess: () => {
       setPropertyEnrichmentSuggestions([]);
       queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
+        queryKey: ["properties"],
       });
       queryClient.invalidateQueries({
         queryKey: [
@@ -3366,7 +3360,7 @@ function Workspace({
       setPropertyImageCandidates([]);
       setPropertyImageWarnings([]);
       queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
+        queryKey: ["properties"],
       });
     },
     onSettled: () => {
@@ -3459,7 +3453,7 @@ function Workspace({
         queryKey: ["leases", selectedPropertyId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["tenants", selectedEntityId],
+        queryKey: ["tenants"],
       });
       setEditingLease(null);
       setLeaseEditorOpen(false);
@@ -3601,13 +3595,13 @@ function Workspace({
     onSuccess: (intake) => {
       queryClient.setQueryData(["lease-intake", intake.id], intake);
       queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
+        queryKey: ["properties"],
       });
       queryClient.invalidateQueries({
         queryKey: ["tenancy-units"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["tenants", selectedEntityId],
+        queryKey: ["tenants"],
       });
       queryClient.invalidateQueries({
         queryKey: ["leases"],

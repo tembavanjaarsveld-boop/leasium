@@ -4043,7 +4043,10 @@ export function getPublicInsightsSnapshot(token: string) {
   );
 }
 
-export function listProperties(entityId: string) {
+export function listProperties(entityId?: string) {
+  if (!entityId) {
+    return request<PropertyRecord[]>("/properties");
+  }
   return request<PropertyRecord[]>(`/premises/by-entity/${entityId}`);
 }
 
@@ -4096,8 +4099,11 @@ export function deleteTenancyUnit(unitId: string) {
   });
 }
 
-export function listTenants(entityId: string) {
-  const params = new URLSearchParams({ entity_id: entityId });
+export function listTenants(entityId?: string) {
+  const params = new URLSearchParams();
+  if (entityId) {
+    params.set("entity_id", entityId);
+  }
   return request<TenantRecord[]>(`/tenants?${params.toString()}`);
 }
 
@@ -6921,8 +6927,11 @@ export type ContractorUpdatePayload = Partial<
   Omit<ContractorCreatePayload, "entity_id">
 >;
 
-export function listContractors(entityId: string) {
-  const params = new URLSearchParams({ entity_id: entityId });
+export function listContractors(entityId?: string) {
+  const params = new URLSearchParams();
+  if (entityId) {
+    params.set("entity_id", entityId);
+  }
   return request<ContractorRecord[]>(`/contractors?${params.toString()}`);
 }
 

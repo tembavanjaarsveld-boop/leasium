@@ -4209,12 +4209,14 @@ function PortfolioQaWorkspace() {
     enabled: allMode,
     keyPrefix: ["properties"],
     queryFn: listProperties,
+    orgWideQueryFn: () => listProperties(),
   });
   const tenantsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["tenants"],
     queryFn: listTenants,
+    orgWideQueryFn: () => listTenants(),
   });
   const rentRollFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -4450,7 +4452,7 @@ function PortfolioQaWorkspace() {
         `${tenantName(variables.tenant)} contact details saved.`,
       );
       queryClient.invalidateQueries({
-        queryKey: ["tenants", selectedEntityId],
+        queryKey: ["tenants"],
       });
       queryClient.invalidateQueries({
         queryKey: ["rent-roll", selectedEntityId],
@@ -4485,7 +4487,7 @@ function PortfolioQaWorkspace() {
         `${saved} tenant contact fixes saved; ${result.applied.length} fields applied, ${result.skipped.length} skipped.`,
       );
       queryClient.invalidateQueries({
-        queryKey: ["tenants", selectedEntityId],
+        queryKey: ["tenants"],
       });
       queryClient.invalidateQueries({
         queryKey: ["rent-roll", selectedEntityId],
@@ -4511,7 +4513,7 @@ function PortfolioQaWorkspace() {
         `${variables.property.name} billing identity saved.`,
       );
       queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
+        queryKey: ["properties"],
       });
       queryClient.invalidateQueries({
         queryKey: ["rent-roll", selectedEntityId],
@@ -4549,7 +4551,7 @@ function PortfolioQaWorkspace() {
         `${saved} owner billing fixes saved; ${result.applied.length} fields applied, ${result.skipped.length} skipped.`,
       );
       queryClient.invalidateQueries({
-        queryKey: ["properties", selectedEntityId],
+        queryKey: ["properties"],
       });
       queryClient.invalidateQueries({
         queryKey: ["rent-roll", selectedEntityId],

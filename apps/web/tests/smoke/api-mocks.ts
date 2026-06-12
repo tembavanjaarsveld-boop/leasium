@@ -6509,6 +6509,17 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/properties") {
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        requestedEntityId
+          ? properties.filter((record) => record.entity_id === requestedEntityId)
+          : properties,
+      );
+      return;
+    }
+
     const byEntityMatch = path.match(/^\/premises\/by-entity\/([^/]+)$/);
     if (method === "GET" && byEntityMatch) {
       const requestedEntityId = byEntityMatch[1];

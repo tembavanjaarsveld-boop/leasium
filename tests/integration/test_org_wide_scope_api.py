@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
+    Contractor,
     DocumentCategory,
     DocumentIntake,
     Entity,
@@ -71,6 +72,12 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
                 token=token,
             ),
             DocumentIntake(entity_id=entity.id, document_id=document.id),
+            Contractor(
+                entity_id=entity.id,
+                name=f"{entity.name} Contractor",
+                company_name=f"{entity.name} Services",
+                categories=["maintenance"],
+            ),
         ]
     )
     session.commit()
@@ -103,6 +110,9 @@ def test_org_wide_lists_cover_readable_entities_only(
     hidden_id = str(hidden.id)
 
     for path in (
+        "/api/v1/properties",
+        "/api/v1/tenants",
+        "/api/v1/contractors",
         "/api/v1/rent-roll",
         "/api/v1/obligations",
         "/api/v1/tenant-onboarding",
@@ -126,6 +136,9 @@ def test_explicit_entity_scope_still_requires_entity_role(
     session.commit()
 
     for path in (
+        "/api/v1/properties",
+        "/api/v1/tenants",
+        "/api/v1/contractors",
         "/api/v1/rent-roll",
         "/api/v1/obligations",
         "/api/v1/tenant-onboarding",

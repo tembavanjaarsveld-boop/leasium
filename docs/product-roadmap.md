@@ -8,6 +8,17 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 All entities directory fan-out reduction v1:**
+  `/properties`, `/tenants`, and `/contractors` now accept omitted
+  `entity_id` as an organisation-wide read scoped to the operator's readable
+  entities, while explicit hidden-entity reads still return 403. Properties,
+  Tenants, People, Contractors, Operations, and Portfolio QA now use one
+  org-wide directory call in `All entities` mode instead of per-entity
+  properties/tenants/contractors fan-out. Filter-heavy billing, maintenance,
+  arrears, invoice, and compliance fan-outs stay unchanged for a later slice.
+  Read-only performance work only: no provider send, email/SMS, Xero/Basiq,
+  payment, reconciliation, Smart Intake apply, or workflow mutation path
+  changed.
 - [~] **2026-06-12 Vendor portal message notifications v1:** operator
   contractor-visible maintenance messages can now explicitly approve a
   contractor email/SMS notification from the existing message panel. Without

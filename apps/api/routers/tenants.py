@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, time
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -24,7 +24,13 @@ from stewart.core.models import (
     UserRole,
 )
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.register import (
     TenantActivityItemRead,
     TenantContactChangeRequestAction,
@@ -246,11 +252,17 @@ def _activity_sort_key(item: TenantActivityItemRead) -> datetime:
 def list_tenants(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: UUID | None = None,
     include_deleted: bool = False,
 ) -> list[Tenant]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    statement = select(Tenant).where(Tenant.entity_id == entity_id)
+    statement = select(Tenant)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        statement = statement.where(Tenant.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            Tenant.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if not include_deleted:
         statement = statement.where(Tenant.deleted_at.is_(None))
     return list(session.scalars(statement.order_by(Tenant.legal_name)))
