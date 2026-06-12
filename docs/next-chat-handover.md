@@ -2,6 +2,73 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (All entities maintenance fan-out reduction)
+
+Fourth non-payment performance follow-up from the 2026-06-12 next-build
+instructions. Payments, owner-disbursement workflow, and AI Mailbox Intake
+remain deferred per Temba.
+
+Scope stayed to `/maintenance/work-orders` list reads plus cache refresh for
+existing maintenance mutation success paths. Recon agents confirmed the list
+endpoint has only `property_id`, `tenant_id`, `status`, `priority`, and
+`include_deleted` filters; there is no `contractor_id` list filter. Invoice
+drafts and billing drafts remain deferred because their billing/provider-adjacent
+surfaces need separate guardrail tests.
+
+Backend behavior: omitted `entity_id` now returns maintenance work orders from
+the operator's readable entities via `readable_entity_ids`; explicit hidden
+`entity_id` still returns 403. Omitted-entity `property_id` and `tenant_id`
+filters now validate that the linked record's own entity is readable before
+applying the filter, so hidden linked ids return 403 instead of leaking or
+silently widening scope.
+
+Frontend behavior: Operations and Billing Readiness `All entities` now use one
+org-wide `/maintenance/work-orders` request instead of per-entity fan-out.
+Maintenance list cache invalidation now targets the relevant prefixes so
+scoped and org-wide Operations/Billing Readiness caches refresh after existing
+maintenance create/update/detail actions. The smoke API mock now filters
+maintenance by `entity_id` when present and returns all fixture rows only when
+omitted.
+
+Guardrail stance: read-only performance work on list loading. No provider send,
+email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, contractor
+dispatch, assignment notification, vendor portal share/unshare, closeout review,
+completion review, or workflow mutation path changed by viewing the list.
+Existing maintenance actions remain explicit operator actions.
+
+Verification recorded so far:
+
+- RED backend org-wide test failed on `/api/v1/maintenance/work-orders` with
+  422 before the router change, then passed.
+- RED frontend smoke failed because there was no omitted-entity maintenance
+  request, then passed after Operations/Billing Readiness used
+  `orgWideQueryFn`.
+- Backend maintenance/org-wide tests passed **39/39**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py tests/integration/test_maintenance_arrears_api.py -q`.
+- Full backend suite passed **626 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/maintenance.py tests/integration/test_org_wide_scope_api.py`.
+- Targeted frontend ESLint passed for `src/lib/api.ts`,
+  `src/app/operations/page.tsx`, `src/app/billing-readiness/page.tsx`,
+  `src/app/operations/maintenance/[workOrderId]/page.tsx`,
+  `tests/smoke/app-flows.spec.ts`, and `tests/smoke/api-mocks.ts`.
+- Frontend typecheck passed: `./node_modules/.bin/tsc --noEmit --pretty false`.
+- Focused All-entities maintenance smoke passed **2/2**:
+  `NODE_ENV=development PORT=3102 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "maintenance work orders use one org-wide read" --workers=1`.
+- Operations UX smoke passed **19/19**:
+  `NODE_ENV=development PORT=3104 npm run test:smoke -- tests/smoke/operations-ux.spec.ts --workers=1`.
+- Billing Readiness UX smoke passed **5/5**:
+  `NODE_ENV=development PORT=3103 npm run test:smoke -- tests/smoke/billing-readiness-ux.spec.ts --workers=1`.
+- Production web build passed: `npm run build` in `apps/web`.
+- Final review agent found one stale-cache gap on Operations maintenance create;
+  it was fixed by invalidating `billing-readiness-maintenance` there too.
+
+Docs updated: `docs/product-roadmap.md` and this handover. No
+`docs/design-governance.md` entry was added because this slice changes API
+scope/query strategy, cache refresh, and test coverage, not visible design,
+copy, layout, or workflow ordering.
+
 ## Codex continuation - 2026-06-12 (All entities arrears fan-out reduction)
 
 Third non-payment performance follow-up from the 2026-06-12 next-build

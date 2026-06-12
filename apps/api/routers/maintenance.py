@@ -43,7 +43,13 @@ from stewart.integrations.communications import (
 )
 
 from apps.api import webhook_auth
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.maintenance import (
     MaintenanceCompletionReviewCreate,
     MaintenanceWorkOrderCommentCreate,
@@ -1210,20 +1216,42 @@ def _audit_vendor_portal_visibility(
 def list_work_orders(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: Annotated[UUID | None, Query()] = None,
     property_id: UUID | None = None,
     tenant_id: UUID | None = None,
     status_filter: Annotated[MaintenanceWorkOrderStatus | None, Query(alias="status")] = None,
     priority: MaintenancePriority | None = None,
     include_deleted: bool = False,
 ) -> list[MaintenanceWorkOrder]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    statement = select(MaintenanceWorkOrder).where(MaintenanceWorkOrder.entity_id == entity_id)
+    statement = select(MaintenanceWorkOrder)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        statement = statement.where(MaintenanceWorkOrder.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            MaintenanceWorkOrder.entity_id.in_(
+                readable_entity_ids(session, user, READ_ROLES)
+            )
+        )
     if property_id is not None:
-        _property_for_entity(property_id, entity_id, session)
+        prop = session.get(Property, property_id)
+        if prop is None or prop.deleted_at is not None:
+            raise _not_found("Property")
+        if entity_id is not None:
+            if prop.entity_id != entity_id:
+                raise _not_found("Property")
+        else:
+            assert_entity_role(session, user, prop.entity_id, READ_ROLES)
         statement = statement.where(MaintenanceWorkOrder.property_id == property_id)
     if tenant_id is not None:
-        _tenant_for_entity(tenant_id, entity_id, session)
+        tenant = session.get(Tenant, tenant_id)
+        if tenant is None or tenant.deleted_at is not None:
+            raise _not_found("Tenant")
+        if entity_id is not None:
+            if tenant.entity_id != entity_id:
+                raise _not_found("Tenant")
+        else:
+            assert_entity_role(session, user, tenant.entity_id, READ_ROLES)
         statement = statement.where(MaintenanceWorkOrder.tenant_id == tenant_id)
     if status_filter is not None:
         statement = statement.where(MaintenanceWorkOrder.status == status_filter)

@@ -7985,7 +7985,16 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/maintenance/work-orders") {
-      await fulfillJson(route, maintenanceWorkOrders);
+      const hasEntityId = url.searchParams.has("entity_id");
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        hasEntityId
+          ? maintenanceWorkOrders.filter(
+              (record) => record.entity_id === requestedEntityId,
+            )
+          : maintenanceWorkOrders,
+      );
       return;
     }
 

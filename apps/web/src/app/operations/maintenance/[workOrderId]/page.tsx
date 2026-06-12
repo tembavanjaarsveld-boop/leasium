@@ -3701,6 +3701,14 @@ function MaintenanceDetailRoute() {
   const workOrderLoadError = workOrderNotFound ? null : workOrderQuery.error;
   const workOrder = workOrderQuery.error ? null : (workOrderQuery.data ?? null);
   const entityId = workOrder?.entity_id ?? "";
+  const invalidateMaintenanceListCaches = () => {
+    queryClient.invalidateQueries({
+      queryKey: ["operations-maintenance"],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["billing-readiness-maintenance"],
+    });
+  };
 
   const propertiesQuery = useQuery({
     queryKey: ["maintenance-detail-properties", entityId],
@@ -4182,9 +4190,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4264,9 +4270,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-detail-documents", entityId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4287,9 +4291,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4320,9 +4322,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4356,9 +4356,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4379,9 +4377,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4413,9 +4409,7 @@ function MaintenanceDetailRoute() {
         ["maintenance-work-order", workOrderId],
         updatedWorkOrder,
       );
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4434,9 +4428,7 @@ function MaintenanceDetailRoute() {
         ["maintenance-work-order", workOrderId],
         updatedWorkOrder,
       );
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4578,9 +4570,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-detail-documents", entityId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4667,9 +4657,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 
@@ -4690,9 +4678,7 @@ function MaintenanceDetailRoute() {
       queryClient.invalidateQueries({
         queryKey: ["maintenance-work-order", workOrderId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", entityId],
-      });
+      invalidateMaintenanceListCaches();
     },
   });
 

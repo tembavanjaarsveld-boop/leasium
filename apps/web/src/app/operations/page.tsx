@@ -2722,6 +2722,7 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-maintenance"],
     queryFn: (entityId) => listMaintenanceWorkOrders({ entity_id: entityId }),
+    orgWideQueryFn: () => listMaintenanceWorkOrders({}),
   });
   const invoiceDraftsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -2745,7 +2746,10 @@ function OperationsWorkspace() {
       queryKey: ["operations-compliance-checks"],
     });
     queryClient.invalidateQueries({
-      queryKey: ["operations-maintenance", scopedEntityId],
+      queryKey: ["operations-maintenance"],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["billing-readiness-maintenance"],
     });
     queryClient.invalidateQueries({
       queryKey: ["operations-arrears"],
@@ -2888,7 +2892,10 @@ function OperationsWorkspace() {
     mutationFn: createMaintenanceWorkOrder,
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", scopedEntityId],
+        queryKey: ["operations-maintenance"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-maintenance"],
       });
       setMaintenanceForm(emptyMaintenanceForm);
       setMaintenanceFormOpen(false);
@@ -2973,7 +2980,7 @@ function OperationsWorkspace() {
       } as Parameters<typeof updateMaintenanceWorkOrder>[1]);
       setMaintenanceInlineUndo(null);
       queryClient.invalidateQueries({
-        queryKey: ["operations-maintenance", undo.entityId],
+        queryKey: ["operations-maintenance"],
       });
       invalidateOperations();
     } catch (err) {

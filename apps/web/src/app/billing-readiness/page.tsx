@@ -1850,6 +1850,7 @@ function BillingReadinessWorkspace() {
     enabled: allMode,
     keyPrefix: ["billing-readiness-maintenance"],
     queryFn: (entityId) => listMaintenanceWorkOrders({ entity_id: entityId }),
+    orgWideQueryFn: () => listMaintenanceWorkOrders({}),
   });
   const entitiesLoading =
     !entitiesQuery.data &&

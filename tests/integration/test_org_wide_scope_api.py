@@ -14,6 +14,7 @@ from stewart.core.models import (
     Entity,
     Lease,
     LeaseStatus,
+    MaintenanceWorkOrder,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -82,6 +83,15 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
                 lease_id=lease.id,
                 total_balance_cents=880000,
             ),
+            MaintenanceWorkOrder(
+                entity_id=entity.id,
+                property_id=prop.id,
+                tenancy_unit_id=unit.id,
+                tenant_id=tenant.id,
+                lease_id=lease.id,
+                title=f"{entity.name} repair",
+                description="Replace flickering tenancy lighting.",
+            ),
             Contractor(
                 entity_id=entity.id,
                 name=f"{entity.name} Contractor",
@@ -134,6 +144,7 @@ def test_org_wide_lists_cover_readable_entities_only(
         "/api/v1/document-intakes",
         "/api/v1/compliance/checks",
         "/api/v1/arrears/cases",
+        "/api/v1/maintenance/work-orders",
     ):
         response = client.get(path)
         assert response.status_code == 200, path
@@ -162,6 +173,7 @@ def test_explicit_entity_scope_still_requires_entity_role(
         "/api/v1/document-intakes",
         "/api/v1/compliance/checks",
         "/api/v1/arrears/cases",
+        "/api/v1/maintenance/work-orders",
     ):
         response = client.get(path, params={"entity_id": str(hidden.id)})
         assert response.status_code == 403, path
@@ -207,6 +219,71 @@ def test_org_wide_arrears_tenant_filter_requires_readable_tenant(
 
     response = client.get(
         "/api/v1/arrears/cases",
+        params={"tenant_id": str(hidden_tenant.id)},
+    )
+    assert response.status_code == 403
+
+
+def test_org_wide_maintenance_filters_require_readable_links(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+
+    accessible = Entity(organisation_id=seeded.organisation_id, name="Visible Repairs")
+    hidden = Entity(organisation_id=seeded.organisation_id, name="Hidden Repairs")
+    session.add_all([accessible, hidden])
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=settings.dev_user_id,
+            entity_id=accessible.id,
+            role=UserRole.viewer,
+        )
+    )
+    session.commit()
+    _seed_entity_records(session, accessible, token="maintenance-filter-accessible")
+    _seed_entity_records(session, hidden, token="maintenance-filter-hidden")
+
+    accessible_property = session.scalar(
+        select(Property).where(Property.entity_id == accessible.id)
+    )
+    hidden_property = session.scalar(select(Property).where(Property.entity_id == hidden.id))
+    accessible_tenant = session.scalar(
+        select(Tenant).where(Tenant.entity_id == accessible.id)
+    )
+    hidden_tenant = session.scalar(select(Tenant).where(Tenant.entity_id == hidden.id))
+    assert accessible_property is not None
+    assert hidden_property is not None
+    assert accessible_tenant is not None
+    assert hidden_tenant is not None
+
+    response = client.get(
+        "/api/v1/maintenance/work-orders",
+        params={"property_id": str(accessible_property.id)},
+    )
+    assert response.status_code == 200
+    entity_ids = {row["entity_id"] for row in response.json()}
+    assert entity_ids == {str(accessible.id)}
+
+    response = client.get(
+        "/api/v1/maintenance/work-orders",
+        params={"tenant_id": str(accessible_tenant.id)},
+    )
+    assert response.status_code == 200
+    entity_ids = {row["entity_id"] for row in response.json()}
+    assert entity_ids == {str(accessible.id)}
+
+    response = client.get(
+        "/api/v1/maintenance/work-orders",
+        params={"property_id": str(hidden_property.id)},
+    )
+    assert response.status_code == 403
+
+    response = client.get(
+        "/api/v1/maintenance/work-orders",
         params={"tenant_id": str(hidden_tenant.id)},
     )
     assert response.status_code == 403

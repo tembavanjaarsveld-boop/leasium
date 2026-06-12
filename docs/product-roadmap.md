@@ -8,6 +8,20 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
+  `/maintenance/work-orders` now accepts omitted `entity_id` as an
+  organisation-wide read scoped to the operator's readable entities, while
+  explicit hidden-entity reads still return 403 and omitted-entity
+  `property_id` / `tenant_id` filters require the linked record's entity to be
+  readable. Operations and Billing Readiness `All entities` now load
+  maintenance work orders through one org-wide call, and maintenance list
+  caches refresh across scoped and org-wide Operations/Billing Readiness views
+  after maintenance updates. Invoice drafts and billing drafts stay deferred to
+  their own filter-aware slices. Read-only performance work on list loading
+  only: no provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+  Smart Intake apply, contractor dispatch, assignment notification, vendor
+  portal share, closeout review, or workflow mutation path changed by viewing
+  the list.
 - [x] **2026-06-12 All entities arrears fan-out reduction v1:**
   `/arrears/cases` now accepts omitted `entity_id` as an organisation-wide read
   scoped to the operator's readable entities, while explicit hidden-entity

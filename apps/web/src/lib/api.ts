@@ -4540,13 +4540,16 @@ export function deleteObligation(obligationId: string) {
 }
 
 export function listMaintenanceWorkOrders(filters: {
-  entity_id: string;
+  entity_id?: string;
   property_id?: string;
   tenant_id?: string;
   status?: MaintenanceWorkOrderStatus;
   priority?: MaintenancePriority;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.property_id) {
     params.set("property_id", filters.property_id);
   }

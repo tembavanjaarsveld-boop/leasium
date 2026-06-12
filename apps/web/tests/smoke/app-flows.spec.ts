@@ -3835,6 +3835,71 @@ test("operations All entities arrears cases use one org-wide read", async ({
   expect(arrearsEntityRequests).not.toContain("entity-2");
 });
 
+test("operations All entities maintenance work orders use one org-wide read", async ({
+  page,
+}) => {
+  const maintenanceEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/maintenance/work-orders") {
+      maintenanceEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/operations?tab=maintenance");
+
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Maintenance work orders" }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        maintenanceEntityRequests.filter((entityId) => entityId === "__missing__")
+          .length,
+    )
+    .toBe(1);
+  await page.waitForTimeout(100);
+  expect(maintenanceEntityRequests).toEqual(["__missing__"]);
+});
+
+test("billing readiness All entities maintenance work orders use one org-wide read", async ({
+  page,
+}) => {
+  const maintenanceEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/maintenance/work-orders") {
+      maintenanceEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/billing-readiness");
+
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        maintenanceEntityRequests.filter((entityId) => entityId === "__missing__")
+          .length,
+    )
+    .toBe(1);
+  await page.waitForTimeout(100);
+  expect(maintenanceEntityRequests).toEqual(["__missing__"]);
+});
+
 test("contractors All entities merges vendors across entities and gates add", async ({
   page,
 }) => {
