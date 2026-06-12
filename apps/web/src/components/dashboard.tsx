@@ -3218,15 +3218,20 @@ function DashboardSegmentBar({
 function DashboardLeaseHorizon({
   events,
   loading,
+  className,
 }: {
   events: HorizonDashboardEvent[];
   loading: boolean;
+  className?: string;
 }) {
   return (
     <section
       aria-labelledby="dashboard-lease-horizon"
       data-testid="dashboard-mobile-horizon"
-      className="rounded-[14px] border border-leasium-card-border bg-white p-3.5 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:min-h-[116px] sm:rounded-[18px] sm:p-[18px]"
+      className={cn(
+        "rounded-[14px] border border-leasium-card-border bg-white p-3 shadow-[0_1px_3px_rgba(16,24,40,0.04)] sm:min-h-[116px] sm:rounded-[18px] sm:p-[18px]",
+        className,
+      )}
     >
       <div className="flex items-center justify-between gap-3">
         <h2
@@ -4929,25 +4934,29 @@ export function Dashboard({
                   <span className="hidden sm:inline">Review &amp; approve →</span>
                 </span>
               </DashboardBentoCard>
-            </section>
 
-            <section className="grid gap-[14px] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              {/* Second bento row lives in the same grid so its column
+                  edges land exactly on the 4-column tracks above (a
+                  separate 2fr/1fr/1fr grid drifts ~6px per gutter) and
+                  the row gap stays on the Figma 14px bento rhythm. */}
               <DashboardLeaseHorizon
                 events={dashboardHorizonEvents}
                 loading={leaseHorizonLoading}
+                className="col-span-2"
               />
 
-              <div className="md:hidden">
+              <div className="col-span-2 md:hidden">
                 <DashboardTrustRibbon variant="mobile" />
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-2 md:hidden">
+              <div className="col-span-2 flex flex-wrap items-center justify-center gap-2 md:hidden">
                 {renderDashboardActions()}
               </div>
 
               <DashboardBentoCard
                 label="Onboarding"
                 icon={<UserRound size={14} />}
+                className="col-span-2 lg:col-span-1"
               >
                 <div className="text-base font-bold tracking-normal text-foreground">
                   {onboardingLoading
@@ -4982,6 +4991,7 @@ export function Dashboard({
                 label="Smart Intake"
                 icon={<FileUp size={14} />}
                 dashed
+                className="col-span-2 lg:col-span-1"
               >
                 <div className="flex items-center gap-2">
                   <FileUp size={18} className="text-primary" />

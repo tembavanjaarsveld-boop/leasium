@@ -264,6 +264,16 @@ back-filled in Figma before code.
   smoke specs moved from `selectOption`/`toHaveValue` to click-the-option and
   `data-value` assertions. Remba should review popover width/density, the
   filter threshold, and dark-panel contrast before this is marked `[x]`.
+- **Dashboard bento column alignment (2026-06-12, Remba pending):** the two
+  bento rows were separate grids — row 1 `lg:grid-cols-4`, row 2
+  `2fr/1fr/1fr` — so row 2's column edges drifted ~6px off row 1's tracks
+  (flagged by Temba with a redline), and the inter-row gap was the 18px page
+  gap instead of the Figma 14px bento gutter. Both rows now live in one
+  `lg:grid-cols-4` grid (Lease horizon `col-span-2`), which makes shared
+  column edges structural rather than tuned; sub-lg stacking and the mobile
+  card order are unchanged, and Lease horizon's mobile padding now matches
+  the bento cards (p-3). Remba should eyeball the tightened 14px row gap
+  against the approved Dashboard frame (`45:2`) before this is marked `[x]`.
 - **Horizon Properties desktop v1 (2026-06-10, Remba pending):** production
   implementation from the approved Figma Properties target (`55:2`) on
   `/properties`. The page now opens on Cards with the Figma-style title/subtitle,
