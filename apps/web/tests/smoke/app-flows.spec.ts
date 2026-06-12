@@ -3900,6 +3900,66 @@ test("billing readiness All entities maintenance work orders use one org-wide re
   expect(maintenanceEntityRequests).toEqual(["__missing__"]);
 });
 
+test("billing readiness All entities billing drafts use one org-wide read", async ({
+  page,
+}) => {
+  const billingDraftEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/billing-drafts") {
+      billingDraftEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/billing-readiness");
+
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        billingDraftEntityRequests.filter((entityId) => entityId === "__missing__")
+          .length,
+    )
+    .toBe(1);
+  await page.waitForTimeout(100);
+  expect(billingDraftEntityRequests).toEqual(["__missing__"]);
+});
+
+test("portfolio QA All entities billing drafts use one org-wide read", async ({
+  page,
+}) => {
+  const billingDraftEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/billing-drafts") {
+      billingDraftEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/portfolio-qa");
+
+  await expect(page.getByRole("heading", { name: "Portfolio QA" })).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        billingDraftEntityRequests.filter((entityId) => entityId === "__missing__")
+          .length,
+    )
+    .toBe(1);
+  await page.waitForTimeout(100);
+  expect(billingDraftEntityRequests).toEqual(["__missing__"]);
+});
+
 test("contractors All entities merges vendors across entities and gates add", async ({
   page,
 }) => {

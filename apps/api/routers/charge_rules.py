@@ -16,6 +16,7 @@ from stewart.core.models import (
     BillingDraftLine,
     BillingDraftStatus,
     DocumentCategory,
+    DocumentIntake,
     Entity,
     InvoiceDraft,
     InvoiceDraftLine,
@@ -77,6 +78,22 @@ def _property_for_access(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found.")
     assert_entity_role(session, user, prop.entity_id, roles)
     return prop
+
+
+def _document_intake_for_access(
+    document_intake_id: UUID,
+    user: CurrentUser,
+    session: Session,
+    roles: set[UserRole],
+) -> DocumentIntake:
+    intake = session.get(DocumentIntake, document_intake_id)
+    if intake is None or intake.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document intake not found.",
+        )
+    assert_entity_role(session, user, intake.entity_id, roles)
+    return intake
 
 
 def _lease_for_access(
@@ -1240,18 +1257,24 @@ def _property_billing_blockers(
 def list_billing_drafts(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: Annotated[UUID | None, Query()] = None,
     property_id: UUID | None = None,
     lease_id: UUID | None = None,
     document_intake_id: UUID | None = None,
     draft_status: BillingDraftStatus | None = None,
     include_deleted: bool = False,
 ) -> list[BillingDraft]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    statement = select(BillingDraft).where(BillingDraft.entity_id == entity_id)
+    statement = select(BillingDraft)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        statement = statement.where(BillingDraft.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            BillingDraft.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if property_id is not None:
         prop = _property_for_access(property_id, user, session, READ_ROLES)
-        if prop.entity_id != entity_id:
+        if entity_id is not None and prop.entity_id != entity_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Property must belong to the selected entity.",
@@ -1259,13 +1282,21 @@ def list_billing_drafts(
         statement = statement.where(BillingDraft.property_id == property_id)
     if lease_id is not None:
         _, lease_entity_id = _lease_for_access(lease_id, user, session, READ_ROLES)
-        if lease_entity_id != entity_id:
+        if entity_id is not None and lease_entity_id != entity_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Lease must belong to the selected entity.",
             )
         statement = statement.where(BillingDraft.lease_id == lease_id)
     if document_intake_id is not None:
+        intake = _document_intake_for_access(
+            document_intake_id, user, session, READ_ROLES
+        )
+        if entity_id is not None and intake.entity_id != entity_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Document intake must belong to the selected entity.",
+            )
         statement = statement.where(BillingDraft.document_intake_id == document_intake_id)
     if draft_status is not None:
         statement = statement.where(BillingDraft.status == draft_status)

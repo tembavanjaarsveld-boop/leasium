@@ -2,6 +2,69 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (All entities billing drafts fan-out reduction)
+
+Fifth non-payment performance follow-up from the 2026-06-12 next-build
+instructions. Payments, owner-disbursement workflow, and AI Mailbox Intake
+remain deferred per Temba.
+
+Scope stayed to `/billing-drafts` list reads plus cache refresh for existing
+billing-draft-affecting success paths. Recon agents confirmed the endpoint is
+read-only/provider-inert and that the linked filters needing explicit
+org-wide access checks are `property_id`, `lease_id`, and `document_intake_id`.
+Invoice drafts remain deferred because they are closer to delivery/payment
+handoff and need their own filter-aware slice.
+
+Backend behavior: omitted `entity_id` now returns billing drafts from the
+operator's readable entities via `readable_entity_ids`; explicit hidden
+`entity_id` still returns 403. Omitted-entity `property_id`, `lease_id`, and
+`document_intake_id` filters now validate that the linked record's own entity
+is readable before applying the filter, so hidden linked ids return 403 instead
+of leaking or silently widening scope. Explicit accessible entity/filter
+mismatches remain 422.
+
+Frontend behavior: Billing Readiness and Portfolio QA `All entities` now use
+one org-wide `/billing-drafts` request instead of per-entity fan-out. Billing
+draft list cache invalidation now targets the relevant prefixes so scoped and
+org-wide Billing Readiness/Portfolio QA caches refresh after existing
+draft-affecting actions. The smoke API mock now filters billing drafts by
+`entity_id` when present and returns all fixture rows only when omitted.
+
+Guardrail stance: read-only performance work on list loading. No provider send,
+email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, billing
+draft generation, invoice draft creation, invoice dispatch, or workflow
+mutation path changed by viewing the list. Existing billing/invoice actions
+remain explicit operator actions.
+
+Verification recorded so far:
+
+- RED backend org-wide test failed on `/api/v1/billing-drafts` with 422 before
+  the router change, then passed.
+- RED frontend smoke failed because there was no omitted-entity billing-draft
+  request, then passed after Billing Readiness/Portfolio QA used
+  `orgWideQueryFn`.
+- Backend billing/org-wide tests passed **5/5**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py -q`.
+- Related backend billing tests passed **7/7**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py tests/integration/test_document_intake_api.py::test_document_intake_apply_invoice_prepares_billing_work tests/integration/test_register_api.py::test_charge_rules_and_rent_roll_surface_billing_readiness -q`.
+- Full backend suite passed **627 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/charge_rules.py tests/integration/test_org_wide_scope_api.py`.
+- Frontend ESLint passed: `npm run lint` in `apps/web`.
+- Frontend typecheck passed: `npx tsc --noEmit` in `apps/web`.
+- Focused Billing Readiness/Portfolio QA billing-drafts smoke passed **2/2**:
+  `NODE_ENV=development PORT=3105 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "billing drafts use one org-wide read" --workers=1`.
+- Broader All-entities org-wide read smoke passed **6/6**:
+  `NODE_ENV=development PORT=3106 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "All entities.*org-wide read" --workers=1`.
+- Production web build passed after clearing ignored `.next` artifacts:
+  `rm -rf apps/web/.next && npm run build` in `apps/web`.
+
+Docs updated: `docs/product-roadmap.md` and this handover. No
+`docs/design-governance.md` entry was added because this slice changes API
+scope/query strategy, cache refresh, and test coverage, not visible design,
+copy, layout, or workflow ordering.
+
 ## Codex continuation - 2026-06-12 (All entities maintenance fan-out reduction)
 
 Fourth non-payment performance follow-up from the 2026-06-12 next-build

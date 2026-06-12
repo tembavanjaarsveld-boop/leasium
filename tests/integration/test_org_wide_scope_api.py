@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
     ArrearsCase,
+    BillingDraft,
     ComplianceCheck,
     Contractor,
     DocumentCategory,
@@ -59,6 +60,9 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
     )
     session.add_all([lease, document])
     session.flush()
+    document_intake = DocumentIntake(entity_id=entity.id, document_id=document.id)
+    session.add(document_intake)
+    session.flush()
     session.add_all(
         [
             Obligation(
@@ -74,7 +78,6 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
                 tenant_id=tenant.id,
                 token=token,
             ),
-            DocumentIntake(entity_id=entity.id, document_id=document.id),
             ArrearsCase(
                 entity_id=entity.id,
                 property_id=prop.id,
@@ -91,6 +94,19 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
                 lease_id=lease.id,
                 title=f"{entity.name} repair",
                 description="Replace flickering tenancy lighting.",
+            ),
+            BillingDraft(
+                entity_id=entity.id,
+                property_id=prop.id,
+                tenancy_unit_id=unit.id,
+                tenant_id=tenant.id,
+                lease_id=lease.id,
+                document_id=document.id,
+                document_intake_id=document_intake.id,
+                title=f"{entity.name} billing draft",
+                issue_date=date(2026, 7, 1),
+                due_date=date(2026, 7, 15),
+                total_cents=154000,
             ),
             Contractor(
                 entity_id=entity.id,
@@ -145,6 +161,7 @@ def test_org_wide_lists_cover_readable_entities_only(
         "/api/v1/compliance/checks",
         "/api/v1/arrears/cases",
         "/api/v1/maintenance/work-orders",
+        "/api/v1/billing-drafts",
     ):
         response = client.get(path)
         assert response.status_code == 200, path
@@ -174,6 +191,7 @@ def test_explicit_entity_scope_still_requires_entity_role(
         "/api/v1/compliance/checks",
         "/api/v1/arrears/cases",
         "/api/v1/maintenance/work-orders",
+        "/api/v1/billing-drafts",
     ):
         response = client.get(path, params={"entity_id": str(hidden.id)})
         assert response.status_code == 403, path
@@ -287,3 +305,107 @@ def test_org_wide_maintenance_filters_require_readable_links(
         params={"tenant_id": str(hidden_tenant.id)},
     )
     assert response.status_code == 403
+
+
+def test_org_wide_billing_draft_filters_require_readable_links(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+
+    accessible = Entity(organisation_id=seeded.organisation_id, name="Visible Billing")
+    readable_peer = Entity(
+        organisation_id=seeded.organisation_id, name="Other Visible Billing"
+    )
+    hidden = Entity(organisation_id=seeded.organisation_id, name="Hidden Billing")
+    session.add_all([accessible, readable_peer, hidden])
+    session.flush()
+    session.add_all(
+        [
+            UserEntityRole(
+                user_id=settings.dev_user_id,
+                entity_id=accessible.id,
+                role=UserRole.viewer,
+            ),
+            UserEntityRole(
+                user_id=settings.dev_user_id,
+                entity_id=readable_peer.id,
+                role=UserRole.viewer,
+            ),
+        ]
+    )
+    session.commit()
+    _seed_entity_records(session, accessible, token="billing-filter-accessible")
+    _seed_entity_records(session, readable_peer, token="billing-filter-peer")
+    _seed_entity_records(session, hidden, token="billing-filter-hidden")
+
+    accessible_property = session.scalar(
+        select(Property).where(Property.entity_id == accessible.id)
+    )
+    hidden_property = session.scalar(select(Property).where(Property.entity_id == hidden.id))
+    accessible_lease = session.scalar(
+        select(Lease)
+        .join(TenancyUnit, TenancyUnit.id == Lease.tenancy_unit_id)
+        .join(Property, Property.id == TenancyUnit.property_id)
+        .where(Property.entity_id == accessible.id)
+    )
+    hidden_lease = session.scalar(
+        select(Lease)
+        .join(TenancyUnit, TenancyUnit.id == Lease.tenancy_unit_id)
+        .join(Property, Property.id == TenancyUnit.property_id)
+        .where(Property.entity_id == hidden.id)
+    )
+    accessible_intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.entity_id == accessible.id)
+    )
+    readable_peer_intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.entity_id == readable_peer.id)
+    )
+    hidden_intake = session.scalar(
+        select(DocumentIntake).where(DocumentIntake.entity_id == hidden.id)
+    )
+    assert accessible_property is not None
+    assert hidden_property is not None
+    assert accessible_lease is not None
+    assert hidden_lease is not None
+    assert accessible_intake is not None
+    assert readable_peer_intake is not None
+    assert hidden_intake is not None
+
+    response = client.get(
+        "/api/v1/billing-drafts",
+        params={
+            "entity_id": str(accessible.id),
+            "document_intake_id": str(readable_peer_intake.id),
+        },
+    )
+    assert response.status_code == 422
+
+    response = client.get(
+        "/api/v1/billing-drafts",
+        params={
+            "entity_id": str(accessible.id),
+            "document_intake_id": str(hidden_intake.id),
+        },
+    )
+    assert response.status_code == 403
+
+    for params in (
+        {"property_id": str(accessible_property.id)},
+        {"lease_id": str(accessible_lease.id)},
+        {"document_intake_id": str(accessible_intake.id)},
+    ):
+        response = client.get("/api/v1/billing-drafts", params=params)
+        assert response.status_code == 200
+        entity_ids = {row["entity_id"] for row in response.json()}
+        assert entity_ids == {str(accessible.id)}
+
+    for params in (
+        {"property_id": str(hidden_property.id)},
+        {"lease_id": str(hidden_lease.id)},
+        {"document_intake_id": str(hidden_intake.id)},
+    ):
+        response = client.get("/api/v1/billing-drafts", params=params)
+        assert response.status_code == 403

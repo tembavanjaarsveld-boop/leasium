@@ -4251,6 +4251,7 @@ function PortfolioQaWorkspace() {
     enabled: allMode,
     keyPrefix: ["billing-drafts"],
     queryFn: (entityId) => listBillingDrafts({ entity_id: entityId }),
+    orgWideQueryFn: () => listBillingDrafts({}),
   });
 
   const properties = useMemo(
@@ -4519,7 +4520,7 @@ function PortfolioQaWorkspace() {
         queryKey: ["rent-roll", selectedEntityId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["billing-drafts", selectedEntityId],
+        queryKey: ["billing-drafts"],
       });
     },
   });
@@ -4557,7 +4558,7 @@ function PortfolioQaWorkspace() {
         queryKey: ["rent-roll", selectedEntityId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["billing-drafts", selectedEntityId],
+        queryKey: ["billing-drafts"],
       });
     },
   });
@@ -4603,7 +4604,7 @@ function PortfolioQaWorkspace() {
     onSuccess: (result) => {
       setBillingBatch(result);
       queryClient.invalidateQueries({
-        queryKey: ["billing-drafts", selectedEntityId],
+        queryKey: ["billing-drafts"],
       });
     },
   });

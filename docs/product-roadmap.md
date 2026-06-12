@@ -8,6 +8,19 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 All entities billing drafts fan-out reduction v1:**
+  `/billing-drafts` now accepts omitted `entity_id` as an organisation-wide
+  read scoped to the operator's readable entities, while explicit hidden-entity
+  reads still return 403 and omitted-entity `property_id`, `lease_id`, and
+  `document_intake_id` filters require the linked record's entity to be
+  readable. Billing Readiness and Portfolio QA `All entities` now load billing
+  drafts through one org-wide call, and billing-draft list caches refresh
+  across scoped and org-wide Billing Readiness/Portfolio QA views after existing
+  draft-affecting actions. Invoice drafts, payments, owner disbursements, and
+  AI Mailbox Intake stay deferred. Read-only performance work on list loading
+  only: no provider send, email/SMS, Xero/Basiq, payment, reconciliation,
+  Smart Intake apply, billing draft generation, invoice draft creation, invoice
+  dispatch, or workflow mutation path changed by viewing the list.
 - [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
   `/maintenance/work-orders` now accepts omitted `entity_id` as an
   organisation-wide read scoped to the operator's readable entities, while

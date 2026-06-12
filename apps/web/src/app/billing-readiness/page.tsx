@@ -1838,6 +1838,7 @@ function BillingReadinessWorkspace() {
     enabled: allMode,
     keyPrefix: ["billing-readiness-drafts"],
     queryFn: (entityId) => listBillingDrafts({ entity_id: entityId }),
+    orgWideQueryFn: () => listBillingDrafts({}),
   });
   const invoiceDraftsFanOut = useEntityFanOut({
     entities: entitiesQuery.data,
@@ -1909,7 +1910,7 @@ function BillingReadinessWorkspace() {
     }) => updateBillingDraft(draftId, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-drafts"],
       });
     },
   });
@@ -1919,10 +1920,10 @@ function BillingReadinessWorkspace() {
       createInvoiceDraftFromBillingDraft(draftId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-drafts"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-invoice-drafts", selectedEntityId],
+        queryKey: ["billing-readiness-invoice-drafts"],
       });
     },
   });

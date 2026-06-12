@@ -5590,13 +5590,16 @@ export function deleteChargeRule(chargeRuleId: string) {
 }
 
 export function listBillingDrafts(filters: {
-  entity_id: string;
+  entity_id?: string;
   property_id?: string;
   lease_id?: string;
   document_intake_id?: string;
   draft_status?: BillingDraftStatus;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.property_id) {
     params.set("property_id", filters.property_id);
   }
