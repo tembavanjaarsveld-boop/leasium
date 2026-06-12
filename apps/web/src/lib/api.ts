@@ -4705,13 +4705,16 @@ export function deleteMaintenanceWorkOrder(workOrderId: string) {
 }
 
 export function listArrearsCases(filters: {
-  entity_id: string;
+  entity_id?: string;
   tenant_id?: string;
   status?: ArrearsCaseStatus;
   dispute_status?: ArrearsDisputeStatus;
   escalation_status?: ArrearsEscalationStatus;
 }) {
-  const params = new URLSearchParams({ entity_id: filters.entity_id });
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.tenant_id) {
     params.set("tenant_id", filters.tenant_id);
   }

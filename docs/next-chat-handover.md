@@ -2,6 +2,63 @@
 
 Last updated: 2026-06-12
 
+## Codex continuation - 2026-06-12 (All entities arrears fan-out reduction)
+
+Third non-payment performance follow-up from the 2026-06-12 next-build
+instructions. Payments, owner-disbursement workflow, and AI Mailbox Intake
+remain deferred per Temba.
+
+Scope stayed to `/arrears/cases` only. Recon agents confirmed this is the next
+safest slice after compliance: list reads are local/read-only, and the only
+linked-object filter is `tenant_id`. Maintenance work orders, invoice drafts,
+and billing drafts remain deferred because their filter/mutation-adjacent
+surfaces need separate tests and tighter smoke mocks.
+
+Backend behavior: omitted `entity_id` now returns arrears cases from the
+operator's readable entities via `readable_entity_ids`; explicit hidden
+`entity_id` still returns 403. Omitted-entity `tenant_id` filters now validate
+that the tenant's own entity is readable before applying the filter, so a hidden
+tenant id returns 403 instead of leaking or silently widening scope.
+
+Frontend behavior: Operations `All entities` now uses one org-wide
+`/arrears/cases` request instead of per-entity fan-out. Arrears create,
+update/assignment, and promise-to-pay success paths invalidate the
+`operations-arrears` prefix so both scoped and org-wide caches refresh. The
+smoke API mock now filters arrears by `entity_id` when present and returns all
+fixture rows only when omitted.
+
+Guardrail stance: read-only performance work on list loading. No provider send,
+email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, reminder
+escalation, promise-to-pay creation, or workflow mutation path changed by
+viewing the list. Existing arrears actions remain explicit operator actions.
+
+Verification recorded so far:
+
+- RED backend org-wide test failed on `/api/v1/arrears/cases` with 422 before
+  the router change, then passed.
+- RED frontend smoke failed because there was no omitted-entity arrears request,
+  then passed after Operations used `orgWideQueryFn`.
+- Backend arrears/org-wide tests passed **38/38**:
+  `.venv/bin/python -m pytest tests/integration/test_org_wide_scope_api.py tests/integration/test_maintenance_arrears_api.py -q`.
+- Full backend suite passed **625 passed, 1 skipped**:
+  `.venv/bin/python -m pytest -q`.
+- Backend style passed:
+  `.venv/bin/python -m ruff check apps/api/routers/arrears.py tests/integration/test_org_wide_scope_api.py`.
+- Targeted frontend ESLint passed for `src/lib/api.ts`,
+  `src/app/operations/page.tsx`, `src/lib/use-entity-fan-out.ts`,
+  `tests/smoke/app-flows.spec.ts`, and `tests/smoke/api-mocks.ts`.
+- Frontend typecheck passed: `./node_modules/.bin/tsc --noEmit --pretty false`.
+- Focused Operations All-entities arrears smoke passed **1/1**:
+  `NODE_ENV=development PORT=3094 npm run test:smoke -- tests/smoke/app-flows.spec.ts --grep "operations All entities arrears" --workers=1`.
+- Operations UX smoke passed **19/19**:
+  `NODE_ENV=development PORT=3093 npm run test:smoke -- tests/smoke/operations-ux.spec.ts --workers=1`.
+- Production web build passed: `npm run build` in `apps/web`.
+
+Docs updated: `docs/product-roadmap.md` and this handover. No
+`docs/design-governance.md` entry was added because this slice changes API
+scope/query strategy and test coverage, not visible design, copy, layout, or
+workflow ordering.
+
 ## Codex continuation - 2026-06-12 (All entities compliance fan-out reduction)
 
 Second non-payment performance follow-up from the 2026-06-12 next-build

@@ -8776,7 +8776,14 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/arrears/cases") {
-      await fulfillJson(route, arrearsCases);
+      const hasEntityId = url.searchParams.has("entity_id");
+      const requestedEntityId = url.searchParams.get("entity_id");
+      await fulfillJson(
+        route,
+        hasEntityId
+          ? arrearsCases.filter((record) => record.entity_id === requestedEntityId)
+          : arrearsCases,
+      );
       return;
     }
 

@@ -43,8 +43,7 @@ type FanOutOptions<T> = {
   queryFn: (entityId: string) => Promise<T[]>;
   // When provided, all-entities mode issues ONE org-wide request instead of
   // fanning out per entity. Only use for endpoints that scope a missing
-  // entity_id to every readable entity server-side (rent-roll, obligations,
-  // tenant-onboarding, document-intakes).
+  // entity_id to every readable entity server-side.
   orgWideQueryFn?: () => Promise<T[]>;
 };
 

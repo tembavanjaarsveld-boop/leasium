@@ -8,6 +8,18 @@ Design-facing changes require Remba UX sign-off. See [design-governance.md](desi
 
 ## Built
 
+- [x] **2026-06-12 All entities arrears fan-out reduction v1:**
+  `/arrears/cases` now accepts omitted `entity_id` as an organisation-wide read
+  scoped to the operator's readable entities, while explicit hidden-entity
+  reads still return 403 and omitted-entity `tenant_id` filters require the
+  tenant's entity to be readable. Operations `All entities` now loads arrears
+  cases through one org-wide call and refreshes the org-wide cache after
+  arrears create/update/assignment/promise-to-pay actions. Maintenance work
+  orders, invoice drafts, and billing drafts stay deferred to their own
+  filter-aware slices. Read-only performance work only: no provider send,
+  email/SMS, Xero/Basiq, payment, reconciliation, Smart Intake apply, reminder
+  escalation, promise-to-pay creation, or workflow mutation path changed by
+  viewing the list.
 - [x] **2026-06-12 All entities compliance fan-out reduction v1:**
   `/compliance/checks` now accepts omitted `entity_id` as an organisation-wide
   read scoped to the operator's readable entities, while explicit hidden-entity

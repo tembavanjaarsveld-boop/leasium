@@ -3804,6 +3804,37 @@ test("operations All entities compliance checks use one org-wide read", async ({
   expect(complianceEntityRequests).not.toContain("entity-2");
 });
 
+test("operations All entities arrears cases use one org-wide read", async ({
+  page,
+}) => {
+  const arrearsEntityRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/arrears/cases") {
+      arrearsEntityRequests.push(
+        url.searchParams.has("entity_id")
+          ? (url.searchParams.get("entity_id") ?? "")
+          : "__missing__",
+      );
+    }
+  });
+
+  await page.goto("/operations?tab=arrears");
+
+  await expect(
+    page.getByRole("heading", { name: "Work", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Arrears and credit control" }),
+  ).toBeVisible();
+  expect(
+    arrearsEntityRequests.filter((entityId) => entityId === "__missing__"),
+  ).toHaveLength(1);
+  expect(arrearsEntityRequests).not.toContain("");
+  expect(arrearsEntityRequests).not.toContain("entity-1");
+  expect(arrearsEntityRequests).not.toContain("entity-2");
+});
+
 test("contractors All entities merges vendors across entities and gates add", async ({
   page,
 }) => {

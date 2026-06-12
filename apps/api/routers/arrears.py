@@ -25,7 +25,13 @@ from stewart.core.models import (
 from stewart.core.settings import get_settings
 from stewart.integrations.communications import send_work_assignment_email
 
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.arrears import (
     PROMISE_TO_PAY_KEY,
     ArrearsCaseCreate,
@@ -277,17 +283,30 @@ def _append_promise_to_pay(
 def list_arrears_cases(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-    entity_id: Annotated[UUID, Query()],
+    entity_id: Annotated[UUID | None, Query()] = None,
     tenant_id: UUID | None = None,
     status_filter: Annotated[ArrearsCaseStatus | None, Query(alias="status")] = None,
     dispute_status: ArrearsDisputeStatus | None = None,
     escalation_status: ArrearsEscalationStatus | None = None,
     include_deleted: bool = False,
 ) -> list[ArrearsCase]:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    statement = select(ArrearsCase).where(ArrearsCase.entity_id == entity_id)
+    statement = select(ArrearsCase)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        statement = statement.where(ArrearsCase.entity_id == entity_id)
+    else:
+        statement = statement.where(
+            ArrearsCase.entity_id.in_(readable_entity_ids(session, user, READ_ROLES))
+        )
     if tenant_id is not None:
-        _tenant_for_entity(tenant_id, entity_id, session)
+        tenant = session.get(Tenant, tenant_id)
+        if tenant is None or tenant.deleted_at is not None:
+            raise _not_found("Tenant")
+        if entity_id is not None:
+            if tenant.entity_id != entity_id:
+                raise _not_found("Tenant")
+        else:
+            assert_entity_role(session, user, tenant.entity_id, READ_ROLES)
         statement = statement.where(ArrearsCase.tenant_id == tenant_id)
     if status_filter is not None:
         statement = statement.where(ArrearsCase.status == status_filter)

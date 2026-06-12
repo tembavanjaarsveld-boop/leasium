@@ -2734,6 +2734,7 @@ function OperationsWorkspace() {
     enabled: allMode,
     keyPrefix: ["operations-arrears"],
     queryFn: (entityId) => listArrearsCases({ entity_id: entityId }),
+    orgWideQueryFn: () => listArrearsCases({}),
   });
 
   const invalidateOperations = () => {
@@ -2747,7 +2748,7 @@ function OperationsWorkspace() {
       queryKey: ["operations-maintenance", scopedEntityId],
     });
     queryClient.invalidateQueries({
-      queryKey: ["operations-arrears", scopedEntityId],
+      queryKey: ["operations-arrears"],
     });
   };
 
@@ -3015,7 +3016,7 @@ function OperationsWorkspace() {
     mutationFn: createArrearsCase,
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["operations-arrears", scopedEntityId],
+        queryKey: ["operations-arrears"],
       });
       setArrearsForm(emptyArrearsForm);
       setArrearsFormOpen(false);
@@ -3043,7 +3044,7 @@ function OperationsWorkspace() {
     }) => recordArrearsPromiseToPay(payload.id, payload.data),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["operations-arrears", scopedEntityId],
+        queryKey: ["operations-arrears"],
       }),
   });
 
