@@ -16,6 +16,18 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-14 AI Mailbox in-loop UX pass v1:**
+  The `/inbox` AI Mailbox panel now follows the Figma `AI Mailbox Intake
+  82:2` presentation pass with routed client-alias copy from existing mailbox
+  rows, `ai@leasium.ai` labelled as the internal fallback, clearer
+  trusted-vs-quarantine row rails, selected-message trust/discard consequence
+  copy, and tighter review-first promote provenance/per-kind copy. Settings →
+  Organisation now explains how `inbox.leasium.ai` aliases and trusted
+  forwarders work together, linking operators back to mailbox review while
+  keeping trusted-sender add/revoke local-only. No API shape, classification,
+  promote payload, SendGrid/Twilio/Xero/Basiq/payment/reconciliation, Smart
+  Intake apply, or provider behavior changed; reserve/disable alias controls
+  remain deferred to the separate alias-management API/design slice.
 - [x] **2026-06-14 AI Mailbox virtual client alias routing v1:**
   `mailbox_alias` now lets one SendGrid Inbound Parse pipeline serve many
   client-specific virtual addresses such as `skj@inbox.leasium.ai`. The

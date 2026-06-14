@@ -1028,7 +1028,19 @@ test("AI mailbox surfaces queue and quarantine provenance", async ({
   await expect(page.getByRole("heading", { name: "AI Mailbox" })).toBeVisible();
   await expect(
     page.getByText(
-      "Forward an email to ai@leasium.ai. Review what Leasium found. Apply only what you approve.",
+      "Forward an email to skj@inbox.leasium.ai. Review what Leasium found. Apply only what you approve.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Client mailbox")).toBeVisible();
+  await expect(page.getByText("skj@inbox.leasium.ai").first()).toBeVisible();
+  await expect(
+    page.getByText(
+      "Routes mail to this organisation before sender trust or AI review.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Review only. Internal fallback: ai@leasium.ai. Nothing applies, sends, or syncs from email alone.",
     ),
   ).toBeVisible();
   await expect(page.getByText("MAILBOX QUEUE — 1")).toBeVisible();

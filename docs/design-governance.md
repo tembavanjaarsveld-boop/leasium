@@ -128,7 +128,7 @@ map for agents:
 | 03 Screens / People 61:580 | `apps/web/src/app/people/page.tsx` — Horizon People v1 |
 | 03 Screens / Money 61:842 | `apps/web/src/app/money/page.tsx` — Horizon Money v1 |
 | 03 Screens / Insights 61:1063 | `apps/web/src/app/insights/page.tsx` — Horizon Insights v1 |
-| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 (copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions); owes its in-loop UX pass, trust/discard action placement/copy review, Settings allowlist UX pass/design sync, and promote design + gate (UX Debt Register) |
+| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 + 2026-06-14 UX pass (routed copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions, reviewed promote provenance, Settings allowlist context); alias reserve/disable controls remain future design/API work |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -193,6 +193,17 @@ fixes · deferrals.
   name-first card per updated Figma `Leasium/Horizon/Sidebar` component
   (role line → account email; Temba sign-off in-session) · screens
   checked 1440/390 · no fixes needed · none deferred.
+- 2026-06-14 · AI Mailbox Intake + Settings trusted senders · Figma
+  `03 Screens / AI Mailbox Intake 82:2` pulled with Figma MCP · screens
+  checked at 1440/390 plus quarantine-detail and promote-provenance states
+  (`output/playwright/ai-mailbox-*.png`) · fixes: `/inbox` now surfaces the
+  routed client alias from existing mailbox rows, keeps `ai@leasium.ai` as
+  internal fallback copy, distinguishes trusted/quarantined rows with calm
+  left rails, explains trust/discard consequences in the selected-message
+  panel, tightens shipped promote-kind copy, and adds Settings context linking
+  virtual aliases to trusted forwarders · deferred: reserve/disable alias
+  controls need the separate alias-management API/design frame; this pass was
+  presentation-only and changed no provider or API behavior.
 
 ## UX Debt Register
 
@@ -200,19 +211,14 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **AI mailbox intake UI** — read-only `/inbox` panel was built
-  2026-06-12 by a parallel Codex session against Figma
-  `AI Mailbox Intake 82:2` and still owes its in-loop UX pass (panel
-  placement, trusted-vs-quarantine distinction, provenance density,
-  copy-address text — see the dated entry below). Trust/discard actions
-  shipped 2026-06-12 in the selected-message detail panel and still need
-  review of placement/copy and 1440/390 screenshots. Settings trusted-sender
-  management shipped 2026-06-12 from existing Settings Organisation patterns
-  and needs its own 1440/390 UX pass/design sync. Reviewed promote handoff
-  shipped 2026-06-12 using the existing promote panel and still needs review
-  of the trusted-row Review email / Review promotion placement, provenance-card
-  density, compliance/insurance Smart Intake handoff copy, and the shipped
-  property/task/owner-admin local target promote variants' copy and density.
+- **AI mailbox alias management controls** — 2026-06-14 UX pass closed the
+  presentation debt for `/inbox` placement, trusted-vs-quarantine distinction,
+  selected-message provenance/trust/discard copy, Review email → Review
+  promotion placement, promote provenance density, shipped per-kind promote
+  copy, and Settings trusted-sender context. Still deferred: operator
+  reserve/disable/display controls for virtual aliases need the separate
+  alias-management API and a signed-off Settings/alias frame; the 2026-06-14
+  pass was intentionally presentation-only.
 - **Comms message-panel density** — contractor notification checkbox
   density and channel-evidence placement in the Work message panel
   (flagged 2026-06-12, vendor message notifications v1).
@@ -2818,21 +2824,20 @@ production build runs recorded in the handover.
 
 ## AI Mailbox Intake UI v1 (2026-06-12)
 
-Status: owes its in-loop UX pass (Remba retired same day; tracked in the
-UX Debt Register). `/inbox` now adds an AI Mailbox panel
-from Figma frame `03 Screens / AI Mailbox Intake 82:2`: copy address,
-trusted mailbox queue, quarantine bucket, selected-message provenance detail
-with sender/auth result, stored body text, raw-email download link, and local
-Trust sender / Discard controls. Reviewed promote handoff and the first local
-target variants now ship through the existing promote panel; acknowledgement,
-provider-send, auto-apply, and richer action variants remain omitted.
+Status: UX pass completed 2026-06-14. `/inbox` now adds an AI Mailbox panel
+from Figma frame `03 Screens / AI Mailbox Intake 82:2`: routed copy-address
+affordance, trusted mailbox queue, quarantine bucket, selected-message
+provenance detail with sender/auth result, stored body text, raw-email
+download link, local Trust sender / Discard controls, and reviewed promote
+handoff into the existing promote panel. Acknowledgement, provider-send,
+auto-apply, richer action variants, and alias reserve/disable controls remain
+omitted.
 
-1. The in-loop UX pass should cover the panel's placement above the existing
-   paste classifier, the visual distinction between trusted rows and
-   quarantine rows, the provenance-detail density, the copy-address/status
-   text, shipped trust/discard placement/copy, and whether future promote
-   controls should live inline, in a drawer, or in a dedicated mailbox route.
-2. 2026-06-12 reviewed promote handoff: validate the trusted-row Review email
-   and Review promotion action placement/copy, the source-email provenance card
-   inside the promote panel, the compliance/insurance handoff copy, and the
-   property/task/owner-admin local target copy/density at desktop/mobile sizes.
+1. 2026-06-14 in-loop UX pass covered the panel's placement above the existing
+   paste classifier, the trusted/quarantine left-rail distinction,
+   provenance-detail density, copy-address/status text, shipped trust/discard
+   placement/copy, and Review email → Review promotion flow.
+2. 2026-06-14 reviewed promote handoff check covered trusted-row action
+   placement/copy, the source-email provenance card inside the promote panel,
+   compliance/insurance handoff copy, and property/task/owner-admin local
+   target copy/density at desktop/mobile sizes.

@@ -2804,7 +2804,7 @@ export async function mockLeasiumApi(
     trust_state: "trusted",
     quarantine_reason: null,
     from_address: "temba@leasium.test",
-    to_address: "ai@leasium.ai",
+    to_address: "skj@inbox.leasium.ai",
     original_sender: "broker@external.example",
     subject: "Fwd: Kitchen tap leak — Unit 3",
     body_preview:
@@ -2837,7 +2837,7 @@ export async function mockLeasiumApi(
       trust_state: trusted ? "trusted" : "quarantined",
       quarantine_reason: trusted ? null : "sender_not_trusted",
       from_address: "new.agent@example.com",
-      to_address: "ai@leasium.ai",
+      to_address: "skj@inbox.leasium.ai",
       original_sender: null,
       subject: "Council rates notice — Collins St",
       body_preview: "Property match uncertain. Pick property before applying.",
@@ -2869,7 +2869,7 @@ export async function mockLeasiumApi(
       trust_state: discarded ? "discarded" : "quarantined",
       quarantine_reason: "auth_not_passed",
       from_address: "offers@marketing-blast.com",
-      to_address: "ai@leasium.ai",
+      to_address: "skj@inbox.leasium.ai",
       original_sender: null,
       subject: "Urgent payment update",
       body_preview:
@@ -5829,7 +5829,7 @@ export async function mockLeasiumApi(
           trust_state: "trusted",
           quarantine_reason: null,
           from_address: "temba@leasium.test",
-          to_address: "ai@leasium.ai",
+          to_address: "skj@inbox.leasium.ai",
           original_sender: "broker@external.example",
           subject: "Fwd: Kitchen tap leak — Unit 3",
           body_preview:
@@ -5854,7 +5854,7 @@ export async function mockLeasiumApi(
           trust_state: "quarantined",
           quarantine_reason: "sender_not_trusted",
           from_address: "new.agent@example.com",
-          to_address: "ai@leasium.ai",
+          to_address: "skj@inbox.leasium.ai",
           original_sender: null,
           subject: "Council rates notice — Collins St",
           body_preview:
@@ -5879,7 +5879,7 @@ export async function mockLeasiumApi(
           trust_state: "quarantined",
           quarantine_reason: "auth_not_passed",
           from_address: "offers@marketing-blast.com",
-          to_address: "ai@leasium.ai",
+          to_address: "skj@inbox.leasium.ai",
           original_sender: null,
           subject: "Urgent payment update",
           body_preview:

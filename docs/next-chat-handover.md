@@ -2,6 +2,43 @@
 
 Last updated: 2026-06-14
 
+## Codex continuation - 2026-06-14 (AI Mailbox UX pass v1)
+
+Scope completed: presentation-only in-loop UX pass for `/inbox` AI Mailbox
+and Settings → Organisation trusted senders. Figma source was pulled from
+`Leasium — Design Source of Truth` (`03 Screens / AI Mailbox Intake 82:2`).
+
+What changed:
+- `/inbox` now prefers the routed `@inbox.leasium.ai` recipient already
+  present on mailbox rows for the copy-address affordance, and labels
+  `ai@leasium.ai` as the internal fallback.
+- Trusted and quarantined mailbox rows have clearer success/warning rails;
+  selected-message detail explains trust/discard consequences without changing
+  eligibility; failed-auth rows remain discard-only.
+- Review email → Review promotion keeps the existing local-draft path but now
+  has tighter source-email provenance and shipped per-kind copy for
+  compliance/insurance, property update, task/reminder, and owner/entity admin.
+- Settings trusted senders now explain that aliases choose the organisation
+  and the allowlist chooses authenticated forwarders, with a local link back to
+  mailbox review.
+
+Verification evidence:
+- Figma MCP: `AI Mailbox Intake 82:2` design context pulled.
+- Red/green smoke: targeted `/inbox` + Settings trusted-sender smokes failed
+  before the presentation changes and now pass.
+- Screenshots: `output/playwright/ai-mailbox-inbox-1440.png`,
+  `ai-mailbox-inbox-390.png`, `ai-mailbox-settings-1440.png`,
+  `ai-mailbox-settings-390.png`, plus quarantine detail and promote
+  provenance desktop captures.
+- Commands green: `npx eslint src tests/smoke/app-flows.spec.ts
+  tests/smoke/settings.spec.ts tests/smoke/api-mocks.ts`, `npx tsc --noEmit`,
+  targeted smoke run, and `npm --prefix apps/web run build`.
+
+Still deferred: reserve/disable/display controls for mailbox aliases. This
+brief explicitly prohibited API shape changes, so no alias-management endpoint,
+classification path, promote payload, provider send, Smart Intake apply, Xero,
+Basiq, payment, or reconciliation behavior changed.
+
 ## Codex continuation - 2026-06-14 (AI Mailbox virtual client aliases v1)
 
 Temba raised the multi-client crossover risk of a single `ai@leasium.ai`
@@ -377,16 +414,17 @@ Remba. Dated history entries everywhere keep their original wording —
 do not re-queue Remba work from them.
 
 Note: this landed while a parallel Codex session was mid-slice on the
-AI Mailbox read-only UI (entry below); that slice owes its in-loop UX
-pass and is tracked in the UX Debt Register.
+AI Mailbox read-only UI (entry below). Superseded 2026-06-14: the
+presentation in-loop UX pass is complete; only alias reserve/disable controls
+remain deferred to the separate alias-management slice.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake read-only UI v1)
 
 Follow-up to the backend/read foundation below. Temba said "Go" after asking
 to start the AI Mailbox product slice; the visible work used Figma frame
-`03 Screens / AI Mailbox Intake 82:2` as the design reference and owes its
-in-loop UX pass (Remba was retired later the same day — see the UX Debt
-Register in design-governance.md).
+`03 Screens / AI Mailbox Intake 82:2` as the design reference. Superseded
+2026-06-14: the presentation in-loop UX pass is complete; alias
+reserve/disable controls remain the deferred follow-up.
 
 Shipped UI/API client:
 

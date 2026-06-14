@@ -2195,6 +2195,26 @@ function TrustedSendersPanel({ entityId }: { entityId: string }) {
       actions={<StatusBadge tone="primary">Local allowlist</StatusBadge>}
     >
       <div className="grid gap-4 p-4">
+        <div className="grid gap-3 rounded-md border border-primary/20 bg-primary-soft/30 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="grid gap-1 text-sm">
+            <p className="font-semibold text-foreground">
+              Client aliases use inbox.leasium.ai, for example
+              skj@inbox.leasium.ai.
+            </p>
+            <p className="text-muted-foreground">
+              The alias resolves the organisation before AI review; this
+              allowlist controls which authenticated forwarders are trusted
+              inside that organisation.
+            </p>
+          </div>
+          <Link
+            href="/inbox"
+            className="inline-flex min-h-11 w-fit items-center gap-1 rounded-md border border-primary/30 bg-white px-3 text-sm font-semibold text-primary transition hover:bg-primary/10"
+          >
+            Review mailbox
+          </Link>
+        </div>
+
         <form
           className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
           onSubmit={(event) => {

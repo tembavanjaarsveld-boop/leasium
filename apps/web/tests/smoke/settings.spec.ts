@@ -113,6 +113,14 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
     }),
   });
   await expect(trustedSendersPanel).toBeVisible();
+  await expect(
+    trustedSendersPanel.getByText(
+      "Client aliases use inbox.leasium.ai, for example skj@inbox.leasium.ai.",
+    ),
+  ).toBeVisible();
+  await expect(
+    trustedSendersPanel.getByRole("link", { name: "Review mailbox" }),
+  ).toHaveAttribute("href", "/inbox");
   await expect(trustedSendersPanel.getByText("temba@leasium.test")).toBeVisible();
   await expect(
     trustedSendersPanel.getByText("Operator forwarder"),

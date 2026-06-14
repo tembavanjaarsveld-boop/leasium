@@ -3,12 +3,13 @@
 Status: Backend foundation/read APIs + `/inbox` UI foundation + local
 trust/discard decisions + Settings trusted-sender management + trusted-row
 reviewed promote handoff + virtual client alias routing shipped · alias
-Settings UI and source/trust filters pending design/UX gate · 2026-06-14
+reserve/disable controls and source/trust filters pending · in-loop UX pass
+for shipped `/inbox` + Settings presentation completed · 2026-06-14
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
 UI implemented from this frame, with trust/discard action placement and the
-Settings allowlist panel tracked in the UX Debt Register for the in-loop UX
-pass; promote variants still require review before code.
+Settings allowlist panel covered by the 2026-06-14 in-loop UX pass; future
+alias reserve/disable controls still need a signed-off Settings/alias frame.
 
 ## Problem
 
@@ -246,8 +247,9 @@ Decision for foundation v1: (a) no acknowledgement reply.
   operator clicks Promote to draft. Property/admin rows reuse existing
   attachment reviews first, then fall back to email-body drafts when there is
   no routed attachment review.
-- Still pending: source/trust-state filters if the queue grows and the design
-  review of the inline action placement.
+- Still pending: source/trust-state filters if the queue grows, plus
+  reserve/disable alias controls once the separate alias-management API/design
+  slice lands.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
   82:2` for promote variants before implementation; sync the shipped Settings
   allowlist panel through the in-loop UX pass/design debt track
@@ -267,10 +269,10 @@ reuse when the mailbox email already routed attachments, and
 property/task/owner-admin local review targets with property/admin attachment
 review reuse.
 
-Out (next slices): alias Settings UI/API management, source/trust-state filters
-if volume grows, auto-ack replies, reply-by-email threads, plus-addressing
-hints, agent-facing confirmations, cross-org agent senders, auto-apply of any
-kind.
+Out (next slices): alias Settings API management and reserve/disable controls,
+source/trust-state filters if volume grows, auto-ack replies, reply-by-email
+threads, plus-addressing hints, agent-facing confirmations, cross-org agent
+senders, auto-apply of any kind.
 
 ## Test plan
 

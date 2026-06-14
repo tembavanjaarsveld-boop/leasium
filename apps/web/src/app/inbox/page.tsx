@@ -86,6 +86,17 @@ const PROMOTE_KIND_LABEL: Record<InboxPromoteKind, string> = {
   owner_or_entity_admin: "Review owner / entity admin",
 };
 
+const PROMOTE_KIND_DETAIL: Partial<Record<InboxPromoteKind, string>> = {
+  compliance_or_insurance:
+    "Send the stored email and any routed attachments into Smart Intake review. No obligation or check is applied here.",
+  property_update:
+    "Create a Smart Intake review packet for property changes. Field updates stay in Smart Intake until approved.",
+  task_or_reminder:
+    "Create a local Operations task from the stored email. No contractor is assigned or messaged here.",
+  owner_or_entity_admin:
+    "Create a Smart Intake review packet for owner or entity admin details. Records are not changed from email alone.",
+};
+
 const PROMOTE_TARGET_KIND: Record<InboxPromoteKind, InboxTriageTargetKind> = {
   maintenance_request: "maintenance_work_order",
   payment_or_arrears: "arrears_case",
@@ -150,7 +161,8 @@ Thanks,
 Sarah (tenant, Acme Bakery)
 `;
 
-const MAILBOX_ADDRESS = "ai@leasium.ai";
+const INTERNAL_MAILBOX_FALLBACK = "ai@leasium.ai";
+const AI_MAILBOX_ALIAS_DOMAIN = "inbox.leasium.ai";
 
 type MailboxReviewSource = {
   messageId: string;
@@ -184,6 +196,21 @@ function mailboxSender(message: CommsInboundMessageRecord): string {
     message.from_address?.trim() ||
     "Unknown sender"
   );
+}
+
+function mailboxAddressFromMessages(
+  messages: CommsInboundMessageRecord[],
+): string {
+  const routedAlias = messages.find((message) =>
+    message.to_address?.toLowerCase().endsWith(`@${AI_MAILBOX_ALIAS_DOMAIN}`),
+  )?.to_address;
+  return routedAlias?.trim() || INTERNAL_MAILBOX_FALLBACK;
+}
+
+function mailboxAddressLabel(address: string): string {
+  return address === INTERNAL_MAILBOX_FALLBACK
+    ? "Internal fallback"
+    : "Client mailbox";
 }
 
 function formatMailboxReason(value: string | null): string {
@@ -530,7 +557,7 @@ function InboxWorkspace() {
 
   async function handleCopyMailboxAddress() {
     try {
-      await navigator.clipboard.writeText(MAILBOX_ADDRESS);
+      await navigator.clipboard.writeText(displayMailboxAddress);
       setMailboxAddressCopied(true);
       window.setTimeout(() => setMailboxAddressCopied(false), 1600);
     } catch {
@@ -654,8 +681,13 @@ function InboxWorkspace() {
     }
     return PROMOTE_KIND_LABEL[result.kind];
   }, [result, promoteContractorId]);
+  const promoteDetailCopy =
+    result && isPromotable(result.kind)
+      ? PROMOTE_KIND_DETAIL[result.kind] ?? null
+      : null;
 
   const mailboxMessages = mailboxQuery.data?.messages ?? [];
+  const displayMailboxAddress = mailboxAddressFromMessages(mailboxMessages);
   const trustedMailboxMessages = mailboxMessages.filter(
     (message) => message.trust_state === "trusted",
   );
@@ -724,18 +756,58 @@ function InboxWorkspace() {
                 <div>
                   <h2 className="text-lg font-semibold">AI Mailbox</h2>
                   <p className="text-sm text-muted-foreground">
-                    Forward an email to ai@leasium.ai. Review what Leasium
-                    found. Apply only what you approve.
+                    Forward an email to {displayMailboxAddress}. Review what
+                    Leasium found. Apply only what you approve.
                   </p>
                 </div>
               </div>
-              <div className="mt-3 rounded-lg border border-dashed border-primary/30 bg-primary-soft/30 p-4">
-                <p className="text-sm font-semibold text-foreground">
-                  Forward anything — agent updates, notices, quotes, renewals
+              <div className="mt-3 grid gap-3 rounded-lg border border-dashed border-primary/30 bg-primary-soft/30 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    Forward anything — agent updates, notices, quotes, renewals
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Trusted senders only. Leasium reads the email, suggests
+                    where details and tasks belong, and waits for your approval.
+                  </p>
+                </div>
+                <div className="grid gap-1 rounded-md border border-primary/20 bg-white/80 px-3 py-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    {mailboxAddressLabel(displayMailboxAddress)}
+                  </span>
+                  <span className="break-all font-semibold text-foreground">
+                    {displayMailboxAddress}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Routes mail to this organisation before sender trust or AI
+                    review.
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground sm:hidden">
+                  Alias first; sender trust still gates every forwarder.
+                  Internal fallback: {INTERNAL_MAILBOX_FALLBACK}.
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Trusted senders only. Leasium reads the email, suggests where
-                  details and tasks belong, and waits for your approval.
+              </div>
+              <div className="mt-3 hidden gap-2 text-xs text-muted-foreground sm:grid sm:grid-cols-3">
+                <p className="rounded-md border border-border bg-white px-3 py-2">
+                  <span className="font-semibold text-foreground">
+                    Alias first.
+                  </span>{" "}
+                  Client aliases on {AI_MAILBOX_ALIAS_DOMAIN} set the
+                  organisation boundary before AI sees context.
+                </p>
+                <p className="rounded-md border border-border bg-white px-3 py-2">
+                  <span className="font-semibold text-foreground">
+                    Sender still trusted.
+                  </span>{" "}
+                  SPF/DKIM and the Settings allowlist gate every forwarder.
+                </p>
+                <p className="rounded-md border border-border bg-white px-3 py-2">
+                  <span className="font-semibold text-foreground">
+                    Review only.
+                  </span>{" "}
+                  Internal fallback: {INTERNAL_MAILBOX_FALLBACK}. Nothing
+                  applies, sends, or syncs from email alone.
                 </p>
               </div>
             </div>
@@ -745,7 +817,7 @@ function InboxWorkspace() {
                 {mailboxAddressCopied ? "Copied" : "Copy address"}
               </Button>
               <p className="text-xs text-muted-foreground">
-                {MAILBOX_ADDRESS} · {mailboxStatusText}
+                {displayMailboxAddress} · {mailboxStatusText}
               </p>
             </div>
           </div>
@@ -790,7 +862,7 @@ function InboxWorkspace() {
                   trustedMailboxMessages.map((message) => (
                     <div
                       key={message.id}
-                      className="grid gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
+                      className="grid gap-2 rounded-md border border-border border-l-4 border-l-accent bg-muted/20 px-3 py-2"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -871,7 +943,7 @@ function InboxWorkspace() {
                   quarantinedMailboxMessages.map((message) => (
                     <div
                       key={message.id}
-                      className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2"
+                      className="grid gap-2 rounded-md border border-warning/30 border-l-4 border-l-warning bg-warning/5 px-3 py-2"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -981,9 +1053,10 @@ function InboxWorkspace() {
                         </span>
                       </div>
                       <div>
-                        To:{" "}
+                        Mailbox:{" "}
                         <span className="font-medium text-foreground">
-                          {selectedMailboxMessage.to_address ?? MAILBOX_ADDRESS}
+                          {selectedMailboxMessage.to_address ??
+                            displayMailboxAddress}
                         </span>
                       </div>
                       {selectedMailboxMessage.original_sender ? (
@@ -996,33 +1069,40 @@ function InboxWorkspace() {
                       ) : null}
                     </div>
                     {canDiscardSelectedMailboxMessage ? (
-                      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 p-3">
-                        {canTrustSelectedMailboxSender ? (
-                          <Button
+                      <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                        <p className="text-xs text-muted-foreground">
+                          {canTrustSelectedMailboxSender
+                            ? "Trust adds this authenticated forwarder to the Settings allowlist. Discard keeps the evidence but removes it from the review queue."
+                            : "Authentication did not pass, so this row stays discard-only. Evidence remains available after discard."}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {canTrustSelectedMailboxSender ? (
+                            <Button
+                              type="button"
+                              onClick={handleTrustMailboxSender}
+                              disabled={mailboxActionPending}
+                            >
+                              {trustSenderMutation.isPending ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <ShieldCheck size={14} />
+                              )}
+                              Trust sender
+                            </Button>
+                          ) : null}
+                          <SecondaryButton
                             type="button"
-                            onClick={handleTrustMailboxSender}
+                            onClick={handleDiscardMailboxMessage}
                             disabled={mailboxActionPending}
                           >
-                            {trustSenderMutation.isPending ? (
+                            {discardMailboxMutation.isPending ? (
                               <Loader2 size={14} className="animate-spin" />
                             ) : (
-                              <ShieldCheck size={14} />
+                              <AlertTriangle size={14} />
                             )}
-                            Trust sender
-                          </Button>
-                        ) : null}
-                        <SecondaryButton
-                          type="button"
-                          onClick={handleDiscardMailboxMessage}
-                          disabled={mailboxActionPending}
-                        >
-                          {discardMailboxMutation.isPending ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <AlertTriangle size={14} />
-                          )}
-                          Discard
-                        </SecondaryButton>
+                            Discard
+                          </SecondaryButton>
+                        </div>
                       </div>
                     ) : null}
                     {selectedMailboxMessage.trust_state === "trusted" ? (
@@ -1208,9 +1288,11 @@ function InboxWorkspace() {
                       </div>
                       <p className="text-sm text-foreground">
                         {promoteKindLabel}.{" "}
-                        {promoteShowsTenantContactPreview
-                          ? "Leasium updates only the checked fields; nothing is sent."
-                          : "Leasium creates the draft; nothing is sent until you approve from inside the target surface."}
+                        {promoteDetailCopy
+                          ? promoteDetailCopy
+                          : promoteShowsTenantContactPreview
+                            ? "Leasium updates only the checked fields; nothing is sent."
+                            : "Leasium creates the draft; nothing is sent until you approve from inside the target surface."}
                       </p>
                     </div>
                   </div>
