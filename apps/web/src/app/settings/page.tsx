@@ -88,6 +88,7 @@ import {
   listCommsTrustedSenders,
   listBrandedCommunicationTemplates,
   listEntities,
+  listMyMailboxAliases,
   listProperties,
   previewBasiqReconciliation,
   previewXeroChartTaxValidation,
@@ -2150,6 +2151,12 @@ function TrustedSendersPanel({ entityId }: { entityId: string }) {
   const [label, setLabel] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
+  const mailboxAliasesQuery = useQuery({
+    queryKey: ["mailbox-aliases-mine"],
+    queryFn: listMyMailboxAliases,
+    enabled: Boolean(entityId),
+  });
+
   const trustedSendersQuery = useQuery({
     queryKey: ["comms-trusted-senders", entityId],
     queryFn: () => listCommsTrustedSenders(entityId),
@@ -2185,12 +2192,15 @@ function TrustedSendersPanel({ entityId }: { entityId: string }) {
   });
 
   const trustedSenders = trustedSendersQuery.data ?? [];
+  const activeAliases = (mailboxAliasesQuery.data?.aliases ?? []).filter(
+    (alias) => alias.status === "active",
+  );
   const canAdd = email.trim().length > 0 && !addMutation.isPending;
 
   return (
     <SectionPanel
-      title="AI mailbox trusted senders"
-      description="Organisation allowlist for authenticated forwarding senders. Changes are local and do not process waiting mail."
+      title="AI mailbox aliases and trusted senders"
+      description="Client aliases choose the organisation; trusted senders choose who may forward authenticated mail."
       icon={<MailCheck size={17} className="text-primary" />}
       actions={<StatusBadge tone="primary">Local allowlist</StatusBadge>}
     >
@@ -2213,6 +2223,54 @@ function TrustedSendersPanel({ entityId }: { entityId: string }) {
           >
             Review mailbox
           </Link>
+        </div>
+
+        <div className="grid gap-3 rounded-md border border-border bg-white p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Client mailbox aliases
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Leasium manages reserved aliases. Operators can copy the active
+                address and keep trusted forwarders below.
+              </p>
+            </div>
+            <StatusBadge tone={activeAliases.length ? "success" : "neutral"}>
+              {activeAliases.length ? "Active" : "No active alias"}
+            </StatusBadge>
+          </div>
+          {mailboxAliasesQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading mailbox aliases...
+            </p>
+          ) : activeAliases.length ? (
+            <ul className="grid gap-2">
+              {activeAliases.map((alias) => (
+                <li
+                  key={alias.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary-soft/20 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="break-all font-semibold text-foreground">
+                      {alias.email_address}
+                    </p>
+                    {alias.label ? (
+                      <p className="text-xs text-muted-foreground">
+                        {alias.label}
+                      </p>
+                    ) : null}
+                  </div>
+                  <StatusBadge tone="success">Active</StatusBadge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No active client alias is reserved yet. Internal fallback remains
+              ai@leasium.ai.
+            </p>
+          )}
         </div>
 
         <form

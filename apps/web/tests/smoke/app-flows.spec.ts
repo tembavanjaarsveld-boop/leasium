@@ -1022,17 +1022,39 @@ test("AI mailbox surfaces queue and quarantine provenance", async ({
   page,
 }) => {
   const forbiddenRequests = watchForbiddenCommsReadOnlyRequests(page);
+  await page.route("**/api/v1/mailbox-aliases/mine", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        aliases: [
+          {
+            id: "mailbox-alias-override",
+            organisation_id: "org-1",
+            local_part: "harbour-lane",
+            domain: "inbox.leasium.ai",
+            email_address: "harbour-lane@inbox.leasium.ai",
+            label: "Harbour Lane intake",
+            status: "active",
+            created_at: "2026-06-14T00:00:00.000Z",
+            created_by_user_id: "user-1",
+          },
+        ],
+      }),
+    });
+  });
 
   await page.goto("/inbox");
 
   await expect(page.getByRole("heading", { name: "AI Mailbox" })).toBeVisible();
   await expect(
     page.getByText(
-      "Forward an email to skj@inbox.leasium.ai. Review what Leasium found. Apply only what you approve.",
+      "Forward an email to harbour-lane@inbox.leasium.ai. Review what Leasium found. Apply only what you approve.",
     ),
   ).toBeVisible();
   await expect(page.getByText("Client mailbox")).toBeVisible();
-  await expect(page.getByText("skj@inbox.leasium.ai").first()).toBeVisible();
+  await expect(
+    page.getByText("harbour-lane@inbox.leasium.ai").first(),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "Routes mail to this organisation before sender trust or AI review.",
@@ -1078,6 +1100,7 @@ test("AI mailbox surfaces queue and quarantine provenance", async ({
   await expect(
     page.getByText("Property match uncertain. Pick property before applying."),
   ).toBeVisible();
+  await expect(page.getByText("skj@inbox.leasium.ai")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open raw email" }),
   ).toHaveAttribute("href", /\/api\/v1\/documents\/raw-email-doc-1\/download$/);

@@ -3751,6 +3751,26 @@ export type TrustedSenderRecord = {
   added_at: string;
 };
 
+export type MailboxAliasRecord = {
+  id: string;
+  organisation_id: string;
+  local_part: string;
+  domain: string;
+  email_address: string;
+  label: string | null;
+  status: "active" | "disabled";
+  created_at: string;
+  created_by_user_id: string | null;
+};
+
+export type MailboxAliasListRecord = {
+  aliases: MailboxAliasRecord[];
+};
+
+export function listMyMailboxAliases() {
+  return request<MailboxAliasListRecord>("/mailbox-aliases/mine");
+}
+
 export function listCommsTrustedSenders(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<TrustedSenderRecord[]>(`/comms/trusted-senders?${params}`);

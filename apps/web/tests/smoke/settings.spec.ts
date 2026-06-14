@@ -109,7 +109,7 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
 
   const trustedSendersPanel = page.locator("section").filter({
     has: page.getByRole("heading", {
-      name: "AI mailbox trusted senders",
+      name: "AI mailbox aliases and trusted senders",
     }),
   });
   await expect(trustedSendersPanel).toBeVisible();
@@ -118,6 +118,10 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
       "Client aliases use inbox.leasium.ai, for example skj@inbox.leasium.ai.",
     ),
   ).toBeVisible();
+  await expect(
+    trustedSendersPanel.getByText("Client mailbox aliases"),
+  ).toBeVisible();
+  await expect(trustedSendersPanel.getByText("SKJ intake")).toBeVisible();
   await expect(
     trustedSendersPanel.getByRole("link", { name: "Review mailbox" }),
   ).toHaveAttribute("href", "/inbox");

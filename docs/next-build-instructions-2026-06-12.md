@@ -1,5 +1,40 @@
 # Next Build Instructions — 2026-06-12
 
+> **STATUS CORRECTION — 2026-06-14 (verified against repo by recon agents
+> + targeted pytest):** most of this backlog has since shipped. Do not pick
+> tickets from the bodies below without checking this block first.
+>
+> - **Ticket 1 (send-time template consumption): SHIPPED** — `41749e2`.
+>   `dispatch_comms_draft` renders branded templates at send time with
+>   operator-edits-win, `/comms/template-preview` exists, receipts record
+>   `template_id/key/version/status`. 18 dispatch/preview tests pass.
+> - **Virtual client mailbox aliases (`*@inbox.leasium.ai`): SHIPPED** —
+>   `afb08b0`. Org resolves before AI triage; enabled/not-found/disabled
+>   paths covered (3 tests green in `test_comms_api.py`).
+> - **AI Mailbox alias management API + read-only display: SHIPPED** —
+>   platform admins can list/reserve/disable aliases locally, operators can
+>   read active aliases for their own organisation, and `/inbox`/Settings now
+>   display the active client alias without changing provider or AI behavior.
+> - **Ticket 3 (contractor notify on operator comment): SHIPPED** — the
+>   contractor-facing email/SMS path is built and review-first/preference-
+>   gated (`maintenance.py` `CONTRACTOR_DELIVERY_KEY`,
+>   `notify_contractor_*_approved`), and the operator-direction in-app reply
+>   cue is recorded (`vendor_portal.py` `_record_contractor_reply_operator_notification`).
+>   11 contractor-delivery tests pass. The remaining stub at
+>   `vendor_portal.py:1060` is only an **optional** operator-direction
+>   email/SMS escalation when a contractor replies; v1 deliberately keeps
+>   that in-app-only. Treat as a product decision, not an open gap.
+> - **Ticket 2 (tenant payments AU rail): OPEN but BLOCKED.** Step-1
+>   decision brief is drafted (`docs/payment-rail-provider-comparison-2026-06-12.md`,
+>   has a recommendation + trust-account decision gates). Step-2 adapter is
+>   blocked on Temba's provider decision — no code until then.
+> - **Ticket 4 (owner disbursement/trust): PARKED** until managing-agent GTM.
+>
+> **Net genuinely-open backend work = none that isn't parked or blocked.**
+> The live frontiers are the payments provider decision and the remaining
+> platform-admin alias controls UX frame/UI (backend exists; operator Settings
+> display is read-only).
+
 Provenance: Codex's "Highest-Value Product Gaps" list, verified against the
 repo on 2026-06-12 (three parallel read-only recon agents). Two of Codex's
 five claims needed correction; tickets below reflect actual repo state.

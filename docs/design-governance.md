@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-12
+Last updated: 2026-06-14
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -204,6 +204,14 @@ fixes · deferrals.
   virtual aliases to trusted forwarders · deferred: reserve/disable alias
   controls need the separate alias-management API/design frame; this pass was
   presentation-only and changed no provider or API behavior.
+- 2026-06-14 · AI Mailbox alias display · active aliases now come from the
+  read-only alias API for `/inbox` copy-address and Settings Organisation
+  display · screens checked at 1440/390
+  (`output/playwright/ai-mailbox-alias-*.png`) · fixes: Settings
+  shows a compact active-alias row above trusted senders, and `/inbox`
+  prefers the active alias API result while preserving per-message mailbox
+  provenance · deferred: platform-admin reserve/disable controls still need a
+  signed-off admin/alias frame.
 
 ## UX Debt Register
 
@@ -211,14 +219,14 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **AI mailbox alias management controls** — 2026-06-14 UX pass closed the
-  presentation debt for `/inbox` placement, trusted-vs-quarantine distinction,
-  selected-message provenance/trust/discard copy, Review email → Review
-  promotion placement, promote provenance density, shipped per-kind promote
-  copy, and Settings trusted-sender context. Still deferred: operator
-  reserve/disable/display controls for virtual aliases need the separate
-  alias-management API and a signed-off Settings/alias frame; the 2026-06-14
-  pass was intentionally presentation-only.
+- **AI mailbox platform-admin alias controls** — 2026-06-14 UX pass closed
+  the presentation debt for `/inbox` placement, trusted-vs-quarantine
+  distinction, selected-message provenance/trust/discard copy, Review email →
+  Review promotion placement, promote provenance density, shipped per-kind
+  promote copy, Settings trusted-sender context, and read-only active-alias
+  display. Still deferred: reserve/disable controls for virtual aliases need a
+  signed-off platform-admin alias frame before UI code; backend endpoints now
+  exist, but the operator Settings panel remains display-only.
 - **Comms message-panel density** — contractor notification checkbox
   density and channel-evidence placement in the Work message panel
   (flagged 2026-06-12, vendor message notifications v1).

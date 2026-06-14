@@ -16,6 +16,18 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-14 AI Mailbox alias management API + read-only display v1:**
+  Platform admins can now list, reserve, and disable `inbox.leasium.ai`
+  virtual client aliases through a dedicated local API, while operators can
+  read their organisation's active aliases for copy/display. `/inbox` now
+  prefers the active alias API result for the forward-to address before
+  falling back to stored row provenance and then `ai@leasium.ai`; Settings →
+  Organisation shows the active client alias inside the AI mailbox panel
+  beside the trusted-sender allowlist. Disabling an alias remains a routing
+  guardrail: future mail to that alias is quarantined as disabled evidence and
+  never runs AI or attachment extraction. No SendGrid/Twilio send, OpenAI
+  triage, Smart Intake apply, Xero/Basiq, payment, reconciliation, or existing
+  inbound-message mutation is introduced by alias management.
 - [x] **2026-06-14 AI Mailbox in-loop UX pass v1:**
   The `/inbox` AI Mailbox panel now follows the Figma `AI Mailbox Intake
   82:2` presentation pass with routed client-alias copy from existing mailbox
@@ -27,7 +39,7 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   keeping trusted-sender add/revoke local-only. No API shape, classification,
   promote payload, SendGrid/Twilio/Xero/Basiq/payment/reconciliation, Smart
   Intake apply, or provider behavior changed; reserve/disable alias controls
-  remain deferred to the separate alias-management API/design slice.
+  remain deferred to the platform-admin alias controls design/UI slice.
 - [x] **2026-06-14 AI Mailbox virtual client alias routing v1:**
   `mailbox_alias` now lets one SendGrid Inbound Parse pipeline serve many
   client-specific virtual addresses such as `skj@inbox.leasium.ai`. The

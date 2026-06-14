@@ -247,9 +247,10 @@ Decision for foundation v1: (a) no acknowledgement reply.
   operator clicks Promote to draft. Property/admin rows reuse existing
   attachment reviews first, then fall back to email-body drafts when there is
   no routed attachment review.
-- Still pending: source/trust-state filters if the queue grows, plus
-  reserve/disable alias controls once the separate alias-management API/design
-  slice lands.
+- Still pending: source/trust-state filters if the queue grows, plus the
+  platform-admin reserve/disable alias controls UI once its design frame is
+  signed off. The local alias-management API and operator read-only display
+  are now shipped.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
   82:2` for promote variants before implementation; sync the shipped Settings
   allowlist panel through the in-loop UX pass/design debt track

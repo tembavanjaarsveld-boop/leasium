@@ -19,6 +19,18 @@ type MockTrustedSender = {
   added_at: string;
 };
 
+type MockMailboxAlias = {
+  id: string;
+  organisation_id: string;
+  local_part: string;
+  domain: string;
+  email_address: string;
+  label: string | null;
+  status: "active" | "disabled";
+  created_at: string;
+  created_by_user_id: string | null;
+};
+
 type XeroContactMapping = {
   target_type: "tenant" | "property";
   target_id: string;
@@ -2784,6 +2796,19 @@ export async function mockLeasiumApi(
   let complianceChecks = jsonClone(initialComplianceChecks);
   const trustedMailboxMessageIds = new Set<string>();
   const discardedMailboxMessageIds = new Set<string>();
+  const mailboxAliases: MockMailboxAlias[] = [
+    {
+      id: "mailbox-alias-1",
+      organisation_id: "org-1",
+      local_part: "skj",
+      domain: "inbox.leasium.ai",
+      email_address: "skj@inbox.leasium.ai",
+      label: "SKJ intake",
+      status: "active",
+      created_at: "2026-06-14T00:00:00.000Z",
+      created_by_user_id: "user-1",
+    },
+  ];
   let trustedSenderSequence = 2;
   let trustedSenders: MockTrustedSender[] = [
     {
@@ -5765,6 +5790,13 @@ export async function mockLeasiumApi(
           maintenance_tenant_forward: 1,
         },
         generated_at: "2026-05-27T02:00:00.000Z",
+      });
+      return;
+    }
+
+    if (method === "GET" && path === "/mailbox-aliases/mine") {
+      await fulfillJson(route, {
+        aliases: mailboxAliases.filter((alias) => alias.status === "active"),
       });
       return;
     }

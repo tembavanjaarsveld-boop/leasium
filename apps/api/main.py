@@ -29,6 +29,7 @@ from apps.api.routers import (
     insights,
     lease_intakes,
     leases,
+    mailbox_aliases,
     maintenance,
     obligations,
     organisations,
@@ -177,3 +178,4 @@ app.include_router(owner_portal.router, prefix="/api/v1")
 app.include_router(vendor_portal.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(platform.router, prefix="/api/v1")
+app.include_router(mailbox_aliases.router, prefix="/api/v1")

@@ -34,10 +34,79 @@ Verification evidence:
   tests/smoke/settings.spec.ts tests/smoke/api-mocks.ts`, `npx tsc --noEmit`,
   targeted smoke run, and `npm --prefix apps/web run build`.
 
-Still deferred: reserve/disable/display controls for mailbox aliases. This
-brief explicitly prohibited API shape changes, so no alias-management endpoint,
-classification path, promote payload, provider send, Smart Intake apply, Xero,
-Basiq, payment, or reconciliation behavior changed.
+At UX-pass ship time, reserve/disable/display controls for mailbox aliases were
+deferred. That brief explicitly prohibited API shape changes, so the pass made
+no alias-management endpoint, classification path, promote payload, provider
+send, Smart Intake apply, Xero, Basiq, payment, or reconciliation behavior
+change.
+
+## Codex continuation - 2026-06-14 (AI Mailbox alias management API + display v1)
+
+Scope completed: local AI Mailbox alias management backend plus read-only
+operator display. The dedicated `/api/v1/mailbox-aliases` router is included
+in the API app.
+
+What changed:
+- Platform admins can reserve aliases, list aliases across/filtering by client
+  organisation, and update alias `status` / `label`; the reserved platform org
+  is refused and every mutation is audited.
+- Operators can read only their own organisation's active aliases through
+  `/api/v1/mailbox-aliases/mine`.
+- `/inbox` now prefers the active alias API result for the copy-address
+  affordance, then falls back to mailbox-row `to_address` provenance, then
+  `ai@leasium.ai`.
+- Settings → Organisation shows the active client mailbox alias above the
+  trusted-sender allowlist; reserve/disable controls remain display-only
+  deferred UI work for a signed-off platform-admin alias frame.
+
+Verification evidence:
+- Backend focused: `.venv/bin/python -m pytest
+  tests/integration/test_mailbox_aliases_api.py -q` → 10 passed.
+- Routing regression: `.venv/bin/python -m pytest
+  tests/integration/test_comms_api.py -q -k "virtual_alias"` → 3 passed.
+- Frontend focused: `NODE_ENV=development npm --prefix apps/web run
+  test:smoke -- app-flows.spec.ts settings.spec.ts -g "AI mailbox surfaces
+  queue and quarantine provenance|settings manages AI mailbox trusted senders
+  locally"` → 2 passed.
+- UX screenshots: `output/playwright/ai-mailbox-alias-inbox-1440.png`,
+  `ai-mailbox-alias-inbox-390.png`, `ai-mailbox-alias-settings-1440.png`,
+  `ai-mailbox-alias-settings-390.png`.
+
+Guardrails held: no SendGrid/Twilio provider send, acknowledgement email,
+OpenAI triage, Smart Intake apply/extract, tenant email, Xero/Basiq, payment,
+reconciliation, or existing inbound-message mutation runs from alias
+management/display.
+
+## Day plan + backlog reconciliation - 2026-06-14 (Claude)
+
+Planning session. Verified (recon agents + targeted pytest) that the
+`docs/next-build-instructions-2026-06-12.md` backlog is largely already
+shipped, and reconciled it (see the dated STATUS CORRECTION block at the top
+of that doc):
+
+- Ticket 1 send-time template consumption — SHIPPED (`41749e2`), 18 tests.
+- Virtual client mailbox aliases — SHIPPED (`afb08b0`), 3 tests. Working
+  tree clean, `main == origin/main`; the "dirty tree" earlier handovers
+  described was a fuse-cache artifact (cleared ~40 `.fuse_hidden*` files
+  under `apps/web/tests/smoke/`).
+- Ticket 3 contractor notify on operator comment — SHIPPED (contractor
+  email/SMS review-first + operator in-app cue), 11 tests. `vendor_portal.py:1060`
+  is only an optional operator-direction provider escalation, intentionally
+  in-app-only — a product decision, not an open gap.
+
+At planning time, the genuinely-open backend item was **AI Mailbox alias
+management API**: aliases could only be created by direct DB insert. That item
+is now shipped above with platform-admin list/reserve/update and operator
+read-only display. Remaining open items are Ticket 2 payments adapter (blocked
+on Temba's provider decision), Ticket 4 owner disbursement (parked), and the
+platform-admin alias controls UI frame/surface.
+
+Split for the day:
+- **Claude** → AI Mailbox alias management API (backend, role/platform-admin
+  scoped, TDD, no provider sends).
+- **Codex** → AI Mailbox in-loop UX pass — brief at
+  `docs/codex-brief-ai-mailbox-ux-2026-06-14.md`; consumes the alias read
+  API for `/inbox` display once it lands.
 
 ## Codex continuation - 2026-06-14 (AI Mailbox virtual client aliases v1)
 

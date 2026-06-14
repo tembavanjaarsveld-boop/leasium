@@ -38,6 +38,7 @@ import {
   type InboxTriageKind,
   type InboxTriageRecord,
   type InboxTriageTargetKind,
+  type MailboxAliasRecord,
   discardCommsInboundMessage,
   documentDownloadUrlFromPath,
   getCommsInboundMessage,
@@ -45,6 +46,7 @@ import {
   listCommsInboundMessages,
   listEntities,
   listLeasesByTenant,
+  listMyMailboxAliases,
   listProperties,
   listTenants,
   previewTenantContactUpdate,
@@ -200,7 +202,14 @@ function mailboxSender(message: CommsInboundMessageRecord): string {
 
 function mailboxAddressFromMessages(
   messages: CommsInboundMessageRecord[],
+  aliases: MailboxAliasRecord[],
 ): string {
+  const activeAlias = aliases.find(
+    (alias) => alias.status === "active" && alias.email_address.trim(),
+  )?.email_address;
+  if (activeAlias) {
+    return activeAlias.trim();
+  }
   const routedAlias = messages.find((message) =>
     message.to_address?.toLowerCase().endsWith(`@${AI_MAILBOX_ALIAS_DOMAIN}`),
   )?.to_address;
@@ -356,6 +365,12 @@ function InboxWorkspace() {
         source: "ai_mailbox",
         limit: 25,
       }),
+    enabled: Boolean(selectedEntityId),
+  });
+
+  const mailboxAliasesQuery = useQuery({
+    queryKey: ["mailbox-aliases-mine"],
+    queryFn: listMyMailboxAliases,
     enabled: Boolean(selectedEntityId),
   });
 
@@ -687,7 +702,11 @@ function InboxWorkspace() {
       : null;
 
   const mailboxMessages = mailboxQuery.data?.messages ?? [];
-  const displayMailboxAddress = mailboxAddressFromMessages(mailboxMessages);
+  const mailboxAliases = mailboxAliasesQuery.data?.aliases ?? [];
+  const displayMailboxAddress = mailboxAddressFromMessages(
+    mailboxMessages,
+    mailboxAliases,
+  );
   const trustedMailboxMessages = mailboxMessages.filter(
     (message) => message.trust_state === "trusted",
   );
