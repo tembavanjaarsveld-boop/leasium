@@ -1,6 +1,46 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-12
+Last updated: 2026-06-14
+
+## Codex continuation - 2026-06-14 (AI Mailbox virtual client aliases v1)
+
+Temba raised the multi-client crossover risk of a single `ai@leasium.ai`
+mailbox. Decision: production routing should use Dext-style virtual client
+aliases such as `skj@inbox.leasium.ai`, backed by one SendGrid Inbound Parse
+pipeline, not thousands of provider mailboxes.
+
+Shipped:
+
+- New `mailbox_alias` model/table maps virtual recipient addresses to one
+  organisation. Aliases carry `local_part`, `domain`, `email_address`, label,
+  status, creator, created timestamp, and soft-delete.
+- The SendGrid inbound webhook now recognises `*@inbox.leasium.ai` as AI
+  Mailbox traffic. Recipient alias routing runs before sender trust, OpenAI
+  triage, Smart Intake attachment promotion, or any org-scoped context load.
+- Active aliases still require an authorised sender for the resolved
+  organisation plus SPF/DKIM pass before AI runs.
+- Unknown aliases return 202 without creating `InboundMessage`,
+  `StoredDocument`, or `DocumentIntake` rows, so there is no unsafe org guess.
+- Disabled aliases resolve to the owning organisation but persist only a
+  quarantined evidence row with `quarantine_reason="mailbox_alias_disabled"`;
+  they do not run AI or attachment extraction.
+- Legacy `ai@leasium.ai` remains available for internal/operator shortcuts,
+  but multi-client production should not rely on sender-only routing.
+
+Verification:
+
+- TDD red first: alias tests failed because `MailboxAlias` did not exist.
+- Focused alias routing green:
+  `.venv/bin/python -m pytest tests/integration/test_comms_api.py -q -k "virtual_alias"`
+
+Next AI Mailbox slices:
+
+1. Alias Settings/API management so operators/platform admins can reserve,
+   disable, and display client aliases without touching the database directly.
+2. `/inbox` copy/address affordance should show the selected organisation's
+   alias once alias read APIs exist; `ai@leasium.ai` should become an internal
+   fallback, not the primary displayed production address.
+3. Source/trust-state filters if mailbox volume grows.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox property/admin attachment reuse v1)
 

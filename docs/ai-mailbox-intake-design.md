@@ -1,9 +1,9 @@
-# AI Mailbox Intake — ai@leasium.ai
+# AI Mailbox Intake — virtual client aliases
 
 Status: Backend foundation/read APIs + `/inbox` UI foundation + local
 trust/discard decisions + Settings trusted-sender management + trusted-row
-reviewed promote handoff shipped · richer promote/apply variants pending
-design/UX gate · 2026-06-12
+reviewed promote handoff + virtual client alias routing shipped · alias
+Settings UI and source/trust filters pending design/UX gate · 2026-06-14
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
 UI implemented from this frame, with trust/discard action placement and the
@@ -15,9 +15,10 @@ pass; promote variants still require review before code.
 Operators and agents hold property information in their email — agent
 updates, council notices, insurance renewals, contractor quotes, inspection
 reports. Today that information reaches Leasium only if someone manually
-uploads a document into Smart Intake. The ask: forward an email to
-**ai@leasium.ai** and have the AI put the details and tasks in the right
-place, with the operator approving the result.
+uploads a document into Smart Intake. The ask: forward an email to a
+client-specific Leasium mailbox such as **skj@inbox.leasium.ai** and have the
+AI put the details and tasks in the right place, with the operator approving
+the result.
 
 ## What already exists (build on, don't duplicate)
 
@@ -95,6 +96,14 @@ place, with the operator approving the result.
   use the stored mailbox classification, and do not re-run triage,
   extract/apply Smart Intake, mutate property/owner records, assign
   contractors, send providers, touch payments, or reconcile anything.
+- 2026-06-14 virtual client alias follow-up: `mailbox_alias` now maps
+  recipient addresses such as `skj@inbox.leasium.ai` to one organisation
+  before sender trust or AI classification run. Unknown aliases are accepted
+  without creating rows or running AI; disabled aliases persist a quarantined
+  evidence row under the owning organisation; active aliases still require
+  SPF/DKIM pass and an authorised sender. Legacy `ai@leasium.ai` remains an
+  internal/operator shortcut, but production multi-client routing should use
+  client aliases.
 
 This feature is therefore a **delta**: an operator/agent-facing address and
 trust tier on top of the existing tenant-facing inbound pipeline.
@@ -103,12 +112,23 @@ trust tier on top of the existing tenant-facing inbound pipeline.
 
 ### Addressing
 
-- One public address: `ai@leasium.ai` on the existing Inbound Parse
-  subdomain MX. No per-entity URLs for senders to remember.
-- Routing key is the **sender**, not the address: sender email →
-  `app_user` / known agent contact → organisation. Entity/property
-  resolution happens in triage, not in the URL.
-- Plus-addressing (`ai+harbour-lane@leasium.ai`) is a v2 hint, not v1.
+- Production path: one SendGrid Inbound Parse domain such as
+  `inbox.leasium.ai`, many virtual aliases, no separate provider mailboxes.
+  Example: `skj@inbox.leasium.ai`, `harbourlane@inbox.leasium.ai`.
+- Routing key is the **recipient alias first**. The alias must resolve to
+  exactly one organisation before sender trust, OpenAI triage, Smart Intake
+  attachment promotion, or any org-scoped context loading happens.
+- Sender trust is still required, but it authorises the sender inside the
+  alias-resolved organisation; it no longer has to guess which client the
+  sender meant.
+- Unknown aliases are inert: return 202 to the provider, create no
+  `InboundMessage`, run no AI, and keep no review target because there is no
+  safe organisation boundary.
+- Disabled aliases preserve evidence under the owning organisation as a
+  quarantined row, but still do not run AI or promote attachments.
+- Legacy `ai@leasium.ai` stays as an internal/operator shortcut for the
+  single-client/internal phase; it should not be the default multi-client
+  production address.
 
 ### Sender trust (the non-negotiable part)
 
@@ -235,24 +255,27 @@ Decision for foundation v1: (a) no acknowledgement reply.
 
 ## Foundation v1 scope cut
 
-In: ai@leasium.ai routing, sender trust + quarantine, sender-auth metadata,
-forwarded original-sender provenance, body triage with operator kinds,
-trusted-message attachment path reuse, raw-email `StoredDocument` evidence,
-role-scoped read APIs, trusted-senders API, `/inbox` queue + quarantine
-provenance UI, local trust/discard decisions, and Settings trusted-sender
-management, plus trusted-row reviewed promote handoff into existing local
-draft creation and compliance/insurance Smart Intake review drafts, including
-attachment-intake reuse when the mailbox email already routed attachments, and
+In: virtual client aliases on `inbox.leasium.ai`, legacy `ai@leasium.ai`
+operator shortcut, sender trust + quarantine, sender-auth metadata, forwarded
+original-sender provenance, body triage with operator kinds, trusted-message
+attachment path reuse, raw-email `StoredDocument` evidence, role-scoped read
+APIs, trusted-senders API, `/inbox` queue + quarantine provenance UI, local
+trust/discard decisions, and Settings trusted-sender management, plus
+trusted-row reviewed promote handoff into existing local draft creation and
+compliance/insurance Smart Intake review drafts, including attachment-intake
+reuse when the mailbox email already routed attachments, and
 property/task/owner-admin local review targets with property/admin attachment
 review reuse.
 
-Out (next slices): source/trust-state filters if volume grows, auto-ack
-replies, reply-by-email threads, plus-addressing hints, agent-facing
-confirmations, cross-org agent senders, auto-apply of any kind.
+Out (next slices): alias Settings UI/API management, source/trust-state filters
+if volume grows, auto-ack replies, reply-by-email threads, plus-addressing
+hints, agent-facing confirmations, cross-org agent senders, auto-apply of any
+kind.
 
 ## Test plan
 
 - Backend: webhook happy path (trusted sender → message + triage),
+  virtual-alias route, disabled/unknown alias quarantine/inert paths,
   quarantine path (unknown sender, SPF fail), forwarded-email provenance
   extraction, raw-email evidence document linking, list/detail read APIs with
   entity scoping, trusted-senders CRUD + auth, trust/discard action guardrails,
@@ -273,9 +296,9 @@ confirmations, cross-org agent senders, auto-apply of any kind.
    transactional-email carve-out.
 2. Trusted external agents in v1, or operators-only first? Closed 2026-06-12:
    org-managed external trusted senders are in v1.
-3. `ai@leasium.ai` directly vs `ai@inbound.leasium.ai` (root-domain MX has
-   interplay with normal mail routing for @leasium.ai — needs a check
-   before pointing MX at SendGrid).
+3. Alias domain: current implementation expects virtual aliases on
+   `inbox.leasium.ai`; legacy `ai@leasium.ai` remains available for internal
+   use only.
 4. Does quarantine live on /inbox or stay API-only in v1? Closed 2026-06-12:
    quarantine lives on `/inbox`.
 

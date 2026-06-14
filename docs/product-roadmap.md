@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-12
+Last updated: 2026-06-14
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-14 AI Mailbox virtual client alias routing v1:**
+  `mailbox_alias` now lets one SendGrid Inbound Parse pipeline serve many
+  client-specific virtual addresses such as `skj@inbox.leasium.ai`. The
+  recipient alias resolves the organisation before sender trust, OpenAI triage,
+  Smart Intake attachment promotion, or org-scoped context loading. Active
+  aliases still require an authorised sender plus SPF/DKIM pass; unknown
+  aliases are accepted inertly without row creation; disabled aliases create a
+  quarantined evidence row under the owning organisation. Legacy
+  `ai@leasium.ai` remains as an internal/operator shortcut. No provider send,
+  Smart Intake apply, property/owner mutation, payment, or reconciliation is
+  introduced.
 - [x] **2026-06-12 AI Mailbox property/admin attachment review reuse v1:**
   trusted mailbox rows classified as `property_update` or
   `owner_or_entity_admin` now reuse existing uploaded Smart Intake attachment

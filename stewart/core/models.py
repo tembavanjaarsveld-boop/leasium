@@ -661,6 +661,55 @@ Index(
 )
 
 
+class MailboxAlias(Base):
+    """Virtual recipient address for AI Mailbox Intake routing.
+
+    A single inbound provider pipeline can receive mail for many aliases. The
+    alias resolves the organisation/client boundary before sender trust and AI
+    classification run.
+    """
+
+    __tablename__ = "mailbox_alias"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    organisation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    local_part: Mapped[str] = mapped_column(Text, nullable=False)
+    domain: Mapped[str] = mapped_column(Text, nullable=False)
+    email_address: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    organisation: Mapped[Organisation] = relationship()
+    created_by_user: Mapped["AppUser | None"] = relationship()
+
+
+Index(
+    "mailbox_alias_email_active_idx",
+    MailboxAlias.email_address,
+    unique=True,
+    postgresql_where=MailboxAlias.deleted_at.is_(None),
+    sqlite_where=MailboxAlias.deleted_at.is_(None),
+)
+Index(
+    "mailbox_alias_org_local_domain_active_idx",
+    MailboxAlias.organisation_id,
+    MailboxAlias.local_part,
+    MailboxAlias.domain,
+    unique=True,
+    postgresql_where=MailboxAlias.deleted_at.is_(None),
+    sqlite_where=MailboxAlias.deleted_at.is_(None),
+)
+
+
 class InsightsSnapshot(Base):
     __tablename__ = "insights_snapshot"
 

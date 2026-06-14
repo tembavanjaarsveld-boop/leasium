@@ -353,8 +353,8 @@ To wire this up: (1) add an MX record on a subdomain you control
 (2) in the SendGrid console, add an Inbound Parse setting that maps the
 subdomain to `https://<API_HOST>/api/v1/comms/webhooks/sendgrid-inbound?entity_id=<UUID>&token=<SENDGRID_INBOUND_SECRET>`
 with the SendGrid "POST the raw, full MIME message" option **off**
-(Leasium parses the form fields); (3) repeat with one Inbound Parse setting
-per entity so each operator portfolio gets a dedicated mailbox.
+(Leasium parses the form fields). This legacy tenant-channel path may still
+use one Parse route per entity.
 Set `SENDGRID_INBOUND_SECRET` on the API before enabling live MX. If the secret
 is configured, the webhook rejects requests unless the same value is supplied
 as `token`, `secret`, `X-Leasium-SendGrid-Inbound-Secret`, or
@@ -363,18 +363,22 @@ table, attachments route to Smart Intake review rows, and both surface in the
 operator comms queue as `inbound_email` candidates the operator reviews and
 replies to via the existing dispatch path.
 
-**AI Mailbox Intake (`ai@leasium.ai`).** The same SendGrid Inbound Parse
-endpoint also recognises mail addressed to `ai@leasium.ai`. This public-mailbox
-route may omit `entity_id` only when the authenticated sender can be resolved to
-one organisation/entity through an active operator account or an
-organisation-scoped trusted sender. The webhook records sender auth (`SPF` /
-`dkim` form fields), source, trust state, and forwarded original-sender
-provenance. AI mailbox messages run OpenAI triage and Smart Intake attachment
-promotion only when the sender is authorised and SPF/DKIM both pass; otherwise
-they are quarantined if an entity was resolved, or accepted without processing
-when no safe organisation can be inferred. There is no automatic
-acknowledgement reply in v1, and the webhook never sends SendGrid/Twilio,
-writes Xero/Basiq/payment data, or applies Smart Intake changes.
+**AI Mailbox Intake (`*@inbox.leasium.ai`).** The same SendGrid Inbound Parse
+endpoint also recognises virtual client aliases such as
+`skj@inbox.leasium.ai`. Configure one Parse route for the alias domain and let
+Leasium route by the recipient address through `mailbox_alias`; do not create
+one provider mailbox per client. The recipient alias resolves the organisation
+before sender trust, OpenAI triage, Smart Intake attachment promotion, or any
+org-scoped context loading. Unknown aliases are accepted without processing or
+row creation; disabled aliases create a quarantined evidence row under the
+owning organisation. Active aliases still require an authorised sender plus
+SPF/DKIM pass. The legacy `ai@leasium.ai` public-mailbox route remains for
+internal/operator shortcuts, and may omit `entity_id` only when the sender can
+resolve safely to one organisation/entity. The webhook records sender auth
+(`SPF` / `dkim` form fields), source, trust state, and forwarded
+original-sender provenance. There is no automatic acknowledgement reply in v1,
+and the webhook never sends SendGrid/Twilio, writes Xero/Basiq/payment data,
+or applies Smart Intake changes.
 
 Two distinct SendGrid templates are now used. The original tenant onboarding
 invite (template key `tenant_onboarding_invite`, version `v1`) is sent when the

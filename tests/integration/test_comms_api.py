@@ -31,6 +31,7 @@ from stewart.core.models import (
     InboundMessage,
     Lease,
     LeaseStatus,
+    MailboxAlias,
     MaintenancePriority,
     MaintenanceWorkOrder,
     MaintenanceWorkOrderStatus,
@@ -3428,7 +3429,7 @@ def test_ai_mailbox_webhook_trusted_operator_routes_without_entity_id_and_triage
 
     entity = _entity(session)
     from apps.api.routers import comms as comms_router
-    from stewart.core.settings import Settings, get_settings
+    from stewart.core.settings import Settings
 
     calls: list[str] = []
 
@@ -3497,6 +3498,212 @@ def test_ai_mailbox_webhook_trusted_operator_routes_without_entity_id_and_triage
     assert row.classification_confidence is not None
     assert float(row.classification_confidence) == 0.91
     assert row.classification_target_kind == "smart_intake"
+
+
+def test_ai_mailbox_webhook_routes_virtual_alias_before_ai_triage(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Client mailbox aliases resolve the org before AI sees scoped context."""
+
+    entity = _entity(session)
+    mailbox_alias = MailboxAlias(
+        organisation_id=entity.organisation_id,
+        local_part="skj",
+        domain="inbox.leasium.ai",
+        email_address="skj@inbox.leasium.ai",
+        label="SKJ intake",
+        created_by_user_id=get_settings().dev_user_id,
+    )
+    session.add(mailbox_alias)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    calls: list[str] = []
+
+    def fake_triage(*, body, settings):  # noqa: ANN001, ARG001
+        calls.append(body)
+        return (
+            {
+                "kind": "property_update",
+                "confidence": 0.89,
+                "summary": "Forwarded rates notice should be reviewed.",
+                "suggested_target_kind": "property",
+            },
+            "resp-ai-mailbox-alias-1",
+        )
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fake_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            openai_api_key="sk-test",
+            sendgrid_inbound_secret="inbound-secret",
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": get_settings().dev_user_email,
+            "to": "SKJ Intake <skj@inbox.leasium.ai>",
+            "subject": "Fwd: Council rates notice",
+            "text": "Please review the attached council rates notice.",
+            "SPF": "pass",
+            "dkim": "{@leasium.test : pass}",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["source"] == "ai_mailbox"
+    assert body["trust_state"] == "trusted"
+    assert calls == ["Please review the attached council rates notice."]
+
+    row = session.get(InboundMessage, UUID(body["id"]))
+    assert row is not None
+    assert row.entity_id == entity.id
+    assert row.classification_kind == "property_update"
+    assert row.inbound_metadata["mailbox_alias_id"] == str(mailbox_alias.id)
+    assert row.inbound_metadata["mailbox_alias_address"] == "skj@inbox.leasium.ai"
+    assert row.inbound_metadata["routing"] == "mailbox_alias"
+
+
+def test_ai_mailbox_webhook_unknown_virtual_alias_stays_inert(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Unknown client aliases do not fall back to sender-only routing."""
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("unknown mailbox alias must not call AI triage")
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fail_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            openai_api_key="sk-test",
+            sendgrid_inbound_secret="inbound-secret",
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": get_settings().dev_user_email,
+            "to": "unknown-client@inbox.leasium.ai",
+            "subject": "Fwd: Bank detail update",
+            "text": "Please change these owner bank details.",
+            "SPF": "pass",
+            "dkim": "pass",
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["id"] is None
+    assert body["source"] == "ai_mailbox"
+    assert body["trust_state"] == "quarantined"
+    assert body["detail"] == "mailbox_alias_not_found"
+    assert session.scalar(select(InboundMessage)) is None
+    assert session.scalar(select(StoredDocument)) is None
+    assert session.scalar(select(DocumentIntake)) is None
+
+
+def test_ai_mailbox_webhook_disabled_virtual_alias_quarantines_without_ai(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """Disabled client aliases preserve evidence but never run AI triage."""
+
+    entity = _entity(session)
+    mailbox_alias = MailboxAlias(
+        organisation_id=entity.organisation_id,
+        local_part="skj-disabled",
+        domain="inbox.leasium.ai",
+        email_address="skj-disabled@inbox.leasium.ai",
+        label="Disabled SKJ intake",
+        status="disabled",
+        created_by_user_id=get_settings().dev_user_id,
+    )
+    session.add(mailbox_alias)
+    session.commit()
+
+    from apps.api.routers import comms as comms_router
+    from stewart.core.settings import Settings
+
+    def fail_triage(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("disabled mailbox alias must not call AI triage")
+
+    def fail_extract(**kwargs):  # noqa: ANN003, ARG001
+        raise AssertionError("disabled mailbox alias must not extract attachments")
+
+    monkeypatch.setattr(comms_router, "triage_inbox", fail_triage)
+    monkeypatch.setattr(
+        comms_router,
+        "extract_document_file",
+        fail_extract,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        comms_router,
+        "get_settings",
+        lambda: Settings(
+            openai_api_key="sk-test",
+            sendgrid_inbound_secret="inbound-secret",
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": get_settings().dev_user_email,
+            "to": "skj-disabled@inbox.leasium.ai",
+            "subject": "Fwd: disabled alias",
+            "text": "Please review this disabled mailbox message.",
+            "SPF": "pass",
+            "dkim": "pass",
+        },
+        files={
+            "attachment1": (
+                "disabled-alias.txt",
+                b"disabled alias evidence",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["source"] == "ai_mailbox"
+    assert body["trust_state"] == "quarantined"
+    assert body["attachment_intake_count"] == 0
+
+    row = session.get(InboundMessage, UUID(body["id"]))
+    assert row is not None
+    assert row.entity_id == entity.id
+    assert row.classification_kind is None
+    assert row.inbound_metadata["quarantine_reason"] == "mailbox_alias_disabled"
+    assert row.inbound_metadata["mailbox_alias_id"] == str(mailbox_alias.id)
+    raw_document = session.get(
+        StoredDocument, UUID(row.inbound_metadata["raw_email_document_id"])
+    )
+    assert raw_document is not None
+    assert raw_document.document_metadata["trust_state"] == "quarantined"
+    assert session.scalar(select(DocumentIntake)) is None
 
 
 def test_ai_mailbox_webhook_quarantines_untrusted_sender_before_ai_or_attachments(

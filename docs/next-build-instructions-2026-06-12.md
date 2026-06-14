@@ -154,10 +154,12 @@ then reuse the Ticket 2 payment-rail adapter rather than a second rail.
 ## Ticket 5 [partially shipped] — AI Mailbox Intake
 
 **Verified state:** Temba explicitly revived this slice on 2026-06-12.
-Backend foundations are shipped: `trusted_sender`, `InboundMessage.source`,
-`auth_result`, `trust_state`, `original_sender`, ai@ mailbox routing/auth,
-trusted-sender APIs, quarantine-before-AI, raw-email evidence storage, and
-role-scoped read APIs. `/inbox` now has an AI Mailbox panel with copy address,
+Backend foundations are shipped: `mailbox_alias`, `trusted_sender`,
+`InboundMessage.source`, `auth_result`, `trust_state`, `original_sender`, ai@
+legacy mailbox routing/auth, virtual client alias routing on
+`*@inbox.leasium.ai`, trusted-sender APIs, quarantine-before-AI, raw-email
+evidence storage, and role-scoped read APIs. `/inbox` now has an AI Mailbox
+panel with copy address,
 trusted queue, quarantine bucket, selected-message provenance, auth detail,
 raw-email link, and local trust/discard decisions. Trust sender is available
 only for authenticated `sender_not_trusted` quarantines and trusts the
@@ -184,13 +186,17 @@ reconcile anything. Property and owner/admin rows now also reuse existing
 uploaded attachment Smart Intake reviews when `attachment_intake_ids` are
 present, and fail closed on stale attachment metadata instead of synthesising a
 fallback email-body review. The visible UI/action placement, promote provenance
-card, mailbox promote copy, and Settings panel still owe the in-loop UX pass.
+card, mailbox promote copy, alias management UI, and Settings panel still owe
+the in-loop UX pass.
 
 **Instruction:** next work should start from the shipped read-only state, not
-from the old migration plan. Remaining product slices are optional filters if
-mailbox volume grows and UX pass/design sync. Do not add acknowledgement
-replies, provider sends, Smart Intake apply, tenant email, Xero/Basiq,
-payment, or reconciliation mutation without explicit operator approval.
+from the old migration plan. Multi-client production routing should use
+client-specific aliases such as `skj@inbox.leasium.ai`; do not route
+multi-client mail by sender alone. Remaining product slices are alias
+Settings/API management, optional filters if mailbox volume grows, and UX
+pass/design sync. Do not add acknowledgement replies, provider sends, Smart
+Intake apply, tenant email, Xero/Basiq, payment, or reconciliation mutation
+without explicit operator approval.
 
 ---
 

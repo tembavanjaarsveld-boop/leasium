@@ -47,6 +47,7 @@ from stewart.core.models import (
     InboundMessage,
     Lease,
     LeaseStatus,
+    MailboxAlias,
     MaintenanceWorkOrder,
     Obligation,
     ObligationCategory,
@@ -111,6 +112,7 @@ DEFAULT_DISMISS_DAYS = 7
 DISMISS_METADATA_KEY = "comms_dismiss"
 SENDGRID_INBOUND_SECRET_DETAIL = "SendGrid inbound secret is invalid."
 AI_MAILBOX_RECIPIENTS = {"ai@leasium.ai"}
+AI_MAILBOX_ALIAS_DOMAINS = {"inbox.leasium.ai"}
 _FORWARDED_FROM_RE = re.compile(r"(?im)^\s*From:\s*(?P<value>.+)$")
 COMMS_TEMPLATE_PREVIEW_GUARDRAILS = [
     "Template preview is review-only; it saves nothing and never sends any message.",
@@ -3942,6 +3944,14 @@ class _AiMailboxRoute:
     metadata: dict[str, str]
 
 
+@dataclass(frozen=True)
+class _AiMailboxAliasRoute:
+    entity: Entity | None
+    reason: str | None
+    metadata: dict[str, str]
+    used_alias: bool = False
+
+
 def _normalize_email_address(value: str | None) -> str | None:
     parsed = parseaddr((value or "").strip())[1] or (value or "").strip()
     cleaned = parsed.strip().lower()
@@ -3950,15 +3960,23 @@ def _normalize_email_address(value: str | None) -> str | None:
     return cleaned
 
 
-def _ai_mailbox_recipient(to_address: str | None) -> bool:
+def _ai_mailbox_recipient_addresses(to_address: str | None) -> list[str]:
     raw = (to_address or "").strip()
     if not raw:
-        return False
+        return []
+    recipients: list[str] = []
     for part in raw.split(","):
         cleaned = _normalize_email_address(part)
-        if cleaned in AI_MAILBOX_RECIPIENTS:
-            return True
-    return False
+        if cleaned is None:
+            continue
+        domain = cleaned.rsplit("@", 1)[-1]
+        if cleaned in AI_MAILBOX_RECIPIENTS or domain in AI_MAILBOX_ALIAS_DOMAINS:
+            recipients.append(cleaned)
+    return recipients
+
+
+def _ai_mailbox_recipient(to_address: str | None) -> bool:
+    return bool(_ai_mailbox_recipient_addresses(to_address))
 
 
 def _form_text(form: Any | None, *keys: str) -> str | None:
@@ -4059,19 +4077,124 @@ def _trusted_sender_for_org(
     )
 
 
+def _resolve_ai_mailbox_alias_route(
+    *,
+    to_address: str | None,
+    explicit_entity: Entity | None,
+    session: Session,
+) -> _AiMailboxAliasRoute:
+    recipients = sorted(set(_ai_mailbox_recipient_addresses(to_address)))
+    if not recipients:
+        return _AiMailboxAliasRoute(
+            entity=explicit_entity,
+            reason=None,
+            metadata={},
+            used_alias=False,
+        )
+    if len(recipients) > 1:
+        return _AiMailboxAliasRoute(
+            entity=None,
+            reason="mailbox_recipient_ambiguous",
+            metadata={"mailbox_recipient_count": str(len(recipients))},
+            used_alias=True,
+        )
+
+    recipient = recipients[0]
+    if recipient in AI_MAILBOX_RECIPIENTS:
+        return _AiMailboxAliasRoute(
+            entity=explicit_entity,
+            reason=None,
+            metadata={},
+            used_alias=False,
+        )
+
+    local_part, domain = recipient.rsplit("@", 1)
+    metadata = {
+        "routing": "mailbox_alias",
+        "mailbox_alias_address": recipient,
+        "mailbox_alias_local_part": local_part,
+        "mailbox_alias_domain": domain,
+    }
+    mailbox_alias = session.scalar(
+        select(MailboxAlias).where(
+            func.lower(MailboxAlias.email_address) == recipient,
+            MailboxAlias.deleted_at.is_(None),
+        )
+    )
+    if mailbox_alias is None:
+        return _AiMailboxAliasRoute(
+            entity=None,
+            reason="mailbox_alias_not_found",
+            metadata=metadata,
+            used_alias=True,
+        )
+
+    metadata["mailbox_alias_id"] = str(mailbox_alias.id)
+    metadata["mailbox_alias_status"] = mailbox_alias.status
+    selected, reason = _choose_ai_mailbox_entity(
+        _active_entities_for_org(mailbox_alias.organisation_id, session)
+    )
+    if selected is None:
+        return _AiMailboxAliasRoute(
+            entity=None,
+            reason=reason,
+            metadata=metadata,
+            used_alias=True,
+        )
+    if (
+        explicit_entity is not None
+        and explicit_entity.organisation_id != mailbox_alias.organisation_id
+    ):
+        return _AiMailboxAliasRoute(
+            entity=selected,
+            reason="mailbox_alias_entity_mismatch",
+            metadata=metadata,
+            used_alias=True,
+        )
+    if mailbox_alias.status != "active":
+        return _AiMailboxAliasRoute(
+            entity=selected,
+            reason="mailbox_alias_disabled",
+            metadata=metadata,
+            used_alias=True,
+        )
+    return _AiMailboxAliasRoute(
+        entity=selected,
+        reason=None,
+        metadata=metadata,
+        used_alias=True,
+    )
+
+
 def _resolve_ai_mailbox_route(
     *,
     from_address: str | None,
+    to_address: str | None,
     entity: Entity | None,
     session: Session,
 ) -> _AiMailboxRoute:
+    alias_route = _resolve_ai_mailbox_alias_route(
+        to_address=to_address,
+        explicit_entity=entity,
+        session=session,
+    )
+    if alias_route.used_alias:
+        if alias_route.entity is None or alias_route.reason is not None:
+            return _AiMailboxRoute(
+                entity=alias_route.entity,
+                trusted=False,
+                reason=alias_route.reason,
+                metadata=alias_route.metadata,
+            )
+        entity = alias_route.entity
+    route_metadata = alias_route.metadata
     cleaned = _normalize_email_address(from_address)
     if cleaned is None:
         return _AiMailboxRoute(
             entity=entity,
             trusted=False,
             reason="sender_missing",
-            metadata={},
+            metadata=route_metadata,
         )
 
     if entity is not None:
@@ -4092,6 +4215,7 @@ def _resolve_ai_mailbox_route(
                 trusted=True,
                 reason=None,
                 metadata={
+                    **route_metadata,
                     "trusted_via": "app_user",
                     "trusted_app_user_id": str(app_user.id),
                 },
@@ -4107,6 +4231,7 @@ def _resolve_ai_mailbox_route(
                 trusted=True,
                 reason=None,
                 metadata={
+                    **route_metadata,
                     "trusted_via": "trusted_sender",
                     "trusted_sender_id": str(trusted_sender.id),
                 },
@@ -4115,7 +4240,7 @@ def _resolve_ai_mailbox_route(
             entity=entity,
             trusted=False,
             reason="sender_not_trusted",
-            metadata={},
+            metadata=route_metadata,
         )
 
     app_users = list(
@@ -4609,6 +4734,7 @@ async def receive_sendgrid_inbound(
     if source == "ai_mailbox":
         route = _resolve_ai_mailbox_route(
             from_address=cleaned_from,
+            to_address=cleaned_to,
             entity=explicit_entity,
             session=session,
         )
