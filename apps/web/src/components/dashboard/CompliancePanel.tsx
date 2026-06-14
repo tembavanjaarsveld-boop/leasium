@@ -15,7 +15,7 @@ import type { InsightsOverviewRecord } from "@/lib/api";
  * context, deep-linking into the operations compliance tab and Insights.
  *
  * Hidden entirely when there is no compliance data or every count is
- * zero, so an all-clear portfolio stays quiet. Pending Remba review.
+ * zero, so an all-clear portfolio stays quiet.
  */
 
 const COMPLIANCE_TAB_HREF = "/operations?tab=compliance";

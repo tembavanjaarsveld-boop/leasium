@@ -194,7 +194,7 @@ thread kept the backend revoke endpoint TDD path local.
 
 Shipped:
 
-- Settings -> Organisation now has an "AI mailbox trusted senders" panel for
+- Settings → Organisation now has an "AI mailbox trusted senders" panel for
   the selected entity's organisation. It lists active trusted senders,
   add/refreshes an email + optional label, and revokes rows.
 - New backend `DELETE /api/v1/comms/trusted-senders/{trusted_sender_id}` is
@@ -223,6 +223,8 @@ Next AI Mailbox slices:
 1. Reviewed promote/apply paths from mailbox rows, only after source,
    confidence, and raw-email provenance are visible in the approval step.
 2. Optional source/trust-state filters if mailbox volume grows.
+3. UX debt: run the in-loop UX pass/design sync for `/inbox` trust/discard
+   placement and the Settings trusted-sender panel at 1440/390.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox trust/discard v1)
 
@@ -266,18 +268,85 @@ Verification so far:
   PATH:
   `npm run test:smoke -- --grep "AI mailbox"` in `apps/web`.
 
-Next AI Mailbox slices:
+Superseded next-slice note: Settings → Organisation trusted-sender management
+shipped in the later entry above. Remaining mailbox product work is reviewed
+promote/apply plus optional filters if volume grows.
 
-Superseded: Settings → Organisation trusted-sender management shipped in the
-later entry above. Remaining mailbox product work is reviewed promote/apply
-plus optional filters if volume grows.
+## Cowork continuation - 2026-06-12 (Operating mode → platform admin + name-first user card)
+
+Two slices in the same session as the Remba retirement (below), both run
+through the new in-loop UX gate.
+
+**Operating mode moves to platform admin.** Temba: "clients don't decide
+what they are." New `PATCH /api/v1/platform/organisations/{id}/operating-mode`
+(platform-admin gated, audited, reserved-org refused) in
+`apps/api/routers/platform.py` + `PlatformOperatingModeUpdate` schema; the
+client-side `PATCH /security/organisation/operating-mode` route, schema, and
+`setOperatingMode` API client are removed. `/admin` Clients rows have an
+operating-mode select beside Suspend; client Settings shows a read-only
+"Account type" line ("Set by Leasium for your account"). TDD: 5 failing
+tests first (RED), then green — `pytest test_platform_admin_api.py
+test_security_api.py` 33 passed; ruff clean. Smokes: "settings shows account
+type as read-only set by Leasium" + "platform admin sets a client's
+operating mode from /admin" pass; eslint/tsc clean. UX pass at 1440/390
+with one in-slice fix (stacked value/explainer at 390).
+
+**Sidebar user card name-first.** Figma `Leasium/Horizon/Sidebar` (44:117)
+already specced a name-first card; the second line was "Owner · operator".
+Updated the component in Figma (44:116 → account email, layer renamed
+"Email"), Temba signed off in-session, then `app-shell.tsx`
+`HorizonOperatorCard` now renders Clerk `fullName` → `display_name` → email
+primary with the email small/muted below (dedupes when primary is the
+email), via a ClerkProvider-safe split component. "Owner - operator" is
+gone. Dashboard smoke asserts name + email + role-line absence. UX pass at
+1440 + 390 drawer, no findings.
+
+Note for Temba's live account: the card shows the Clerk profile name once
+first/last name are set in Clerk (UserButton → Manage account). A backend
+display_name backfill from Clerk claims is a possible follow-up so names
+flow into audit actors/invites app-wide.
+
+## Cowork continuation - 2026-06-12 (Remba retirement → in-loop UX gate)
+
+Temba retired Remba, the early external-UX-reviewer persona ("it never
+really worked — UX should be king and woven into the process"). It had
+produced two real reviews (2026-05-19/20); everything since 2026-05-23
+shipped "(prototype mode, no Remba gate)" while the docs still claimed
+Remba sign-off was required. Decisions (Temba, 2026-06-12): in-loop UX
+gate replaces the queue; legacy queue closed as superseded by the
+Horizon Figma approvals (2026-06-10); normative-only scrub (dated
+history keeps its wording).
+
+The new process (CLAUDE.md §2.2; mechanics in design-governance.md):
+Figma-first design with Temba's sign-off as the human gate → build to
+spec via Figma MCP + design source of truth → same-session UX pass
+(checklist + 1440px/390px screenshots + slop test) with findings fixed
+in-slice → one-line UX Pass Log entry; conscious deferrals go to the
+new UX Debt Register.
+
+Files changed: CLAUDE.md (§2.2 rewritten, §2.7 + §2.10 refs),
+design-governance.md (header, Remba Retirement + Queue Closure
+section, UX Gate + UX Pass Log + UX Debt Register), product-roadmap.md
+(legend + status-semantics note; all 135 `[~]` promoted to `[x]`),
+leasium-codex-design-source-of-truth.md (§10.5.5 status-concepts line,
+§10.5.8 rewritten as UX gate, §10.5.9c), README.md,
+next-build-instructions-2026-06-12.md (2 refs), this handover (queue
+closure + resume checklist), 12 stale "Pending Remba review" code
+comments, and one operator-visible Portfolio QA string that named
+Remba. Dated history entries everywhere keep their original wording —
+do not re-queue Remba work from them.
+
+Note: this landed while a parallel Codex session was mid-slice on the
+AI Mailbox read-only UI (entry below); that slice owes its in-loop UX
+pass and is tracked in the UX Debt Register.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake read-only UI v1)
 
 Follow-up to the backend/read foundation below. Temba said "Go" after asking
 to start the AI Mailbox product slice; the visible work used Figma frame
-`03 Screens / AI Mailbox Intake 82:2` as the design reference and is
-Remba-pending by default.
+`03 Screens / AI Mailbox Intake 82:2` as the design reference and owes its
+in-loop UX pass (Remba was retired later the same day — see the UX Debt
+Register in design-governance.md).
 
 Shipped UI/API client:
 
@@ -7909,7 +7978,10 @@ Live route sanity after Vercel deploys:
 
 ## Remba Review Queue
 
-Treat these as pending UX/design sign-off:
+**Closed 2026-06-12:** Remba retired; this queue is closed as superseded
+by the Horizon Figma approvals (2026-06-10) and the in-loop UX gate.
+Genuine leftovers moved to the UX Debt Register in design-governance.md.
+The list below is preserved as history:
 
 - Smart Intake spreadsheet import review/apply panel and migration-template download.
 - Portfolio QA IA and command-search placement.
@@ -7952,7 +8024,7 @@ Hosted Neon/Render migrations as of `08c23d1`: latest required revisions are `20
   - Frontend tooling: `apps/web/node_modules/.bin/{next,playwright,eslint,tsc}` — runs on the Mac via Node.
 - Keep Smart Intake review-first: extracted value, confidence, source, approve/edit/ignore, and no mutation until Apply.
 - Keep provider actions explicit: no Xero write, SendGrid email, Twilio SMS, or payment reconciliation without reviewed operator approval.
-- Remba was retired mid-session on 2026-05-23 ("forget about Remba, this is a prototype, just fling it"). Subsequent commits land without `[~]` Remba-pending markers. If Temba reverses that direction, re-introduce the markers for new visible-impact slices and rebuild the queue in `docs/design-governance.md`.
+- Remba was retired formally on 2026-06-12 (after the informal 2026-05-23 "just fling it" bypass). Design-facing slices now go through the in-loop UX gate: Figma-first sign-off → build to spec → same-session UX pass with fixes → UX Pass Log entry. See CLAUDE.md §2.2 and design-governance.md. Do not re-introduce `[~]`/Remba-pending markers.
 - For destructive/mutating commands (writes, commits, force-pushes, deletes), show before running. Pre-approval like "just go" or "yeah commit + push" means batch execution is fine. Tests + linters + reads — run directly, output is the deliverable.
 
 ## Session 2026-05-24 summary (handing back to Codex)

@@ -3323,16 +3323,6 @@ export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }
 
-export function setOperatingMode(mode: OperatingMode) {
-  return request<SecurityWorkspaceRecord["organisation"]>(
-    "/security/organisation/operating-mode",
-    {
-      method: "PATCH",
-      body: JSON.stringify({ operating_mode: mode }),
-    },
-  );
-}
-
 export function getCurrentOperator(authToken?: string | null) {
   if (authToken) {
     return publicRequest<SecurityMeRecord>("/me", {
@@ -3522,6 +3512,19 @@ export function setPlatformOrganisationActive(
     {
       method: "PATCH",
       body: JSON.stringify({ is_active: isActive }),
+    },
+  );
+}
+
+export function setPlatformOrganisationOperatingMode(
+  organisationId: string,
+  mode: OperatingMode,
+) {
+  return request<PlatformOrganisationRecord>(
+    `/platform/organisations/${organisationId}/operating-mode`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ operating_mode: mode }),
     },
   );
 }
@@ -3738,7 +3741,6 @@ export function discardCommsInboundMessage(messageId: string) {
     { method: "POST" },
   );
 }
-
 
 export type TrustedSenderRecord = {
   id: string;

@@ -45,7 +45,6 @@ from apps.api.schemas.security import (
     SecurityMemberUpdate,
     SecurityMeRead,
     SecurityNotificationPreferences,
-    SecurityOperatingModeUpdate,
     SecurityOrganisationRead,
     SecurityRoleAssignment,
     SecurityWorkAssignmentDigestReceipt,
@@ -648,35 +647,6 @@ def get_security_workspace(
         current_user_roles=roles_by_user.get(user.id, []),
         can_manage_security=_can_manage_security(session, user),
     )
-
-
-@router.patch("/organisation/operating-mode", response_model=SecurityOrganisationRead)
-def set_operating_mode(
-    payload: SecurityOperatingModeUpdate,
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[Session, Depends(get_session)],
-) -> SecurityOrganisationRead:
-    _assert_can_manage_security(session, user)
-    organisation = session.get(Organisation, user.organisation_id)
-    if organisation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organisation not found.",
-        )
-    organisation.operating_mode = payload.operating_mode.value
-    audit_log(
-        session,
-        actor=user.actor,
-        user_id=user.id,
-        target_table="organisation",
-        target_id=organisation.id,
-        action="update",
-        tool_name="security.set_operating_mode",
-        tool_input={"operating_mode": payload.operating_mode.value},
-    )
-    session.commit()
-    session.refresh(organisation)
-    return SecurityOrganisationRead.model_validate(organisation)
 
 
 @me_router.get("/me", response_model=SecurityMeRead)

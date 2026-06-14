@@ -5160,6 +5160,36 @@ export async function mockLeasiumApi(
         );
         return;
       }
+      // PATCH /platform/organisations/{id}/operating-mode — operating mode
+      // is platform-admin-set (clients don't decide what they are).
+      const orgModeMatch = path.match(
+        /^\/platform\/organisations\/([^/]+)\/operating-mode$/,
+      );
+      if (method === "PATCH" && orgModeMatch) {
+        const orgId = orgModeMatch[1];
+        const payload = request.postDataJSON() as {
+          operating_mode?: MockOperatingMode;
+        };
+        if (
+          payload.operating_mode !== "self_managed_owner" &&
+          payload.operating_mode !== "managing_agent" &&
+          payload.operating_mode !== "hybrid"
+        ) {
+          await fulfillJson(route, { detail: "Invalid operating mode." }, 422);
+          return;
+        }
+        const nextMode = payload.operating_mode;
+        platformOrganisations = platformOrganisations.map((org) =>
+          org.id === orgId ? { ...org, operating_mode: nextMode } : org,
+        );
+        const updated = platformOrganisations.find((org) => org.id === orgId);
+        if (!updated) {
+          await fulfillJson(route, { detail: "Organisation not found." }, 404);
+          return;
+        }
+        await fulfillJson(route, updated);
+        return;
+      }
       // PATCH /platform/organisations/{id} (suspend/restore)
       const orgPatchMatch = path.match(/^\/platform\/organisations\/([^/]+)$/);
       if (method === "PATCH" && orgPatchMatch) {
@@ -5264,29 +5294,6 @@ export async function mockLeasiumApi(
         });
         return;
       }
-    }
-
-    if (
-      method === "PATCH" &&
-      path === "/security/organisation/operating-mode"
-    ) {
-      const payload = request.postDataJSON() as {
-        operating_mode?: MockOperatingMode;
-      };
-      if (
-        payload.operating_mode !== "self_managed_owner" &&
-        payload.operating_mode !== "managing_agent" &&
-        payload.operating_mode !== "hybrid"
-      ) {
-        await fulfillJson(route, { detail: "Invalid operating mode." }, 422);
-        return;
-      }
-      operatingMode = payload.operating_mode;
-      await fulfillJson(
-        route,
-        securityWorkspace(operatingMode, canManageSecurity).organisation,
-      );
-      return;
     }
 
     if (method === "GET" && path === "/security/bootstrap/status") {
@@ -5761,7 +5768,6 @@ export async function mockLeasiumApi(
       });
       return;
     }
-
 
     if (method === "GET" && path === "/comms/trusted-senders") {
       await fulfillJson(route, trustedSenders);

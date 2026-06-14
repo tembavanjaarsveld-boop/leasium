@@ -103,14 +103,35 @@ and AI surfaces are review-first by design: extract → confidence →
 source → approve/edit/ignore → only then mutate. Surface what would
 happen, but don't fire the provider call. Tests must mock providers.
 
-### 2.2 Remba review for design-facing changes
+### 2.2 UX gate — in-loop, every design-facing slice
 
-Anything visible to a user — navigation, layout, copy, density, status
-chips, workflow ordering, design system tokens — is **Remba-pending by
-default**. Mark it so in `docs/design-governance.md` (add a numbered
-follow-up) and in `docs/product-roadmap.md` (`[~]` if shipped pending
-review, `[x]` only once Remba has signed off). Don't claim a feature
-is "complete" before Remba has reviewed.
+UX is first-class, enforced inside each slice — not via an external
+reviewer queue. (Remba, the early reviewer persona, produced two
+reviews in May 2026 and was retired 2026-06-12; all historical
+"Remba-pending" statuses are closed as superseded. See
+`docs/design-governance.md`.)
+
+For anything visible to a user — navigation, layout, copy, density,
+status chips, workflow ordering, design system tokens:
+
+1. **Design first.** New or restructured surfaces start from an
+   approved Figma frame (§2.12); if none exists, create one and get
+   Temba's sign-off in Figma before code. That sign-off is the human
+   gate.
+2. **Build to spec.** Pull design context from the Figma MCP and the
+   design source of truth; no ad-hoc tokens or components.
+3. **UX pass before "done".** In the same session: run the UX gate
+   checklist in `docs/design-governance.md`, review real screenshots
+   at desktop (1440px) and mobile (390px), apply the hallmark slop
+   test to new surfaces, and fix findings in-slice. A slice with
+   unfixed UX findings is not done.
+4. **Log it.** One dated line in the UX pass log
+   (`docs/design-governance.md`): surface, screens checked, fixes,
+   anything deferred to the UX debt register.
+
+Roadmap semantics: `[x]` = shipped with the UX pass done. `[~]` is
+retired (historical entries only). Open UX work lives in the UX debt
+register, not in a pending-review status.
 
 ### 2.3 Internal-first 6 months
 
@@ -162,9 +183,9 @@ is a single feature.
 
 When shipping a slice, update the right doc:
 - `docs/product-roadmap.md` — built features + Next Build Order
-  (`[x]`/`[~]`/`[ ]` per item).
-- `docs/design-governance.md` — Remba review queue + numbered
-  follow-up entries for each design-facing change.
+  (`[x]`/`[ ]` per item; `[~]` is retired, historical only).
+- `docs/design-governance.md` — UX gate checklist, UX pass log, and
+  UX debt register for design-facing changes.
 - `docs/leasium-codex-design-source-of-truth.md` — brand/frontend
   visual spec.
 - `docs/deployment.md` — env/provider setup.
@@ -206,7 +227,7 @@ Keep what already makes Leasium better than DoorLoop: Smart Intake (document-fir
 the review-first provider guardrails (§2.1), and AU / Xero / commercial-lease depth.
 Localise every US analog (Xero not QuickBooks; PayTo/PayID/BPAY not ACH; REA/Domain;
 Equifax/illion). Full benchmark: `docs/doorloop-benchmark-2026-05-31.md`. Design-facing
-IA/nav changes follow the current `docs/design-governance.md` stance (prototype mode today).
+IA/nav changes go through the in-loop UX gate (§2.2).
 
 ### 2.11 Compliance + Insights direction
 

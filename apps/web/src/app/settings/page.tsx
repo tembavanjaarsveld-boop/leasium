@@ -79,14 +79,13 @@ import {
   type BasiqConnectStart,
   type BasiqImportedTransaction,
   type BasiqReconciliationResponse,
-  type OperatingMode,
   getPaymentInstructions,
   getXeroStatus,
   applyOwnershipSplit,
   entityTypeLabel,
   getEntitiesXeroOverview,
-  listCommsTrustedSenders,
   getOwnershipSplitPlan,
+  listCommsTrustedSenders,
   listBrandedCommunicationTemplates,
   listEntities,
   listProperties,
@@ -97,7 +96,6 @@ import {
   previewXeroPaymentReconciliation,
   resendSecurityMemberInvite,
   revokeCommsTrustedSender,
-  setOperatingMode,
   startXeroOAuth,
   updatePaymentInstructions,
   updateSecurityMember,
@@ -150,6 +148,12 @@ import { friendlyError } from "@/lib/utils";
 const ENTITY_STORAGE_KEY = "leasium.entity_id";
 const EMPTY_XERO_ISSUES: XeroMappingIssueRecord[] = [];
 const EMPTY_BRANDED_TEMPLATES: BrandedCommunicationTemplateRecord[] = [];
+
+const OPERATING_MODE_LABELS: Record<string, string> = {
+  self_managed_owner: "Self-managed owner",
+  managing_agent: "Managing agent",
+  hybrid: "Hybrid",
+};
 
 type SettingsTab = "organisation" | "security" | "notifications" | "connect";
 type PanelRef = { current: HTMLDivElement | null };
@@ -2140,7 +2144,6 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
   );
 }
 
-
 function TrustedSendersPanel({ entityId }: { entityId: string }) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
@@ -2519,13 +2522,6 @@ function SettingsWorkspace() {
   const securityQuery = useQuery({
     queryKey: ["security-workspace"],
     queryFn: getSecurityWorkspace,
-  });
-
-  const operatingModeMutation = useMutation({
-    mutationFn: (mode: OperatingMode) => setOperatingMode(mode),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["security-workspace"] });
-    },
   });
 
   const notificationTemplateCatalogQuery = useQuery({
@@ -5131,45 +5127,21 @@ function SettingsWorkspace() {
             ) : null}
 
             <SectionPanel
-              title="Operating mode"
+              title="Account type"
               description="Self-managed owners run their own portfolio. Managing-agent and hybrid accounts show owner-client, disbursement, and owner-portal surfaces."
               icon={<Building2 size={17} className="text-primary" />}
             >
-              <div className="grid gap-3 p-4 md:max-w-md">
-                <Field label="Account operating mode">
-                  <Select
-                    value={
-                      securityQuery.data?.organisation.operating_mode ??
+              <div className="grid gap-1 p-4">
+                <span className="text-sm font-semibold text-foreground">
+                  {OPERATING_MODE_LABELS[
+                    securityQuery.data?.organisation.operating_mode ??
                       "self_managed_owner"
-                    }
-                    onChange={(event) =>
-                      operatingModeMutation.mutate(
-                        event.target.value as OperatingMode,
-                      )
-                    }
-                    disabled={
-                      !securityQuery.data?.can_manage_security ||
-                      operatingModeMutation.isPending
-                    }
-                  >
-                    <option value="self_managed_owner">
-                      Self-managed owner
-                    </option>
-                    <option value="managing_agent">Managing agent</option>
-                    <option value="hybrid">Hybrid</option>
-                  </Select>
-                </Field>
-                {!securityQuery.data?.can_manage_security ? (
-                  <p className="text-sm text-muted-foreground">
-                    Only an owner or admin can change the operating mode.
-                  </p>
-                ) : null}
-                {operatingModeMutation.error ? (
-                  <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-                    <AlertTriangle size={16} />
-                    {friendlyError(operatingModeMutation.error)}
-                  </p>
-                ) : null}
+                  ] ?? "Self-managed owner"}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Set by Leasium for your account. Contact Leasium if your
+                  operating model changes.
+                </span>
               </div>
             </SectionPanel>
 

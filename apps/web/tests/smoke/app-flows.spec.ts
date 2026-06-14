@@ -211,7 +211,8 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   ).toHaveCount(0);
   const operatorCard = sidebar.getByTestId("horizon-sidebar-user");
   await expect(operatorCard).toContainText("Owner Operator");
-  await expect(operatorCard).toContainText("Owner - operator");
+  await expect(operatorCard).not.toContainText("owner@example.com");
+  await expect(operatorCard).not.toContainText("Owner - operator");
   await expect(
     sidebar.getByRole("button", { name: "Keyboard shortcuts ?" }),
   ).toHaveCount(0);
@@ -7523,4 +7524,49 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
     ownerSnapshotSection.getByText("Source local metadata"),
   ).toBeVisible();
   await expect(ownerSnapshotSection.getByText("Guardrails")).toBeVisible();
+});
+
+test("settings shows account type as read-only set by Leasium", async ({
+  page,
+}) => {
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+
+  const accountTypePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Account type" }),
+  });
+  await expect(accountTypePanel).toBeVisible();
+  await expect(
+    accountTypePanel.getByText("Self-managed owner", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    accountTypePanel.getByText(/set by Leasium for your account/i),
+  ).toBeVisible();
+  // The old client-side operating-mode dropdown is gone: clients don't
+  // decide what they are. The control now lives on /admin.
+  await expect(
+    page.getByRole("combobox", { name: "Account operating mode" }),
+  ).toHaveCount(0);
+});
+
+test("platform admin sets a client's operating mode from /admin", async ({
+  page,
+}) => {
+  await page.unroute("**/api/v1/**");
+  await page.unroute("**/health");
+  await mockLeasiumApi(page, { platformAdmin: true });
+
+  await page.goto("/admin");
+
+  const harbourRow = page
+    .locator("li")
+    .filter({ hasText: "Harbour Lane Holdings" });
+  const modeSelect = harbourRow.getByRole("combobox", {
+    name: "Operating mode for Harbour Lane Holdings",
+  });
+  await expect(modeSelect).toHaveValue("self_managed_owner");
+
+  await modeSelect.selectOption("managing_agent");
+
+  await expect(modeSelect).toHaveValue("managing_agent");
 });

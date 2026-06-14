@@ -88,7 +88,7 @@ export function Field({
 // SoT spec is 36/44/700; we use 30/36/650 (text-3xl + tracking-tight)
 // because internal dashboards feel marketing-heavy above ~32px.
 // This is the only <h1> on a workspace page; SectionTitle is <h2>.
-// Pending Remba review (2026-05-23 typography hierarchy restore).
+// (Origin: 2026-05-23 typography hierarchy restore.)
 export function PageTitle({
   children,
   className,
@@ -112,7 +112,7 @@ export function PageTitle({
 // SoT spec is 24/32/650; we use 18/28/600 (text-lg semibold) as a
 // calibration between the spec and the dense operator surfaces. Renders
 // as <h2> so the document outline is PageTitle <h1> → SectionTitle <h2>.
-// Pending Remba review (2026-05-23 typography hierarchy restore).
+// (Origin: 2026-05-23 typography hierarchy restore.)
 export function SectionTitle({
   children,
   className,
@@ -220,8 +220,8 @@ export function SectionPanel({
 // Use for: tables, lists, dense data, anything that's the main subject
 // of the page rather than an aside that supports it. Multiple Surfaces
 // stacked make the page feel like one continuous canvas with headings
-// — the pattern the SoT §8 calls for. Pending Remba review (2026-05-23
-// container hierarchy fix per external review §4).
+// — the pattern the SoT §8 calls for. (Origin: 2026-05-23 container
+// hierarchy fix per external review §4.)
 export function Surface({
   title,
   description,

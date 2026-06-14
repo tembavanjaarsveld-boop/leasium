@@ -23,7 +23,7 @@ import type {
  *
  * Extracted from the monolithic dashboard.tsx per
  * `docs/external-design-review-2026-05-23.md` §1.2 (page-file size
- * policy). Pending Remba review.
+ * policy).
  */
 
 function leaseEventKindLabel(kind: LeaseEventRecord["kind"]) {

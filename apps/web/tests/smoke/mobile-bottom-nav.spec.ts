@@ -214,7 +214,7 @@ test("desktop Horizon sidebar exposes the entity switcher and operator card", as
 
   const operatorCard = sidebar.getByTestId("horizon-sidebar-user");
   await expect(operatorCard).toContainText("Owner Operator");
-  await expect(operatorCard).toContainText("Owner - operator");
+  await expect(operatorCard).not.toContainText("Owner - operator");
 
   await expectNoHorizontalOverflow(page);
 });

@@ -2090,7 +2090,7 @@ function cleanupReadinessVerdict({
   return {
     title: "Ready for SKJ tuning",
     detail:
-      "No blocked cleanup rows remain in this scan. The next step is live portfolio tuning and Remba review, not another batch action.",
+      "No blocked cleanup rows remain in this scan. The next step is live portfolio tuning, not another batch action.",
     tone: completion >= 90 ? "success" : "primary",
   };
 }

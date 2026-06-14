@@ -22,6 +22,7 @@ import {
   PageHeader,
   SecondaryButton,
   SectionPanel,
+  Select,
   StatusBadge,
   type StatusTone,
 } from "@/components/ui";
@@ -34,6 +35,7 @@ import {
   listPlatformOrganisations,
   resendPlatformOrganisationMemberInvite,
   setPlatformOrganisationActive,
+  setPlatformOrganisationOperatingMode,
   updatePlatformOrganisationMember,
   type OperatingMode,
   type PlatformOrganisationRecord,
@@ -53,13 +55,6 @@ const OPERATING_MODE_OPTIONS: Array<{ value: OperatingMode; label: string }> = [
   { value: "managing_agent", label: "Managing agent" },
   { value: "hybrid", label: "Hybrid" },
 ];
-
-function operatingModeLabel(mode: OperatingMode): string {
-  return (
-    OPERATING_MODE_OPTIONS.find((option) => option.value === mode)?.label ??
-    mode
-  );
-}
 
 function accessStatusBadge(status: string): { label: string; tone: StatusTone } {
   switch (status) {
@@ -402,6 +397,16 @@ function ClientsTab() {
     },
   });
 
+  const setMode = useMutation({
+    mutationFn: ({ id, mode }: { id: string; mode: OperatingMode }) =>
+      setPlatformOrganisationOperatingMode(id, mode),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["platform-organisations"],
+      });
+    },
+  });
+
   const organisations = organisationsQuery.data ?? [];
 
   return (
@@ -434,7 +439,6 @@ function ClientsTab() {
                     <div className="grid gap-0.5">
                       <span className="font-semibold">{org.name}</span>
                       <span className="text-xs text-muted-foreground">
-                        {operatingModeLabel(org.operating_mode)} ·{" "}
                         {org.operator_count}{" "}
                         {org.operator_count === 1 ? "operator" : "operators"}
                         {org.first_operator_email
@@ -446,6 +450,24 @@ function ClientsTab() {
                       <StatusBadge tone={org.is_active ? "success" : "danger"}>
                         {org.is_active ? "Active" : "Suspended"}
                       </StatusBadge>
+                      <Select
+                        aria-label={`Operating mode for ${org.name}`}
+                        className="w-auto rounded-md text-xs"
+                        value={org.operating_mode}
+                        disabled={setMode.isPending}
+                        onChange={(event) =>
+                          setMode.mutate({
+                            id: org.id,
+                            mode: event.target.value as OperatingMode,
+                          })
+                        }
+                      >
+                        {OPERATING_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Select>
                       <SecondaryButton
                         type="button"
                         className="min-h-11 rounded-md px-2.5 text-xs"

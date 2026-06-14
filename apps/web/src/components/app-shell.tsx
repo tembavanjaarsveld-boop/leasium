@@ -129,7 +129,7 @@ type CommandAction = {
 //   Portfolio QA (cleanup workspace — palette-only)
 // G-shortcuts for the removed items still work via SHORTCUT_NAV below
 // so keyboard users keep their muscle memory while the IA settles.
-// Pending Remba review.
+
 const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home, shortcut: "G D" },
   {
@@ -380,6 +380,26 @@ function initialsForName(name: string) {
   return `${first}${second}`.toUpperCase();
 }
 
+function OperatorIdentityLines({ name }: { name: string }) {
+  return (
+    <span className="block min-w-0 truncate text-[13px] font-semibold leading-4">
+      {name}
+    </span>
+  );
+}
+
+// Clerk hooks are only safe under ClerkProvider, which OperatorAuthProvider
+// mounts when a publishable key is configured — hence the split component.
+function ClerkOperatorIdentityLines({
+  fallbackName,
+}: {
+  fallbackName: string;
+}) {
+  const { user } = useUser();
+  const clerkName = user?.fullName?.trim();
+  return <OperatorIdentityLines name={clerkName || fallbackName} />;
+}
+
 function HorizonOperatorCard({
   clerkConfigured,
   currentOperator,
@@ -391,12 +411,6 @@ function HorizonOperatorCard({
     currentOperator?.current_user.display_name ||
     currentOperator?.current_user.email ||
     "Operator";
-  const roleName =
-    currentOperator?.roles.find((role) => role.role)?.role ?? "operator";
-  const roleLabel =
-    roleName === "owner"
-      ? "Owner - operator"
-      : `${roleName.replaceAll("_", " ")} - operator`;
 
   if (!currentOperator) {
     return (
@@ -427,14 +441,11 @@ function HorizonOperatorCard({
           {initialsForName(operatorName)}
         </span>
       )}
-      <span className="min-w-0">
-        <span className="block truncate text-[13px] font-semibold leading-4">
-          {operatorName}
-        </span>
-        <span className="block truncate text-[10px] leading-3 text-leasium-slate-300">
-          {roleLabel}
-        </span>
-      </span>
+      {clerkConfigured ? (
+        <ClerkOperatorIdentityLines fallbackName={operatorName} />
+      ) : (
+        <OperatorIdentityLines name={operatorName} />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from stewart.core.models import OperatingMode
 
 from apps.api.schemas.common import ApiModel
 from apps.api.schemas.security import SecurityMemberRead
@@ -50,6 +51,10 @@ class PlatformOrganisationCreateRead(BaseModel):
 
 class PlatformOrganisationUpdate(BaseModel):
     is_active: bool
+
+
+class PlatformOperatingModeUpdate(BaseModel):
+    operating_mode: OperatingMode
 
 
 class PlatformMemberCreate(BaseModel):

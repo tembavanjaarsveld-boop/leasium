@@ -3,7 +3,8 @@
 Leasium is an AI-native lease operations platform for multi-entity Australian property portfolios. It turns lease documents into structured property, tenant, lease, obligation, onboarding, and billing-readiness records with review before anything is committed.
 
 The living product roadmap is tracked in [docs/product-roadmap.md](docs/product-roadmap.md).
-Design-facing changes require Remba UX sign-off, tracked in
+Design-facing changes go through the in-loop UX gate (Figma-first +
+same-session UX pass) defined in
 [docs/design-governance.md](docs/design-governance.md).
 Deployment notes are tracked in [docs/deployment.md](docs/deployment.md).
 The latest MVP UX/performance pass is recorded in

@@ -1179,7 +1179,8 @@ in the hamburger drawer, command palette, and G-shortcuts.
 
 - Use only the named chips in §9. Don't invent ad-hoc tone-and-text
   combinations in components.
-- New status concepts go through Remba before they enter the codebase.
+- New status concepts go through the UX gate (and a Figma component
+  update where relevant) before they enter the codebase.
 - `StatusBadge` in `apps/web/src/components/ui.tsx` is the only chip
   primitive; per-domain chips (status, priority, etc.) compose its
   `tone` prop.
@@ -1253,10 +1254,13 @@ in the hamburger drawer, command palette, and G-shortcuts.
   documenting why. Marketing animation belongs on marketing surfaces
   if/when they exist, not on operator workspaces.
 
-### 10.5.8 Remba review gate
+### 10.5.8 UX gate (in-loop)
 
-Remba is the required UX sign-off for design-facing changes. Treat the
-following as Remba-pending by default:
+UX quality is enforced inside each slice via the in-loop UX gate
+(CLAUDE.md §2.2; mechanics + checklist in
+`docs/design-governance.md`). Remba, the early reviewer persona, was
+retired 2026-06-12. The following count as design-facing and trigger
+the gate:
 
 - navigation (sidebar items, breadcrumbs, route restructure)
 - page layout (column counts, panel ordering, section hierarchy)
@@ -1275,16 +1279,18 @@ following as Remba-pending by default:
 
 Process for design-facing changes:
 
-1. Ship behind a `pending Remba review` note in
-   `docs/design-governance.md` (add a numbered follow-up entry under
-   the relevant heading).
-2. Mark the corresponding roadmap item as `[~]` in
-   `docs/product-roadmap.md`. Not `[x]`. `[x]` is only after Remba signs
-   off.
-3. State the Remba decision request explicitly in the governance entry
-   — what should Remba review, what alternatives were considered, what
-   tradeoff is on the table.
-4. Don't claim "complete" before Remba sign-off, even if all tests pass.
+1. Start from an approved Figma frame (§2.12 in CLAUDE.md; Figma-First
+   Design Stage in `docs/design-governance.md`). Temba's Figma
+   sign-off is the human gate for new/restructured surfaces.
+2. Implement to spec, then run the UX pass in the same session:
+   checklist + screenshots at 1440px/390px + slop test for new
+   surfaces. Fix findings in-slice.
+3. Log one dated line in the UX Pass Log in
+   `docs/design-governance.md`; consciously deferred items go to the
+   UX Debt Register with a reason.
+4. `[x]` in `docs/product-roadmap.md` means shipped with the UX pass
+   done. Don't claim "complete" with unfixed UX findings, even if all
+   tests pass.
 
 The point of the gate is not bureaucracy. It is to keep the spec and
 the implementation aligned, so a future external review doesn't find
@@ -1298,7 +1304,8 @@ the same drift twice.
 - When a session like the 2026-05-23 external review surfaces drift,
   the response is not "rewrite the world" — it is to (a) update this
   document so the rule is named, (b) ship the highest-leverage fixes,
-  and (c) queue the rest as `pending Remba review` follow-ups.
+  and (c) log the rest in the UX Debt Register in
+  `docs/design-governance.md`.
 - The single most useful question when reviewing a diff is: "Does this
   match how the existing system was supposed to work, or does it match
   how the existing code happens to work today?" The first answer is

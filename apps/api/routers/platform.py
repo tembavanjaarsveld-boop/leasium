@@ -32,6 +32,7 @@ from apps.api.schemas.platform import (
     PlatformMemberInviteRead,
     PlatformMemberListRead,
     PlatformMemberUpdate,
+    PlatformOperatingModeUpdate,
     PlatformOrganisationCreate,
     PlatformOrganisationCreateRead,
     PlatformOrganisationListRead,
@@ -214,6 +215,39 @@ def update_platform_organisation(
         action=action,
         tool_name="platform.organisation_lifecycle",
         tool_input={"is_active": payload.is_active},
+    )
+    session.commit()
+    session.refresh(organisation)
+    return _organisation_read(session, organisation)
+
+
+@router.patch(
+    "/organisations/{organisation_id}/operating-mode",
+    response_model=PlatformOrganisationRead,
+)
+def set_platform_operating_mode(
+    organisation_id: UUID,
+    payload: PlatformOperatingModeUpdate,
+    admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PlatformOrganisationRead:
+    """Set a client organisation's operating mode.
+
+    Operating mode is a platform-level classification (clients don't decide
+    what they are): it gates owner-client surfaces such as People → Owners.
+    """
+    organisation = _get_client_org(organisation_id, session, settings)
+    organisation.operating_mode = payload.operating_mode.value
+    audit_log(
+        session,
+        actor=admin.actor,
+        user_id=admin.id,
+        target_table="organisation",
+        target_id=organisation.id,
+        action="update",
+        tool_name="platform.set_operating_mode",
+        tool_input={"operating_mode": payload.operating_mode.value},
     )
     session.commit()
     session.refresh(organisation)

@@ -2,9 +2,30 @@
 
 Last updated: 2026-06-12
 
-Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file records Remba review gates and sign-off status.
+Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
-Remba is the required UX sign-off for design-facing changes. Any change that affects navigation, page layout, forms, density, interaction flow, dashboard content, visual hierarchy, empty/loading/error states, or customer-facing copy needs a Remba review before it is considered complete.
+UX quality is enforced **inside each design-facing slice**, not by an external reviewer queue. Any change that affects navigation, page layout, forms, density, interaction flow, dashboard content, visual hierarchy, empty/loading/error states, or customer-facing copy must pass the UX gate (below) before the slice is called done.
+
+## Remba Retirement + Queue Closure (2026-06-12)
+
+Remba was the early external-UX-reviewer persona. It produced two real
+reviews (2026-05-19 tenant onboarding, 2026-05-20 platform scan) and was
+then bypassed — every slice from 2026-05-23 onward shipped "(prototype
+mode, no Remba gate)". On 2026-06-12 Temba retired it formally and
+replaced it with the in-loop UX gate below.
+
+Closure decisions:
+
+- **All "Remba-pending" / "pending Remba review" statuses in this file,
+  `docs/product-roadmap.md`, and `docs/next-chat-handover.md` are closed
+  as superseded.** The Horizon design language and full-screen Figma set
+  approved by Temba on 2026-06-10 (Dashboard, Work, Properties, Smart
+  Intake, Notifications, Settings, People, Money, Insights + mobile
+  companions) re-designed the surfaces those statuses pointed at.
+- Roadmap `[~]` markers were promoted to `[x]`; `[~]` is retired.
+- Genuinely open UX work was extracted into the UX Debt Register below.
+- Dated entries below keep their original wording as history. Do not
+  re-queue Remba work from them.
 
 ## Figma-First Design Stage (added 2026-06-10)
 
@@ -107,7 +128,7 @@ map for agents:
 | 03 Screens / People 61:580 | `apps/web/src/app/people/page.tsx` — Horizon People v1 |
 | 03 Screens / Money 61:842 | `apps/web/src/app/money/page.tsx` — Horizon Money v1 |
 | 03 Screens / Insights 61:1063 | `apps/web/src/app/insights/page.tsx` — Horizon Insights v1 |
-| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 (copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions); pending Remba review of action placement/copy and Settings allowlist panel before promote actions |
+| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 (copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions); owes its in-loop UX pass, trust/discard action placement/copy review, Settings allowlist UX pass/design sync, and promote design + gate (UX Debt Register) |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -123,9 +144,28 @@ surface remains the second half. Production Horizon work now targets the 03
 Screens frame list above; any new surface that is not represented there must be
 back-filled in Figma before code.
 
-## Remba Review Gate
+## UX Gate (run in-loop, every design-facing slice)
 
-- [ ] Remba has reviewed the affected screen or flow.
+Mechanics — same session as the implementation, before the slice is
+called done:
+
+1. **Design first.** New or restructured surfaces start from an approved
+   Figma frame (see Figma-First Design Stage above). If none exists,
+   create one and get Temba's sign-off in Figma before code. That
+   sign-off is the only human gate.
+2. **Build to spec.** Pull design context via the Figma MCP and the
+   design source of truth. No ad-hoc tokens or components.
+3. **UX pass.** Run the checklist below against real screenshots at
+   desktop (1440px) and mobile (390px). Apply the hallmark slop test
+   (`docs/external-skills/`) to new surfaces. Fix findings in-slice; a
+   slice with unfixed findings is not done.
+4. **Log.** Add one dated line to the UX Pass Log. Anything consciously
+   deferred goes to the UX Debt Register with a reason.
+
+Checklist:
+
+- [ ] Matches the approved Figma frame (where one exists) — layout,
+      tokens, spacing, states.
 - [ ] The change keeps the primary job obvious within the first viewport.
 - [ ] The screen has one clear purpose, not a pile of unrelated admin tools.
 - [ ] Frequent actions are faster than rare configuration actions.
@@ -133,6 +173,55 @@ back-filled in Figma before code.
 - [ ] The UI uses familiar controls and icons instead of explanatory walls of text.
 - [ ] Tables and dense work areas remain scannable on laptop-size screens.
 - [ ] New pages fit the product structure: dashboard, property workspace, tenant workspace, or a clear module page.
+- [ ] Screenshots reviewed at 1440px and 390px; no overflow, truncation,
+      or tap-target regressions.
+
+## UX Pass Log
+
+One line per design-facing slice: date · surface · screens checked ·
+fixes · deferrals.
+
+- 2026-06-12 · Portfolio QA · copy fix: removed internal "Remba review"
+  reference from the operator-visible all-clear summary string · no
+  layout change · none deferred.
+- 2026-06-12 · Settings Organisation + /admin Clients · operating-mode
+  control moved to platform admin; Settings got a read-only Account type
+  line · screens checked 1440/390 · fix in-slice: stacked the value and
+  "Set by Leasium" explainer after a dangling em-dash wrap at 390 · none
+  deferred.
+- 2026-06-12 · Sidebar user card (desktop sidebar + mobile drawer) ·
+  name-first card per updated Figma `Leasium/Horizon/Sidebar` component
+  (role line → account email; Temba sign-off in-session) · screens
+  checked 1440/390 · no fixes needed · none deferred.
+
+## UX Debt Register
+
+Genuinely open UX work, extracted from the closed Remba queue and from
+flags open as of 2026-06-12. Add new entries with a date and reason;
+remove entries by shipping a slice whose UX pass covers them.
+
+- **AI mailbox intake UI** — read-only `/inbox` panel was built
+  2026-06-12 by a parallel Codex session against Figma
+  `AI Mailbox Intake 82:2` and still owes its in-loop UX pass (panel
+  placement, trusted-vs-quarantine distinction, provenance density,
+  copy-address text — see the dated entry below). Trust/discard actions
+  shipped 2026-06-12 in the selected-message detail panel and still need
+  review of placement/copy and 1440/390 screenshots. Settings trusted-sender
+  management shipped 2026-06-12 from existing Settings Organisation patterns
+  and needs its own 1440/390 UX pass/design sync. Reviewed promote handoff
+  shipped 2026-06-12 using the existing promote panel and still needs review
+  of the trusted-row Review email / Review promotion placement, provenance-card
+  density, compliance/insurance Smart Intake handoff copy, and the shipped
+  property/task/owner-admin local target promote variants' copy and density.
+- **Comms message-panel density** — contractor notification checkbox
+  density and channel-evidence placement in the Work message panel
+  (flagged 2026-06-12, vendor message notifications v1).
+- **Comms template preview density** — inline send-time template preview
+  density and kind-to-template mapping legibility (flagged 2026-06-12,
+  send-time template consumption v1).
+- **Portfolio QA IA** — page structure and command-search placement were
+  never re-designed in the Horizon set; oldest standing flag
+  (2026-05-20 platform scan).
 
 ## Standing UX Direction
 
@@ -1440,6 +1529,10 @@ Progress notes:
 
 Remba decision:
 
+*(Closed 2026-06-12: this scan's verdict and fix queue are superseded by
+the Horizon redesign and the in-loop UX gate — see Remba Retirement +
+Queue Closure at the top. Preserved as history.)*
+
 The platform is coherent enough for private pre-production work, but the
 current design-facing surfaces should remain marked `pending Remba review`
 until the priority fixes above are resolved. Tenant workspace and the original task
@@ -2725,33 +2818,21 @@ production build runs recorded in the handover.
 
 ## AI Mailbox Intake UI v1 (2026-06-12)
 
-Status: pending Remba review. `/inbox` now adds an AI Mailbox panel
+Status: owes its in-loop UX pass (Remba retired same day; tracked in the
+UX Debt Register). `/inbox` now adds an AI Mailbox panel
 from Figma frame `03 Screens / AI Mailbox Intake 82:2`: copy address,
-trusted mailbox queue, quarantine bucket, and a selected-message provenance
-detail with sender/auth result, stored body text, raw-email download link, and
-local Trust sender / Discard controls. Settings → Organisation now adds the
-local trusted-sender allowlist panel with add/revoke controls. Reviewed
-promote handoff now lets trusted rows open the existing promote panel with
-stored mailbox classification and raw-email provenance. Compliance/insurance
-mailbox rows can now create local Smart Intake review drafts from that reviewed
-promotion step; richer promote/apply, acknowledgement, and provider-send
-controls remain omitted and need reviewed
-action variants before implementation.
+trusted mailbox queue, quarantine bucket, selected-message provenance detail
+with sender/auth result, stored body text, raw-email download link, and local
+Trust sender / Discard controls. Reviewed promote handoff and the first local
+target variants now ship through the existing promote panel; acknowledgement,
+provider-send, auto-apply, and richer action variants remain omitted.
 
-1. Remba should review the panel's placement above the existing paste classifier,
-   the visual distinction between trusted rows and quarantine rows, the
-   provenance-detail density, the copy-address/status text, and whether the
-   shipped trust/discard controls plus future promote controls should live
-   inline, in a drawer, or in a dedicated mailbox route. Also review the
-   Settings trusted-sender panel density and placement in Organisation settings.
-2. Remba should review the trusted-row Review email / Review promotion action
-   placement/copy, the source-email provenance card inside the promote panel,
-   and desktop/mobile density before expanding beyond the existing local draft
-   promote kinds.
-3. Remba should review the compliance/insurance promote copy and Smart Intake
-   handoff placement before expanding this path to attachment-intake reuse or
-   other mailbox target kinds.
-4. 2026-06-12 follow-up: property/task/owner-admin local target variants now
-   reuse the same promote panel. Remba should review the expanded per-kind
-   copy, source-email provenance density, property/tenant picker relevance,
-   and desktop/mobile action placement before richer mailbox actions land.
+1. The in-loop UX pass should cover the panel's placement above the existing
+   paste classifier, the visual distinction between trusted rows and
+   quarantine rows, the provenance-detail density, the copy-address/status
+   text, shipped trust/discard placement/copy, and whether future promote
+   controls should live inline, in a drawer, or in a dedicated mailbox route.
+2. 2026-06-12 reviewed promote handoff: validate the trusted-row Review email
+   and Review promotion action placement/copy, the source-email provenance card
+   inside the promote panel, the compliance/insurance handoff copy, and the
+   property/task/owner-admin local target copy/density at desktop/mobile sizes.

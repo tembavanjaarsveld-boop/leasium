@@ -309,6 +309,86 @@ def test_suspend_refuses_reserved_org(client: TestClient, session: Session) -> N
     assert response.status_code == 400
 
 
+def test_platform_admin_sets_client_operating_mode(
+    client: TestClient,
+    session: Session,
+) -> None:
+    client_org = Organisation(name="Mode Co")
+    session.add(client_org)
+    session.commit()
+
+    response = client.patch(
+        f"/api/v1/platform/organisations/{client_org.id}/operating-mode",
+        json={"operating_mode": "managing_agent"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["operating_mode"] == "managing_agent"
+
+    session.refresh(client_org)
+    assert client_org.operating_mode == "managing_agent"
+    actions = session.scalars(
+        select(AuditAction.action).where(
+            AuditAction.target_table == "organisation",
+            AuditAction.tool_name == "platform.set_operating_mode",
+        )
+    ).all()
+    assert actions == ["update"]
+
+
+def test_set_client_operating_mode_requires_platform_admin(
+    client: TestClient,
+    session: Session,
+) -> None:
+    client_org = Organisation(name="Mode Gate Co")
+    session.add(client_org)
+    session.commit()
+
+    base = get_settings()
+    app.dependency_overrides[get_settings] = lambda: base.model_copy(
+        update={"dev_is_platform_admin": False}
+    )
+    try:
+        response = client.patch(
+            f"/api/v1/platform/organisations/{client_org.id}/operating-mode",
+            json={"operating_mode": "managing_agent"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+    assert response.status_code == 403
+
+
+def test_set_client_operating_mode_refuses_reserved_org(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    reserved = Organisation(id=settings.platform_organisation_id, name="Leasium Platform")
+    session.add(reserved)
+    session.commit()
+
+    response = client.patch(
+        f"/api/v1/platform/organisations/{settings.platform_organisation_id}/operating-mode",
+        json={"operating_mode": "managing_agent"},
+    )
+    assert response.status_code == 400
+
+
+def test_set_client_operating_mode_rejects_unknown_value(
+    client: TestClient,
+    session: Session,
+) -> None:
+    client_org = Organisation(name="Mode Invalid Co")
+    session.add(client_org)
+    session.commit()
+
+    response = client.patch(
+        f"/api/v1/platform/organisations/{client_org.id}/operating-mode",
+        json={"operating_mode": "nonsense"},
+    )
+    assert response.status_code == 422
+
+
 def test_cross_org_member_add_invite_and_disable(
     client: TestClient,
     session: Session,
