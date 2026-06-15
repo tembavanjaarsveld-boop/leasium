@@ -5,7 +5,7 @@ import {
   type Route,
   test,
 } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
@@ -781,6 +781,56 @@ test("mobile Smart Intake document review keeps touch guardrails above bottom na
   expect(navBox).not.toBeNull();
   expect(stickyBox!.y + stickyBox!.height).toBeLessThanOrEqual(navBox!.y);
   expect(forbiddenLoadRequests).toEqual([]);
+});
+
+test("smart intake explains unmatched notices do not set up invoicing", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+
+  for (const viewport of [
+    { label: "1440", width: 1440, height: 900 },
+    { label: "390", width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    await page.goto(
+      "/intake?entity_id=entity-1&review=intake-unmatched-notice-1",
+    );
+
+    const review = page.getByTestId("horizon-document-review");
+    await expect(
+      review.getByRole("heading", { name: "_UTAUS_16705142_00001.pdf" }),
+    ).toBeVisible();
+    await expect(
+      review.getByText(
+        "No property, tenancy, lease, or rent schedule details were found.",
+      ),
+    ).toBeVisible();
+    const noticeGuidance = review.getByText(
+      "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
+    );
+    await expect(noticeGuidance).toBeVisible();
+    await expect(
+      review.getByText(
+        "For billing setup, upload a lease, rent schedule, or invoice document that identifies the property, tenant, lease, and charge details.",
+      ),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      fullPage: true,
+      path: `../../output/playwright/smart-intake-unmatched-notice-${viewport.label}.png`,
+    });
+    if (viewport.label === "390") {
+      await noticeGuidance.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: "../../output/playwright/smart-intake-unmatched-notice-390-guidance.png",
+      });
+    }
+  }
 });
 
 test("billing readiness mobile actions keep 44px touch targets", async ({

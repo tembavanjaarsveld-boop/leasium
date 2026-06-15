@@ -2127,6 +2127,13 @@ function DocumentIntakeReviewPanel({
   ];
   const workflowType = documentWorkflowType(draft, intake);
   const canApplyWorkflow = Boolean(workflowType);
+  const noticeInvoicingGuidance =
+    workflowType === "notice"
+      ? [
+          "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
+          "For billing setup, upload a lease, rent schedule, or invoice document that identifies the property, tenant, lease, and charge details.",
+        ]
+      : [];
   const reviewedDraft = buildIncludedReviewData(draft, included);
   const obligationApplyCount = applicableObligationCount(
     reviewedDraft,
@@ -2539,6 +2546,13 @@ function DocumentIntakeReviewPanel({
           <div className="rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
             {warnings.slice(0, 4).map((warning) => (
               <div key={warning}>{warning}</div>
+            ))}
+          </div>
+        ) : null}
+        {noticeInvoicingGuidance.length ? (
+          <div className="grid gap-1 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-strong">
+            {noticeInvoicingGuidance.map((line) => (
+              <p key={line}>{line}</p>
             ))}
           </div>
         ) : null}

@@ -230,6 +230,16 @@ fixes · deferrals.
   disclosure with a visible review-only preview rail, preserved edited-text-wins
   copy, and added responsive no-overflow smoke coverage · deferred: none for
   template preview density.
+- 2026-06-15 · Smart Intake unmatched notice guidance · Figma Smart Intake
+  `55:166`, Document review `58:352`, and Smart Intake mobile `59:521` checked
+  with Figma MCP screenshots · screens checked at 1440/390
+  (`output/playwright/smart-intake-unmatched-notice-1440.png`,
+  `smart-intake-unmatched-notice-390.png`, and
+  `smart-intake-unmatched-notice-390-guidance.png`) · fixes: notice reviews now
+  state that they can become local review tasks but do not set up recurring
+  invoicing or create billing drafts, and direct operators to upload a lease,
+  rent schedule, or invoice document with property/tenant/lease/charge context
+  for billing setup · deferred: none.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,

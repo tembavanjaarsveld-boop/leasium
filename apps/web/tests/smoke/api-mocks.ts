@@ -2775,6 +2775,7 @@ type MockLeasiumApiOptions = {
   vendorPortalPriorExposure?: boolean;
   vendorPortalMessagingThread?: boolean;
   operationsComplianceDemo?: boolean;
+  includeUnmatchedNoticeIntake?: boolean;
 };
 
 // The fixture has two entities, so a fresh workspace defaults to the
@@ -3060,6 +3061,75 @@ export async function mockLeasiumApi(
   let insightSnapshots: JsonBody[] = [];
   let tenantPortalDocumentCount = initialTenantPortalDocuments.length;
   let documentIntakes = jsonClone(initialDocumentIntakes);
+  if (options.includeUnmatchedNoticeIntake) {
+    documentIntakes.unshift({
+      id: "intake-unmatched-notice-1",
+      entity_id: entityId,
+      document_id: "document-unmatched-notice-1",
+      status: "needs_attention",
+      document_type: "notice",
+      summary:
+        "Overdue final notice for an alleged $65 account with no property, tenancy, lease, or rent schedule information.",
+      confidence: 0.92,
+      extracted_data: {
+        document_type: "notice",
+        summary:
+          "Overdue final notice for an alleged $65 account with no property, tenancy, lease, or rent schedule information.",
+        confidence: 0.92,
+        parties: [
+          {
+            name: "Recoveries Corporation Pty Ltd",
+            role: "collector",
+            confidence: 0.95,
+            source_hint: "Letterhead",
+          },
+          {
+            name: "Sullivan Nicolaides Pty Ltd",
+            role: "creditor",
+            confidence: 0.91,
+            source_hint: "Creditor line",
+          },
+        ],
+        properties: [],
+        key_dates: [
+          {
+            label: "Payment due",
+            date: "2026-06-17",
+            confidence: 0.92,
+            source_hint: "Due date",
+          },
+        ],
+        money_amounts: [
+          {
+            label: "Amount due",
+            amount: 65,
+            currency: "AUD",
+            confidence: 0.93,
+            source_hint: "Amount due",
+          },
+        ],
+        obligations: [],
+        suggested_links: {},
+        warnings: [],
+        missing_information: [
+          "No property, tenancy, lease, or rent schedule details were found.",
+        ],
+      },
+      review_data: {},
+      openai_response_id: "resp-unmatched-notice-smoke",
+      error_message: null,
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      applied_at: null,
+      applied_by_user_id: null,
+      created_at: "2026-06-15T00:28:00.000Z",
+      updated_at: "2026-06-15T00:28:00.000Z",
+      filename: "_UTAUS_16705142_00001.pdf",
+      content_type: "application/pdf",
+      byte_size: 65000,
+      category: "other",
+    });
+  }
   let tenantOnboardings = initialTenantOnboardings.map((onboarding) => ({
     ...onboarding,
     status:

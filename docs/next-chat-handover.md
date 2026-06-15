@@ -37,6 +37,41 @@ Guardrails held: no SendGrid/Twilio/Xero/Basiq/payment/reconciliation provider
 call was added; the comment mutation still carries only the existing explicit
 email/SMS approval booleans and default portal-only behavior.
 
+## Codex continuation - 2026-06-15 (Smart Intake unmatched notice guidance)
+
+Scope completed: operator-facing copy fix for Smart Intake notices that are
+uploaded while trying to set up invoicing after Xero connection. The triggering
+saved page showed `_UTAUS_16705142_00001.pdf` classified as a notice with no
+property, tenancy, lease, or rent schedule details, while Xero connection had
+only fetched contacts and applied no mappings.
+
+What changed:
+- Document review now shows a compact warning for `notice` workflows: the
+  document can become a local review task, but it will not set up recurring
+  invoicing or create a billing draft.
+- The same message directs the operator to upload a lease, rent schedule, or
+  invoice document that identifies the property, tenant, lease, and charge
+  details for billing setup.
+- Smoke mocks include an unmatched-notice fixture matching the real failure
+  shape, without changing default Smart Intake queue counts.
+
+Verification evidence:
+- Figma MCP screenshots checked for Smart Intake `55:166`, Document review
+  `58:352`, and Smart Intake mobile `59:521`.
+- Red/green smoke: `app-flows.spec.ts -g "smart intake explains unmatched
+  notices"` first failed on missing guidance, then passed.
+- Screenshots: `output/playwright/smart-intake-unmatched-notice-1440.png`,
+  `output/playwright/smart-intake-unmatched-notice-390.png`, and
+  `output/playwright/smart-intake-unmatched-notice-390-guidance.png`.
+- Commands green: `npm --prefix apps/web run lint -- src/components/dashboard.tsx
+  tests/smoke/app-flows.spec.ts tests/smoke/api-mocks.ts`, `npx tsc --noEmit
+  --pretty false` in `apps/web`, the focused smoke above, and
+  `npm --prefix apps/web run build`.
+
+Guardrails held: no Xero contact/invoice/payment mutation, no billing draft
+creation, no Smart Intake apply/review action, no SendGrid/Twilio send, and no
+payment or reconciliation path changed by this copy-only UI slice.
+
 ## Codex continuation - 2026-06-15 (Comms template preview density v1)
 
 Scope completed: design-first UX debt closeout for `/comms` send-time template
