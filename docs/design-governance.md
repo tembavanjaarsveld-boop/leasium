@@ -275,7 +275,7 @@ fixes · deferrals.
   (`output/playwright/leasium-ai-zero-field-invoice-390.png`) · fixes:
   invoice/admin reviews with 0 extracted fields now still render the Leasium AI
   assistant above source/evidence, infer a safe billing-setup question from the
-  summary/file context, save only the local answer session, and show
+  summary/file context, save only the local reply session, and show
   source-backed billing guidance instead of the generic obligation-date
   blocker · deferred: none for this fallback.
 - 2026-06-15 · Leasium AI reading-state guard · existing Document review
@@ -289,6 +289,22 @@ fixes · deferrals.
   zero-field/setup-question assistant until extraction has actually finished ·
   deferred: existing mobile notification issue toast overlap remains covered by
   the workspace UX debt item.
+- 2026-06-15 · Leasium AI chat-led review panel · existing Document review
+  `58:352` / Leasium AI assistant pattern reused · screens checked at 1440
+  (`output/playwright/leasium-ai-zero-field-invoice-1440.png`,
+  `output/playwright/leasium-ai-review-assistant-1440.png`) and 390
+  (`output/playwright/leasium-ai-zero-field-invoice-390.png`,
+  `output/playwright/leasium-ai-review-assistant-390.png`,
+  `output/playwright/leasium-ai-review-assistant-390-question.png`) · fixes:
+  the assistant now opens as an explanation-first chat thread, suggested
+  next-step cards sit beside the current AI question, the operator sends a
+  plain-English reply, and the proposed output stays labelled as a review-only
+  preview with provider-write guardrails visible. Smoke coverage proves persisted
+  local replies, 503 no-persist behavior, mobile touch targets, no horizontal
+  overflow, and no Smart Intake apply/review, provider, invoice delivery,
+  Xero/Basiq, payment, or reconciliation mutations · deferred: existing mobile
+  notification issue toast overlap remains covered by the workspace UX debt
+  item.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,

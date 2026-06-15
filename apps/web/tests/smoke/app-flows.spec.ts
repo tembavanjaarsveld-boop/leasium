@@ -98,6 +98,7 @@ async function expectAppearsBefore(first: Locator, second: Locator) {
 function watchForbiddenAiOpportunityRequests(page: Page) {
   const forbiddenRequests: string[] = [];
   const sessionRequests: string[] = [];
+  const sessionPayloads: Array<Record<string, unknown>> = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     const path = url.pathname;
@@ -110,6 +111,17 @@ function watchForbiddenAiOpportunityRequests(page: Page) {
       );
     if (aiOpportunitySession) {
       sessionRequests.push(`${method} ${url.toString()}`);
+      const postData = request.postData();
+      if (postData) {
+        try {
+          const parsed = JSON.parse(postData);
+          if (parsed && typeof parsed === "object") {
+            sessionPayloads.push(parsed as Record<string, unknown>);
+          }
+        } catch {
+          sessionPayloads.push({ raw: postData });
+        }
+      }
       return;
     }
     const smartIntakeMutation =
@@ -120,6 +132,7 @@ function watchForbiddenAiOpportunityRequests(page: Page) {
     const providerMutation =
       unsafeMethod &&
       (path.includes("/xero") ||
+        path.includes("/basiq") ||
         path.includes("/sendgrid") ||
         path.includes("/twilio") ||
         path.includes("/comms/dispatch") ||
@@ -143,7 +156,7 @@ function watchForbiddenAiOpportunityRequests(page: Page) {
       forbiddenRequests.push(`${method} ${url.toString()}`);
     }
   });
-  return { forbiddenRequests, sessionRequests };
+  return { forbiddenRequests, sessionRequests, sessionPayloads };
 }
 
 async function selectWorkspaceEntity(page: Page, value: string) {
@@ -916,7 +929,7 @@ test("smart intake review opens as Leasium AI assistant and saves one answer wit
 }) => {
   await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
-  const { forbiddenRequests, sessionRequests } =
+  const { forbiddenRequests, sessionRequests, sessionPayloads } =
     watchForbiddenAiOpportunityRequests(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -937,7 +950,7 @@ test("smart intake review opens as Leasium AI assistant and saves one answer wit
   ).toBeVisible();
   await expect(
     opportunityPanel.getByText(
-      "I read this document and found safe next steps I can help prepare for review.",
+      "I read this document and found source-backed next steps I can help prepare for review.",
     ),
   ).toBeVisible();
 
@@ -956,13 +969,23 @@ test("smart intake review opens as Leasium AI assistant and saves one answer wit
   await expect(
     chat.getByText("Who should own this follow-up and what due date should we use?"),
   ).toBeVisible();
+  await billingCard.click();
+  await expect(
+    chat.getByText(
+      "Which property, unit, tenant, or lease should this billing setup use?",
+    ),
+  ).toBeVisible();
+  await followUpCard.click();
+  await expect(
+    chat.getByText("Who should own this follow-up and what due date should we use?"),
+  ).toBeVisible();
   const answerBox = chat.getByRole("textbox");
   await answerBox.fill(
     "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
   );
-  await chat.getByRole("button", { name: "Save answer" }).click();
+  await chat.getByRole("button", { name: "Send reply" }).click();
 
-  await expect(page.getByText("Leasium AI answer saved.")).toBeVisible();
+  await expect(page.getByText("Leasium AI reply saved.")).toBeVisible();
   const output = page.getByTestId("document-intake-opportunity-output");
   await expect(output).toBeVisible();
   await expect(output).toContainText(
@@ -977,6 +1000,17 @@ test("smart intake review opens as Leasium AI assistant and saves one answer wit
     ),
   ).toBeVisible();
   expect(sessionRequests).toHaveLength(1);
+  expect(sessionPayloads).toHaveLength(1);
+  expect(sessionPayloads[0]).toMatchObject({
+    selected_opportunity_id: "action-1",
+    answers: [
+      {
+        question_id: "action-1",
+        answer:
+          "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
+      },
+    ],
+  });
   expect(forbiddenRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
@@ -990,7 +1024,7 @@ test("Leasium AI still helps when invoice extraction has zero fields", async ({
 }) => {
   await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
-  const { forbiddenRequests, sessionRequests } =
+  const { forbiddenRequests, sessionRequests, sessionPayloads } =
     watchForbiddenAiOpportunityRequests(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -1007,9 +1041,11 @@ test("Leasium AI still helps when invoice extraction has zero fields", async ({
   await expect(opportunityPanel).toBeVisible();
   await expectAppearsBefore(opportunityPanel, sourcePreview);
   await expect(
-    opportunityPanel.getByText(
-      "I could not extract structured fields yet, but I can still use the summary and file context to ask what to set up next.",
-    ),
+    opportunityPanel.getByTestId("document-intake-chat-thread"),
+  ).toBeVisible();
+  await expect(opportunityPanel.getByText("Suggested next steps")).toBeVisible();
+  await expect(
+    opportunityPanel.getByText("This looks like an invoice/admin document."),
   ).toBeVisible();
   await expect(
     opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
@@ -1017,14 +1053,21 @@ test("Leasium AI still helps when invoice extraction has zero fields", async ({
   await expect(
     opportunityPanel
       .getByTestId("document-intake-opportunity-chat")
-      .getByText("Which property, unit, tenant, or lease should this billing setup use?"),
+      .getByText("Leasium AI asks"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel
+      .getByTestId("document-intake-opportunity-chat")
+      .getByText(
+        "Which property, unit, tenant, or lease should this billing setup use?",
+      ),
   ).toBeVisible();
   await expect(
     page.getByText("Confirm at least one obligation due date before applying."),
   ).toHaveCount(0);
   await expect(
     page.getByText(
-      "Apply needs a source-backed billing amount. Save the Leasium AI answer as setup context for now.",
+      "Apply needs a source-backed billing amount. Send a Leasium AI reply as setup context for now.",
     ),
   ).toBeVisible();
   await expect(
@@ -1035,10 +1078,21 @@ test("Leasium AI still helps when invoice extraction has zero fields", async ({
   await chat
     .getByRole("textbox")
     .fill("Use SKJ Capital, 205 Leitchs Rd Brendale. Ask for GST and recurrence before creating any local billing review.");
-  await chat.getByRole("button", { name: "Save answer" }).click();
+  await chat.getByRole("button", { name: "Send reply" }).click();
 
-  await expect(page.getByText("Leasium AI answer saved.")).toBeVisible();
+  await expect(page.getByText("Leasium AI reply saved.")).toBeVisible();
   await expect(sessionRequests).toHaveLength(1);
+  expect(sessionPayloads).toHaveLength(1);
+  expect(sessionPayloads[0]).toMatchObject({
+    selected_opportunity_id: "action-1",
+    answers: [
+      {
+        question_id: "action-1",
+        answer:
+          "Use SKJ Capital, 205 Leitchs Rd Brendale. Ask for GST and recurrence before creating any local billing review.",
+      },
+    ],
+  });
   expect(forbiddenRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
@@ -1184,6 +1238,8 @@ test("mobile Leasium AI waits while an invoice is still reading", async ({
 test("mobile Leasium AI still helps when invoice extraction has zero fields", async ({
   page,
 }) => {
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
   await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
 
@@ -1205,12 +1261,14 @@ test("mobile Leasium AI still helps when invoice extraction has zero fields", as
   ).toContainText("Set up billing pattern");
   await expect(
     page.getByText(
-      "Apply needs a source-backed billing amount. Save the Leasium AI answer as setup context for now.",
+      "Apply needs a source-backed billing amount. Send a Leasium AI reply as setup context for now.",
     ),
   ).toBeVisible();
   await expectTouchTarget(
-    opportunityPanel.getByRole("button", { name: "Save answer" }),
+    opportunityPanel.getByRole("button", { name: "Send reply" }),
   );
+  expect(sessionRequests).toEqual([]);
+  expect(forbiddenRequests).toEqual([]);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
@@ -1247,7 +1305,7 @@ test("mobile Leasium AI review assistant keeps one-question flow touch-safe", as
     opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
   );
   const saveAnswer = opportunityPanel.getByRole("button", {
-    name: "Save answer",
+    name: "Send reply",
   });
   await expectTouchTarget(saveAnswer);
   await expectNoHorizontalOverflow(page);
@@ -1298,12 +1356,12 @@ test("smart intake AI opportunity save failure keeps review output local", async
   await chat
     .getByRole("textbox")
     .fill("Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.");
-  await chat.getByRole("button", { name: "Save answer" }).click();
+  await chat.getByRole("button", { name: "Send reply" }).click();
 
   await expect(
     page.getByText("AI opportunity session is unavailable."),
   ).toBeVisible();
-  await expect(chat.getByText("Last saved answer")).toHaveCount(0);
+  await expect(chat.getByText("Last saved reply")).toHaveCount(0);
   expect(sessionRequests).toHaveLength(1);
   expect(forbiddenRequests).toEqual([]);
   await expect(applyReviewedItems).toBeVisible();
@@ -1322,7 +1380,7 @@ test("smart intake AI opportunity save failure keeps review output local", async
       "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
     ),
   ).toHaveCount(0);
-  await expect(reloadedPanel.getByText("Last saved answer")).toHaveCount(0);
+  await expect(reloadedPanel.getByText("Last saved reply")).toHaveCount(0);
 });
 
 test("billing readiness mobile actions keep 44px touch targets", async ({

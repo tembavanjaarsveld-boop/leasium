@@ -1444,12 +1444,12 @@ applied.
 
 ```txt
 Ask Leasium AI with a document
-Extract key terms
+Explain what Leasium AI understood in plain English
+Offer suggested next-step cards
 Ask one focused question when context is missing
-Review confidence
-Approve or edit
-Apply to lease workflow
-Generate tasks and reminders
+Save the operator reply as local review context
+Preview the review-only output
+Approve/edit/apply source-backed changes separately
 ```
 
 ### Recommended layout
@@ -1499,12 +1499,16 @@ Nothing is applied until you approve it.
 ### Leasium AI review assistant
 
 Document review may include a Leasium AI assistant panel inside the existing
-review surface. It must remain a review panel, not a new wizard or a provider
-action surface.
+review surface. It is chat-led: explanation first, suggested cards second, one
+plain-English operator reply, then a review-only preview. It must remain a
+review panel, not a new wizard or a provider action surface.
 
 Rules:
+- Start with a short assistant message that names what the document appears to
+  be, what Leasium AI can help prepare, and what it will not do.
 - Opportunity cards are inferred from source-backed extraction and sit as peer
-  review panels above the long source/field editor.
+  suggestions above or beside the current question, not as separate product
+  modules.
 - Active `uploaded` or `reading` documents are not zero-field failures. Show a
   reading panel, keep review-first/no-provider-write guardrails visible, and do
   not show opportunity cards, setup questions, review saves, or apply controls
@@ -1516,13 +1520,14 @@ Rules:
 - Notice guidance appears before billing-looking opportunities. Old notices can
   create local follow-up/evidence work; they do not set up recurring invoicing
   or create billing drafts unless a later explicit workflow says so.
-- Questions are one-at-a-time and chat-like. Use structured controls only when a
-  precise record, cadence, GST/tax, or provider mapping choice is needed.
+- Questions are one-at-a-time and chat-like. The primary action is "Send reply".
+  Use structured controls only when a precise record, cadence, GST/tax, or
+  provider mapping choice is needed.
 - The proposed output card is a preview only. It can store local review session
-  answers, but does not apply Smart Intake, create invoices, send mail/SMS,
+  replies, but does not apply Smart Intake, create invoices, send mail/SMS,
   mutate Xero, post payments, or run reconciliation.
 - Provider candidates must show an explicit "approval needed later" flag and
-  name the provider family before the operator saves an answer.
+  name the provider family before the operator sends a reply.
 - On mobile, the notice guidance, selected opportunity, current question, and
   proposed output appear before long extracted-field editing.
 

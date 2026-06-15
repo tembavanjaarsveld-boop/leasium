@@ -2588,6 +2588,29 @@ function opportunityCardTone(
   return "danger";
 }
 
+function documentIntakeAssistantIntro(
+  draft: DocumentIntakeExtraction,
+  intake: DocumentIntakeRecord,
+  extractedFieldCount: number,
+) {
+  const documentType = fieldText(draft.document_type ?? intake.document_type);
+  const summary = fieldText(draft.summary ?? intake.summary)?.toLowerCase();
+  if (documentType === "invoice_admin") {
+    if (
+      summary?.includes("paid") ||
+      summary?.includes("no amount due") ||
+      summary?.includes("amount due aud 0")
+    ) {
+      return "This looks like a paid historical rent invoice. I can use it as billing setup context, not as an invoice to send. I will ask for the missing setup details before preparing anything local.";
+    }
+    return "This looks like an invoice/admin document. I can use it to help set up billing, but I will not send, post, email, or sync anything from here.";
+  }
+  if (extractedFieldCount === 0) {
+    return "I could not extract structured fields yet. I can still use the summary and file context to ask what this should become next.";
+  }
+  return "I read this document and found source-backed next steps I can help prepare for review.";
+}
+
 function DocumentIntakeOpportunityPanel({
   intake,
   draft,
@@ -2653,7 +2676,7 @@ function DocumentIntakeOpportunityPanel({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
       onError(null);
-      onNotice("Leasium AI answer saved.");
+      onNotice("Leasium AI reply saved.");
       setAnswerText("");
     },
     onError: (error) => {
@@ -2691,9 +2714,7 @@ function DocumentIntakeOpportunityPanel({
     0,
   );
   const assistantIntro =
-    extractedFieldCount === 0
-      ? "I could not extract structured fields yet, but I can still use the summary and file context to ask what to set up next."
-      : "I read this document and found safe next steps I can help prepare for review.";
+    documentIntakeAssistantIntro(draft, intake, extractedFieldCount);
 
   useEffect(() => {
     setSelectedOpportunityId(
@@ -2713,7 +2734,7 @@ function DocumentIntakeOpportunityPanel({
   function saveAnswer() {
     const answer = answerText.trim();
     if (!answer) {
-      onError("Answer the current Leasium AI question before saving.");
+      onError("Reply to the current Leasium AI question before sending.");
       return;
     }
     const questionId = opportunityQuestionId(selectedOpportunity);
@@ -2750,22 +2771,38 @@ function DocumentIntakeOpportunityPanel({
       data-testid="document-intake-opportunity-panel"
       className="grid gap-3 rounded-2xl border border-primary/20 bg-white p-3 shadow-leasiumCard sm:p-4"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs">
-            <Sparkles size={16} />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-foreground">
-              Leasium AI
-            </h2>
-            <p className="mt-1 text-sm leading-5 text-primary-hover">
-              {assistantIntro}
-            </p>
+      <div
+        data-testid="document-intake-chat-thread"
+        className="grid gap-3 rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs">
+              <Sparkles size={16} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-foreground">
+                Leasium AI
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-primary-hover">
+                {assistantIntro}
+              </p>
+            </div>
           </div>
+          <StatusBadge tone="primary">Review first</StatusBadge>
         </div>
-        <StatusBadge tone="primary">Review first</StatusBadge>
-        <p className="basis-full text-xs leading-5 text-primary-hover">
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-primary shadow-leasiumXs">
+            Explain first
+          </span>
+          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-primary shadow-leasiumXs">
+            Suggestions next
+          </span>
+          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-primary shadow-leasiumXs">
+            Approval before action
+          </span>
+        </div>
+        <p className="text-xs leading-5 text-primary-hover">
           {OPPORTUNITY_LOCAL_GUARDRAIL}
         </p>
       </div>
@@ -2776,7 +2813,7 @@ function DocumentIntakeOpportunityPanel({
           className="grid content-start gap-2 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
         >
           <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            I can help with
+            Suggested next steps
           </div>
           {opportunities.map((opportunity) => {
             const id = opportunityQuestionId(opportunity);
@@ -2840,24 +2877,24 @@ function DocumentIntakeOpportunityPanel({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                My question
+                Leasium AI asks
               </div>
               <p className="mt-1 text-sm font-semibold text-foreground">
                 {selectedQuestion}
               </p>
             </div>
-            <StatusBadge tone="neutral">Local answer</StatusBadge>
+            <StatusBadge tone="neutral">Local reply</StatusBadge>
           </div>
           <textarea
             value={answerText}
             onChange={(event) => setAnswerText(event.target.value)}
             disabled={controlsDisabled}
-            placeholder="Type the operator answer for this review session."
+            placeholder="Reply in plain English. Leasium AI will turn it into review context."
             className="min-h-24 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
           />
           {latestStoredAnswer ? (
             <div className="rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
-              Last saved answer:{" "}
+              Last saved reply:{" "}
               <span className="font-medium text-foreground">
                 {latestStoredAnswer}
               </span>
@@ -2874,7 +2911,7 @@ function DocumentIntakeOpportunityPanel({
               ) : (
                 <Check size={15} />
               )}
-              Save answer
+              Send reply
             </Button>
           </div>
         </form>
@@ -2886,7 +2923,7 @@ function DocumentIntakeOpportunityPanel({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Safe next step
+                Review-only preview
               </div>
               <h3 className="mt-1 text-sm font-semibold text-foreground">
                 {proposedOutput.title}
@@ -3040,7 +3077,7 @@ function DocumentIntakeReviewPanel({
           !hasReviewedPropertyIdentity(reviewedDraft, applyTarget)
         ? "Choose or confirm the property before applying."
         : workflowType === "invoice_admin" && obligationApplyCount === 0
-          ? "Apply needs a source-backed billing amount. Save the Leasium AI answer as setup context for now."
+          ? "Apply needs a source-backed billing amount. Send a Leasium AI reply as setup context for now."
         : workflowType === "inspection_report" && obligationApplyCount === 0
           ? "Confirm at least one inspection finding before applying."
           : canApplyWorkflow &&

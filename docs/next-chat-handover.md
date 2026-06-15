@@ -2,6 +2,46 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Leasium AI chat-led review panel)
+
+Scope completed: Temba wanted the document assistant to feel like an AI
+window, not the old Smart Intake review widget. The assistant now explains the
+document in plain English, offers suggestion cards, asks one question, and keeps
+the preview review-only.
+
+What changed:
+- Frontend document review now opens the Leasium AI assistant as a chat-led
+  thread with explanation chips, suggested next-step cards, a plain-English
+  reply box, and a review-only preview.
+- Invoice/admin documents get more useful assistant copy, including old/paid
+  invoice context, without implying an invoice will be sent or synced.
+- The local session save language now says reply/send instead of answer/save.
+- Smoke coverage now captures the local `ai-opportunity-session` payload and
+  watches Basiq alongside Xero, SendGrid, Twilio, dispatch, payment, and
+  reconciliation routes.
+
+Verification evidence:
+- RED smoke first failed because `document-intake-chat-thread` was absent.
+- Surrounding Leasium AI smoke passed 10/10:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "one Leasium AI workspace|mobile Leasium AI landing|Leasium AI
+  assistant|mobile Leasium AI review assistant|zero fields|still
+  reading|uploaded invoice is active|save failure"`.
+- `npm --prefix apps/web run lint` passed.
+- `cd apps/web && npx tsc --noEmit --pretty false` passed.
+- `npm --prefix apps/web run build` passed.
+- `git diff --check` passed.
+- Screenshots checked:
+  `output/playwright/leasium-ai-zero-field-invoice-1440.png`,
+  `output/playwright/leasium-ai-zero-field-invoice-390.png`,
+  `output/playwright/leasium-ai-review-assistant-1440.png`,
+  `output/playwright/leasium-ai-review-assistant-390.png`, and
+  `output/playwright/leasium-ai-review-assistant-390-question.png`.
+
+Guardrails held: this is a presentation and local review-session slice only.
+It does not apply a Smart Intake review, create/post/send an invoice, sync Xero
+or Basiq, send email/SMS, move money, or reconcile payments.
+
 ## Codex continuation - 2026-06-15 (Leasium AI reading-state guard)
 
 Scope completed: the live `Invoice INV-0331.pdf` review could show status
@@ -92,7 +132,7 @@ What changed:
 - The assistant copy now explicitly says when structured fields were not
   extracted.
 - Invoice/admin apply guidance now asks for a source-backed billing amount and
-  treats the saved Leasium AI answer as setup context, instead of asking for an
+  treats the saved Leasium AI reply as setup context, instead of asking for an
   obligation due date.
 
 Verification evidence:
