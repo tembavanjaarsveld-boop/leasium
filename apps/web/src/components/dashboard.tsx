@@ -96,6 +96,12 @@ import {
   TenancyUnitRecord,
   TenantRecord,
   TenantOnboardingRecord,
+  type DocumentIntakeOpportunityAnswerInput,
+  type DocumentIntakeOpportunityDecision,
+  type DocumentIntakeOpportunityOutputRecord,
+  type DocumentIntakeOpportunityRecord,
+  type DocumentIntakeOpportunitySessionRecord,
+  updateDocumentIntakeAiOpportunitySession,
 } from "@/lib/api";
 
 const DEMO_MODE_STORAGE_KEY = "leasium.demo_mode";
@@ -2076,6 +2082,664 @@ function DocumentIntakeApplyOutcomeCard({
   );
 }
 
+const OPPORTUNITY_LOCAL_GUARDRAIL =
+  "Local-only AI opportunity session. No invoice, Xero, email, SMS, payment, or reconciliation write runs from this panel.";
+
+function opportunityKind(opportunity: DocumentIntakeOpportunityRecord) {
+  return (
+    fieldText(opportunity.kind) ??
+    fieldText(opportunity.action) ??
+    "review_document"
+  );
+}
+
+function opportunityTitle(opportunity: DocumentIntakeOpportunityRecord) {
+  const title = fieldText(opportunity.title);
+  if (title) {
+    return title;
+  }
+  const action = fieldText(opportunity.action) ?? fieldText(opportunity.kind);
+  const target =
+    fieldText(opportunity.target) ?? fieldText(opportunity.target_kind);
+  if (action && target && action !== target) {
+    return `${reviewTitleCase(action)} / ${reviewTitleCase(target)}`;
+  }
+  return reviewTitleCase(action ?? target ?? "review_document");
+}
+
+function opportunityQuestionId(opportunity: DocumentIntakeOpportunityRecord) {
+  return fieldText(opportunity.id) ?? opportunityKind(opportunity);
+}
+
+function normalizeOpportunityRecord(
+  value: unknown,
+  index: number,
+  defaultSourcePath: string,
+): DocumentIntakeOpportunityRecord | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const opportunity = value as DocumentIntakeOpportunityRecord;
+  const action = fieldText(opportunity.action);
+  const kind = fieldText(opportunity.kind) ?? action ?? "review_document";
+  const target =
+    fieldText(opportunity.target) ?? fieldText(opportunity.target_kind);
+  const providerMutations = Array.isArray(opportunity.provider_mutations)
+    ? opportunity.provider_mutations.flatMap((item) => {
+        const text = fieldText(item);
+        return text ? [text] : [];
+      })
+    : [];
+  return {
+    id: fieldText(opportunity.id) ?? `action-${index + 1}`,
+    kind,
+    action,
+    target: fieldText(opportunity.target),
+    title: opportunityTitle(opportunity),
+    summary:
+      fieldText(opportunity.summary) ??
+      "Review this document-backed opportunity.",
+    confidence: fieldNumber(opportunity.confidence),
+    source_path: fieldText(opportunity.source_path) ?? defaultSourcePath,
+    source_hint:
+      fieldText(opportunity.source_hint) ?? fieldText(opportunity.summary),
+    target_kind: target,
+    provider_mutations: providerMutations,
+    requires_explicit_operator_approval: Boolean(
+      opportunity.requires_explicit_operator_approval ||
+        providerMutations.length,
+    ),
+    decision:
+      opportunity.decision === "answered" ||
+      opportunity.decision === "accepted_for_review" ||
+      opportunity.decision === "ignored"
+        ? opportunity.decision
+        : "pending",
+    notes: fieldText(opportunity.notes),
+  };
+}
+
+function documentIntakeOpportunityAnswers(
+  value: unknown,
+): DocumentIntakeOpportunityAnswerInput[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const questionId = fieldText(item.question_id);
+    const question = fieldText(item.question);
+    const answer = fieldText(item.answer);
+    if (!questionId || !question || !answer) {
+      return [];
+    }
+    return [
+      {
+        question_id: questionId,
+        question,
+        answer,
+        structured_facts: isRecord(item.structured_facts)
+          ? item.structured_facts
+          : undefined,
+      },
+    ];
+  });
+}
+
+function documentIntakeOpportunitySession(
+  intake: DocumentIntakeRecord,
+): DocumentIntakeOpportunitySessionRecord | null {
+  const session = intake.review_data.ai_opportunity_session;
+  if (!isRecord(session)) {
+    return null;
+  }
+  return {
+    version: fieldNumber(session.version) ?? 1,
+    status: session.status === "reviewed" ? "reviewed" : "open",
+    selected_opportunity_id: fieldText(session.selected_opportunity_id),
+    opportunities: Array.isArray(session.opportunities)
+      ? session.opportunities.flatMap((item, index) => {
+          const opportunity = normalizeOpportunityRecord(
+            item,
+            index,
+            `ai_opportunity_session.opportunities.${index}`,
+          );
+          return opportunity ? [opportunity] : [];
+        })
+      : [],
+    answers: documentIntakeOpportunityAnswers(session.answers),
+    proposed_output: isRecord(session.proposed_output)
+      ? (session.proposed_output as DocumentIntakeOpportunityOutputRecord)
+      : null,
+    guardrails: fieldTextList(session.guardrails),
+    notes: fieldText(session.notes),
+    updated_at: fieldText(session.updated_at),
+    updated_by_user_id: fieldText(session.updated_by_user_id),
+  };
+}
+
+function documentIntakeOpportunityCards(
+  draft: DocumentIntakeExtraction,
+  intake: DocumentIntakeRecord,
+): DocumentIntakeOpportunityRecord[] {
+  const session = documentIntakeOpportunitySession(intake);
+  if (session?.opportunities.length) {
+    return session.opportunities;
+  }
+
+  const proposedActions = Array.isArray(draft.proposed_actions)
+    ? draft.proposed_actions.flatMap((item, index) => {
+        const opportunity = normalizeOpportunityRecord(
+          item,
+          index,
+          `proposed_actions.${index}`,
+        );
+        return opportunity ? [opportunity] : [];
+      })
+    : [];
+  if (proposedActions.length) {
+    return proposedActions;
+  }
+
+  const cards: DocumentIntakeOpportunityRecord[] = [];
+  const moneyRows = groupItems(draft, "money_amounts");
+  const keyDateRows = groupItems(draft, "key_dates");
+  if (moneyRows.length > 0) {
+    cards.push({
+      id: "action-1",
+      kind: "set_up_billing_pattern",
+      action: "set_up_billing_pattern",
+      target: "billing",
+      title: "Set up billing pattern",
+      summary:
+        "Use source-backed amounts to prepare a local billing review question.",
+      confidence: itemConfidence(moneyRows[0], intake.confidence),
+      source_path: "money_amounts.0",
+      source_hint: itemSource(moneyRows[0]),
+      target_kind: "billing",
+      provider_mutations: [],
+      requires_explicit_operator_approval: false,
+      decision: "pending",
+      notes: null,
+    });
+  }
+  const isNoticeDocument =
+    fieldText(draft.document_type ?? intake.document_type) === "notice";
+  if (isNoticeDocument || keyDateRows.length > 0) {
+    cards.push({
+      id: `action-${cards.length + 1}`,
+      kind: "create_follow_up_task",
+      action: "create_follow_up_task",
+      target: "task",
+      title: "Create follow-up task",
+      summary:
+        "Turn the notice wording or document date into a local review task.",
+      confidence: keyDateRows[0]
+        ? itemConfidence(keyDateRows[0], intake.confidence)
+        : intake.confidence,
+      source_path: keyDateRows[0] ? "key_dates.0" : "document_type",
+      source_hint: keyDateRows[0] ? itemSource(keyDateRows[0]) : null,
+      target_kind: "task",
+      provider_mutations: [],
+      requires_explicit_operator_approval: false,
+      decision: "pending",
+      notes: null,
+    });
+  }
+  return cards;
+}
+
+function defaultOpportunityQuestion(
+  opportunity: DocumentIntakeOpportunityRecord,
+) {
+  switch (opportunityKind(opportunity)) {
+    case "set_up_billing_pattern":
+    case "prepare_billing_review":
+      return "Which property, unit, tenant, or lease should this billing setup use?";
+    case "match_xero_contact":
+      return "Should this contact map to a tenant, owner, vendor, or invoice issuer?";
+    case "create_follow_up_task":
+      return "Who should own this follow-up and what due date should we use?";
+    case "store_historical_evidence":
+      return "Which record should this source document be linked to?";
+    default:
+      return "What should Leasium use this document for next?";
+  }
+}
+
+function opportunityGuardrail(opportunity: DocumentIntakeOpportunityRecord) {
+  const kind = opportunityKind(opportunity);
+  const haystack = [
+    kind,
+    opportunity.action,
+    opportunity.target,
+    opportunity.target_kind,
+    opportunity.title,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (
+    kind === "set_up_billing_pattern" ||
+    kind === "prepare_billing_review" ||
+    haystack.includes("billing")
+  ) {
+    return "No invoice is approved, posted, emailed, or synced to Xero.";
+  }
+  if (kind === "match_xero_contact" || haystack.includes("xero")) {
+    return "No Xero contacts are created, updated, or deleted.";
+  }
+  if (kind === "create_follow_up_task" || haystack.includes("follow")) {
+    return "No email, SMS, provider dispatch, payment, or reconciliation action is sent.";
+  }
+  return "No provider, payment, lease, tenant, or billing state is changed beyond the reviewed local link.";
+}
+
+function opportunityOutputKind(opportunity: DocumentIntakeOpportunityRecord) {
+  const kind = opportunityKind(opportunity);
+  if (kind === "set_up_billing_pattern" || kind === "prepare_billing_review") {
+    return "billing_review";
+  }
+  if (kind === "match_xero_contact") {
+    return "xero_contact_review";
+  }
+  if (kind === "create_follow_up_task") {
+    return "follow_up_task_review";
+  }
+  if (kind === "store_historical_evidence") {
+    return "evidence_link_review";
+  }
+  return "document_review";
+}
+
+function opportunityOutputTitle(opportunity: DocumentIntakeOpportunityRecord) {
+  const kind = opportunityKind(opportunity);
+  if (kind === "set_up_billing_pattern" || kind === "prepare_billing_review") {
+    return "Review billing setup";
+  }
+  if (kind === "match_xero_contact") {
+    return "Review Xero contact mapping";
+  }
+  if (kind === "create_follow_up_task") {
+    return "Review follow-up task";
+  }
+  if (kind === "store_historical_evidence") {
+    return "Review evidence link";
+  }
+  return opportunityTitle(opportunity);
+}
+
+function opportunityAmountValue(item: Record<string, unknown>) {
+  const amount = fieldNumber(item.amount);
+  const amountText = fieldText(item.amount);
+  if (amount === null && !amountText) {
+    return null;
+  }
+  const currency = safeCurrency(item.currency);
+  const value =
+    amount === null
+      ? (amountText ?? "")
+      : new Intl.NumberFormat("en-AU", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount);
+  return `${currency} ${value}`;
+}
+
+function proposedOutputForOpportunity(
+  opportunity: DocumentIntakeOpportunityRecord,
+  answer: string,
+  draft: DocumentIntakeExtraction,
+): DocumentIntakeOpportunityOutputRecord {
+  const rows: DocumentIntakeOpportunityOutputRecord["rows"] = [
+    { label: "Answer", value: answer, source: null },
+  ];
+  const money = groupItems(draft, "money_amounts")[0];
+  const amountValue = money ? opportunityAmountValue(money) : null;
+  if (money && amountValue) {
+    rows.push({
+      label: "Amount",
+      value: amountValue,
+      source: itemSource(money),
+    });
+  }
+  const keyDate = groupItems(draft, "key_dates")[0];
+  const dateValue = fieldText(keyDate?.date ?? keyDate?.due_date);
+  if (keyDate && dateValue) {
+    rows.push({
+      label: "Due date",
+      value: formatDate(dateValue),
+      source: itemSource(keyDate),
+    });
+  }
+  return {
+    kind: opportunityOutputKind(opportunity),
+    title: opportunityOutputTitle(opportunity),
+    summary: `Prepare a review-only local output for ${opportunityTitle(
+      opportunity,
+    ).toLowerCase()}.`,
+    rows,
+    guardrail: opportunityGuardrail(opportunity),
+  };
+}
+
+function opportunityCardTone(
+  confidence: number | null | undefined,
+): StatusTone {
+  if (confidence === null || confidence === undefined) {
+    return "neutral";
+  }
+  if (confidence >= 0.8) {
+    return "success";
+  }
+  if (confidence >= 0.55) {
+    return "warning";
+  }
+  return "danger";
+}
+
+function DocumentIntakeOpportunityPanel({
+  intake,
+  draft,
+  reviewedDraft,
+  disabled,
+  selectedEntityId,
+  onNotice,
+  onError,
+}: {
+  intake: DocumentIntakeRecord;
+  draft: DocumentIntakeExtraction;
+  reviewedDraft: DocumentIntakeExtraction;
+  disabled: boolean;
+  selectedEntityId: string;
+  onNotice: (message: string | null) => void;
+  onError: (message: string | null) => void;
+}) {
+  const queryClient = useQueryClient();
+  const session = useMemo(
+    () => documentIntakeOpportunitySession(intake),
+    [intake],
+  );
+  const opportunities = useMemo(
+    () => documentIntakeOpportunityCards(draft, intake),
+    [draft, intake],
+  );
+  const opportunityIds = opportunities
+    .map((opportunity) => opportunityQuestionId(opportunity))
+    .join("|");
+  const firstOpportunityId = opportunities[0]
+    ? opportunityQuestionId(opportunities[0])
+    : "";
+  const storedSelectedOpportunityId =
+    session?.selected_opportunity_id &&
+    opportunities.some(
+      (opportunity) =>
+        opportunityQuestionId(opportunity) === session.selected_opportunity_id,
+    )
+      ? session.selected_opportunity_id
+      : null;
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState(
+    storedSelectedOpportunityId ?? firstOpportunityId,
+  );
+  const [answerText, setAnswerText] = useState("");
+  const opportunitySessionMutation = useMutation({
+    mutationFn: (payload: {
+      reviewData?: DocumentIntakeExtraction | null;
+      selectedOpportunityId?: string | null;
+      answers?: DocumentIntakeOpportunityAnswerInput[];
+      proposedOutput?: DocumentIntakeOpportunityOutputRecord | null;
+      decisions?: Array<{
+        opportunity_id: string;
+        decision?: DocumentIntakeOpportunityDecision;
+        title?: string | null;
+        summary?: string | null;
+        notes?: string | null;
+      }>;
+      status?: "open" | "reviewed";
+      notes?: string | null;
+    }) => updateDocumentIntakeAiOpportunitySession(intake.id, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard-document-intakes", selectedEntityId],
+      });
+      onError(null);
+      onNotice("AI opportunity session saved.");
+      setAnswerText("");
+    },
+    onError: (error) => {
+      onError(friendlyError(error));
+    },
+  });
+  const selectedOpportunity =
+    opportunities.find(
+      (opportunity) =>
+        opportunityQuestionId(opportunity) === selectedOpportunityId,
+    ) ??
+    opportunities[0] ??
+    null;
+  const selectedQuestion = selectedOpportunity
+    ? defaultOpportunityQuestion(selectedOpportunity)
+    : "";
+  const selectedQuestionId = selectedOpportunity
+    ? opportunityQuestionId(selectedOpportunity)
+    : "";
+  const latestStoredAnswer = session?.answers
+    .slice()
+    .reverse()
+    .find((answer) => answer.question_id === selectedQuestionId)?.answer;
+  const previewAnswer =
+    answerText.trim() || latestStoredAnswer || "Awaiting operator answer.";
+  const proposedOutput = selectedOpportunity
+    ? proposedOutputForOpportunity(selectedOpportunity, previewAnswer, draft)
+    : null;
+  const controlsDisabled = disabled || opportunitySessionMutation.isPending;
+  const visibleGuardrails = session?.guardrails.length
+    ? session.guardrails
+    : [OPPORTUNITY_LOCAL_GUARDRAIL];
+
+  useEffect(() => {
+    setSelectedOpportunityId(
+      storedSelectedOpportunityId ?? firstOpportunityId,
+    );
+  }, [storedSelectedOpportunityId, firstOpportunityId, opportunityIds]);
+
+  if (!opportunities.length || !selectedOpportunity || !proposedOutput) {
+    return null;
+  }
+
+  function saveAnswer() {
+    const answer = answerText.trim();
+    if (!answer) {
+      onError("Answer the current AI question before saving.");
+      return;
+    }
+    const questionId = opportunityQuestionId(selectedOpportunity);
+    const answers: DocumentIntakeOpportunityAnswerInput[] = [
+      ...(session?.answers ?? []),
+      {
+        question_id: questionId,
+        question: selectedQuestion,
+        answer,
+        structured_facts: { raw_answer: answer },
+      },
+    ];
+    opportunitySessionMutation.mutate({
+      reviewData: reviewedDraft,
+      selectedOpportunityId: questionId,
+      answers,
+      proposedOutput: proposedOutputForOpportunity(
+        selectedOpportunity,
+        answer,
+        draft,
+      ),
+      decisions: [
+        {
+          opportunity_id: questionId,
+          decision: "answered",
+        },
+      ],
+      status: "open",
+    });
+  }
+
+  return (
+    <div
+      data-testid="document-intake-opportunity-panel"
+      className="grid gap-3"
+    >
+      <div className="grid gap-2 rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
+        <div className="flex flex-wrap items-center gap-2">
+          <Sparkles size={15} />
+          <span className="font-semibold">AI opportunity workspace</span>
+          <StatusBadge tone="primary">Review first</StatusBadge>
+        </div>
+        <p>{OPPORTUNITY_LOCAL_GUARDRAIL}</p>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.85fr)_minmax(0,1fr)_minmax(240px,0.95fr)]">
+        <div
+          data-testid="document-intake-opportunity-cards"
+          className="grid content-start gap-2 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
+        >
+          <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Opportunities
+          </div>
+          {opportunities.map((opportunity) => {
+            const id = opportunityQuestionId(opportunity);
+            const selected = id === selectedOpportunityId;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={cn(
+                  "grid min-h-11 gap-1 rounded-xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50",
+                  selected
+                    ? "border-primary/40 bg-primary-soft text-primary-hover"
+                    : "border-border bg-muted/25 text-foreground hover:border-primary/30 hover:bg-white",
+                )}
+                onClick={() => setSelectedOpportunityId(id)}
+                disabled={controlsDisabled}
+              >
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">
+                    {opportunityTitle(opportunity)}
+                  </span>
+                  <StatusBadge
+                    tone={opportunityCardTone(opportunity.confidence)}
+                  >
+                    {confidenceLabel(opportunity.confidence)}
+                  </StatusBadge>
+                </span>
+                <span className="line-clamp-2 text-xs leading-4 text-muted-foreground">
+                  {opportunity.summary}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <form
+          data-testid="document-intake-opportunity-chat"
+          className="grid content-start gap-3 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveAnswer();
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                AI question
+              </div>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {selectedQuestion}
+              </p>
+            </div>
+            <StatusBadge tone="neutral">Local answer</StatusBadge>
+          </div>
+          <textarea
+            value={answerText}
+            onChange={(event) => setAnswerText(event.target.value)}
+            disabled={controlsDisabled}
+            placeholder="Type the operator answer for this review session."
+            className="min-h-24 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          {latestStoredAnswer ? (
+            <div className="rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
+              Last saved answer:{" "}
+              <span className="font-medium text-foreground">
+                {latestStoredAnswer}
+              </span>
+            </div>
+          ) : null}
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={controlsDisabled}
+              className="min-h-11"
+            >
+              {opportunitySessionMutation.isPending ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Check size={15} />
+              )}
+              Save answer
+            </Button>
+          </div>
+        </form>
+
+        <div
+          data-testid="document-intake-opportunity-output"
+          className="grid content-start gap-3 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Review-only proposed output
+              </div>
+              <h3 className="mt-1 text-sm font-semibold text-foreground">
+                {proposedOutput.title}
+              </h3>
+            </div>
+            <StatusBadge tone="primary">Preview</StatusBadge>
+          </div>
+          <p className="text-sm leading-5 text-muted-foreground">
+            {proposedOutput.summary}
+          </p>
+          <div className="grid gap-2">
+            {proposedOutput.rows.map((row) => (
+              <div
+                key={row.label}
+                className="grid gap-1 rounded-xl bg-muted/45 px-3 py-2 text-sm"
+              >
+                <div className="font-medium text-foreground">{row.label}</div>
+                <div className="break-words text-muted-foreground">
+                  {row.value}
+                </div>
+                {row.source ? (
+                  <div className="text-xs text-muted-foreground">
+                    Source: {row.source}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-primary/15 bg-primary-soft px-3 py-2 text-sm text-primary-hover">
+            {proposedOutput.guardrail}
+          </div>
+          <div className="grid gap-1 text-xs leading-5 text-muted-foreground">
+            {visibleGuardrails.map((guardrail) => (
+              <div key={guardrail}>{guardrail}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DocumentIntakeReviewPanel({
   intake,
   draft,
@@ -2092,6 +2756,8 @@ function DocumentIntakeReviewPanel({
   onApply,
   onAcceptLeaseMatch,
   onClear,
+  onOpportunityNotice,
+  onOpportunityError,
   saving,
   applying,
   acceptingLeaseMatch,
@@ -2113,6 +2779,8 @@ function DocumentIntakeReviewPanel({
   onApply: () => void;
   onAcceptLeaseMatch: () => void;
   onClear: () => void;
+  onOpportunityNotice: (message: string | null) => void;
+  onOpportunityError: (message: string | null) => void;
   saving: boolean;
   applying: boolean;
   acceptingLeaseMatch: boolean;
@@ -2531,6 +3199,16 @@ function DocumentIntakeReviewPanel({
           Review-first guardrail: ignored items stay out of the reviewed data
           sent to the workflow.
         </div>
+
+        <DocumentIntakeOpportunityPanel
+          intake={intake}
+          draft={draft}
+          reviewedDraft={reviewedDraft}
+          disabled={demo || saving || applying || clearing}
+          selectedEntityId={intake.entity_id}
+          onNotice={onOpportunityNotice}
+          onError={onOpportunityError}
+        />
 
         <Field label="Summary">
           <textarea
@@ -4464,6 +5142,8 @@ export function Dashboard({
           onClear={() =>
             deleteDocumentIntakeMutation.mutate(selectedReviewIntake.id)
           }
+          onOpportunityNotice={setIntakeNotice}
+          onOpportunityError={setIntakeError}
           saving={reviewDocumentIntakeMutation.isPending}
           applying={applyDocumentIntakeMutation.isPending}
           acceptingLeaseMatch={acceptLeaseMatchMutation.isPending}

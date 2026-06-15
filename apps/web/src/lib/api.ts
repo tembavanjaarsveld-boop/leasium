@@ -1489,8 +1489,59 @@ export type DocumentIntakeExtraction = {
   suggested_links?: Record<string, unknown> | null;
   warnings?: string[] | null;
   missing_information?: string[] | null;
-  proposed_actions?: Array<Record<string, unknown>> | null;
+  proposed_actions?: DocumentIntakeOpportunityRecord[] | null;
   [key: string]: unknown;
+};
+
+export type DocumentIntakeOpportunityDecision =
+  | "pending"
+  | "answered"
+  | "accepted_for_review"
+  | "ignored";
+
+export type DocumentIntakeOpportunityRecord = {
+  id?: string;
+  kind?: string;
+  action?: string | null;
+  target?: string | null;
+  title?: string;
+  summary: string;
+  confidence?: number | null;
+  source_path?: string;
+  source_hint?: string | null;
+  target_kind?: string | null;
+  provider_mutations?: string[];
+  requires_explicit_operator_approval?: boolean;
+  decision?: DocumentIntakeOpportunityDecision;
+  notes?: string | null;
+};
+
+export type DocumentIntakeOpportunityAnswerInput = {
+  question_id: string;
+  question: string;
+  answer: string;
+  structured_facts?: Record<string, unknown>;
+};
+
+export type DocumentIntakeOpportunityOutputRecord = {
+  kind: string;
+  title: string;
+  summary: string;
+  rows: Array<{ label: string; value: string; source?: string | null }>;
+  guardrail: string;
+};
+
+export type DocumentIntakeOpportunitySessionRecord = {
+  version: number;
+  status: "open" | "reviewed";
+  selected_opportunity_id?: string | null;
+  opportunities: DocumentIntakeOpportunityRecord[];
+  answers: DocumentIntakeOpportunityAnswerInput[];
+  proposed_output?: DocumentIntakeOpportunityOutputRecord | null;
+  guardrails: string[];
+  notes?: string | null;
+  updated_at?: string | null;
+  updated_by_user_id?: string | null;
 };
 
 export type DocumentIntakeRecord = {
@@ -5683,6 +5734,41 @@ export function reviewDocumentIntake(
       review_data: payload.reviewData,
     }),
   });
+}
+
+export function updateDocumentIntakeAiOpportunitySession(
+  intakeId: string,
+  payload: {
+    reviewData?: DocumentIntakeExtraction | null;
+    selectedOpportunityId?: string | null;
+    answers?: DocumentIntakeOpportunityAnswerInput[];
+    proposedOutput?: DocumentIntakeOpportunityOutputRecord | null;
+    decisions?: Array<{
+      opportunity_id: string;
+      decision?: DocumentIntakeOpportunityDecision;
+      title?: string | null;
+      summary?: string | null;
+      notes?: string | null;
+    }>;
+    status?: "open" | "reviewed";
+    notes?: string | null;
+  },
+) {
+  return request<DocumentIntakeRecord>(
+    `/document-intakes/${intakeId}/ai-opportunity-session`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        review_data: payload.reviewData ?? undefined,
+        selected_opportunity_id: payload.selectedOpportunityId ?? undefined,
+        answers: payload.answers ?? [],
+        proposed_output: payload.proposedOutput ?? undefined,
+        decisions: payload.decisions ?? [],
+        status: payload.status ?? "open",
+        notes: payload.notes ?? undefined,
+      }),
+    },
+  );
 }
 
 export function applyDocumentIntake(
