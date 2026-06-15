@@ -3041,6 +3041,7 @@ export function Dashboard({
             ) : null}
             {selectedDocumentReviewPanel}
 
+            {!selectedDocumentReviewPanel ? (
             <section
               onDragEnter={(event) => {
                 event.preventDefault();
@@ -3251,6 +3252,7 @@ export function Dashboard({
                 </div>
               </div>
             </section>
+            ) : null}
 
             <section className="grid gap-4 xl:grid-cols-2">
               <div
