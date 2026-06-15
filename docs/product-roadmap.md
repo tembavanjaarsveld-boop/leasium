@@ -16,6 +16,34 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 AI Inbox conversation-first review:**
+  Opening a trusted `/inbox` message now uses the same conversation panel
+  (`apps/web/src/components/intake/InboxConversationPanel.tsx`): a forwarded-email
+  turn → a "What I understood" card (classification type + confidence, sender,
+  forwarded-by, attachments, attributed tenant, SPF/DKIM provenance) → one
+  "Proposed next step" that promotes to the right local draft (maintenance work
+  order, arrears case, tenant-contact update, contractor, or a Smart Intake
+  review) → a done turn with a link. Reuses the existing review-first
+  `promoteInboxMessage`; tenant-dependent actions are gated; no email/SMS/Xero.
+  Verified: production build, the AI-mailbox smoke updated to the conversation
+  flow (incl. no-provider-call guardrail), eslint/tsc, and a 1440 screenshot.
+  Commit 3df3c3f.
+- [x] **2026-06-15 Global ⌘K Leasium AI launcher:**
+  Typing in the command bar (⌘K) from any page surfaces an "Ask Leasium AI"
+  action that hands the question to `/intake?ask=…`, which answers it inline in
+  the landing composer. New `ai-global-ask` smoke; existing command-palette
+  assertions updated for the always-available action. Commit 8e12c28.
+- [x] **2026-06-15 Conversation-first intake refinements:**
+  Built on slice 1: the `/intake` landing is now the conversation-first composer
+  (drop a file or ask, answered inline); the page was consolidated (removed the
+  duplicate Q&A panel, the activity feed, and the empty placeholder); the
+  landing composer is hidden while a document review is open; the plan now LINKS
+  an existing property/tenant instead of duplicating; the document→lease
+  transform no longer blocks on an unusual lease-expiry label; and "Edit before
+  creating" is a real inline editor (property/unit/tenant names + lease term,
+  dates, rent). All review-first; no provider mutation. Regression tests added
+  (`intake-conversation` is now 3 specs) plus a backend test (30 passed).
+  Commits d0137f1, 9345601, 9360807, a6f0bc9, 3fa65e9, a293187.
 - [x] **2026-06-15 Leasium AI conversation-first intake (slice 1):**
   The `/intake` selected-intake review is now a true conversation surface
   (`apps/web/src/components/intake/IntakeConversationPanel.tsx`): a plain-English

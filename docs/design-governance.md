@@ -344,6 +344,29 @@ fixes · deferrals.
   stacks above the legacy upload/queue), inline value editing, global ⌘K
   agent thread, and dedicated deep-links for created records / gated next
   steps — logged in the UX Debt Register.
+- 2026-06-15 · Leasium AI intake landing + consolidation · the `/intake` landing
+  became the conversation-first composer (drop a file or ask, answered inline);
+  the page was trimmed to composer + review queue + recently-applied +
+  spreadsheet import (removed the duplicate Q&A panel, the activity feed, and the
+  empty "no document selected" placeholder); the landing composer is hidden while
+  a document review is open · screens checked at 1440/390
+  (`apps/web/test-results/landing-1440.png`, `landing-390.png`,
+  `landing-consolidated-1440.png`, `review-state-1440.png`) · no provider change.
+- 2026-06-15 · Intake plan link-existing + inline edit · the plan shows "LINK
+  EXISTING" with the matched record name (no duplicate property/tenant), and
+  "Edit before creating" opens a grouped inline editor (Property / Tenant /
+  Lease term & rent) using the shared Input/Select/Field primitives · screen
+  checked at 1440 (`apps/web/test-results/edit-form-1440.png`) · review-first,
+  no provider mutation.
+- 2026-06-15 · Global ⌘K Leasium AI launcher · typing in the command bar offers
+  an "Ask Leasium AI" action routing to `/intake?ask=…`, answered inline · reuses
+  the existing command palette (no new surface) · review-first.
+- 2026-06-15 · AI Inbox conversation-first review · opening a trusted `/inbox`
+  message uses `InboxConversationPanel` (same idioms as intake): forwarded-email
+  turn → "What I understood" + confidence + SPF/DKIM provenance → one "Proposed
+  next step" promote → done turn · screen checked at 1440
+  (`apps/web/test-results/inbox-conversation-1440.png`) · promote stays
+  review-first/local-only (no email/SMS/Xero).
 
 ## UX Debt Register
 
@@ -351,13 +374,14 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **Leasium AI conversation-first — full surface** (2026-06-15) — slice 1
-  shipped the conversational review panel for a selected intake, but the
-  `/intake` page still stacks it above the legacy upload area + review queue
-  rather than the approved Home (centered composer + right-rail queue). Also
-  pending from the concept: inline editing of proposed values, the global
-  ⌘K agent thread carrying page context, and real deep-links for created
-  records and the gated next-step actions (Xero/invoicing/email).
+- **Leasium AI conversation-first — remaining polish** (2026-06-15, updated) —
+  shipped since the first slice: conversational review for both intake and the
+  AI Inbox, the composer landing, page consolidation, link-existing matching,
+  inline "Edit before creating", and a ⌘K "Ask Leasium AI" launcher. Still
+  pending from the concept: the full approved Home layout (centered composer +
+  right-rail queue, rather than the current stacked page), real deep-links to
+  the created records and the gated next-step actions (Xero / invoicing /
+  email), and a ⌘K agent that carries full page context as a persistent thread.
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).
