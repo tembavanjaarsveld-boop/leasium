@@ -638,6 +638,18 @@ function dueStatus(value: string) {
   };
 }
 
+// annual_rent_cents stores the ANNUAL rent; the frequency is the payment
+// cadence. Show the per-period amount that matches the lease (e.g. a $1.14M
+// annual / monthly lease reads "$95,000 monthly", not "$1,140,000 monthly").
+const RENT_PERIODS_PER_YEAR: Record<string, number> = {
+  weekly: 52,
+  fortnightly: 26,
+  monthly: 12,
+  quarterly: 4,
+  annual: 1,
+  yearly: 1,
+};
+
 function formatRent(
   cents: number | null | undefined,
   frequency: string | null | undefined,
@@ -645,11 +657,12 @@ function formatRent(
   if (cents === null || cents === undefined) {
     return "-";
   }
+  const periods = RENT_PERIODS_PER_YEAR[(frequency ?? "").toLowerCase()] ?? 1;
   const amount = new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD",
     maximumFractionDigits: 0,
-  }).format(cents / 100);
+  }).format(cents / periods / 100);
   return frequency ? `${amount} ${frequency}` : amount;
 }
 

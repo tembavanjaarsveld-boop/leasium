@@ -252,6 +252,28 @@ function formatMoney(cents: number | null | undefined) {
   }).format(cents / 100);
 }
 
+// annual_rent_cents is the ANNUAL rent; show the per-period amount matching the
+// payment frequency (e.g. $1.14M annual / monthly → "$95,000").
+const RENT_PERIODS_PER_YEAR: Record<string, number> = {
+  weekly: 52,
+  fortnightly: 26,
+  monthly: 12,
+  quarterly: 4,
+  annual: 1,
+  yearly: 1,
+};
+
+function formatPerPeriodRent(
+  annualCents: number | null | undefined,
+  frequency: string | null | undefined,
+) {
+  if (annualCents === null || annualCents === undefined) {
+    return "-";
+  }
+  const periods = RENT_PERIODS_PER_YEAR[(frequency ?? "").toLowerCase()] ?? 1;
+  return formatMoney(Math.round(annualCents / periods));
+}
+
 function shortId(value: string | null | undefined) {
   return value ? value.slice(0, 8) : null;
 }
@@ -4757,8 +4779,11 @@ function BillingReadinessWorkspace() {
                               Rent
                             </span>
                             <span className="font-semibold text-foreground">
-                              {formatMoney(row.annual_rent_cents)} /{" "}
-                              {row.rent_frequency ?? "No frequency"}
+                              {formatPerPeriodRent(
+                                row.annual_rent_cents,
+                                row.rent_frequency,
+                              )}{" "}
+                              / {row.rent_frequency ?? "No frequency"}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-3">
@@ -4845,7 +4870,12 @@ function BillingReadinessWorkspace() {
                               </div>
                             </td>
                             <td className="px-3 py-3 text-xs">
-                              <div>{formatMoney(row.annual_rent_cents)}</div>
+                              <div>
+                                {formatPerPeriodRent(
+                                  row.annual_rent_cents,
+                                  row.rent_frequency,
+                                )}
+                              </div>
                               <div className="text-muted-foreground">
                                 {row.rent_frequency ?? "No frequency"}
                               </div>
