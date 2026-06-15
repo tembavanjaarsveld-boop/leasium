@@ -16,6 +16,25 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Leasium AI conversation-first intake (slice 1):**
+  The `/intake` selected-intake review is now a true conversation surface
+  (`apps/web/src/components/intake/IntakeConversationPanel.tsx`): a plain-English
+  read, a source-backed "What I understood" card with confidence badges, ONE
+  bundled "Create all records" plan (property + units + tenant + lease +
+  critical date), a created turn listing the linked records, provider next
+  steps held behind NEEDS APPROVAL, and a same-thread Q&A composer. It reuses
+  the existing `applyDocumentIntake` and `ai/ask` endpoints — no backend or
+  schema change, and no provider mutation. Replaced the old three-column review
+  panel (~3,189 lines removed from `dashboard.tsx`). Verified: production
+  `next build`, the `intake-conversation` smoke (render + single apply call +
+  no-provider-mutation guardrail), `test_document_intake_api.py` (29 passed),
+  eslint/tsc, and 1440/390 screenshots. Built to the approved concept frames in
+  Figma `PO2jOANgmqgZHfqWZXOZGU`; details in
+  [design-governance.md](design-governance.md) and
+  [leasium-ai-conversation-redesign-2026-06-15.md](leasium-ai-conversation-redesign-2026-06-15.md).
+  Deferred to later slices (UX Debt Register): full centered-composer Home +
+  right-rail queue, inline value editing, global ⌘K agent thread, record
+  deep-links.
 - [x] **2026-06-15 Leasium AI chat-window review shell v2:**
   The document assistant now renders as a true chat window instead of the old
   three-column review panel with chat wording. The conversation shows an AI

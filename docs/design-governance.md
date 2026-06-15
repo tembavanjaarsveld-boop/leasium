@@ -325,6 +325,25 @@ fixes · deferrals.
   review block, keeps the default no-provider-send state visible, renames the
   portal action to `Post message`, and places normalized channel evidence in
   the same message panel · deferred: none for message-panel density.
+- 2026-06-15 · Leasium AI conversation-first intake (slice 1) · built to the
+  approved concept frames "Leasium AI — Conversation-first redesign (concept
+  v3)" (file `PO2jOANgmqgZHfqWZXOZGU`, 01 Foundations x≈11200: Home `148:52`,
+  Understanding+plan `153:52`, Created+next-steps `155:52`, Ask `155:205`,
+  Old-invoice `155:298`, mobile `158:52`/`158:117`) · screens checked at
+  1440/390 (`apps/web/test-results/intake-1440.png`, `intake-390.png`) ·
+  the `/intake` selected-intake detail panel is now a chat thread
+  (`IntakeConversationPanel`): plain-English read → "What I understood" card
+  with confidence + source links → ONE bundled "Create all records" plan
+  (property/units/tenant/lease/critical date) → created turn + provider
+  next-steps gated as NEEDS APPROVAL → same-thread Q&A composer. Reuses the
+  existing apply + ai/ask endpoints; no provider mutation. Smoke
+  `intake-conversation.spec.ts` proves the render, single apply call, and the
+  no-provider-mutation guardrail. Removed ~3,189 lines of the orphaned
+  three-column review panel from `dashboard.tsx` · deferred to later slices:
+  full centered-composer Home + right-rail queue layout (panel currently
+  stacks above the legacy upload/queue), inline value editing, global ⌘K
+  agent thread, and dedicated deep-links for created records / gated next
+  steps — logged in the UX Debt Register.
 
 ## UX Debt Register
 
@@ -332,6 +351,13 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
+- **Leasium AI conversation-first — full surface** (2026-06-15) — slice 1
+  shipped the conversational review panel for a selected intake, but the
+  `/intake` page still stacks it above the legacy upload area + review queue
+  rather than the approved Home (centered composer + right-rail queue). Also
+  pending from the concept: inline editing of proposed values, the global
+  ⌘K agent thread carrying page context, and real deep-links for created
+  records and the gated next-step actions (Xero/invoicing/email).
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).
