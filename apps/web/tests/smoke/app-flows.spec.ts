@@ -1871,29 +1871,14 @@ test("AI mailbox hands trusted rows into reviewed promote flow with provenance",
     /\/api\/v1\/documents\/raw-email-doc-trusted\/download$/,
   );
 
-  await page.getByRole("button", { name: "Review promotion" }).click();
-
-  const promotePanel = page.getByTestId("promote-panel");
-  await expect(promotePanel).toBeVisible();
-  const provenance = promotePanel.getByTestId("mailbox-review-provenance");
-  await expect(provenance).toBeVisible();
-  await expect(
-    provenance.getByText("broker@external.example").first(),
-  ).toBeVisible();
-  await expect(
-    provenance.getByText("Fwd: Kitchen tap leak — Unit 3"),
-  ).toBeVisible();
-  await expect(provenance.getByText("91%")).toBeVisible();
-  await expect(
-    provenance.getByRole("link", { name: "Open raw email" }),
-  ).toHaveAttribute(
-    "href",
-    /\/api\/v1\/documents\/raw-email-doc-trusted\/download$/,
-  );
-  await expect(
-    promotePanel.getByText(/nothing is sent until you approve/i),
-  ).toBeVisible();
-  await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
+  // The trusted message now opens straight into the conversation-first review.
+  await expect(page.getByTestId("inbox-conversation")).toBeVisible();
+  await expect(page.getByTestId("inbox-understanding")).toBeVisible();
+  const inboxPlan = page.getByTestId("inbox-plan");
+  await expect(inboxPlan).toBeVisible();
+  await expect(inboxPlan).toContainText("maintenance work order");
+  await expect(page.getByText(/local draft only/i)).toBeVisible();
+  await page.getByTestId("inbox-promote").click();
   await expect(page).toHaveURL(
     /\/operations\/maintenance\/99999999-9999-9999-9999-999999999999/,
   );

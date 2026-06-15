@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { EntityPicker } from "@/components/entity-picker";
+import { InboxConversationPanel } from "@/components/intake/InboxConversationPanel";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -1124,20 +1125,19 @@ function InboxWorkspace() {
                         </div>
                       </div>
                     ) : null}
-                    {selectedMailboxMessage.trust_state === "trusted" ? (
-                      <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/20 bg-primary-soft/30 p-3">
-                        <Button
-                          type="button"
-                          onClick={handleReviewMailboxMessage}
-                          disabled={!scopedEntityId}
-                        >
-                          <Sparkles size={14} />
-                          Review promotion
-                        </Button>
-                        <p className="text-xs text-muted-foreground">
-                          Opens the stored mailbox classification for review.
-                          Nothing is applied, sent, or synced.
-                        </p>
+                    {selectedMailboxMessage.trust_state === "trusted" &&
+                    scopedEntityId ? (
+                      <div className="rounded-md border border-primary/20 bg-primary-soft/20 p-3">
+                        <InboxConversationPanel
+                          entityId={scopedEntityId}
+                          message={selectedMailboxMessage}
+                          onPromoted={(record) => {
+                            void queryClient.invalidateQueries({
+                              queryKey: ["inbox-ai-mailbox", selectedEntityId],
+                            });
+                            router.push(record.target_href);
+                          }}
+                        />
                       </div>
                     ) : null}
                     {mailboxActionMessage ? (
