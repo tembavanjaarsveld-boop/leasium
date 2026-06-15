@@ -307,3 +307,54 @@ test("links an existing property instead of creating a duplicate", async ({
   // creating a second property.
   expect(applyBody).toContain(existingProperty.id);
 });
+
+test("edit before creating sends the corrected lease term", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  let applyBody = "";
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([leaseIntake]),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${leaseIntakeId}/apply`
+    ) {
+      applyBody = request.postData() ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(appliedLeaseIntake),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await page
+    .getByTestId(`review-intake-${leaseIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  await page.getByTestId("intake-edit").click();
+  const editForm = page.getByTestId("intake-edit-form");
+  await expect(editForm).toBeVisible();
+
+  // Correct the flagged expiry, then create.
+  await page.getByTestId("intake-edit-expiry").fill("2030-06-30");
+  await page.getByTestId("intake-create-all").click();
+
+  await expect(page.getByTestId("intake-created")).toBeVisible();
+  // The corrected expiry is handed to apply (so the backend won't block on it).
+  expect(applyBody).toContain("2030-06-30");
+});

@@ -13,9 +13,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
-import { Button, SecondaryButton, StatusBadge } from "@/components/ui";
+import {
+  Button,
+  Field,
+  Input,
+  SecondaryButton,
+  Select,
+  StatusBadge,
+} from "@/components/ui";
 import { cn, friendlyError } from "@/lib/utils";
 import {
   applyDocumentIntake,
@@ -299,6 +306,103 @@ function leaseDatesFrom(data: DocumentIntakeExtraction): {
   return out;
 }
 
+// Inline "edit before creating" — confirm/correct the values the operator
+// cares about (the lease term, rent, names) before anything is created.
+type EditState = {
+  propertyName: string;
+  propertyAddress: string;
+  unitLabel: string;
+  tenantName: string;
+  commencement: string;
+  expiry: string;
+  rentAmount: string;
+  rentFrequency: string;
+};
+const RENT_MULTIPLIER: Record<string, number> = {
+  weekly: 52,
+  monthly: 12,
+  quarterly: 4,
+  annual: 1,
+};
+function normaliseFrequency(value: string | null): string {
+  const v = (value ?? "").toLowerCase();
+  if (v.includes("week")) return "weekly";
+  if (v.includes("quart")) return "quarterly";
+  if (v.includes("year") || v.includes("annu") || v.includes("p.a") || v.includes("pa"))
+    return "annual";
+  return "monthly";
+}
+function tenantParty(data: DocumentIntakeExtraction): Record<string, unknown> | null {
+  return (
+    items(data.parties).find((p) => {
+      const role = text(p.role)?.toLowerCase() ?? "";
+      return role.includes("tenant") || role.includes("lessee");
+    }) ?? null
+  );
+}
+function initialEdits(data: DocumentIntakeExtraction): EditState {
+  const prop = items(data.properties)[0] ?? {};
+  const tenant = tenantParty(data) ?? {};
+  const dates = leaseDatesFrom(data);
+  const rent =
+    items(data.money_amounts).find((m) =>
+      (text(m.label)?.toLowerCase() ?? "").includes("rent"),
+    ) ?? {};
+  const rentAmount = num(rent.amount);
+  return {
+    propertyName: text(prop.name) ?? "",
+    propertyAddress: text(prop.address) ?? text(prop.street_address) ?? "",
+    unitLabel: text(prop.unit_label) ?? "",
+    tenantName: text(tenant.name) ?? text(tenant.legal_name) ?? "",
+    commencement: dates.commencement_date ?? "",
+    expiry: dates.expiry_date ?? "",
+    rentAmount: rentAmount != null ? String(rentAmount) : "",
+    rentFrequency: normaliseFrequency(text(rent.frequency)),
+  };
+}
+function buildEditedReviewData(
+  data: DocumentIntakeExtraction,
+  edits: EditState,
+  propertyLinked: boolean,
+  tenantLinked: boolean,
+): DocumentIntakeExtraction {
+  const rd: DocumentIntakeExtraction = { ...data };
+  const props = items(data.properties);
+  const firstProp: Record<string, unknown> = { ...(props[0] ?? {}) };
+  if (!propertyLinked) {
+    if (edits.propertyName) firstProp.name = edits.propertyName;
+    if (edits.propertyAddress) firstProp.street_address = edits.propertyAddress;
+  }
+  if (edits.unitLabel) firstProp.unit_label = edits.unitLabel;
+  rd.properties = [firstProp, ...props.slice(1)];
+  if (!tenantLinked && edits.tenantName) {
+    const parties = items(data.parties);
+    const idx = parties.findIndex((p) => {
+      const role = text(p.role)?.toLowerCase() ?? "";
+      return role.includes("tenant") || role.includes("lessee");
+    });
+    rd.parties =
+      idx >= 0
+        ? parties.map((p, i) =>
+            i === idx ? { ...p, name: edits.tenantName } : p,
+          )
+        : [...parties, { name: edits.tenantName, role: "tenant" }];
+  }
+  const lease: Record<string, unknown> = {
+    ...(isRecord(data.lease) ? data.lease : {}),
+  };
+  if (edits.commencement) lease.commencement_date = edits.commencement;
+  if (edits.expiry) lease.expiry_date = edits.expiry;
+  const amount = Number.parseFloat(edits.rentAmount);
+  if (Number.isFinite(amount)) {
+    const mult = RENT_MULTIPLIER[edits.rentFrequency] ?? 12;
+    lease.annual_rent_cents = Math.round(amount * mult * 100);
+  }
+  if (edits.rentFrequency) lease.rent_frequency = edits.rentFrequency;
+  rd.lease = lease;
+  return rd;
+}
+
 // Plan rows: one per record the apply will create / link.
 type PlanRow = {
   key: string;
@@ -494,22 +598,42 @@ export function IntakeConversationPanel({
   const [asking, setAsking] = useState(false);
   const [asks, setAsks] = useState<AskTurn[]>([]);
 
+  const defaultEdits = useMemo(() => initialEdits(data), [data]);
+  const [editing, setEditing] = useState(false);
+  const [edits, setEdits] = useState<EditState>(defaultEdits);
+  useEffect(() => {
+    setEdits(defaultEdits);
+    setEditing(false);
+  }, [defaultEdits]);
+  const setEdit = (key: keyof EditState, value: string) =>
+    setEdits((current) => ({ ...current, [key]: value }));
+
   async function handleCreateAll() {
     if (applying) return;
     setApplying(true);
     setApplyError(null);
     const links = isRecord(data.suggested_links) ? data.suggested_links : {};
-    const leaseDates = leaseDatesFrom(data);
-    const reviewData: DocumentIntakeExtraction =
-      leaseDates.commencement_date || leaseDates.expiry_date
-        ? {
-            ...data,
-            lease: {
-              ...(isRecord(data.lease) ? data.lease : {}),
-              ...leaseDates,
-            },
-          }
-        : data;
+    let reviewData: DocumentIntakeExtraction;
+    if (editing) {
+      reviewData = buildEditedReviewData(
+        data,
+        edits,
+        Boolean(propertyMatch),
+        Boolean(tenantMatch),
+      );
+    } else {
+      const leaseDates = leaseDatesFrom(data);
+      reviewData =
+        leaseDates.commencement_date || leaseDates.expiry_date
+          ? {
+              ...data,
+              lease: {
+                ...(isRecord(data.lease) ? data.lease : {}),
+                ...leaseDates,
+              },
+            }
+          : data;
+    }
     try {
       // reviewData = the reviewed extraction plus the parsed lease term, so the
       // backend has a confirmed expiry. Link ids are passed through when the
@@ -642,12 +766,143 @@ export function IntakeConversationPanel({
               </h3>
               <button
                 type="button"
+                onClick={() => setEditing((value) => !value)}
                 className="text-xs font-medium text-primary hover:underline"
               >
-                Adjust
+                {editing ? "Done" : "Adjust"}
               </button>
             </div>
-            {plan.length > 0 ? (
+            {editing ? (
+              <div data-testid="intake-edit-form" className="space-y-3">
+                <div className="rounded-xl border border-border p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                      <Building2 size={16} />
+                    </span>
+                    <span className="text-sm font-semibold text-foreground">
+                      Property &amp; units
+                    </span>
+                    {propertyMatch ? (
+                      <StatusBadge tone="neutral" className="text-leasium-micro">
+                        LINK EXISTING
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  {propertyMatch ? (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Linking to your existing property{" "}
+                      <span className="font-medium text-foreground">
+                        {propertyMatch.label}
+                      </span>
+                      .
+                    </p>
+                  ) : (
+                    <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                      <Field label="Property name">
+                        <Input
+                          value={edits.propertyName}
+                          onChange={(e) => setEdit("propertyName", e.target.value)}
+                        />
+                      </Field>
+                      <Field label="Address">
+                        <Input
+                          value={edits.propertyAddress}
+                          onChange={(e) =>
+                            setEdit("propertyAddress", e.target.value)
+                          }
+                        />
+                      </Field>
+                    </div>
+                  )}
+                  <Field label="Unit(s)">
+                    <Input
+                      value={edits.unitLabel}
+                      onChange={(e) => setEdit("unitLabel", e.target.value)}
+                      placeholder="e.g. Unit 1 & Unit 3"
+                    />
+                  </Field>
+                </div>
+
+                <div className="rounded-xl border border-border p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                      <UserRound size={16} />
+                    </span>
+                    <span className="text-sm font-semibold text-foreground">
+                      Tenant
+                    </span>
+                    {tenantMatch ? (
+                      <StatusBadge tone="neutral" className="text-leasium-micro">
+                        LINK EXISTING
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  {tenantMatch ? (
+                    <p className="text-xs text-muted-foreground">
+                      Linking to your existing tenant{" "}
+                      <span className="font-medium text-foreground">
+                        {tenantMatch.label}
+                      </span>
+                      .
+                    </p>
+                  ) : (
+                    <Field label="Legal name">
+                      <Input
+                        value={edits.tenantName}
+                        onChange={(e) => setEdit("tenantName", e.target.value)}
+                      />
+                    </Field>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                      <FileText size={16} />
+                    </span>
+                    <span className="text-sm font-semibold text-foreground">
+                      Lease term &amp; rent
+                    </span>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Start date">
+                      <Input
+                        type="date"
+                        value={edits.commencement}
+                        onChange={(e) => setEdit("commencement", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Expiry date">
+                      <Input
+                        data-testid="intake-edit-expiry"
+                        type="date"
+                        value={edits.expiry}
+                        onChange={(e) => setEdit("expiry", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Rent amount (AUD)">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        value={edits.rentAmount}
+                        onChange={(e) => setEdit("rentAmount", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Frequency">
+                      <Select
+                        value={edits.rentFrequency}
+                        onChange={(e) => setEdit("rentFrequency", e.target.value)}
+                      >
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annual">Annual</option>
+                      </Select>
+                    </Field>
+                  </div>
+                </div>
+              </div>
+            ) : plan.length > 0 ? (
               <ul className="space-y-2">
                 {plan.map((row) => (
                   <li
@@ -707,16 +962,36 @@ export function IntakeConversationPanel({
                   "Create all records"
                 )}
               </Button>
-              <SecondaryButton type="button" disabled={applying}>
-                Edit before creating
-              </SecondaryButton>
-              <button
-                type="button"
-                disabled={applying}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-              >
-                Ignore
-              </button>
+              {editing ? (
+                <SecondaryButton
+                  type="button"
+                  disabled={applying}
+                  onClick={() => {
+                    setEdits(defaultEdits);
+                    setEditing(false);
+                  }}
+                >
+                  Cancel
+                </SecondaryButton>
+              ) : (
+                <SecondaryButton
+                  type="button"
+                  data-testid="intake-edit"
+                  disabled={applying}
+                  onClick={() => setEditing(true)}
+                >
+                  Edit before creating
+                </SecondaryButton>
+              )}
+              {!editing ? (
+                <button
+                  type="button"
+                  disabled={applying}
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  Ignore
+                </button>
+              ) : null}
             </div>
           </div>
         </AiTurn>

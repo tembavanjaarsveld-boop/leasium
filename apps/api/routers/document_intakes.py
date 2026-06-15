@@ -947,6 +947,12 @@ def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str
     explicit_expiry = _date(explicit_lease.get("expiry_date"))
     if explicit_expiry is not None:
         expiry_date = explicit_expiry.isoformat()
+    explicit_rent = explicit_lease.get("annual_rent_cents")
+    if isinstance(explicit_rent, (int, float)) and not isinstance(explicit_rent, bool):
+        annual_rent_cents = int(explicit_rent)
+    explicit_frequency = _str(explicit_lease.get("rent_frequency"))
+    if explicit_frequency:
+        rent_frequency = explicit_frequency
     next_review_date = _generic_date(
         data,
         {"rent review", "review date", "cpi review", "rent adjustment"},
