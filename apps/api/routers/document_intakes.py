@@ -3117,8 +3117,6 @@ def update_document_intake_ai_opportunity_session(
         "updated_by_user_id": str(user.id),
     }
     intake.review_data = existing_review
-    intake.reviewed_at = now
-    intake.reviewed_by_user_id = user.id
     audit_log(
         session,
         actor=user.actor,

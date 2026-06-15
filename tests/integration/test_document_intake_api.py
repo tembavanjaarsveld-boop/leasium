@@ -1277,6 +1277,8 @@ def test_document_intake_ai_opportunity_session_stores_review_only_metadata(
     session_data = body["review_data"]["ai_opportunity_session"]
     assert session_data["selected_opportunity_id"] == "action-1"
     assert body["applied_at"] is None
+    assert body["reviewed_at"] is None
+    assert body["reviewed_by_user_id"] is None
     assert {
         Obligation: _row_count(session, Obligation),
         BillingDraft: _row_count(session, BillingDraft),
@@ -1317,6 +1319,8 @@ def test_document_intake_ai_opportunity_session_preserves_existing_review_data(
         json={"review_data": reviewed},
     )
     assert review_response.status_code == 200
+    reviewed_at = review_response.json()["reviewed_at"]
+    reviewed_by_user_id = review_response.json()["reviewed_by_user_id"]
 
     response = client.post(
         f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
@@ -1337,7 +1341,10 @@ def test_document_intake_ai_opportunity_session_preserves_existing_review_data(
     )
 
     assert response.status_code == 200
-    review_data = response.json()["review_data"]
+    body = response.json()
+    assert body["reviewed_at"] == reviewed_at
+    assert body["reviewed_by_user_id"] == reviewed_by_user_id
+    review_data = body["review_data"]
     assert review_data["document_type"] == reviewed["document_type"]
     assert review_data["summary"] == reviewed["summary"]
     assert review_data["money_amounts"] == reviewed["money_amounts"]
