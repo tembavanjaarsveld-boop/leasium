@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
@@ -25,6 +26,13 @@ function watchUnsafeRequests(page: Page) {
     }
   });
   return unsafeRequests;
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
 test("maintenance detail shows contractor message thread with in-app-only notice", async ({
@@ -63,8 +71,19 @@ test("maintenance detail shows contractor message thread with in-app-only notice
   ).toBeVisible();
   await expect(
     messagesPanel.getByText(
-      "Posts to the portal. Email/SMS notifications need explicit approval.",
+      "Default is portal-only. Tick a channel only when you want a provider-backed notification.",
     ),
+  ).toBeVisible();
+  await expect(messagesPanel.getByText("Notify contractor")).toBeVisible();
+  await expect(
+    messagesPanel.getByText("Default: no provider send"),
+  ).toBeVisible();
+  await expect(
+    messagesPanel.getByText("Email notification"),
+  ).toBeVisible();
+  await expect(messagesPanel.getByText("SMS notification")).toBeVisible();
+  await expect(
+    messagesPanel.getByRole("button", { name: "Post message" }),
   ).toBeVisible();
 
   expect(unsafeRequests).toEqual([]);
@@ -105,11 +124,11 @@ test("operator sends a contractor-visible message from the thread", async ({
   await page
     .getByLabel("Message to contractor")
     .fill("Parts have arrived; attend any time Friday.");
-  await page.getByLabel("Send approved email notification").check();
-  await page.getByRole("button", { name: "Send message" }).click();
+  await page.getByRole("checkbox", { name: /Email notification/ }).check();
+  await page.getByRole("button", { name: "Post message" }).click();
 
   await expect(
-    messagesPanel.getByText("Parts have arrived; attend any time Friday."),
+    messagesPanel.getByText("Parts have arrived; attend any time Friday.").first(),
   ).toBeVisible();
   await page.getByText("Channel evidence").click();
   const channelEvidence = page
@@ -152,7 +171,45 @@ test("unshared work order points at the share control instead of the send box", 
     ),
   ).toBeVisible();
   await expect(page.getByLabel("Message to contractor")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Send message" })).toHaveCount(
+  await expect(page.getByRole("button", { name: "Post message" })).toHaveCount(
     0,
   );
+});
+
+test("contractor message density fits desktop and mobile", async ({ page }) => {
+  await mkdir("../../output/playwright", { recursive: true });
+  await mockLeasiumApi(page, { vendorPortalMessagingThread: true });
+
+  for (const viewport of [
+    { label: "1440", width: 1440, height: 900 },
+    { label: "390", width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    await page.goto("/operations/maintenance/work-order-1");
+
+    const messagesPanel = page
+      .locator("section")
+      .filter({
+        has: page.getByRole("heading", { name: "Contractor messages" }),
+      })
+      .first();
+
+    await expect(messagesPanel.getByText("Notify contractor")).toBeVisible();
+    await expect(
+      messagesPanel.getByText("Default: no provider send"),
+    ).toBeVisible();
+    await expect(
+      messagesPanel.getByRole("button", { name: "Post message" }),
+    ).toBeVisible();
+    await expect(page.getByText("Channel evidence").first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.screenshot({
+      fullPage: true,
+      path: `../../output/playwright/work-message-density-${viewport.label}.png`,
+    });
+  }
 });

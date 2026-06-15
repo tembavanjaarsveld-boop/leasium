@@ -297,8 +297,12 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   delivery receipt/attempt-count machinery records the queued provider attempt.
   Contractor replies in the vendor portal now record a local operator in-app
   cue on the work order, targeted to the assigned operator or sharing operator
-  where available. Pending Remba review of the message-panel checkbox density
-  and channel-evidence placement.
+  where available. 2026-06-15 density pass: the Work detail contractor
+  message panel now spans two desktop grid columns, groups email/SMS approvals
+  in a `Notify contractor` review block with the default no-provider-send state
+  visible, renames the portal action to `Post message`, and moves normalized
+  channel evidence into the message panel. Responsive smoke coverage locks the
+  1440/390 no-overflow layout.
 - [x] **2026-06-12 Comms send-time template consumption v1:** `/comms` now
   previews matching active stored templates for visible email drafts without
   dispatching, and approved unedited drafts render the requested template on the

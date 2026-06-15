@@ -3038,6 +3038,7 @@ function ContractorMessagesCard({
     <SectionPanel
       title="Contractor messages"
       icon={<MessagesSquare size={17} />}
+      className="md:col-span-2"
     >
       <div className="grid gap-3 p-4 text-sm">
         {isShared ? (
@@ -3099,31 +3100,113 @@ function ContractorMessagesCard({
                 placeholder="e.g. Please confirm your attendance window."
               />
             </label>
-            <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground sm:grid-cols-2">
-              <label className="flex min-h-11 items-center gap-2 text-slate">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded border-border text-primary focus:ring-primary"
-                  checked={notifyEmailApproved}
-                  disabled={pending || !contractorEmail}
-                  onChange={(event) =>
-                    onNotifyEmailApprovedChange(event.target.checked)
-                  }
-                />
-                <span>Send approved email notification</span>
-              </label>
-              <label className="flex min-h-11 items-center gap-2 text-slate">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded border-border text-primary focus:ring-primary"
-                  checked={notifySmsApproved}
-                  disabled={pending || !contractorPhone}
-                  onChange={(event) =>
-                    onNotifySmsApprovedChange(event.target.checked)
-                  }
-                />
-                <span>Send approved SMS notification</span>
-              </label>
+            <div className="grid gap-3 rounded-lg border border-primary/20 bg-primary-soft/60 p-3 text-xs">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="grid gap-1">
+                  <div className="text-sm font-semibold text-foreground">
+                    Notify contractor
+                  </div>
+                  <p className="text-muted-foreground">
+                    Default is portal-only. Tick a channel only when you want a
+                    provider-backed notification.
+                  </p>
+                </div>
+                <StatusBadge tone="warning" className="mt-0.5">
+                  Default: no provider send
+                </StatusBadge>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label
+                  className={`flex min-h-11 items-start gap-3 rounded-md border bg-white p-3 ${
+                    contractorEmail
+                      ? "border-primary/30"
+                      : "border-border text-muted-foreground"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary"
+                    checked={notifyEmailApproved}
+                    disabled={pending || !contractorEmail}
+                    onChange={(event) =>
+                      onNotifyEmailApprovedChange(event.target.checked)
+                    }
+                  />
+                  <span className="grid gap-1">
+                    <span className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+                      Email notification
+                      <StatusBadge
+                        tone={
+                          contractorEmail
+                            ? notifyEmailApproved
+                              ? "success"
+                              : "primary"
+                            : "neutral"
+                        }
+                      >
+                        {contractorEmail
+                          ? notifyEmailApproved
+                            ? "Approved"
+                            : "Optional"
+                          : "Missing"}
+                      </StatusBadge>
+                    </span>
+                    <span className="text-muted-foreground">
+                      {contractorEmail ?? "No contractor email on file"}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {contractorEmail
+                        ? "Unchecked: records skipped email receipt."
+                        : "Add an email before approval appears."}
+                    </span>
+                  </span>
+                </label>
+                <label
+                  className={`flex min-h-11 items-start gap-3 rounded-md border bg-white p-3 ${
+                    contractorPhone
+                      ? "border-primary/30"
+                      : "border-border text-muted-foreground"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary"
+                    checked={notifySmsApproved}
+                    disabled={pending || !contractorPhone}
+                    onChange={(event) =>
+                      onNotifySmsApprovedChange(event.target.checked)
+                    }
+                  />
+                  <span className="grid gap-1">
+                    <span className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+                      SMS notification
+                      <StatusBadge
+                        tone={
+                          contractorPhone
+                            ? notifySmsApproved
+                              ? "success"
+                              : "primary"
+                            : "neutral"
+                        }
+                      >
+                        {contractorPhone
+                          ? notifySmsApproved
+                            ? "Approved"
+                            : "Optional"
+                          : "Missing"}
+                      </StatusBadge>
+                    </span>
+                    <span className="text-muted-foreground">
+                      {contractorPhone ?? "No contractor phone on file"}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {contractorPhone
+                        ? "Unchecked: records skipped SMS receipt."
+                        : "Disabled until a mobile number is added."}
+                    </span>
+                  </span>
+                </label>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={!draft.trim() || pending}>
@@ -3132,11 +3215,10 @@ function ContractorMessagesCard({
                 ) : (
                   <Send size={16} />
                 )}
-                Send message
+                Post message
               </Button>
               <span className="text-xs text-muted-foreground">
-                Posts to the portal. Email/SMS notifications need explicit
-                approval.
+                Posts to portal now. Email/SMS only send when approved above.
               </span>
             </div>
             {error ? (
@@ -3149,6 +3231,9 @@ function ContractorMessagesCard({
             contractor here.
           </p>
         )}
+        {workOrder.channel_receipts.length ? (
+          <ContractorChannelEvidence receipts={workOrder.channel_receipts} />
+        ) : null}
       </div>
     </SectionPanel>
   );
@@ -5239,11 +5324,6 @@ function MaintenanceDetailRoute() {
                       </p>
                     ) : null}
                   </form>
-                  {workOrder.channel_receipts.length ? (
-                    <ContractorChannelEvidence
-                      receipts={workOrder.channel_receipts}
-                    />
-                  ) : null}
                 </div>
               </SectionPanel>
 

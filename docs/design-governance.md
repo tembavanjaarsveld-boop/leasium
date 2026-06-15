@@ -230,6 +230,14 @@ fixes · deferrals.
   disclosure with a visible review-only preview rail, preserved edited-text-wins
   copy, and added responsive no-overflow smoke coverage · deferred: none for
   template preview density.
+- 2026-06-15 · Work message-panel density · Figma frames `123:812` and
+  `124:850` created from the Horizon Work patterns · screens checked at
+  1440/390 (`output/playwright/work-message-density-1440.png`,
+  `work-message-density-390.png`) · fixes: contractor message panel now spans
+  two desktop grid columns, groups email/SMS approval in a `Notify contractor`
+  review block, keeps the default no-provider-send state visible, renames the
+  portal action to `Post message`, and places normalized channel evidence in
+  the same message panel · deferred: none for message-panel density.
 
 ## UX Debt Register
 
@@ -237,9 +245,6 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **Comms message-panel density** — contractor notification checkbox
-  density and channel-evidence placement in the Work message panel
-  (flagged 2026-06-12, vendor message notifications v1).
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).

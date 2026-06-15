@@ -2,6 +2,41 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Work message-panel density)
+
+Scope completed: design-first UX debt closeout for contractor notification
+approval density and channel-evidence placement in the Work detail contractor
+message panel. Figma frames created in `Leasium — Design Source of Truth` on
+`03 Screens`: `Work detail · Contractor message density` (`123:812`) and
+`Work detail · Contractor message density · Mobile` (`124:850`).
+
+What changed:
+- The contractor message panel now spans two desktop grid columns so approval
+  controls are not squeezed into a single Work-card column.
+- Email/SMS notification approvals are grouped in a `Notify contractor` review
+  block with `Default: no provider send`, contact readiness, optional/missing
+  state, and the same explicit approval wiring as before.
+- The portal action is now labelled `Post message`; normalized channel evidence
+  moved into the same message panel.
+
+Verification evidence:
+- Figma MCP frames and screenshots checked: `123:812`, `124:850`.
+- Screenshots: `output/playwright/work-message-density-1440.png` and
+  `output/playwright/work-message-density-390.png`.
+- Red/green smoke: `vendor-portal-messaging.spec.ts` first failed on missing
+  `Notify contractor` / `Default: no provider send` / `Post message`, then
+  passed 4/4 after implementation.
+- Commands green: `npm --prefix apps/web run lint --
+  src/app/operations/maintenance/[workOrderId]/page.tsx
+  tests/smoke/vendor-portal-messaging.spec.ts`, `npx tsc --noEmit --pretty
+  false` in `apps/web`, `NODE_ENV=development npm --prefix apps/web run
+  test:smoke -- vendor-portal-messaging.spec.ts --workers=1`, `npm --prefix
+  apps/web run build`, and `git diff --check`.
+
+Guardrails held: no SendGrid/Twilio/Xero/Basiq/payment/reconciliation provider
+call was added; the comment mutation still carries only the existing explicit
+email/SMS approval booleans and default portal-only behavior.
+
 ## Codex continuation - 2026-06-15 (Comms template preview density v1)
 
 Scope completed: design-first UX debt closeout for `/comms` send-time template
