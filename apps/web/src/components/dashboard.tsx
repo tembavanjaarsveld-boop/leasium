@@ -3535,25 +3535,10 @@ export function Dashboard({
             </div>
 
             {!selectedDocumentReviewPanel ? (
-              <section className="mt-12 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)]">
-                <div className="grid gap-5">
-                  <SectionPanel
-                    title="Leasium AI review"
-                    description="Extracted terms, dates, parties, obligations, and AI questions will wait here until you approve them."
-                    icon={<Sparkles size={17} className="text-primary" />}
-                  >
-                    <EmptyState
-                      icon={<FileText size={18} />}
-                      title="No document selected."
-                      description="Ask Leasium AI with a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
-                    />
-                  </SectionPanel>
-                </div>
-                <RegisterImportPanel
-                  entityId={selectedEntityId}
-                  onApplied={refreshDashboardData}
-                />
-              </section>
+              <RegisterImportPanel
+                entityId={selectedEntityId}
+                onApplied={refreshDashboardData}
+              />
             ) : null}
           </section>
         ) : null}
@@ -3591,9 +3576,13 @@ export function Dashboard({
         {/* Ask Leasium + Activity feed are single-entity scoped surfaces. In
             all-mode we pass the empty scoped id so they fall back to their
             "select an entity" state rather than firing with the sentinel. */}
-        <AskLeasiumPanel entityId={scopedEntityId} />
+        {!isIntakeWorkspace ? (
+          <AskLeasiumPanel entityId={scopedEntityId} />
+        ) : null}
 
-        <ActivityFeedPanel entityId={scopedEntityId} />
+        {!isIntakeWorkspace ? (
+          <ActivityFeedPanel entityId={scopedEntityId} />
+        ) : null}
       </div>
     </main>
   );
