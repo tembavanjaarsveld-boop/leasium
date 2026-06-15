@@ -240,6 +240,19 @@ fixes · deferrals.
   invoicing or create billing drafts, and direct operators to upload a lease,
   rent schedule, or invoice document with property/tenant/lease/charge context
   for billing setup · deferred: none.
+- 2026-06-15 · Smart Intake AI opportunity panel · Figma Smart Intake
+  `55:166`, Document review `58:352`, and Smart Intake mobile `59:521` checked
+  with Figma MCP screenshots · screens checked at 1440/390
+  (`output/playwright/smart-intake-ai-opportunity-panel-1440.png`,
+  `smart-intake-ai-opportunity-panel-390.png`, and
+  `smart-intake-ai-opportunity-panel-390-question.png`) · fixes: opportunity
+  cards sit as peer review panels above the long source/field editor, notice
+  guidance appears before billing-looking opportunities, provider candidates
+  show explicit later-approval flags, proposed output remains review-only, and
+  smoke coverage proves no horizontal overflow, 44px mobile actions, persisted
+  answers, 503 no-persist behavior, and no Smart Intake apply/review, provider,
+  invoice delivery, owner-dispatch, payment, or reconciliation mutations ·
+  deferred: none.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,

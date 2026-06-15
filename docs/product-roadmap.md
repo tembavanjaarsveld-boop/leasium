@@ -16,6 +16,18 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Smart Intake AI opportunity panel v1:**
+  Smart Intake document review now includes an AI opportunity workspace that
+  infers source-backed next steps, asks one focused local question, stores
+  answers under `review_data.ai_opportunity_session`, and previews a
+  review-only proposed output. Notices now keep the follow-up/evidence path
+  ahead of billing-looking suggestions, while explicit billing opportunities
+  remain visibly guarded by the existing notice warning. Provider candidates
+  show later-approval flags. The shipped smoke coverage proves the panel saves
+  only the local opportunity-session endpoint, persists/reloads answers, keeps
+  503 failures from persisting state, and blocks Smart Intake apply/review,
+  invoice-draft/delivery, comms dispatch, owner dispatch, Xero/SendGrid/Twilio,
+  payment, and reconciliation mutations.
 - [x] **2026-06-15 Comms template preview density v1:**
   `/comms` now surfaces the send-time template match directly on eligible
   draft cards, including the explicit kind-to-template mapping

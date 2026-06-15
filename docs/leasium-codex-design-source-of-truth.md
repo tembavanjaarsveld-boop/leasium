@@ -1492,6 +1492,28 @@ Use this line near review actions:
 Nothing is applied until you approve it.
 ```
 
+### AI opportunity panel
+
+Smart Intake review may include an AI opportunity workspace inside the existing
+document review surface. It must remain a review panel, not a new wizard or a
+provider action surface.
+
+Rules:
+- Opportunity cards are inferred from source-backed extraction and sit as peer
+  review panels above the long source/field editor.
+- Notice guidance appears before billing-looking opportunities. Old notices can
+  create local follow-up/evidence work; they do not set up recurring invoicing
+  or create billing drafts unless a later explicit workflow says so.
+- Questions are one-at-a-time and chat-like. Use structured controls only when a
+  precise record, cadence, GST/tax, or provider mapping choice is needed.
+- The proposed output card is a preview only. It can store local review session
+  answers, but does not apply Smart Intake, create invoices, send mail/SMS,
+  mutate Xero, post payments, or run reconciliation.
+- Provider candidates must show an explicit "approval needed later" flag and
+  name the provider family before the operator saves an answer.
+- On mobile, the notice guidance, selected opportunity, current question, and
+  proposed output appear before long extracted-field editing.
+
 ### Confidence design
 
 ```txt

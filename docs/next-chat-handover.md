@@ -2,6 +2,44 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Smart Intake AI opportunity panel v1)
+
+Scope completed: Smart Intake document review now has a review-first AI
+opportunity workspace for old invoices/notices and other imperfect source
+documents. The panel infers next-step cards, asks one focused local question,
+stores answers in `review_data.ai_opportunity_session`, and previews a
+review-only proposed output.
+
+What changed:
+- Backend added `POST /document-intakes/{id}/ai-opportunity-session`, a
+  namespaced review metadata merge endpoint. It rejects unready/applied intakes,
+  preserves top-level `reviewed_at` / `reviewed_by_user_id` for open AI
+  sessions, and never calls provider/apply flows.
+- Frontend Smart Intake review now shows notice billing guidance before the AI
+  opportunity panel, then peer opportunity cards, one question, and a proposed
+  output preview above the long source/field editor.
+- Notice fallback opportunities align across backend/frontend: follow-up is
+  `action-1`; generic money-based billing setup is not auto-created for notices
+  unless it is an explicit proposed action.
+- Smoke mocks and specs cover desktop, mobile, and 503 failure paths.
+
+Verification evidence:
+- Backend: `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py
+  -q -k "ai_opportunity_session or document_intake_apply_invoice_prepares_billing_work"`
+  passed; full `tests/integration/test_document_intake_api.py` also passed in
+  review.
+- Frontend: `npm --prefix apps/web run lint -- src/lib/api.ts
+  src/components/dashboard.tsx`, `npx tsc --noEmit --pretty false` in
+  `apps/web`, and `NODE_ENV=development npm --prefix apps/web run test:smoke --
+  app-flows.spec.ts -g "AI opportunity|unmatched notices" --workers=1` passed.
+- Screenshots: `output/playwright/smart-intake-ai-opportunity-panel-1440.png`,
+  `output/playwright/smart-intake-ai-opportunity-panel-390.png`, and
+  `output/playwright/smart-intake-ai-opportunity-panel-390-question.png`.
+
+Guardrails held: no Smart Intake apply/review/accept-lease-match, invoice draft
+creation/delivery, SendGrid/Twilio/comms dispatch, owner dispatch, Xero/Basiq,
+payment, or reconciliation mutation is triggered by the AI opportunity panel.
+
 ## Codex continuation - 2026-06-15 (Work message-panel density)
 
 Scope completed: design-first UX debt closeout for contractor notification
