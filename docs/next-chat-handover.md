@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Comms template preview density v1)
+
+Scope completed: design-first UX debt closeout for `/comms` send-time template
+preview density and kind-to-template mapping. Figma frames created in
+`Leasium — Design Source of Truth` on `03 Screens`: `Comms · Template preview
+density` (`116:812`) and `Comms · Template preview density · Mobile`
+(`116:933`).
+
+What changed:
+- Matching email draft cards now show a visible `Template match` rail before
+  the editable fields, including `Contractor forward maps to
+  maintenance_contractor_update · v1`.
+- The old collapsed `Stored template preview` disclosure is replaced by an
+  always-visible review-only preview rail beside the draft on desktop and
+  stacked inside the card on mobile.
+- Preview still calls only `/comms/template-preview`; edited subject/body text
+  still wins over template output when the operator approves.
+
+Verification evidence:
+- Figma MCP frames created: `116:812`, `116:933`.
+- Screenshots: `output/playwright/comms-template-preview-density-1440.png`,
+  `output/playwright/comms-template-preview-density-390.png`.
+- Red/green smoke: `comms-template-preview.spec.ts` first failed because the
+  preview button was hidden in the collapsed disclosure and mapping copy did
+  not exist; after implementation the focused smoke passed 2/2.
+- Commands green: `npm --prefix apps/web run lint -- src/app/comms/page.tsx
+  tests/smoke/comms-template-preview.spec.ts`, `npx tsc --noEmit --pretty
+  false` in `apps/web`, `NODE_ENV=development npm --prefix apps/web run
+  test:smoke -- comms-template-preview.spec.ts --workers=1`, and
+  `npm --prefix apps/web run build`.
+
+Guardrails held: preview does not send SendGrid email, send Twilio SMS,
+dispatch queued drafts, dismiss candidates, refresh providers, mutate
+communication templates, write provider history, change tenant/work/invoice
+state, or touch Xero/Basiq/payment/reconciliation paths.
+
 ## Codex continuation - 2026-06-15 (AI Mailbox platform-admin alias controls v1)
 
 Scope completed: design-first platform-admin alias controls for

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
@@ -76,11 +77,15 @@ test("comms draft shows stored template preview without dispatching", async ({
       .first(),
   ).toBeVisible();
 
-  await contractorForwardCard.getByText("Stored template preview").click();
   await contractorForwardCard
     .getByRole("button", { name: "Preview stored template" })
     .click();
 
+  await expect(
+    contractorForwardCard.getByText(
+      "Contractor forward maps to maintenance_contractor_update · v1",
+    ),
+  ).toBeVisible();
   await expect(
     contractorForwardCard.getByText("Maintenance update requested"),
   ).toBeVisible();
@@ -94,4 +99,55 @@ test("comms draft shows stored template preview without dispatching", async ({
   ).toBeVisible();
   expect(previewRequests).toBe(1);
   expect(mutationRequests).toEqual([]);
+});
+
+test("comms template preview density fits desktop and mobile", async ({
+  page,
+}) => {
+  await mkdir("../../output/playwright", { recursive: true });
+
+  for (const viewport of [
+    { label: "1440", width: 1440, height: 900 },
+    { label: "390", width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    await page.goto("/comms");
+    await page.getByRole("tab", { name: "Contractor forward 1" }).click();
+
+    const contractorForwardCard = page
+      .locator("section")
+      .filter({
+        has: page.getByRole("heading", { name: "Contractor forward" }),
+      })
+      .first();
+
+    await expect(
+      contractorForwardCard.getByText(
+        "Contractor forward maps to maintenance_contractor_update · v1",
+      ),
+    ).toBeVisible();
+    await expect(
+      contractorForwardCard.getByRole("button", {
+        name: "Preview stored template",
+      }),
+    ).toBeVisible();
+    await expect(
+      contractorForwardCard.getByText(
+        "Preview is review-only; edited subject or body wins at approve time.",
+      ),
+    ).toBeVisible();
+
+    const horizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+    await page.screenshot({
+      path: `../../output/playwright/comms-template-preview-density-${viewport.label}.png`,
+      fullPage: true,
+    });
+  }
 });

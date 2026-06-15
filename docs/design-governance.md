@@ -130,6 +130,7 @@ map for agents:
 | 03 Screens / Insights 61:1063 | `apps/web/src/app/insights/page.tsx` — Horizon Insights v1 |
 | 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 + 2026-06-14 UX pass (routed copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions, reviewed promote provenance, Settings allowlist context) |
 | 03 Screens / Platform admin · Mailbox aliases 109:812 + Mobile 109:908 | `apps/web/src/app/admin/page.tsx` + `apps/web/src/components/app-shell.tsx` — platform-admin alias reserve/list/label/status controls v1 |
+| 03 Screens / Comms · Template preview density 116:812 + Mobile 116:933 | `apps/web/src/app/comms/page.tsx` — send-time template preview density and kind-to-template mapping v1 |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -221,6 +222,14 @@ fixes · deferrals.
   bottom nav on `/admin`, removed long visible per-row alias label copy,
   filtered platform mock aliases to client organisations, and hid the dev-only
   Next overlay in screenshots · deferred: none for alias controls.
+- 2026-06-15 · Comms template preview density · Figma frames `116:812` and
+  `116:933` created from the Horizon Work/Comms patterns · screens checked at
+  1440/390 (`output/playwright/comms-template-preview-density-1440.png`,
+  `comms-template-preview-density-390.png`) · fixes: surfaced the
+  kind-to-template mapping before preview, replaced the collapsed preview
+  disclosure with a visible review-only preview rail, preserved edited-text-wins
+  copy, and added responsive no-overflow smoke coverage · deferred: none for
+  template preview density.
 
 ## UX Debt Register
 
@@ -231,9 +240,6 @@ remove entries by shipping a slice whose UX pass covers them.
 - **Comms message-panel density** — contractor notification checkbox
   density and channel-evidence placement in the Work message panel
   (flagged 2026-06-12, vendor message notifications v1).
-- **Comms template preview density** — inline send-time template preview
-  density and kind-to-template mapping legibility (flagged 2026-06-12,
-  send-time template consumption v1).
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).
@@ -965,15 +971,16 @@ remove entries by shipping a slice whose UX pass covers them.
   drawer density, inactive reactivation discoverability, Settings-vs-Comms ownership, and
   whether the sample values are the right operator-facing preview alongside the shipped
   send-time consumption path.
-- **Comms send-time template preview and consumption (2026-06-12, Remba pending):**
-  `/comms` now shows a compact stored-template preview disclosure on matching email draft
-  cards. Opening the preview calls the review-only `/comms/template-preview` endpoint; it
-  saves nothing and never sends providers. Approving an unedited matching draft renders the
-  requested stored template at backend send-time, while edited subject/body text wins over the
-  template output and dispatch audit records template id/key/version/status either way.
-  SendGrid/Twilio still run only from explicit `Approve & send`. Remba should review the
-  inline preview density, disclosure placement, guardrail wording, and the conservative
-  Comms-kind-to-template mapping before this is marked `[x]`.
+- **Comms send-time template preview and consumption (2026-06-12; UX pass
+  completed 2026-06-15):** `/comms` now shows eligible stored-template matches
+  directly on matching email draft cards. The 2026-06-15 density pass replaced
+  the collapsed disclosure with a visible review-only preview rail and explicit
+  kind-to-template mapping. Opening the preview calls the review-only
+  `/comms/template-preview` endpoint; it saves nothing and never sends
+  providers. Approving an unedited matching draft renders the requested stored
+  template at backend send-time, while edited subject/body text wins over the
+  template output and dispatch audit records template id/key/version/status
+  either way. SendGrid/Twilio still run only from explicit `Approve & send`.
 - **Vendor portal message notifications (2026-06-12, Remba pending):**
   maintenance work-order detail now adds explicit approved email/SMS notification
   checkboxes to the contractor message form. The default is no provider send:

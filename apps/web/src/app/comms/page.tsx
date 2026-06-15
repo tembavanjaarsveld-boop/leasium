@@ -1909,6 +1909,9 @@ function CandidateCard({
   const templateLabel = template
     ? `Template ${template.key} ${template.version}`
     : null;
+  const templateMatchLabel = template
+    ? `${KIND_LABEL[candidate.kind]} maps to ${template.key} · ${template.version}`
+    : null;
   const previewMutation = useMutation({
     mutationFn: () => {
       if (!template) {
@@ -2150,97 +2153,125 @@ function CandidateCard({
           </div>
         ) : null}
 
-        <div
-          className={
-            isSms ? "grid gap-3 md:grid-cols-[220px]" : "grid gap-3 md:grid-cols-[1fr_220px]"
-          }
-        >
-          {!isSms ? (
-            <Field label="Subject">
-              <Input
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                disabled={draftInputsDisabled}
-              />
-            </Field>
-          ) : null}
-          <Field label={isSms ? "Phone recipient" : "Email recipient"}>
-            <Input
-              type={isSms ? "tel" : "email"}
-              value={isSms ? recipientPhone : recipientEmail}
-              disabled={draftInputsDisabled}
-              onChange={(event) => {
-                if (isSms) {
-                  setRecipientPhone(event.target.value);
-                } else {
-                  setRecipientEmail(event.target.value);
-                }
-              }}
-              placeholder={isSms ? "+61400111222" : "tenant@example.com"}
-            />
-          </Field>
-        </div>
-
-        <Field label="Body">
-          <textarea
-            value={body}
-            disabled={draftInputsDisabled}
-            onChange={(event) => setBody(event.target.value)}
-            className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-        </Field>
-        {isSms ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            <div>
-              <span className="font-medium text-foreground">
-                SMS body review
-              </span>{" "}
-              {smsBodyOverGuide
-                ? "May split into multiple SMS segments."
-                : "Under the 160-character single SMS guide."}
+        {canPreviewTemplate && template ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/15 bg-primary-soft px-3 py-3 text-sm">
+            <div className="min-w-0">
+              <p className="text-leasium-micro font-semibold uppercase text-primary-hover">
+                Template match
+              </p>
+              <p className="mt-1 font-semibold text-foreground">
+                {templateMatchLabel}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Preview is review-only; edited subject or body wins at approve
+                time.
+              </p>
             </div>
-            <StatusBadge tone={smsBodyOverGuide ? "warning" : "success"}>
-              {smsBodyLength}/{SMS_SINGLE_SEGMENT_GUIDE} chars
-            </StatusBadge>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone="primary">Email only</StatusBadge>
+              <SecondaryButton
+                type="button"
+                className="border-primary/30 bg-white text-primary-hover hover:bg-primary/10"
+                onClick={() => previewMutation.mutate()}
+                disabled={previewMutation.isPending || draftSettled}
+              >
+                {previewMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Sparkles size={15} />
+                )}
+                {previewMutation.isPending
+                  ? "Previewing…"
+                  : "Preview stored template"}
+              </SecondaryButton>
+            </div>
           </div>
         ) : null}
 
-        {canPreviewTemplate && template ? (
-          <details className="rounded-md border border-border bg-muted/20">
-            <summary className="min-h-11 cursor-pointer px-3 py-2.5 text-sm font-medium text-foreground">
-              Stored template preview
-            </summary>
-            <div className="grid gap-3 border-t border-border p-3 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+        <div
+          className={
+            canPreviewTemplate && template
+              ? "grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] lg:items-start"
+              : "grid gap-3"
+          }
+        >
+          <div className="grid gap-3">
+            <div
+              className={
+                isSms
+                  ? "grid gap-3 md:grid-cols-[220px]"
+                  : "grid gap-3 md:grid-cols-[1fr_220px]"
+              }
+            >
+              {!isSms ? (
+                <Field label="Subject">
+                  <Input
+                    value={subject}
+                    onChange={(event) => setSubject(event.target.value)}
+                    disabled={draftInputsDisabled}
+                  />
+                </Field>
+              ) : null}
+              <Field label={isSms ? "Phone recipient" : "Email recipient"}>
+                <Input
+                  type={isSms ? "tel" : "email"}
+                  value={isSms ? recipientPhone : recipientEmail}
+                  disabled={draftInputsDisabled}
+                  onChange={(event) => {
+                    if (isSms) {
+                      setRecipientPhone(event.target.value);
+                    } else {
+                      setRecipientEmail(event.target.value);
+                    }
+                  }}
+                  placeholder={isSms ? "+61400111222" : "tenant@example.com"}
+                />
+              </Field>
+            </div>
+
+            <Field label="Body">
+              <textarea
+                value={body}
+                disabled={draftInputsDisabled}
+                onChange={(event) => setBody(event.target.value)}
+                className="min-h-[180px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </Field>
+            {isSms ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                 <div>
-                  <p className="font-medium text-foreground">
-                    {templateLabel}
+                  <span className="font-medium text-foreground">
+                    SMS body review
+                  </span>{" "}
+                  {smsBodyOverGuide
+                    ? "May split into multiple SMS segments."
+                    : "Under the 160-character single SMS guide."}
+                </div>
+                <StatusBadge tone={smsBodyOverGuide ? "warning" : "success"}>
+                  {smsBodyLength}/{SMS_SINGLE_SEGMENT_GUIDE} chars
+                </StatusBadge>
+              </div>
+            ) : null}
+          </div>
+
+          {canPreviewTemplate && template ? (
+            <div
+              aria-label="Comms template preview"
+              className="grid gap-3 rounded-md border border-border bg-white p-3 text-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-foreground">
+                    Stored template output
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Preview uses the current draft context. Edited subject or
-                    body still wins when you approve.
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Generated from the current draft context.
                   </p>
                 </div>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => previewMutation.mutate()}
-                  disabled={previewMutation.isPending || draftSettled}
-                >
-                  {previewMutation.isPending ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : (
-                    <Sparkles size={15} />
-                  )}
-                  {previewMutation.isPending
-                    ? "Previewing…"
-                    : "Preview stored template"}
-                </SecondaryButton>
+                <StatusBadge tone="success">Review-only</StatusBadge>
               </div>
               {templatePreview ? (
-                <div
-                  aria-label="Comms template preview"
-                  className="grid gap-2 rounded-md border border-border bg-white p-3"
-                >
+                <>
                   {templatePreview.subject ? (
                     <div>
                       <p className="text-leasium-micro font-semibold uppercase text-muted-foreground">
@@ -2259,13 +2290,23 @@ function CandidateCard({
                       {templatePreview.body}
                     </p>
                   </div>
-                  {templatePreview.guardrails.map((guardrail) => (
-                    <p key={guardrail} className="text-xs text-muted-foreground">
-                      {guardrail}
-                    </p>
-                  ))}
+                  <div className="grid gap-1 rounded-md bg-muted/40 p-2">
+                    {templatePreview.guardrails.map((guardrail) => (
+                      <p
+                        key={guardrail}
+                        className="text-xs text-muted-foreground"
+                      >
+                        {guardrail}
+                      </p>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                  Preview stored template to compare the rendered subject and
+                  body before approving any provider send.
                 </div>
-              ) : null}
+              )}
               {previewError ? (
                 <p className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
                   <AlertTriangle size={16} />
@@ -2273,8 +2314,8 @@ function CandidateCard({
                 </p>
               ) : null}
             </div>
-          </details>
-        ) : null}
+          ) : null}
+        </div>
 
         {showEvidencePanel ? (
           <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm">
