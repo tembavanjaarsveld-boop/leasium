@@ -2324,7 +2324,10 @@ def rent_roll(
         .join(Property, Property.entity_id == Entity.id)
         .join(TenancyUnit, TenancyUnit.property_id == Property.id)
         .outerjoin(Lease, and_(*active_lease_join))
-        .outerjoin(Tenant, Tenant.id == Lease.tenant_id)
+        .outerjoin(
+            Tenant,
+            and_(Tenant.id == Lease.tenant_id, Tenant.deleted_at.is_(None)),
+        )
         .where(
             (
                 Entity.id == entity_id
@@ -2357,6 +2360,10 @@ def rent_roll(
 
     response: list[RentRollRowRead] = []
     for entity, prop, unit, lease, tenant in rows:
+        # A lease whose tenant was deleted is orphaned — show the unit as vacant
+        # rather than surfacing the removed tenant or its rent/charges.
+        if lease is not None and tenant is None:
+            lease = None
         charge_rules = rules_by_lease.get(lease.id, []) if lease is not None else []
         total_charge_cents = sum(rule.amount_cents for rule in charge_rules)
         due_dates = [rule.next_due_date for rule in charge_rules if rule.next_due_date is not None]

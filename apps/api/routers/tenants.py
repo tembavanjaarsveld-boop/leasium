@@ -1123,6 +1123,28 @@ def delete_tenant(
     tenant = _get_tenant_for_user(tenant_id, user, session, WRITE_ROLES)
     now = utcnow()
     tenant.deleted_at = now
+    # Cascade to the tenant's leases so they don't linger orphaned under the
+    # property (a lease can't outlive its tenant). Soft-delete + audit each.
+    leases = session.scalars(
+        select(Lease).where(
+            Lease.tenant_id == tenant.id,
+            Lease.deleted_at.is_(None),
+        )
+    ).all()
+    for lease in leases:
+        lease.deleted_at = now
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=tenant.entity_id,
+            action="delete",
+            target_table="lease",
+            target_id=lease.id,
+            tool_name="tenant.delete",
+            tool_input={"tenant_id": str(tenant.id)},
+            tool_output_summary="Lease soft-deleted because its tenant was deleted.",
+        )
     portal_accounts = session.scalars(
         select(TenantPortalAccount).where(
             TenantPortalAccount.tenant_id == tenant.id,

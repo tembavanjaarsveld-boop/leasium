@@ -1126,6 +1126,67 @@ def test_lease_event_follow_up_run_skips_unique_race_duplicates(
     assert [row.id for row in duplicates] == [existing.id]
 
 
+def test_deleting_tenant_cascades_lease_and_clears_rent_roll(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_id = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Reload Arcade",
+            "street_address": "1 Reload Way",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_retail",
+        },
+    ).json()["id"]
+    unit_id = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 9", "sqm": 80},
+    ).json()["id"]
+    tenant_id = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Ghost Pty Ltd"},
+    ).json()["id"]
+    lease_id = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2028-12-31",
+            "annual_rent_cents": 1140000_00,
+            "rent_frequency": "monthly",
+        },
+    ).json()["id"]
+
+    before = client.get(
+        f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}"
+    ).json()
+    assert len(before) == 1
+    assert before[0]["tenant_id"] == tenant_id
+    assert before[0]["lease_id"] == lease_id
+
+    # Deleting the tenant cascades to its lease so nothing is orphaned.
+    assert client.delete(f"/api/v1/tenants/{tenant_id}").status_code == 204
+    lease = session.get(Lease, UUID(lease_id))
+    assert lease is not None and lease.deleted_at is not None
+
+    # The unit now reads as vacant — no ghost tenant, no orphaned lease/rent.
+    after = client.get(
+        f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}"
+    ).json()
+    assert len(after) == 1
+    assert after[0]["tenant_id"] is None
+    assert after[0]["tenant_name"] is None
+    assert after[0]["lease_id"] is None
+    assert after[0]["annual_rent_cents"] is None
+
+
 def test_charge_rules_and_rent_roll_surface_billing_readiness(
     client: TestClient,
     session: Session,
