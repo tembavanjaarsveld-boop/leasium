@@ -937,6 +937,16 @@ def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str
         data,
         {"expiry", "expiration", "lease end", "term end", "end date", "expires"},
     )
+    # Prefer lease dates the reviewer confirmed explicitly (e.g. handed in by the
+    # Leasium AI plan, which parses the term itself) over keyword-derived dates,
+    # so an unusual key-date label can't leave the lease term unset.
+    explicit_lease = _dict(data.get("lease"))
+    explicit_commencement = _date(explicit_lease.get("commencement_date"))
+    if explicit_commencement is not None:
+        commencement_date = explicit_commencement.isoformat()
+    explicit_expiry = _date(explicit_lease.get("expiry_date"))
+    if explicit_expiry is not None:
+        expiry_date = explicit_expiry.isoformat()
     next_review_date = _generic_date(
         data,
         {"rent review", "review date", "cpi review", "rent adjustment"},

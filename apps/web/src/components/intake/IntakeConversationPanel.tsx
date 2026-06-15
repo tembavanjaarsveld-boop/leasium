@@ -277,6 +277,28 @@ function buildUnderstanding(
   return rows;
 }
 
+// The lease term the panel already parses for the understanding card, handed to
+// apply as an explicit lease block so the backend doesn't have to re-derive the
+// dates from an unusual key-date label (and block on "Confirm the lease expiry").
+function leaseDatesFrom(data: DocumentIntakeExtraction): {
+  commencement_date?: string;
+  expiry_date?: string;
+} {
+  const dates = items(data.key_dates);
+  const findDate = (match: (label: string) => boolean) => {
+    const row = dates.find((d) => match(text(d.label)?.toLowerCase() ?? ""));
+    return row ? text(row.date) : null;
+  };
+  const out: { commencement_date?: string; expiry_date?: string } = {};
+  const start = findDate((l) => l.includes("start") || l.includes("commence"));
+  const expiry = findDate(
+    (l) => l.includes("expiry") || l.includes("expir") || l.includes("end"),
+  );
+  if (start) out.commencement_date = start;
+  if (expiry) out.expiry_date = expiry;
+  return out;
+}
+
 // Plan rows: one per record the apply will create / link.
 type PlanRow = {
   key: string;
@@ -477,12 +499,23 @@ export function IntakeConversationPanel({
     setApplying(true);
     setApplyError(null);
     const links = isRecord(data.suggested_links) ? data.suggested_links : {};
+    const leaseDates = leaseDatesFrom(data);
+    const reviewData: DocumentIntakeExtraction =
+      leaseDates.commencement_date || leaseDates.expiry_date
+        ? {
+            ...data,
+            lease: {
+              ...(isRecord(data.lease) ? data.lease : {}),
+              ...leaseDates,
+            },
+          }
+        : data;
     try {
-      // reviewData shape = the reviewed extraction (same shape the inline
-      // review panel seeds + sends); link ids passed through when the
-      // extraction suggests an existing record.
+      // reviewData = the reviewed extraction plus the parsed lease term, so the
+      // backend has a confirmed expiry. Link ids are passed through when the
+      // property/tenant already exists.
       const result = await applyDocumentIntake(intake.id, {
-        reviewData: data,
+        reviewData,
         propertyId: propertyMatch?.id ?? text(links.property_id),
         tenancyUnitId: text(links.tenancy_unit_id),
         tenantId: tenantMatch?.id ?? text(links.tenant_id),

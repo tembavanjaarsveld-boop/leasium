@@ -1068,6 +1068,39 @@ def test_document_intake_apply_insurance_requires_reviewed_expiry_for_tenant_upd
     assert tenant.tenant_metadata == {"insurance_expiry_date": "2026-12-31"}
 
 
+def test_generic_lease_review_prefers_explicit_lease_dates() -> None:
+    """An unusual expiry key-date label must not leave the lease term unset when
+    the reviewer (e.g. the Leasium AI plan) hands in an explicit lease block."""
+    from apps.api.routers.document_intakes import (
+        _generic_lease_review_to_lease_intake_data,
+    )
+
+    data: dict[str, Any] = {
+        "document_type": "lease",
+        "properties": [{"name": "Building 3", "street_address": "205 Leitchs Rd"}],
+        "parties": [{"name": "Gorilla Grind Pty Ltd", "role": "tenant"}],
+        "key_dates": [
+            {"label": "Commencement", "date": "2024-01-29"},
+            # Not in the keyword set, so keyword derivation misses it.
+            {"label": "Ending date", "date": "2027-12-10"},
+        ],
+        "money_amounts": [
+            {"label": "Annual rent", "amount": 95000, "frequency": "month"},
+        ],
+    }
+
+    derived = _generic_lease_review_to_lease_intake_data(data)
+    assert derived["lease"]["expiry_date"] is None
+
+    data["lease"] = {
+        "commencement_date": "2024-01-29",
+        "expiry_date": "2027-12-10",
+    }
+    resolved = _generic_lease_review_to_lease_intake_data(data)
+    assert resolved["lease"]["commencement_date"] == "2024-01-29"
+    assert resolved["lease"]["expiry_date"] == "2027-12-10"
+
+
 def test_document_intake_apply_insurance_uses_lease_tenant_for_metadata(
     client: TestClient,
     session: Session,
