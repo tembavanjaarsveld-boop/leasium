@@ -2111,6 +2111,86 @@ function opportunityQuestionId(opportunity: DocumentIntakeOpportunityRecord) {
   return fieldText(opportunity.id) ?? opportunityKind(opportunity);
 }
 
+function providerMutationsFromText(
+  action: string | null,
+  target: string | null,
+  summary: string | null,
+) {
+  const haystack = [action, target, summary]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const providers: string[] = [];
+  if (haystack.includes("xero")) {
+    providers.push("xero");
+  }
+  if (haystack.includes("sendgrid")) {
+    providers.push("sendgrid");
+  }
+  if (haystack.includes("twilio") || haystack.includes("sms")) {
+    providers.push("twilio");
+  }
+  if (
+    haystack.includes("tenant_email") ||
+    haystack.includes("tenant email") ||
+    haystack.includes("send email")
+  ) {
+    providers.push("tenant_email");
+  }
+  if (haystack.includes("payment") || haystack.includes("reconciliation")) {
+    providers.push("payment_reconciliation");
+  }
+  return providers;
+}
+
+function providerMutationLabels(providers: string[]) {
+  return providers.map((provider) => {
+    switch (provider) {
+      case "xero":
+        return "Xero";
+      case "sendgrid":
+        return "SendGrid";
+      case "twilio":
+        return "Twilio";
+      case "tenant_email":
+        return "tenant email";
+      case "payment_reconciliation":
+        return "payment or reconciliation";
+      default:
+        return reviewTitleCase(provider);
+    }
+  });
+}
+
+function opportunityProviderMutations(
+  opportunity: DocumentIntakeOpportunityRecord,
+) {
+  return Array.isArray(opportunity.provider_mutations)
+    ? opportunity.provider_mutations.flatMap((item) => {
+        const text = fieldText(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function opportunityNeedsProviderApproval(
+  opportunity: DocumentIntakeOpportunityRecord,
+) {
+  return Boolean(
+    opportunity.requires_explicit_operator_approval ||
+      opportunityProviderMutations(opportunity).length,
+  );
+}
+
+function opportunityProviderApprovalCopy(
+  opportunity: DocumentIntakeOpportunityRecord,
+) {
+  const labels = providerMutationLabels(opportunityProviderMutations(opportunity));
+  return labels.length
+    ? `Provider approval needed later: ${labels.join(", ")}.`
+    : "Provider approval needed later.";
+}
+
 function normalizeOpportunityRecord(
   value: unknown,
   index: number,
@@ -2122,23 +2202,28 @@ function normalizeOpportunityRecord(
   const opportunity = value as DocumentIntakeOpportunityRecord;
   const action = fieldText(opportunity.action);
   const kind = fieldText(opportunity.kind) ?? action ?? "review_document";
+  const summary =
+    fieldText(opportunity.summary) ??
+    "Review this document-backed opportunity.";
   const target =
     fieldText(opportunity.target) ?? fieldText(opportunity.target_kind);
-  const providerMutations = Array.isArray(opportunity.provider_mutations)
+  const explicitProviderMutations = Array.isArray(opportunity.provider_mutations)
     ? opportunity.provider_mutations.flatMap((item) => {
         const text = fieldText(item);
         return text ? [text] : [];
       })
     : [];
+  const providerMutations =
+    explicitProviderMutations.length > 0
+      ? explicitProviderMutations
+      : providerMutationsFromText(action, target, summary);
   return {
     id: fieldText(opportunity.id) ?? `action-${index + 1}`,
     kind,
     action,
     target: fieldText(opportunity.target),
     title: opportunityTitle(opportunity),
-    summary:
-      fieldText(opportunity.summary) ??
-      "Review this document-backed opportunity.",
+    summary,
     confidence: fieldNumber(opportunity.confidence),
     source_path: fieldText(opportunity.source_path) ?? defaultSourcePath,
     source_hint:
@@ -2246,30 +2331,11 @@ function documentIntakeOpportunityCards(
   const cards: DocumentIntakeOpportunityRecord[] = [];
   const moneyRows = groupItems(draft, "money_amounts");
   const keyDateRows = groupItems(draft, "key_dates");
-  if (moneyRows.length > 0) {
-    cards.push({
-      id: "action-1",
-      kind: "set_up_billing_pattern",
-      action: "set_up_billing_pattern",
-      target: "billing",
-      title: "Set up billing pattern",
-      summary:
-        "Use source-backed amounts to prepare a local billing review question.",
-      confidence: itemConfidence(moneyRows[0], intake.confidence),
-      source_path: "money_amounts.0",
-      source_hint: itemSource(moneyRows[0]),
-      target_kind: "billing",
-      provider_mutations: [],
-      requires_explicit_operator_approval: false,
-      decision: "pending",
-      notes: null,
-    });
-  }
   const isNoticeDocument =
     fieldText(draft.document_type ?? intake.document_type) === "notice";
   if (isNoticeDocument || keyDateRows.length > 0) {
     cards.push({
-      id: `action-${cards.length + 1}`,
+      id: "action-1",
       kind: "create_follow_up_task",
       action: "create_follow_up_task",
       target: "task",
@@ -2282,6 +2348,25 @@ function documentIntakeOpportunityCards(
       source_path: keyDateRows[0] ? "key_dates.0" : "document_type",
       source_hint: keyDateRows[0] ? itemSource(keyDateRows[0]) : null,
       target_kind: "task",
+      provider_mutations: [],
+      requires_explicit_operator_approval: false,
+      decision: "pending",
+      notes: null,
+    });
+  }
+  if (moneyRows.length > 0 && !isNoticeDocument) {
+    cards.push({
+      id: `action-${cards.length + 1}`,
+      kind: "set_up_billing_pattern",
+      action: "set_up_billing_pattern",
+      target: "billing",
+      title: "Set up billing pattern",
+      summary:
+        "Use source-backed amounts to prepare a local billing review question.",
+      confidence: itemConfidence(moneyRows[0], intake.confidence),
+      source_path: "money_amounts.0",
+      source_hint: itemSource(moneyRows[0]),
+      target_kind: "billing",
       provider_mutations: [],
       requires_explicit_operator_approval: false,
       decision: "pending",
@@ -2310,6 +2395,14 @@ function defaultOpportunityQuestion(
 }
 
 function opportunityGuardrail(opportunity: DocumentIntakeOpportunityRecord) {
+  if (opportunityNeedsProviderApproval(opportunity)) {
+    const labels = providerMutationLabels(
+      opportunityProviderMutations(opportunity),
+    );
+    return labels.length
+      ? `Provider approval needed later for ${labels.join(", ")}. No provider write runs from this panel.`
+      : "Provider approval needed later. No provider write runs from this panel.";
+  }
   const kind = opportunityKind(opportunity);
   const haystack = [
     kind,
@@ -2412,6 +2505,18 @@ function proposedOutputForOpportunity(
       label: "Due date",
       value: formatDate(dateValue),
       source: itemSource(keyDate),
+    });
+  }
+  const providerLabels = providerMutationLabels(
+    opportunityProviderMutations(opportunity),
+  );
+  if (opportunityNeedsProviderApproval(opportunity)) {
+    rows.push({
+      label: "Provider approval",
+      value: providerLabels.length
+        ? `Needed later for ${providerLabels.join(", ")}`
+        : "Needed later",
+      source: null,
     });
   }
   return {
@@ -2609,10 +2714,14 @@ function DocumentIntakeOpportunityPanel({
           {opportunities.map((opportunity) => {
             const id = opportunityQuestionId(opportunity);
             const selected = id === selectedOpportunityId;
+            const needsProviderApproval =
+              opportunityNeedsProviderApproval(opportunity);
             return (
               <button
                 key={id}
                 type="button"
+                aria-label={`${opportunityTitle(opportunity)} opportunity`}
+                data-testid={`document-intake-opportunity-card-${id}`}
                 className={cn(
                   "grid min-h-11 gap-1 rounded-xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50",
                   selected
@@ -2631,10 +2740,23 @@ function DocumentIntakeOpportunityPanel({
                   >
                     {confidenceLabel(opportunity.confidence)}
                   </StatusBadge>
+                  {needsProviderApproval ? (
+                    <StatusBadge tone="warning">
+                      Provider approval needed later
+                    </StatusBadge>
+                  ) : null}
                 </span>
                 <span className="line-clamp-2 text-xs leading-4 text-muted-foreground">
                   {opportunity.summary}
                 </span>
+                {needsProviderApproval ? (
+                  <span
+                    data-testid={`document-intake-opportunity-provider-${id}`}
+                    className="text-xs font-medium leading-4 text-warning-strong"
+                  >
+                    {opportunityProviderApprovalCopy(opportunity)}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -2704,6 +2826,11 @@ function DocumentIntakeOpportunityPanel({
               </h3>
             </div>
             <StatusBadge tone="primary">Preview</StatusBadge>
+            {opportunityNeedsProviderApproval(selectedOpportunity) ? (
+              <StatusBadge tone="warning">
+                Provider approval needed later
+              </StatusBadge>
+            ) : null}
           </div>
           <p className="text-sm leading-5 text-muted-foreground">
             {proposedOutput.summary}
@@ -2726,7 +2853,10 @@ function DocumentIntakeOpportunityPanel({
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border-primary/15 bg-primary-soft px-3 py-2 text-sm text-primary-hover">
+          <div
+            data-testid="document-intake-opportunity-output-guardrail"
+            className="rounded-xl border border-primary/15 bg-primary-soft px-3 py-2 text-sm text-primary-hover"
+          >
             {proposedOutput.guardrail}
           </div>
           <div className="grid gap-1 text-xs leading-5 text-muted-foreground">
@@ -3010,6 +3140,24 @@ function DocumentIntakeReviewPanel({
           </div>
         </div>
 
+        {noticeInvoicingGuidance.length ? (
+          <div className="grid gap-1 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-strong">
+            {noticeInvoicingGuidance.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        ) : null}
+
+        <DocumentIntakeOpportunityPanel
+          intake={intake}
+          draft={draft}
+          reviewedDraft={reviewedDraft}
+          disabled={demo || saving || applying || clearing}
+          selectedEntityId={intake.entity_id}
+          onNotice={onOpportunityNotice}
+          onError={onOpportunityError}
+        />
+
         <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
           <div
             data-testid="document-review-source-preview"
@@ -3200,16 +3348,6 @@ function DocumentIntakeReviewPanel({
           sent to the workflow.
         </div>
 
-        <DocumentIntakeOpportunityPanel
-          intake={intake}
-          draft={draft}
-          reviewedDraft={reviewedDraft}
-          disabled={demo || saving || applying || clearing}
-          selectedEntityId={intake.entity_id}
-          onNotice={onOpportunityNotice}
-          onError={onOpportunityError}
-        />
-
         <Field label="Summary">
           <textarea
             value={fieldText(draft.summary) ?? ""}
@@ -3224,13 +3362,6 @@ function DocumentIntakeReviewPanel({
           <div className="rounded-md border border-danger/20 bg-danger/5 p-3 text-sm text-danger">
             {warnings.slice(0, 4).map((warning) => (
               <div key={warning}>{warning}</div>
-            ))}
-          </div>
-        ) : null}
-        {noticeInvoicingGuidance.length ? (
-          <div className="grid gap-1 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-strong">
-            {noticeInvoicingGuidance.map((line) => (
-              <p key={line}>{line}</p>
             ))}
           </div>
         ) : null}
