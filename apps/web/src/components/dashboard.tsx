@@ -2769,158 +2769,206 @@ function DocumentIntakeOpportunityPanel({
   return (
     <div
       data-testid="document-intake-opportunity-panel"
-      className="grid gap-3 rounded-2xl border border-primary/20 bg-white p-3 shadow-leasiumCard sm:p-4"
+      className="overflow-hidden rounded-2xl border border-primary/20 bg-white shadow-leasiumCard"
     >
       <div
-        data-testid="document-intake-chat-thread"
-        className="grid gap-3 rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover"
+        data-testid="document-intake-ai-chat-window"
+        className="grid bg-white xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.42fr)]"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs">
-              <Sparkles size={16} />
-            </span>
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-foreground">
-                Leasium AI
-              </h2>
-              <p className="mt-1 text-sm leading-5 text-primary-hover">
-                {assistantIntro}
-              </p>
-            </div>
-          </div>
-          <StatusBadge tone="primary">Review first</StatusBadge>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-primary shadow-leasiumXs">
-            Explain first
-          </span>
-          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-primary shadow-leasiumXs">
-            Suggestions next
-          </span>
-          <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-primary shadow-leasiumXs">
-            Approval before action
-          </span>
-        </div>
-        <p className="text-xs leading-5 text-primary-hover">
-          {OPPORTUNITY_LOCAL_GUARDRAIL}
-        </p>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.85fr)_minmax(0,1fr)_minmax(240px,0.95fr)]">
-        <div
-          data-testid="document-intake-opportunity-cards"
-          className="grid content-start gap-2 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
-        >
-          <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Suggested next steps
-          </div>
-          {opportunities.map((opportunity) => {
-            const id = opportunityQuestionId(opportunity);
-            const selected = id === selectedOpportunityId;
-            const needsProviderApproval =
-              opportunityNeedsProviderApproval(opportunity);
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-label={`${opportunityTitle(opportunity)} opportunity`}
-                data-testid={`document-intake-opportunity-card-${id}`}
-                className={cn(
-                  "grid min-h-11 gap-1 rounded-xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50",
-                  selected
-                    ? "border-primary/40 bg-primary-soft text-primary-hover"
-                    : "border-border bg-muted/25 text-foreground hover:border-primary/30 hover:bg-white",
-                )}
-                onClick={() => setSelectedOpportunityId(id)}
-                disabled={controlsDisabled}
-              >
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">
-                    {opportunityTitle(opportunity)}
-                  </span>
-                  <StatusBadge
-                    tone={opportunityCardTone(opportunity.confidence)}
-                  >
-                    {confidenceLabel(opportunity.confidence)}
-                  </StatusBadge>
-                  {needsProviderApproval ? (
-                    <StatusBadge tone="warning">
-                      Provider approval needed later
-                    </StatusBadge>
-                  ) : null}
-                </span>
-                <span className="line-clamp-2 text-xs leading-4 text-muted-foreground">
-                  {opportunity.summary}
-                </span>
-                {needsProviderApproval ? (
-                  <span
-                    data-testid={`document-intake-opportunity-provider-${id}`}
-                    className="text-xs font-medium leading-4 text-warning-strong"
-                  >
-                    {opportunityProviderApprovalCopy(opportunity)}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-
-        <form
+        <section
           data-testid="document-intake-opportunity-chat"
-          className="grid content-start gap-3 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
-          onSubmit={(event) => {
-            event.preventDefault();
-            saveAnswer();
-          }}
+          className="grid min-h-[440px] grid-rows-[auto_minmax(0,1fr)_auto] bg-white"
         >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Leasium AI asks
-              </div>
-              <p className="mt-1 text-sm font-semibold text-foreground">
-                {selectedQuestion}
-              </p>
-            </div>
-            <StatusBadge tone="neutral">Local reply</StatusBadge>
-          </div>
-          <textarea
-            value={answerText}
-            onChange={(event) => setAnswerText(event.target.value)}
-            disabled={controlsDisabled}
-            placeholder="Reply in plain English. Leasium AI will turn it into review context."
-            className="min-h-24 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
-          />
-          {latestStoredAnswer ? (
-            <div className="rounded-xl bg-muted/45 px-3 py-2 text-sm text-muted-foreground">
-              Last saved reply:{" "}
-              <span className="font-medium text-foreground">
-                {latestStoredAnswer}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-primary-soft px-3 py-3 sm:px-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-primary shadow-leasiumXs">
+                <Sparkles size={17} />
               </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-foreground">
+                  Leasium AI
+                </h2>
+                <p className="text-xs leading-5 text-primary-hover">
+                  Document conversation · review-first · local only
+                </p>
+              </div>
             </div>
-          ) : null}
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={controlsDisabled}
-              className="min-h-11"
-            >
-              {opportunitySessionMutation.isPending ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Check size={15} />
-              )}
-              Send reply
-            </Button>
+            <StatusBadge tone="primary">Review first</StatusBadge>
           </div>
-        </form>
+
+          <div
+            data-testid="document-intake-chat-thread"
+            className="grid content-start gap-4 bg-muted/20 p-3 sm:p-4"
+          >
+            <div
+              data-testid="document-intake-ai-message-intro"
+              className="flex items-start gap-3"
+            >
+              <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-white shadow-leasiumXs">
+                <Sparkles size={15} />
+              </span>
+              <div className="max-w-[760px] rounded-2xl rounded-tl-md border border-primary/15 bg-white px-3 py-3 text-sm shadow-leasiumXs">
+                <div className="font-semibold text-foreground">
+                  I read the document.
+                </div>
+                <p className="mt-1 leading-5 text-muted-foreground">
+                  {assistantIntro}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full bg-primary-soft px-2.5 py-1 font-semibold text-primary">
+                    Explain first
+                  </span>
+                  <span className="rounded-full bg-primary-soft px-2.5 py-1 font-semibold text-primary">
+                    Suggestions next
+                  </span>
+                  <span className="rounded-full bg-primary-soft px-2.5 py-1 font-semibold text-primary">
+                    Approval before action
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <div className="ml-11 max-w-[820px] rounded-2xl rounded-tl-md border border-border bg-white px-3 py-3 shadow-leasiumXs">
+                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Suggested next steps
+                </div>
+                <div
+                  data-testid="document-intake-ai-suggestion-row"
+                  className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap"
+                >
+                  {opportunities.map((opportunity) => {
+                    const id = opportunityQuestionId(opportunity);
+                    const selected = id === selectedOpportunityId;
+                    const needsProviderApproval =
+                      opportunityNeedsProviderApproval(opportunity);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        aria-label={`${opportunityTitle(opportunity)} opportunity`}
+                        data-testid={`document-intake-opportunity-card-${id}`}
+                        className={cn(
+                          "grid min-h-11 w-full max-w-sm gap-1 rounded-xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-[min(100%,17rem)]",
+                          selected
+                            ? "border-primary/40 bg-primary-soft text-primary-hover"
+                            : "border-border bg-muted/25 text-foreground hover:border-primary/30 hover:bg-white",
+                        )}
+                        onClick={() => setSelectedOpportunityId(id)}
+                        disabled={controlsDisabled}
+                      >
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">
+                            {opportunityTitle(opportunity)}
+                          </span>
+                          <StatusBadge
+                            tone={opportunityCardTone(
+                              opportunity.confidence,
+                            )}
+                          >
+                            {confidenceLabel(opportunity.confidence)}
+                          </StatusBadge>
+                          {needsProviderApproval ? (
+                            <StatusBadge tone="warning">
+                              Provider approval needed later
+                            </StatusBadge>
+                          ) : null}
+                        </span>
+                        <span className="line-clamp-2 text-xs leading-4 text-muted-foreground">
+                          {opportunity.summary}
+                        </span>
+                        {needsProviderApproval ? (
+                          <span
+                            data-testid={`document-intake-opportunity-provider-${id}`}
+                            className="text-xs font-medium leading-4 text-warning-strong"
+                          >
+                            {opportunityProviderApprovalCopy(opportunity)}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div
+              data-testid="document-intake-ai-message-question"
+              className="flex items-start gap-3"
+            >
+              <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-white shadow-leasiumXs">
+                <Sparkles size={15} />
+              </span>
+              <div className="max-w-[760px] rounded-2xl rounded-tl-md border border-primary/15 bg-white px-3 py-3 text-sm shadow-leasiumXs">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-foreground">
+                    Leasium AI asks
+                  </span>
+                  <StatusBadge tone="neutral">Local reply</StatusBadge>
+                </div>
+                <p className="leading-5 text-foreground">
+                  {selectedQuestion}
+                </p>
+              </div>
+            </div>
+
+            {latestStoredAnswer ? (
+              <div className="flex justify-end">
+                <div className="max-w-[720px] rounded-2xl rounded-tr-md bg-primary px-3 py-3 text-sm text-white shadow-leasiumXs">
+                  <div className="text-xs font-semibold text-white/75">
+                    You replied
+                  </div>
+                  <p className="mt-1 leading-5">{latestStoredAnswer}</p>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="ml-11 rounded-2xl rounded-tl-md border border-primary/15 bg-primary-soft px-3 py-2 text-xs leading-5 text-primary-hover">
+              {OPPORTUNITY_LOCAL_GUARDRAIL}
+            </div>
+          </div>
+
+          <form
+            data-testid="document-intake-ai-composer"
+            className="grid gap-2 border-t border-border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveAnswer();
+            }}
+          >
+            <textarea
+              value={answerText}
+              onChange={(event) => setAnswerText(event.target.value)}
+              disabled={controlsDisabled}
+              placeholder="Reply in plain English. Leasium AI will turn it into review context."
+              className="min-h-20 w-full resize-none rounded-2xl border border-border bg-white px-3 py-3 text-sm outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div className="flex items-end justify-end">
+              <Button
+                type="submit"
+                disabled={controlsDisabled}
+                className="min-h-11"
+              >
+                {opportunitySessionMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Check size={15} />
+                )}
+                Send reply
+              </Button>
+            </div>
+          </form>
+        </section>
 
         <div
           data-testid="document-intake-opportunity-output"
-          className="grid content-start gap-3 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
+          className="grid content-start gap-3 border-t border-border bg-white p-3 sm:p-4 xl:border-l xl:border-t-0"
         >
-          <div className="flex flex-wrap items-start justify-between gap-2">
+          <div
+            data-testid="document-intake-ai-preview-panel"
+            className="grid content-start gap-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 Review-only preview
@@ -2967,6 +3015,7 @@ function DocumentIntakeOpportunityPanel({
             {visibleGuardrails.map((guardrail) => (
               <div key={guardrail}>{guardrail}</div>
             ))}
+            </div>
           </div>
         </div>
       </div>

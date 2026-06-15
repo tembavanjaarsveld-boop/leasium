@@ -305,6 +305,18 @@ fixes · deferrals.
   Xero/Basiq, payment, or reconciliation mutations · deferred: existing mobile
   notification issue toast overlap remains covered by the workspace UX debt
   item.
+- 2026-06-15 · Leasium AI true chat-window correction · existing Document
+  review `58:352` / Leasium AI assistant pattern reused · screens checked at
+  1440 (`output/playwright/leasium-ai-zero-field-invoice-1440.png`) and 390
+  (`output/playwright/leasium-ai-zero-field-invoice-390.png`) · fixes: the
+  previous v1 still looked like the old three-column Smart Intake panel, so the
+  assistant is now one conversation shell with AI message bubbles, inline
+  suggestion cards, an AI question bubble, a user reply bubble, and a composer.
+  The review-only output moved to a secondary preview rail/bottom panel instead
+  of competing as an equal card. Smoke coverage now asserts the chat-window
+  structure directly and keeps the same no-provider-write checks · deferred:
+  existing mobile notification issue toast overlap remains covered by the
+  workspace UX debt item.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,

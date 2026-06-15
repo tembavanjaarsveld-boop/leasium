@@ -1498,17 +1498,19 @@ Nothing is applied until you approve it.
 
 ### Leasium AI review assistant
 
-Document review may include a Leasium AI assistant panel inside the existing
-review surface. It is chat-led: explanation first, suggested cards second, one
-plain-English operator reply, then a review-only preview. It must remain a
-review panel, not a new wizard or a provider action surface.
+Document review may include a Leasium AI assistant window inside the existing
+review surface. It is chat-led in structure, not just copy: explanation bubble
+first, suggested cards inside the conversation, one AI question bubble, one
+plain-English operator reply/composer, then a review-only preview rail or
+bottom panel. It must remain a review panel, not a new wizard or a provider
+action surface.
 
 Rules:
 - Start with a short assistant message that names what the document appears to
   be, what Leasium AI can help prepare, and what it will not do.
 - Opportunity cards are inferred from source-backed extraction and sit as peer
-  suggestions above or beside the current question, not as separate product
-  modules.
+  suggestions inside the chat thread, not as separate product modules or a
+  three-column dashboard layout.
 - Active `uploaded` or `reading` documents are not zero-field failures. Show a
   reading panel, keep review-first/no-provider-write guardrails visible, and do
   not show opportunity cards, setup questions, review saves, or apply controls
@@ -1525,7 +1527,8 @@ Rules:
   provider mapping choice is needed.
 - The proposed output card is a preview only. It can store local review session
   replies, but does not apply Smart Intake, create invoices, send mail/SMS,
-  mutate Xero, post payments, or run reconciliation.
+  mutate Xero, post payments, or run reconciliation. On desktop it may sit as a
+  secondary rail; on mobile it follows the chat.
 - Provider candidates must show an explicit "approval needed later" flag and
   name the provider family before the operator sends a reply.
 - On mobile, the notice guidance, selected opportunity, current question, and

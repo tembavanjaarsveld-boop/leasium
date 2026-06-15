@@ -949,6 +949,24 @@ test("smart intake review opens as Leasium AI assistant and saves one answer wit
     opportunityPanel.getByRole("heading", { name: "Leasium AI" }),
   ).toBeVisible();
   await expect(
+    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-message-intro"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-suggestion-row"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-message-question"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-composer"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-preview-panel"),
+  ).toBeVisible();
+  await expect(
     opportunityPanel.getByText(
       "I read this document and found source-backed next steps I can help prepare for review.",
     ),
@@ -1043,7 +1061,24 @@ test("Leasium AI still helps when invoice extraction has zero fields", async ({
   await expect(
     opportunityPanel.getByTestId("document-intake-chat-thread"),
   ).toBeVisible();
-  await expect(opportunityPanel.getByText("Suggested next steps")).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-message-intro"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-suggestion-row"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-message-question"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-composer"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-preview-panel"),
+  ).toBeVisible();
   await expect(
     opportunityPanel.getByText("This looks like an invoice/admin document."),
   ).toBeVisible();
@@ -1255,6 +1290,9 @@ test("mobile Leasium AI still helps when invoice extraction has zero fields", as
   const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
   const sourcePreview = page.getByTestId("document-review-source-preview");
   await expect(opportunityPanel).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
+  ).toBeVisible();
   await expectAppearsBefore(opportunityPanel, sourcePreview);
   await expect(
     opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
@@ -1300,6 +1338,12 @@ test("mobile Leasium AI review assistant keeps one-question flow touch-safe", as
   await expectAppearsBefore(noticeGuidance, fieldsPanel);
   await expectAppearsBefore(opportunityPanel, sourcePreview);
   await expectAppearsBefore(opportunityPanel, fieldsPanel);
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-ai-composer"),
+  ).toBeVisible();
 
   await expectTouchTarget(
     opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),

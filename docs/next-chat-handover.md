@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Leasium AI true chat-window correction)
+
+Scope completed: the first chat-led slice was deployed, but Temba correctly
+called out that it still looked like the old Smart Intake review panel. The
+root cause was structural: the UI kept the header plus three equal cards and
+only changed the wording.
+
+What changed:
+- `DocumentIntakeOpportunityPanel` now renders one Leasium AI chat-window shell:
+  AI intro bubble, inline suggestion cards, AI question bubble, optional user
+  reply bubble, and a composer.
+- The review-only preview remains visible, but it is now a secondary rail on
+  desktop and a lower panel on mobile instead of a third equal review card.
+- Smoke tests now assert the true chat-window structure with
+  `document-intake-ai-chat-window`, `document-intake-ai-message-intro`,
+  `document-intake-ai-suggestion-row`, `document-intake-ai-message-question`,
+  `document-intake-ai-composer`, and `document-intake-ai-preview-panel`.
+
+Verification evidence so far:
+- RED smoke first failed because `document-intake-ai-chat-window` was absent.
+- Focused zero-field invoice smoke passed 2/2:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "Leasium AI still helps when invoice extraction has zero fields"`.
+- Surrounding Leasium AI smoke passed 10/10:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "one Leasium AI workspace|mobile Leasium AI landing|Leasium AI
+  assistant|mobile Leasium AI review assistant|zero fields|still
+  reading|uploaded invoice is active|save failure"`.
+- Screenshots checked:
+  `output/playwright/leasium-ai-zero-field-invoice-1440.png` and
+  `output/playwright/leasium-ai-zero-field-invoice-390.png`.
+
+Guardrails held: the correction is UI structure only. It still saves only the
+local `ai-opportunity-session`; it does not apply Smart Intake, create/post/send
+an invoice, sync Xero/Basiq, send email/SMS, move money, or reconcile payments.
+
 ## Codex continuation - 2026-06-15 (Leasium AI chat-led review panel)
 
 Scope completed: Temba wanted the document assistant to feel like an AI

@@ -16,6 +16,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Leasium AI chat-window review shell v2:**
+  The document assistant now renders as a true chat window instead of the old
+  three-column review panel with chat wording. The conversation shows an AI
+  message, inline suggested next-step cards, an AI question bubble, an operator
+  reply bubble, and a composer, with the review-only preview moved into a
+  secondary rail on desktop and below the chat on mobile. Provider and apply
+  guardrails remain unchanged: replies save only local review-session context.
 - [x] **2026-06-15 Leasium AI chat-led review panel v1:**
   Document review now presents the assistant as a chat-first panel: Leasium AI
   explains what it understood in plain English, shows suggested next-step cards,
