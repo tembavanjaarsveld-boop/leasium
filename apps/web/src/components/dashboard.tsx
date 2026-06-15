@@ -2083,7 +2083,7 @@ function DocumentIntakeApplyOutcomeCard({
 }
 
 const OPPORTUNITY_LOCAL_GUARDRAIL =
-  "Local-only AI opportunity session. No invoice, Xero, email, SMS, payment, or reconciliation write runs from this panel.";
+  "Leasium AI review session is local-only. No invoice, Xero, email, SMS, payment, or reconciliation write runs from this panel.";
 
 function opportunityKind(opportunity: DocumentIntakeOpportunityRecord) {
   return (
@@ -2610,7 +2610,7 @@ function DocumentIntakeOpportunityPanel({
         queryKey: ["dashboard-document-intakes", selectedEntityId],
       });
       onError(null);
-      onNotice("AI opportunity session saved.");
+      onNotice("Leasium AI answer saved.");
       setAnswerText("");
     },
     onError: (error) => {
@@ -2657,7 +2657,7 @@ function DocumentIntakeOpportunityPanel({
   function saveAnswer() {
     const answer = answerText.trim();
     if (!answer) {
-      onError("Answer the current AI question before saving.");
+      onError("Answer the current Leasium AI question before saving.");
       return;
     }
     const questionId = opportunityQuestionId(selectedOpportunity);
@@ -2692,15 +2692,26 @@ function DocumentIntakeOpportunityPanel({
   return (
     <div
       data-testid="document-intake-opportunity-panel"
-      className="grid gap-3"
+      className="grid gap-3 rounded-2xl border border-primary/20 bg-white p-3 shadow-leasiumCard sm:p-4"
     >
-      <div className="grid gap-2 rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
-        <div className="flex flex-wrap items-center gap-2">
-          <Sparkles size={15} />
-          <span className="font-semibold">AI opportunity workspace</span>
-          <StatusBadge tone="primary">Review first</StatusBadge>
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-primary/15 bg-primary-soft p-3 text-sm text-primary-hover">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs">
+            <Sparkles size={16} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-foreground">
+              Leasium AI
+            </h2>
+            <p className="mt-1 text-sm leading-5 text-primary-hover">
+              I read this document and found safe next steps I can help prepare for review.
+            </p>
+          </div>
         </div>
-        <p>{OPPORTUNITY_LOCAL_GUARDRAIL}</p>
+        <StatusBadge tone="primary">Review first</StatusBadge>
+        <p className="basis-full text-xs leading-5 text-primary-hover">
+          {OPPORTUNITY_LOCAL_GUARDRAIL}
+        </p>
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.85fr)_minmax(0,1fr)_minmax(240px,0.95fr)]">
@@ -2709,7 +2720,7 @@ function DocumentIntakeOpportunityPanel({
           className="grid content-start gap-2 rounded-2xl border border-border bg-white p-3 shadow-leasiumXs"
         >
           <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Opportunities
+            I can help with
           </div>
           {opportunities.map((opportunity) => {
             const id = opportunityQuestionId(opportunity);
@@ -2773,7 +2784,7 @@ function DocumentIntakeOpportunityPanel({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                AI question
+                My question
               </div>
               <p className="mt-1 text-sm font-semibold text-foreground">
                 {selectedQuestion}
@@ -2819,7 +2830,7 @@ function DocumentIntakeOpportunityPanel({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Review-only proposed output
+                Safe next step
               </div>
               <h3 className="mt-1 text-sm font-semibold text-foreground">
                 {proposedOutput.title}
@@ -3101,7 +3112,7 @@ function DocumentIntakeReviewPanel({
               className="inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-sm font-semibold text-primary transition hover:text-primary-hover"
             >
               <ArrowLeft size={15} />
-              Smart Intake
+              Leasium AI
             </Link>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -3140,14 +3151,6 @@ function DocumentIntakeReviewPanel({
           </div>
         </div>
 
-        {noticeInvoicingGuidance.length ? (
-          <div className="grid gap-1 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-strong">
-            {noticeInvoicingGuidance.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-          </div>
-        ) : null}
-
         <DocumentIntakeOpportunityPanel
           intake={intake}
           draft={draft}
@@ -3157,6 +3160,14 @@ function DocumentIntakeReviewPanel({
           onNotice={onOpportunityNotice}
           onError={onOpportunityError}
         />
+
+        {noticeInvoicingGuidance.length ? (
+          <div className="grid gap-1 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-strong">
+            {noticeInvoicingGuidance.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
           <div
@@ -4776,8 +4787,8 @@ export function Dashboard({
   if (topSmartReview) {
     commandCenterItems.push({
       id: "smart-intake-review",
-      area: commandCenterArea("Smart Intake", topSmartReview.entity_id),
-      title: `${smartReviewIntakes.length} Smart Intake ${
+      area: commandCenterArea("Leasium AI", topSmartReview.entity_id),
+      title: `${smartReviewIntakes.length} Leasium AI ${
         smartReviewIntakes.length === 1 ? "review" : "reviews"
       } waiting`,
       why:
@@ -4798,7 +4809,7 @@ export function Dashboard({
   if (topFailedIntake) {
     commandCenterItems.push({
       id: "smart-intake-failed",
-      area: commandCenterArea("Smart Intake", topFailedIntake.entity_id),
+      area: commandCenterArea("Leasium AI", topFailedIntake.entity_id),
       title: `${failedIntakes.length} document ${
         failedIntakes.length === 1 ? "read" : "reads"
       } failed`,
@@ -4910,8 +4921,8 @@ export function Dashboard({
     if (overviewDocumentNeedsReviewCount) {
       overviewCommandCenterItems.push({
         id: "overview-smart-intake-review",
-        area: "Smart Intake",
-        title: `${overviewDocumentNeedsReviewCount} Smart Intake ${
+        area: "Leasium AI",
+        title: `${overviewDocumentNeedsReviewCount} Leasium AI ${
           overviewDocumentNeedsReviewCount === 1 ? "review" : "reviews"
         } waiting`,
         why: "Extracted document data is ready for operator review before any portfolio changes are applied.",
@@ -4928,13 +4939,13 @@ export function Dashboard({
     if (overviewDocumentFailedCount) {
       overviewCommandCenterItems.push({
         id: "overview-smart-intake-failed",
-        area: "Smart Intake",
+        area: "Leasium AI",
         title: `${overviewDocumentFailedCount} document ${
           overviewDocumentFailedCount === 1 ? "read" : "reads"
         } failed`,
         why: "Some uploaded documents could not become source-backed review data and need a quick operator check.",
         href: "/intake",
-        nextStep: "Fix intake",
+        nextStep: "Fix in Leasium AI",
         chip: "Could not read",
         tone: "danger",
         score: 6,
@@ -5451,8 +5462,8 @@ export function Dashboard({
               <p className="max-w-2xl text-sm text-muted-foreground">
                 Add your first property to get started — you can create its
                 owning entity (a trust or company) in the same step. Or drop a
-                lease, rent roll, or purchase contract into Smart Intake and let
-                Leasium extract the details for your review.
+                lease, rent roll, or purchase contract into Leasium AI and let
+                it extract the details for your review.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button
@@ -5467,7 +5478,7 @@ export function Dashboard({
                   onClick={() => window.location.assign("/intake")}
                 >
                   <FileUp size={15} />
-                  Open Smart Intake
+                  Open Leasium AI
                 </SecondaryButton>
               </div>
             </div>
@@ -5494,13 +5505,12 @@ export function Dashboard({
           <section className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <PageTitle className="text-[21px] leading-7 tracking-[-0.02em] sm:text-3xl sm:leading-9">
-                Smart Intake
+                Leasium AI
               </PageTitle>
               <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">Drop it. Review it. Approve it.</span>
+                <span className="sm:hidden">Drop it. Ask it. Review it.</span>
                 <span className="hidden sm:inline">
-                  Drop a document. Review what Leasium found. Apply only what
-                  you approve.
+                  One AI workspace for documents, questions, review, and safe next steps.
                 </span>
               </p>
             </div>
@@ -5813,7 +5823,7 @@ export function Dashboard({
               </DashboardBentoCard>
 
               <DashboardBentoCard
-                label="Smart Intake"
+                label="Leasium AI"
                 icon={<FileUp size={14} />}
                 dashed
                 className="col-span-2 lg:col-span-1"
@@ -5821,17 +5831,17 @@ export function Dashboard({
                 <div className="flex items-center gap-2">
                   <FileUp size={18} className="text-primary" />
                   <div className="text-sm font-semibold text-foreground">
-                    Drop a document
+                    Ask with a document
                   </div>
                 </div>
                 <p className="mt-2 max-w-[220px] text-[11px] leading-4 text-muted-foreground">
-                  Lease, invoice, contract - reviewed before anything changes.
+                  Lease, invoice, contract - Leasium AI reviews before anything changes.
                 </p>
                 <Link
                   href="/intake"
                   className="mt-auto inline-flex min-h-11 items-center text-xs font-semibold text-primary transition hover:text-primary-hover"
                 >
-                  Open Smart Intake
+                  Open Leasium AI
                 </Link>
               </DashboardBentoCard>
             </section>
@@ -5900,9 +5910,9 @@ export function Dashboard({
                 </div>
                 <div className="grid gap-2">
                   <h2 className="text-[15px] font-semibold leading-5 tracking-[-0.01em] text-foreground sm:text-xl sm:leading-7 sm:tracking-normal">
-                    <span className="sm:hidden">Drop or snap a document</span>
+                    <span className="sm:hidden">Ask Leasium AI</span>
                     <span className="hidden sm:inline">
-                      Drop anything — lease, invoice, contract, rent roll
+                      Ask Leasium AI with a document
                     </span>
                   </h2>
                   <p className="text-[11px] leading-4 text-muted-foreground sm:text-sm sm:leading-5">
@@ -5910,8 +5920,7 @@ export function Dashboard({
                       Lease, invoice, contract, rent roll
                     </span>
                     <span className="hidden sm:inline">
-                      Leasium reads it, shows you every extracted field with
-                      confidence and source, and waits for your approval.
+                      It reads the file, shows confidence and source, asks what is missing, and waits for your approval.
                     </span>
                   </p>
                 </div>
@@ -5929,6 +5938,12 @@ export function Dashboard({
                   </Button>
                   <span className="hidden text-sm leading-5 text-muted-foreground sm:inline">
                     or email documents to intake@leasium.ai
+                  </span>
+                </div>
+                <div className="hidden max-w-3xl flex-wrap items-center justify-center gap-2 rounded-xl border border-primary/15 bg-white/85 px-3 py-2 text-xs leading-5 text-muted-foreground sm:flex">
+                  <StatusBadge tone="primary">Local-only until approval</StatusBadge>
+                  <span>
+                    No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.
                   </span>
                 </div>
                 {documentIntakeMutation.isPending ? (
@@ -5957,14 +5972,13 @@ export function Dashboard({
                 <div className="flex flex-wrap items-start justify-between gap-3 pb-0 sm:border-b sm:border-border sm:px-4 sm:py-3">
                   <div>
                     <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      Review queue —{" "}
+                      AI review queue —{" "}
                       {documentIntakesLoading
                         ? "preparing"
                         : filteredReviewIntakes.length}
                     </h2>
                     <p className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">
-                      Open a document to approve, edit, or ignore extracted
-                      fields before anything changes.
+                      Open a document to keep working with Leasium AI: approve, edit, answer, or ignore before anything changes.
                     </p>
                   </div>
                   <StatusBadge
@@ -6140,7 +6154,7 @@ export function Dashboard({
                     <EmptyState
                       icon={<CheckCircle2 size={18} />}
                       title="No documents waiting for review."
-                      description="Drop in a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
+                      description="Ask Leasium AI with a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
                     />
                   ) : filteredReviewIntakes.length === 0 ? (
                     <EmptyState
@@ -6229,21 +6243,21 @@ export function Dashboard({
             </section>
 
             <div className="flex min-h-9 items-center justify-center rounded-2xl border border-primary/20 bg-white px-4 py-2 text-center text-sm font-medium text-foreground shadow-leasiumXs">
-              Extraction is review-first — fields wait for your approval.
+              Leasium AI is review-first — fields, answers, and next steps wait for your approval.
             </div>
 
             {!selectedDocumentReviewPanel ? (
               <section className="mt-12 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,430px)]">
                 <div className="grid gap-5">
                   <SectionPanel
-                    title="Review document"
-                    description="Extracted terms, dates, parties, and obligations will wait here until you approve them."
+                    title="Leasium AI review"
+                    description="Extracted terms, dates, parties, obligations, and AI questions will wait here until you approve them."
                     icon={<Sparkles size={17} className="text-primary" />}
                   >
                     <EmptyState
                       icon={<FileText size={18} />}
                       title="No document selected."
-                      description="Drop a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
+                      description="Ask Leasium AI with a lease, acquisition contract, invoice, guarantee, certificate, or tenant document to start."
                     />
                   </SectionPanel>
                 </div>

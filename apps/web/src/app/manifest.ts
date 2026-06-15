@@ -40,9 +40,9 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: "Smart Intake",
-        short_name: "Intake",
-        description: "Upload and review lease documents.",
+        name: "Leasium AI",
+        short_name: "AI",
+        description: "Ask Leasium AI with lease and property documents.",
         url: "/intake",
       },
       {

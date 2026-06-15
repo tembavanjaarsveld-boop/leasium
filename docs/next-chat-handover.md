@@ -2,6 +2,43 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Leasium AI workspace v1)
+
+Scope completed: `/intake` now reads as Leasium AI, one operator AI workspace
+for document drop, review queues, questions, and safe next steps. The old Smart
+Intake product label is no longer the primary navigation/handoff label, though
+source/audit provenance can still say Smart Intake where that is the stored
+pipeline source.
+
+What changed:
+- Sidebar, mobile capture button, shortcut labels, dashboard/welcome/insights
+  handoffs, manifest shortcut, and tenant/comms review links now say Leasium AI.
+- `/intake` heading/upload copy now starts with "Ask Leasium AI with a document"
+  and keeps desktop guardrails visible without pushing the mobile queue under
+  the fixed bottom nav.
+- Document review now starts with a Leasium AI assistant panel, then notice
+  guidance, then source/extracted-field review. The assistant still saves only
+  the local `ai-opportunity-session` review metadata.
+
+Verification evidence:
+- `npm --prefix apps/web run lint` passed.
+- `cd apps/web && npx tsc --noEmit --pretty false` passed.
+- `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "one Leasium AI workspace|mobile Leasium AI landing|Leasium AI
+  assistant|mobile Leasium AI review assistant"` passed 4/4 and produced
+  screenshots in `output/playwright/`.
+- `cd apps/web && npx playwright test tests/smoke/mobile-bottom-nav.spec.ts
+  tests/smoke/app-shell-prefetch.spec.ts tests/smoke/nav-consolidation.spec.ts
+  tests/smoke/dashboard-empty.spec.ts tests/smoke/smart-intake-export-parity.spec.ts`
+  passed 18/18.
+- Focused app-flow handoff run passed 5/6; the remaining failure is unrelated
+  and stops before this slice's changed link (`tenant detail shows portal access
+  recovery actions` cannot find "Invite another portal login").
+
+Guardrails held: no Smart Intake apply/review/accept-lease-match, invoice
+draft/delivery, SendGrid/Twilio/comms dispatch, owner dispatch, Xero/Basiq,
+payment, or reconciliation mutation is triggered by the Leasium AI assistant.
+
 ## Codex continuation - 2026-06-15 (Smart Intake AI opportunity panel v1)
 
 Scope completed: Smart Intake document review now has a review-first AI

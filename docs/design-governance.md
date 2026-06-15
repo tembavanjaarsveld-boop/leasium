@@ -253,6 +253,22 @@ fixes · deferrals.
   answers, 503 no-persist behavior, and no Smart Intake apply/review, provider,
   invoice delivery, owner-dispatch, payment, or reconciliation mutations ·
   deferred: none.
+- 2026-06-15 · Leasium AI workspace unification · existing approved Horizon
+  Smart Intake `55:166`, Document review `58:352`, and Smart Intake mobile
+  `59:521` patterns reused without token changes · screens checked at
+  1280/390 plus document-review desktop/mobile
+  (`output/playwright/leasium-ai-workspace-1280.png`,
+  `leasium-ai-workspace-390.png`,
+  `leasium-ai-review-assistant-1440.png`,
+  `leasium-ai-review-assistant-390.png`, and
+  `leasium-ai-review-assistant-390-question.png`) · fixes: `/intake`,
+  sidebar/mobile nav, dashboard/welcome/insights handoffs, manifest shortcut,
+  and tenant/comms review links now present the operator destination as
+  Leasium AI; document review starts with the assistant panel instead of a
+  hidden opportunity widget; mobile hides the extra desktop guardrail banner so
+  the compact review queue stays clear of the fixed bottom nav · deferred:
+  mobile notification issue toast still overlaps the bottom-nav/content zone and
+  is logged in the UX Debt Register.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,
@@ -271,6 +287,10 @@ remove entries by shipping a slice whose UX pass covers them.
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).
+- **Mobile issue toast placement** — the fixed red issue toast can overlap
+  mobile bottom navigation and lower content in screenshots; surfaced during
+  the 2026-06-15 Leasium AI workspace UX pass. Needs a notification-positioning
+  slice rather than being folded into intake semantics.
 
 ## Standing UX Direction
 

@@ -59,7 +59,7 @@ const featureCards = [
   },
   {
     icon: FileSearch,
-    title: "Smart Intake",
+    title: "Leasium AI",
     body: "Leases, invoices, and tenant documents become reviewable extractions with source clauses and confidence.",
   },
   {

@@ -122,7 +122,7 @@ type CommandAction = {
 // then consolidated 2026-05-31 (DoorLoop benchmark refocus): 8 → 7
 // primary hubs plus Settings.
 // Reachable via Cmd-K command palette but not in sidebar:
-//   AI Inbox (folds conceptually into Smart Intake)
+//   AI Inbox (folds conceptually into Leasium AI)
 //   Tenants, Contractors (folded under People)
 //   Contractors, Comms (folded under Work where task-shaped)
 //   Billing Readiness, Statements (folded under Money)
@@ -134,7 +134,7 @@ const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home, shortcut: "G D" },
   {
     href: "/intake",
-    label: "Smart Intake",
+    label: "Leasium AI",
     icon: FileSpreadsheet,
     shortcut: "G I",
   },
@@ -200,7 +200,7 @@ const frequentActions: CommandAction[] = [
   {
     href: "/intake",
     label: "Upload document",
-    meta: "Smart Intake",
+    meta: "Leasium AI",
   },
   {
     href: "/properties?action=new",
@@ -258,7 +258,7 @@ const moduleJumpActions: CommandAction[] = [
   {
     href: "/inbox",
     label: "Open AI Inbox",
-    meta: "Smart Intake",
+    meta: "Leasium AI",
   },
   {
     href: "/contractors",
@@ -318,7 +318,7 @@ type ShortcutNav = {
 // most often during a typical session.
 const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "d", href: "/", label: "Dashboard" },
-  { key: "i", href: "/intake", label: "Smart Intake" },
+  { key: "i", href: "/intake", label: "Leasium AI" },
   { key: "m", href: "/inbox", label: "AI Inbox" },
   { key: "p", href: "/properties", label: "Properties" },
   { key: "t", href: "/people?tab=tenants", label: "Tenants" },
@@ -961,7 +961,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             <Link
               {...shellLinkProps}
               href="/intake"
-              aria-label="Smart Intake"
+              aria-label="Leasium AI"
               aria-current={isNavActive(navItems[1]) ? "page" : undefined}
               onMouseEnter={() => router.prefetch("/intake")}
               onFocus={() => router.prefetch("/intake")}

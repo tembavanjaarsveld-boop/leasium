@@ -190,7 +190,7 @@ test("dashboard renders Horizon bento frame without provider writes", async ({
   await expect(leaseHorizon).toContainText("Bright Cafe Pty Ltd rent review");
   await expect(page.getByText("Nothing is applied until you approve it.")).toBeVisible();
   await expectTouchTarget(page.getByRole("link", { name: "Manage links" }));
-  await expectTouchTarget(page.getByRole("link", { name: "Open Smart Intake" }));
+  await expectTouchTarget(page.getByRole("link", { name: "Open Leasium AI" }));
   expect(forbiddenRequests).toEqual([]);
 });
 

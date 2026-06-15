@@ -2652,7 +2652,7 @@ function TenantDetail() {
                             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                           >
                             <Sparkles size={15} />
-                            Open Smart Intake review
+                            Open Leasium AI review
                           </Link>
                         ) : null}
                         <a
@@ -3241,7 +3241,7 @@ function TenantDetail() {
                           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                         >
                           <Sparkles size={15} />
-                          Open Smart Intake
+                          Open Leasium AI
                         </Link>
                       </div>
                     }
@@ -4037,7 +4037,7 @@ function TenantDetail() {
                                 )}
                               >
                                 <Sparkles size={15} />
-                                Open Smart Intake review
+                                Open Leasium AI review
                               </Link>
                             ) : null}
                             <Link

@@ -2475,7 +2475,7 @@ function InsightsWorkspace() {
             >
               <div className="flex flex-wrap gap-2 p-4">
                 {[
-                  ["Smart Intake", "/intake"],
+                  ["Leasium AI", "/intake"],
                   ["Portfolio QA", "/portfolio-qa"],
                   ["Operations", "/operations"],
                   ["Billing Readiness", "/billing-readiness"],

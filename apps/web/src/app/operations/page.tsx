@@ -1292,7 +1292,7 @@ function complianceReviewCsv({
       intakeChip(intake),
       "",
       intake.document_id ? "Source document linked" : "",
-      "Open Smart Intake review",
+      "Open Leasium AI review",
       COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
     ]),
     ...workOrders.map((workOrder) => [

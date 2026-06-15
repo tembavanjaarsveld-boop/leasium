@@ -1433,15 +1433,19 @@ Secondary: View demo portfolio
 
 ---
 
-## 13. Smart Intake UX
+## 13. Leasium AI / Smart Intake UX
 
-Smart Intake is the hero workflow.
+Leasium AI is the operator-facing workspace. Smart Intake remains the
+document-intake pipeline inside it: drop a source document, let Leasium AI read
+and ask what is missing, then review source-backed changes before anything is
+applied.
 
 ### Flow
 
 ```txt
-Upload document
+Ask Leasium AI with a document
 Extract key terms
+Ask one focused question when context is missing
 Review confidence
 Approve or edit
 Apply to lease workflow
@@ -1492,11 +1496,11 @@ Use this line near review actions:
 Nothing is applied until you approve it.
 ```
 
-### AI opportunity panel
+### Leasium AI review assistant
 
-Smart Intake review may include an AI opportunity workspace inside the existing
-document review surface. It must remain a review panel, not a new wizard or a
-provider action surface.
+Document review may include a Leasium AI assistant panel inside the existing
+review surface. It must remain a review panel, not a new wizard or a provider
+action surface.
 
 Rules:
 - Opportunity cards are inferred from source-backed extraction and sit as peer

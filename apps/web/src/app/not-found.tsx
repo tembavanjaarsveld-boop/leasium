@@ -39,7 +39,7 @@ export default function NotFound() {
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-leasium-slate-700 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
           >
             <Sparkles size={16} aria-hidden="true" />
-            Open Smart Intake
+            Open Leasium AI
           </Link>
         </div>
       </div>

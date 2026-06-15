@@ -94,7 +94,7 @@ test("sidebar consolidates to seven hubs plus Settings", async ({ page }) => {
 
   for (const label of [
     "Dashboard",
-    "Smart Intake",
+    "Leasium AI",
     "Properties",
     "People",
     "Work",

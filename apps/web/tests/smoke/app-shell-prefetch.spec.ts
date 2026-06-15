@@ -15,7 +15,7 @@ test("app shell disables automatic route prefetch for persistent navigation link
     /mobileBottomNavItems\.slice\(0, 2\)\.map[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,
   );
   expect(source).toMatch(
-    /href="\/intake"[\s\S]*aria-label="Smart Intake"/,
+    /href="\/intake"[\s\S]*aria-label="Leasium AI"/,
   );
   expect(source).toMatch(
     /mobileBottomNavItems\.slice\(2\)\.map[\s\S]*<Link\s+\{\.\.\.shellLinkProps\}[\s\S]*href=\{item\.href\}/,

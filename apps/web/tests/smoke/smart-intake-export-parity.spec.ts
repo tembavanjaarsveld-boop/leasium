@@ -257,7 +257,7 @@ test.beforeEach(async ({ page }) => {
 test("smart intake review queue copies and downloads identical filtered CSV locally", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -306,7 +306,7 @@ test("smart intake review queue copies and downloads identical filtered CSV loca
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
 
   const exportControls = page.getByLabel("Review filter").locator("xpath=..");

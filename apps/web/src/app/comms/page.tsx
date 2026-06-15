@@ -537,7 +537,7 @@ function commsCandidateTargetLink(candidate: CommsCandidateRecord) {
     candidate.target_kind === "inbound_message" &&
     candidate.detail?.toLowerCase().includes("smart intake")
   ) {
-    return { href: "/intake", label: "Open Smart Intake" };
+    return { href: "/intake", label: "Open Leasium AI" };
   }
   if (candidate.target_kind === "tenant") {
     return {
@@ -2360,7 +2360,7 @@ function CandidateCard({
                 className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/30 bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover"
               >
                 <Sparkles size={15} />
-                Upload via Smart Intake
+                Upload via Leasium AI
                 <ExternalLink size={13} />
               </Link>
               {!groupedComplianceEvidence ? (

@@ -254,7 +254,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
   await expectTouchTarget(
-    page.getByRole("link", { name: "Open Smart Intake" }),
+    page.getByRole("link", { name: "Open Leasium AI" }),
   );
   const sidebar = page.getByRole("complementary", {
     name: "Primary navigation",
@@ -560,7 +560,7 @@ test("smart intake quick-add links keep 44px touch targets", async ({
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
   const addProperty = page.getByRole("link", { name: "Add property" });
   await expectTouchTarget(addProperty);
@@ -576,38 +576,45 @@ test("smart intake review filter keeps a 44px touch target", async ({
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
   await expectTouchTarget(page.getByLabel("Review filter"));
 });
 
-test("smart intake shows Horizon review-first landing", async ({ page }) => {
+test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
+  await mkdir("../../output/playwright", { recursive: true });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Drop a document. Review what Leasium found. Apply only what you approve.",
+      "One AI workspace for documents, questions, review, and safe next steps.",
     ),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Drop anything — lease, invoice, contract, rent roll",
+      name: "Ask Leasium AI with a document",
     }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Leasium reads it, shows you every extracted field with confidence and source, and waits for your approval.",
+      "It reads the file, shows confidence and source, asks what is missing, and waits for your approval.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Local-only until approval")).toBeVisible();
+  await expect(
+    page.getByText(
+      "No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.",
     ),
   ).toBeVisible();
   await expect(
     page.getByText("or email documents to intake@leasium.ai"),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /Review queue/i }),
+    page.getByRole("heading", { name: /AI review queue/i }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
@@ -626,30 +633,36 @@ test("smart intake shows Horizon review-first landing", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Extraction is review-first — fields wait for your approval.",
+      "Leasium AI is review-first — fields, answers, and next steps wait for your approval.",
     ),
   ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/leasium-ai-workspace-1280.png",
+  });
 });
 
-test("mobile Smart Intake landing keeps the compact Horizon queue first", async ({
+test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   page,
 }) => {
+  await mkdir("../../output/playwright", { recursive: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Smart Intake" }),
+    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Drop it. Review it. Approve it."),
+    page.getByText("Drop it. Ask it. Review it."),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Drop or snap a document" }),
+    page.getByRole("heading", { name: "Ask Leasium AI" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Take photo" })).toBeVisible();
   await expect(
     page.getByText(
-      "Leasium reads it, shows you every extracted field with confidence and source, and waits for your approval.",
+      "It reads the file, shows confidence and source, asks what is missing, and waits for your approval.",
     ),
   ).toBeHidden();
   await expect(page.getByLabel("Review filter")).toBeHidden();
@@ -660,7 +673,7 @@ test("mobile Smart Intake landing keeps the compact Horizon queue first", async 
   const reviewPanel = page.getByTestId("smart-intake-review-panel");
   await expect(reviewPanel).toBeVisible();
   await expect(page.getByTestId("horizon-document-review")).toHaveCount(0);
-  await expect(reviewPanel.getByText("Review queue — 4")).toBeVisible();
+  await expect(reviewPanel.getByText("AI review queue — 4")).toBeVisible();
 
   const firstRow = page.getByTestId("review-intake-intake-1");
   await expect(firstRow).toBeVisible();
@@ -687,6 +700,10 @@ test("mobile Smart Intake landing keeps the compact Horizon queue first", async 
     page.getByRole("navigation", { name: "Mobile primary" }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/leasium-ai-workspace-390.png",
+  });
 
   await firstRow.getByRole("button", { name: "Review" }).click();
   await expect(
@@ -725,7 +742,7 @@ test("smart intake Horizon document review keeps source preview beside extracted
 
   const review = page.getByTestId("horizon-document-review");
   await expect(
-    review.getByRole("link", { name: "Smart Intake" }),
+    review.getByRole("link", { name: "Leasium AI" }),
   ).toBeVisible();
   await expect(
     review.getByRole("heading", { name: "bright-cafe-lease.pdf" }),
@@ -894,7 +911,7 @@ test("smart intake explains unmatched notices do not set up invoicing", async ({
   }
 });
 
-test("smart intake shows AI opportunity cards and saves one answer without provider mutations", async ({
+test("smart intake review opens as Leasium AI assistant and saves one answer without provider mutations", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
@@ -913,8 +930,16 @@ test("smart intake shows AI opportunity cards and saves one answer without provi
     "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
   );
   const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
-  await expectAppearsBefore(noticeGuidance, opportunityPanel);
+  await expectAppearsBefore(opportunityPanel, noticeGuidance);
   await expect(opportunityPanel).toBeVisible();
+  await expect(
+    opportunityPanel.getByRole("heading", { name: "Leasium AI" }),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByText(
+      "I read this document and found safe next steps I can help prepare for review.",
+    ),
+  ).toBeVisible();
 
   const followUpCard = opportunityPanel.getByTestId(
     "document-intake-opportunity-card-action-1",
@@ -937,7 +962,7 @@ test("smart intake shows AI opportunity cards and saves one answer without provi
   );
   await chat.getByRole("button", { name: "Save answer" }).click();
 
-  await expect(page.getByText("AI opportunity session saved.")).toBeVisible();
+  await expect(page.getByText("Leasium AI answer saved.")).toBeVisible();
   const output = page.getByTestId("document-intake-opportunity-output");
   await expect(output).toBeVisible();
   await expect(output).toContainText(
@@ -956,11 +981,11 @@ test("smart intake shows AI opportunity cards and saves one answer without provi
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../../output/playwright/smart-intake-ai-opportunity-panel-1440.png",
+    path: "../../output/playwright/leasium-ai-review-assistant-1440.png",
   });
 });
 
-test("mobile Smart Intake AI opportunity panel keeps one-question flow touch-safe", async ({
+test("mobile Leasium AI review assistant keeps one-question flow touch-safe", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
@@ -979,7 +1004,7 @@ test("mobile Smart Intake AI opportunity panel keeps one-question flow touch-saf
   const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
   const sourcePreview = page.getByTestId("document-review-source-preview");
   const fieldsPanel = page.getByTestId("document-review-fields");
-  await expectAppearsBefore(noticeGuidance, opportunityPanel);
+  await expectAppearsBefore(opportunityPanel, noticeGuidance);
   await expectAppearsBefore(noticeGuidance, sourcePreview);
   await expectAppearsBefore(noticeGuidance, fieldsPanel);
   await expectAppearsBefore(opportunityPanel, sourcePreview);
@@ -995,14 +1020,14 @@ test("mobile Smart Intake AI opportunity panel keeps one-question flow touch-saf
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../../output/playwright/smart-intake-ai-opportunity-panel-390.png",
+    path: "../../output/playwright/leasium-ai-review-assistant-390.png",
   });
 
   await opportunityPanel
     .getByTestId("document-intake-opportunity-chat")
     .scrollIntoViewIfNeeded();
   await page.screenshot({
-    path: "../../output/playwright/smart-intake-ai-opportunity-panel-390-question.png",
+    path: "../../output/playwright/leasium-ai-review-assistant-390-question.png",
   });
 
   const stickyActions = page.getByTestId("document-review-sticky-actions");
@@ -1206,7 +1231,7 @@ test("notifications mobile actions keep intended touch targets", async ({
 
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
-  await expectTouchTarget(mobileNav.getByRole("link", { name: "Smart Intake" }));
+  await expectTouchTarget(mobileNav.getByRole("link", { name: "Leasium AI" }));
   const summaryBox = await mobileSummary.boundingBox();
   const navBox = await mobileNav.boundingBox();
   expect(summaryBox).not.toBeNull();
@@ -2373,7 +2398,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     emailCard.getByText("1 attachment routed to Smart Intake"),
   ).toBeVisible();
   await expect(
-    emailCard.getByRole("link", { name: "Open Smart Intake" }),
+    emailCard.getByRole("link", { name: "Open Leasium AI" }),
   ).toHaveAttribute("href", "/intake");
   await expect(emailCard.getByText("SendGrid email")).toBeVisible();
   await expect(emailCard.getByLabel("Email recipient")).toHaveValue(
@@ -2430,7 +2455,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     complianceCard.getByRole("link", { name: "Open compliance work" }),
   ).toHaveAttribute("href", "/operations?tab=compliance");
   await expect(
-    complianceCard.getByRole("link", { name: "Upload via Smart Intake" }),
+    complianceCard.getByRole("link", { name: "Upload via Leasium AI" }),
   ).toHaveAttribute("href", "/intake");
   const evidenceFileChooserPromise = page.waitForEvent("filechooser");
   await complianceCard
@@ -2557,7 +2582,7 @@ test("grouped compliance comms drafts avoid single-obligation evidence upload", 
     "/operations?tab=compliance#compliance-obligation-obligation-compliance-2",
   );
   await expect(
-    complianceCard.getByRole("link", { name: "Upload via Smart Intake" }),
+    complianceCard.getByRole("link", { name: "Upload via Leasium AI" }),
   ).toHaveAttribute("href", "/intake");
   await expect(
     complianceCard.getByRole("button", { name: "Or attach a file manually" }),
@@ -5114,7 +5139,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText(/Confirmed until 30 .* 2027/)).toBeVisible();
   await expect(page.getByText("Source: Smart Intake")).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open Smart Intake review" }),
+    page.getByRole("link", { name: "Open Leasium AI review" }),
   ).toHaveAttribute(
     "href",
     "/intake?entity_id=entity-1&review=intake-insurance-1",
@@ -5937,7 +5962,7 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
   await expect(
     page
       .locator('a[href="/intake?entity_id=entity-1&review=intake-1"]')
-      .getByText("Open Smart Intake review"),
+      .getByText("Open Leasium AI review"),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Activate lease" }).click();

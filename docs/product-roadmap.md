@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Leasium AI workspace v1:**
+  `/intake` now presents as Leasium AI, the single operator AI workspace for
+  document drop, question-led review, safe next steps, and source-backed
+  review queues. The sidebar, mobile capture button, dashboard handoffs,
+  welcome/insights links, manifest shortcut, and tenant/comms handoff labels now
+  route operators to Leasium AI instead of exposing Smart Intake as a separate
+  product concept. Document review opens with a Leasium AI assistant panel before
+  notice guidance and long extracted-field editing, while all existing review
+  and provider guardrails remain local-only until explicit approval.
 - [x] **2026-06-15 Smart Intake AI opportunity panel v1:**
   Smart Intake document review now includes an AI opportunity workspace that
   infers source-backed next steps, asks one focused local question, stores

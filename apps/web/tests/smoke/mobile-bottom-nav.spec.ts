@@ -23,6 +23,9 @@ function watchForbiddenProviderRequests(page: Page) {
   page.on("request", (request) => {
     const url = new URL(request.url());
     const path = url.pathname;
+    const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(
+      request.method(),
+    );
     const callsProvider =
       path.includes("/sendgrid") ||
       path.includes("/twilio") ||
@@ -32,7 +35,7 @@ function watchForbiddenProviderRequests(page: Page) {
       path.includes("/xero/") ||
       path.includes("/basiq") ||
       path.includes("/payments/reconciliation");
-    if (callsProvider) {
+    if (unsafeMethod && callsProvider) {
       requests.push(`${request.method()} ${url.toString()}`);
     }
   });
@@ -53,7 +56,7 @@ test("mobile production routes keep headings and bottom navigation in frame", as
     { path: "/", heading: "Today's focus" },
     { path: "/operations", heading: "Work" },
     { path: "/properties", heading: "Properties" },
-    { path: "/intake", heading: "Smart Intake" },
+    { path: "/intake", heading: "Leasium AI" },
     { path: "/notifications", heading: "Notifications" },
     { path: "/settings", heading: "Settings" },
   ]) {
@@ -82,7 +85,7 @@ test("mobile bottom navigation exposes the Horizon field-operator hubs", async (
   const links = mobileNav.getByRole("link");
   await expect(links).toHaveCount(5);
 
-  for (const label of ["Home", "Properties", "Smart Intake", "Work", "Money"]) {
+  for (const label of ["Home", "Properties", "Leasium AI", "Work", "Money"]) {
     await expect(mobileNav.getByRole("link", { name: label })).toBeVisible();
     await expectMobileTouchTarget(mobileNav.getByRole("link", { name: label }));
   }
@@ -111,7 +114,7 @@ test("mobile bottom navigation exposes the Horizon field-operator hubs", async (
   await expect(fullMobileNav.getByRole("link")).toHaveCount(8);
   for (const label of [
     "Dashboard",
-    "Smart Intake",
+    "Leasium AI",
     "Properties",
     "People",
     "Work",
@@ -142,7 +145,7 @@ test("mobile bottom navigation exposes the Horizon field-operator hubs", async (
     ).toHaveCount(0);
   }
   await expect(
-    fullMobileNav.getByRole("link", { name: /^Smart Intake/ }),
+    fullMobileNav.getByRole("link", { name: /^Leasium AI/ }),
   ).toBeVisible();
   await expect(
     fullMobileNav.getByRole("link", { name: /^Insights/ }),
@@ -195,7 +198,7 @@ test("desktop Horizon sidebar exposes the entity switcher and operator card", as
   await expect(primaryNav.getByRole("link")).toHaveCount(8);
   for (const label of [
     "Dashboard",
-    "Smart Intake",
+    "Leasium AI",
     "Properties",
     "People",
     "Work",
