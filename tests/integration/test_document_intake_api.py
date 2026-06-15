@@ -43,6 +43,49 @@ def _organisation_id(session: Session) -> str:
     return str(organisation_id)
 
 
+def _row_count(session: Session, model: Any) -> int:
+    return session.scalar(select(func.count()).select_from(model)) or 0
+
+
+def _provider_mutation_audit_rows(session: Session) -> list[AuditAction]:
+    provider_fragments = (
+        "xero",
+        "sendgrid",
+        "twilio",
+        "tenant_email",
+        "tenant email",
+        "payment",
+        "reconciliation",
+    )
+    mutation_fragments = (
+        "send",
+        "sent",
+        "sync",
+        "synced",
+        "dispatch",
+        "payment",
+        "reconciliation",
+        "reconcile",
+    )
+    rows: list[AuditAction] = []
+    for row in session.scalars(select(AuditAction)).all():
+        text = " ".join(
+            str(value or "")
+            for value in (
+                row.action,
+                row.target_table,
+                row.tool_name,
+                row.tool_output_summary,
+                row.error_message,
+            )
+        ).lower()
+        if any(fragment in text for fragment in provider_fragments) and any(
+            fragment in text for fragment in mutation_fragments
+        ):
+            rows.append(row)
+    return rows
+
+
 def _lease_scope(client: TestClient, session: Session) -> dict[str, str]:
     entity_id = _entity_id(session)
     property_response = client.post(
@@ -1161,6 +1204,272 @@ def test_document_intake_apply_compliance_creates_reviewed_obligations(
     assert document.property_id is not None
     assert document.document_metadata["applied_obligation_ids"] == obligation_ids
     assert document.document_metadata["applied_document_type"] == "compliance"
+
+
+def test_document_intake_ai_opportunity_session_stores_review_only_metadata(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_invoice_extraction(), "resp_invoice_opportunity"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("outgoings-invoice.txt", b"invoice", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    before_counts = {
+        Obligation: _row_count(session, Obligation),
+        BillingDraft: _row_count(session, BillingDraft),
+        MaintenanceWorkOrder: _row_count(session, MaintenanceWorkOrder),
+    }
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
+        json={
+            "review_data": _fake_invoice_extraction(),
+            "selected_opportunity_id": "action-1",
+            "answers": [
+                {
+                    "question_id": "billing-scope",
+                    "question": "Which property or lease should this billing setup use?",
+                    "answer": "Use Scope Plaza, Suite 8 lease.",
+                    "structured_facts": {
+                        "property_name": "Scope Plaza",
+                        "unit_label": "Suite 8",
+                    },
+                }
+            ],
+            "proposed_output": {
+                "kind": "billing_review",
+                "title": "Review billing setup",
+                "summary": "Prepare a local billing review from the uploaded invoice.",
+                "rows": [
+                    {
+                        "label": "Amount",
+                        "value": "AUD 2,750.50",
+                        "source": "Amount due",
+                    }
+                ],
+                "guardrail": "No invoice is approved, posted, emailed, or synced to Xero.",
+            },
+            "status": "open",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] in {"ready_for_review", "needs_attention"}
+    session_data = body["review_data"]["ai_opportunity_session"]
+    assert session_data["selected_opportunity_id"] == "action-1"
+    assert body["applied_at"] is None
+    assert {
+        Obligation: _row_count(session, Obligation),
+        BillingDraft: _row_count(session, BillingDraft),
+        MaintenanceWorkOrder: _row_count(session, MaintenanceWorkOrder),
+    } == before_counts
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_ai_opportunity_session_preserves_existing_review_data(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_invoice_extraction(), "resp_invoice_reviewed_opportunity"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("reviewed-invoice.txt", b"invoice", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    reviewed = _fake_invoice_extraction()
+    review_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/review",
+        json={"review_data": reviewed},
+    )
+    assert review_response.status_code == 200
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
+        json={
+            "answers": [
+                {
+                    "question_id": "billing-scope",
+                    "question": "Which property or lease should this billing setup use?",
+                    "answer": "Use Scope Plaza, Suite 8 lease.",
+                    "structured_facts": {
+                        "property_name": "Scope Plaza",
+                        "unit_label": "Suite 8",
+                    },
+                }
+            ],
+            "status": "open",
+        },
+    )
+
+    assert response.status_code == 200
+    review_data = response.json()["review_data"]
+    assert review_data["document_type"] == reviewed["document_type"]
+    assert review_data["summary"] == reviewed["summary"]
+    assert review_data["money_amounts"] == reviewed["money_amounts"]
+    assert review_data["ai_opportunity_session"]["answers"][0]["answer"] == (
+        "Use Scope Plaza, Suite 8 lease."
+    )
+
+
+def test_document_intake_ai_opportunity_session_rejects_unready_or_applied_intake(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_invoice_extraction(), "resp_invoice_reject_opportunity"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    unready_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id, "extract": "false"},
+        files={"file": ("unready-invoice.txt", b"invoice", "text/plain")},
+    )
+    assert unready_response.status_code == 201
+    reject_unready_response = client.post(
+        f"/api/v1/document-intakes/{unready_response.json()['id']}/ai-opportunity-session",
+        json={"answers": []},
+    )
+    assert reject_unready_response.status_code == 409
+
+    scope = _lease_scope(client, session)
+    ready_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("applied-invoice.txt", b"invoice", "text/plain")},
+    )
+    assert ready_response.status_code == 201
+    intake_id = ready_response.json()["id"]
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_invoice_extraction(),
+            "property_id": scope["property_id"],
+            "tenancy_unit_id": scope["tenancy_unit_id"],
+            "lease_id": scope["lease_id"],
+        },
+    )
+    assert apply_response.status_code == 200
+    assert apply_response.json()["status"] == "applied"
+
+    reject_applied_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
+        json={"answers": []},
+    )
+    assert reject_applied_response.status_code == 409
+
+
+def test_document_intake_ai_opportunity_session_flags_provider_candidates_without_writes(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    reviewed = _fake_invoice_extraction()
+    reviewed["proposed_actions"] = [
+        {
+            "action": "match_xero_contact",
+            "target": "xero_contact",
+            "summary": "Map the extracted creditor to a Xero contact.",
+            "confidence": 0.91,
+        },
+        {
+            "action": "send_tenant_email",
+            "target": "tenant_email",
+            "summary": "Prepare a tenant notice email from this document.",
+            "confidence": 0.64,
+        },
+    ]
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return reviewed, "resp_invoice_provider_opportunity"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("provider-candidate-invoice.txt", b"invoice", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    before_counts = {
+        Obligation: _row_count(session, Obligation),
+        BillingDraft: _row_count(session, BillingDraft),
+        MaintenanceWorkOrder: _row_count(session, MaintenanceWorkOrder),
+    }
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
+        json={"review_data": reviewed, "status": "open"},
+    )
+
+    assert response.status_code == 200
+    opportunities = response.json()["review_data"]["ai_opportunity_session"]["opportunities"]
+    by_id = {row["id"]: row for row in opportunities}
+    assert by_id["action-1"]["provider_mutations"] == ["xero"]
+    assert by_id["action-1"]["requires_explicit_operator_approval"] is True
+    assert by_id["action-2"]["provider_mutations"] == ["tenant_email"]
+    assert by_id["action-2"]["requires_explicit_operator_approval"] is True
+    assert {
+        Obligation: _row_count(session, Obligation),
+        BillingDraft: _row_count(session, BillingDraft),
+        MaintenanceWorkOrder: _row_count(session, MaintenanceWorkOrder),
+    } == before_counts
+    assert _provider_mutation_audit_rows(session) == []
 
 
 def test_document_intake_apply_invoice_prepares_billing_work(

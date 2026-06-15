@@ -62,6 +62,7 @@ from apps.api.deps import (
 from apps.api.routers.lease_intakes import _apply_lease_records
 from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.document_intake import (
+    DocumentIntakeAiOpportunitySessionRequest,
     DocumentIntakeApplyRequest,
     DocumentIntakeRead,
     DocumentIntakeReviewRequest,
@@ -82,6 +83,7 @@ SUPPORTED_CONTENT_TYPES = {
     "text/plain",
 }
 ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
+AI_OPPORTUNITY_SESSION_KEY = "ai_opportunity_session"
 
 
 def _read_intake(intake: DocumentIntake) -> DocumentIntakeRead:
@@ -252,6 +254,147 @@ def _reviewed_data(intake: DocumentIntake, payload: dict[str, Any] | None = None
     ):
         return {**extracted_data, **review_data}
     return review_data or extracted_data
+
+
+def _ai_opportunity_title(action: str | None, target: str | None) -> str:
+    text = (action or target or "review_document").replace("_", " ").strip()
+    return text[:1].upper() + text[1:] if text else "Review document"
+
+
+def _provider_mutations_for_opportunity(
+    action: str | None,
+    target: str | None,
+    summary: str | None,
+) -> list[str]:
+    haystack = f"{action or ''} {target or ''} {summary or ''}".lower()
+    providers: list[str] = []
+    if "xero" in haystack:
+        providers.append("xero")
+    if "sendgrid" in haystack:
+        providers.append("sendgrid")
+    if "twilio" in haystack or "sms" in haystack:
+        providers.append("twilio")
+    if "tenant_email" in haystack or "tenant email" in haystack or "send email" in haystack:
+        providers.append("tenant_email")
+    if "payment" in haystack or "reconciliation" in haystack:
+        providers.append("payment_reconciliation")
+    return providers
+
+
+def _build_ai_opportunities(
+    intake: DocumentIntake,
+    reviewed: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = _records(reviewed.get("proposed_actions"))
+    opportunities: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        action = _str(row.get("action"))
+        target = _str(row.get("target"))
+        summary = _str(row.get("summary")) or "Review this document-backed opportunity."
+        providers = _provider_mutations_for_opportunity(action, target, summary)
+        opportunities.append(
+            {
+                "id": f"action-{index + 1}",
+                "kind": action or "review_document",
+                "title": _ai_opportunity_title(action, target),
+                "summary": summary,
+                "confidence": _confidence(row.get("confidence")),
+                "source_path": f"proposed_actions.{index}",
+                "source_hint": _str(row.get("source_hint")) or _str(row.get("summary")),
+                "target_kind": target,
+                "provider_mutations": providers,
+                "requires_explicit_operator_approval": bool(providers),
+                "decision": "pending",
+                "notes": None,
+            }
+        )
+    if opportunities:
+        return opportunities
+
+    document_type = _str(reviewed.get("document_type")) or intake.document_type
+    first_money = _first_money_record(reviewed)
+    if first_money is not None:
+        opportunities.append(
+            {
+                "id": "action-1",
+                "kind": "set_up_billing_pattern",
+                "title": "Set up billing pattern",
+                "summary": (
+                    "Use the source-backed amount and date to prepare local billing "
+                    "review questions."
+                ),
+                "confidence": _confidence(first_money.get("confidence")) or intake.confidence,
+                "source_path": "money_amounts.0",
+                "source_hint": _str(first_money.get("source_hint")),
+                "target_kind": "billing",
+                "provider_mutations": [],
+                "requires_explicit_operator_approval": False,
+                "decision": "pending",
+                "notes": None,
+            }
+        )
+    if document_type == "notice" or _records(reviewed.get("key_dates")):
+        opportunities.append(
+            {
+                "id": f"action-{len(opportunities) + 1}",
+                "kind": "create_follow_up_task",
+                "title": "Create follow-up task",
+                "summary": "Turn the document date or notice wording into a local review task.",
+                "confidence": intake.confidence,
+                "source_path": "key_dates.0",
+                "source_hint": None,
+                "target_kind": "task",
+                "provider_mutations": [],
+                "requires_explicit_operator_approval": False,
+                "decision": "pending",
+                "notes": None,
+            }
+        )
+    return opportunities
+
+
+def _merge_ai_opportunity_decisions(
+    opportunities: list[dict[str, Any]],
+    decisions: list[Any],
+) -> list[dict[str, Any]]:
+    decisions_by_id = {decision.opportunity_id: decision for decision in decisions}
+    merged: list[dict[str, Any]] = []
+    for opportunity in opportunities:
+        decision = decisions_by_id.get(opportunity["id"])
+        if decision is None:
+            merged.append(opportunity)
+            continue
+        row = {
+            **opportunity,
+            "decision": decision.decision,
+            "notes": decision.notes,
+        }
+        if decision.title is not None:
+            row["title"] = decision.title
+        if decision.summary is not None:
+            row["summary"] = decision.summary
+        merged.append(row)
+    return merged
+
+
+def _ai_opportunity_guardrails() -> list[str]:
+    return [
+        "No invoice is approved, posted, emailed, or synced to Xero from this panel.",
+        "No Xero contacts are created, updated, or deleted from this panel.",
+        "No email, SMS, payment, or reconciliation action is sent from this panel.",
+    ]
+
+
+def _ai_opportunity_output_dict(output: Any) -> dict[str, Any] | None:
+    if output is None:
+        return None
+    return {
+        "kind": output.kind,
+        "title": output.title,
+        "summary": output.summary,
+        "rows": [row.model_dump(mode="json") for row in output.rows],
+        "guardrail": output.guardrail,
+    }
 
 
 def _best_date(records: list[dict[str, Any]], labels: set[str]) -> date | None:
@@ -2926,6 +3069,67 @@ def review_document_intake(
         action="review",
         target_table="document_intake",
         target_id=intake.id,
+    )
+    session.commit()
+    session.refresh(intake)
+    return _read_intake(intake)
+
+
+@router.post("/{intake_id}/ai-opportunity-session", response_model=DocumentIntakeRead)
+def update_document_intake_ai_opportunity_session(
+    intake_id: UUID,
+    payload: DocumentIntakeAiOpportunitySessionRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> DocumentIntakeRead:
+    intake = _get_intake(intake_id, user, session, WRITE_ROLES)
+    if intake.status == DocumentIntakeStatus.applied:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Applied document intakes cannot store AI opportunity sessions.",
+        )
+    if intake.status not in {
+        DocumentIntakeStatus.ready_for_review,
+        DocumentIntakeStatus.needs_attention,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document intake is not ready for AI opportunity review.",
+        )
+
+    reviewed = _reviewed_data(intake, payload.review_data)
+    opportunities = _merge_ai_opportunity_decisions(
+        _build_ai_opportunities(intake, reviewed),
+        payload.decisions,
+    )
+    now = utcnow()
+    existing_review = dict(_dict(intake.review_data))
+    existing_review[AI_OPPORTUNITY_SESSION_KEY] = {
+        "version": 1,
+        "status": payload.status,
+        "selected_opportunity_id": payload.selected_opportunity_id,
+        "opportunities": opportunities,
+        "answers": [answer.model_dump(mode="json") for answer in payload.answers],
+        "proposed_output": _ai_opportunity_output_dict(payload.proposed_output),
+        "guardrails": _ai_opportunity_guardrails(),
+        "notes": payload.notes,
+        "updated_at": now.isoformat(),
+        "updated_by_user_id": str(user.id),
+    }
+    intake.review_data = existing_review
+    intake.reviewed_at = now
+    intake.reviewed_by_user_id = user.id
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=intake.entity_id,
+        action="review",
+        target_table="document_intake",
+        target_id=intake.id,
+        tool_name="smart_intake_ai_opportunity_session",
+        tool_input={"document_intake_id": str(intake.id)},
+        tool_output_summary="Stored Smart Intake AI opportunity session; no provider mutation ran.",
     )
     session.commit()
     session.refresh(intake)
