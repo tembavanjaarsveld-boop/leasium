@@ -85,6 +85,67 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
+async function expectAppearsBefore(first: Locator, second: Locator) {
+  await expect(first).toBeVisible();
+  await expect(second).toBeVisible();
+  const firstBox = await first.boundingBox();
+  const secondBox = await second.boundingBox();
+  expect(firstBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+  expect(firstBox!.y).toBeLessThan(secondBox!.y);
+}
+
+function watchForbiddenAiOpportunityRequests(page: Page) {
+  const forbiddenRequests: string[] = [];
+  const sessionRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const method = request.method();
+    const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const aiOpportunitySession =
+      unsafeMethod &&
+      /^\/api\/v1\/document-intakes\/[^/]+\/ai-opportunity-session$/.test(
+        path,
+      );
+    if (aiOpportunitySession) {
+      sessionRequests.push(`${method} ${url.toString()}`);
+      return;
+    }
+    const smartIntakeMutation =
+      unsafeMethod &&
+      /^\/api\/v1\/document-intakes\/[^/]+\/(apply|review|accept-lease-match)$/.test(
+        path,
+      );
+    const providerMutation =
+      unsafeMethod &&
+      (path.includes("/xero") ||
+        path.includes("/sendgrid") ||
+        path.includes("/twilio") ||
+        path.includes("/comms/dispatch") ||
+        path.includes("/provider-dispatch") ||
+        path.includes("/prepare-delivery") ||
+        path.includes("/send-delivery-email") ||
+        path.includes("/record-delivery") ||
+        path.includes("/payment-status") ||
+        /\/billing-drafts\/[^/]+\/invoice-drafts$/.test(path) ||
+        path.includes("/assignment-notification/send-email") ||
+        path.includes("/contractor-delivery/send-email") ||
+        path.includes("/contractor-delivery/send-sms") ||
+        path.includes("/notification-center/notices/send-email") ||
+        path.includes("/notification-center/notices/send-sms") ||
+        path.includes("/owners/statements/send") ||
+        path.includes("/owners/statements/dispatch") ||
+        path.includes("/owners/distributions/dispatch-review") ||
+        path.includes("/payment") ||
+        path.includes("/reconciliation"));
+    if (smartIntakeMutation || providerMutation) {
+      forbiddenRequests.push(`${method} ${url.toString()}`);
+    }
+  });
+  return { forbiddenRequests, sessionRequests };
+}
+
 async function selectWorkspaceEntity(page: Page, value: string) {
   // The entity picker is a custom popover listbox (no native select):
   // open the trigger, then click the option row carrying the entity id.
@@ -831,6 +892,179 @@ test("smart intake explains unmatched notices do not set up invoicing", async ({
       });
     }
   }
+});
+
+test("smart intake shows AI opportunity cards and saves one answer without provider mutations", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-unmatched-notice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "_UTAUS_16705142_00001.pdf" }),
+  ).toBeVisible();
+  const noticeGuidance = review.getByText(
+    "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
+  );
+  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
+  await expectAppearsBefore(noticeGuidance, opportunityPanel);
+  await expect(opportunityPanel).toBeVisible();
+
+  const followUpCard = opportunityPanel.getByTestId(
+    "document-intake-opportunity-card-action-1",
+  );
+  const billingCard = opportunityPanel.getByTestId(
+    "document-intake-opportunity-card-action-2",
+  );
+  await expect(followUpCard).toBeVisible();
+  await expect(billingCard).toBeVisible();
+  await expect(followUpCard).toContainText("Create follow-up task");
+  await expect(billingCard).toContainText("Set up billing pattern");
+
+  const chat = opportunityPanel.getByTestId("document-intake-opportunity-chat");
+  await expect(
+    chat.getByText("Who should own this follow-up and what due date should we use?"),
+  ).toBeVisible();
+  const answerBox = chat.getByRole("textbox");
+  await answerBox.fill(
+    "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
+  );
+  await chat.getByRole("button", { name: "Save answer" }).click();
+
+  await expect(page.getByText("AI opportunity session saved.")).toBeVisible();
+  const output = page.getByTestId("document-intake-opportunity-output");
+  await expect(output).toBeVisible();
+  await expect(output).toContainText(
+    "No email, SMS, provider dispatch, payment, or reconciliation action is sent.",
+  );
+  await expect(output).toContainText(
+    "No invoice is approved, posted, emailed, or synced to Xero from this panel.",
+  );
+  await expect(
+    chat.getByText(
+      "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
+    ),
+  ).toBeVisible();
+  expect(sessionRequests).toHaveLength(1);
+  expect(forbiddenRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/smart-intake-ai-opportunity-panel-1440.png",
+  });
+});
+
+test("mobile Smart Intake AI opportunity panel keeps one-question flow touch-safe", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-unmatched-notice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "_UTAUS_16705142_00001.pdf" }),
+  ).toBeVisible();
+  const noticeGuidance = review.getByText(
+    "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
+  );
+  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
+  const sourcePreview = page.getByTestId("document-review-source-preview");
+  const fieldsPanel = page.getByTestId("document-review-fields");
+  await expectAppearsBefore(noticeGuidance, opportunityPanel);
+  await expectAppearsBefore(noticeGuidance, sourcePreview);
+  await expectAppearsBefore(noticeGuidance, fieldsPanel);
+  await expectAppearsBefore(opportunityPanel, sourcePreview);
+  await expectAppearsBefore(opportunityPanel, fieldsPanel);
+
+  await expectTouchTarget(
+    opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
+  );
+  const saveAnswer = opportunityPanel.getByRole("button", {
+    name: "Save answer",
+  });
+  await expectTouchTarget(saveAnswer);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/smart-intake-ai-opportunity-panel-390.png",
+  });
+
+  await opportunityPanel
+    .getByTestId("document-intake-opportunity-chat")
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: "../../output/playwright/smart-intake-ai-opportunity-panel-390-question.png",
+  });
+
+  const stickyActions = page.getByTestId("document-review-sticky-actions");
+  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
+  await stickyActions.scrollIntoViewIfNeeded();
+  await expect(stickyActions).toBeVisible();
+  await expect(mobileNav).toBeVisible();
+  const stickyBox = await stickyActions.boundingBox();
+  const navBox = await mobileNav.boundingBox();
+  expect(stickyBox).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(stickyBox!.y + stickyBox!.height).toBeLessThanOrEqual(navBox!.y);
+});
+
+test("smart intake AI opportunity save failure keeps review output local", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, {
+    includeUnmatchedNoticeIntake: true,
+    documentIntakeOpportunitySessionUnavailable: true,
+  });
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-unmatched-notice-1");
+
+  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
+  const chat = opportunityPanel.getByTestId("document-intake-opportunity-chat");
+  const applyReviewedItems = page.getByRole("button", {
+    name: /Apply reviewed items/,
+  });
+  await expect(applyReviewedItems).toBeVisible();
+  const applyReviewedItemsWasDisabled = await applyReviewedItems.isDisabled();
+  await chat
+    .getByRole("textbox")
+    .fill("Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.");
+  await chat.getByRole("button", { name: "Save answer" }).click();
+
+  await expect(
+    page.getByText("AI opportunity session is unavailable."),
+  ).toBeVisible();
+  await expect(chat.getByText("Last saved answer")).toHaveCount(0);
+  expect(sessionRequests).toHaveLength(1);
+  expect(forbiddenRequests).toEqual([]);
+  await expect(applyReviewedItems).toBeVisible();
+  expect(await applyReviewedItems.isDisabled()).toBe(
+    applyReviewedItemsWasDisabled,
+  );
+
+  await page.reload();
+  const reloadedPanel = page.getByTestId("document-intake-opportunity-panel");
+  await expect(reloadedPanel).toBeVisible();
+  await expect(
+    reloadedPanel.getByTestId("document-intake-opportunity-chat"),
+  ).toBeVisible();
+  await expect(
+    reloadedPanel.getByText(
+      "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
+    ),
+  ).toHaveCount(0);
+  await expect(reloadedPanel.getByText("Last saved answer")).toHaveCount(0);
 });
 
 test("billing readiness mobile actions keep 44px touch targets", async ({

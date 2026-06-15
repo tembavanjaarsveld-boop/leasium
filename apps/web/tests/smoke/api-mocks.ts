@@ -2539,6 +2539,99 @@ function jsonRecord(value: JsonBody | undefined) {
   return value;
 }
 
+function jsonText(value: JsonBody | undefined) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function jsonNumber(value: JsonBody | undefined) {
+  return typeof value === "number" ? value : null;
+}
+
+function providerMutationsForOpportunity(
+  action: string | null,
+  target: string | null,
+  summary: string | null,
+) {
+  const haystack = [action, target, summary]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const providers: string[] = [];
+  if (haystack.includes("xero")) providers.push("xero");
+  if (haystack.includes("sendgrid")) providers.push("sendgrid");
+  if (haystack.includes("twilio") || haystack.includes("sms")) {
+    providers.push("twilio");
+  }
+  if (
+    haystack.includes("tenant_email") ||
+    haystack.includes("tenant email") ||
+    haystack.includes("send email")
+  ) {
+    providers.push("tenant_email");
+  }
+  if (haystack.includes("payment") || haystack.includes("reconciliation")) {
+    providers.push("payment_reconciliation");
+  }
+  return providers;
+}
+
+function opportunityTitle(
+  title: string | null,
+  action: string | null,
+  target: string | null,
+) {
+  if (title) return title;
+  const text = (action ?? target ?? "review_document")
+    .replace(/_/g, " ")
+    .trim();
+  return text ? `${text[0].toUpperCase()}${text.slice(1)}` : "Review document";
+}
+
+function normalizeAiOpportunities(value: JsonBody | undefined) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item, index) => {
+    const row = jsonRecord(item);
+    if (!Object.keys(row).length) {
+      return [];
+    }
+    const action = jsonText(row.action) ?? jsonText(row.kind);
+    const target = jsonText(row.target) ?? jsonText(row.target_kind);
+    const summary =
+      jsonText(row.summary) ?? "Review this document-backed opportunity.";
+    const explicitProviders = Array.isArray(row.provider_mutations)
+      ? row.provider_mutations.flatMap((provider) => {
+          const text = jsonText(provider);
+          return text ? [text] : [];
+        })
+      : [];
+    const providerMutations = explicitProviders.length
+      ? explicitProviders
+      : providerMutationsForOpportunity(action, target, summary);
+    return [
+      {
+        id: jsonText(row.id) ?? `action-${index + 1}`,
+        kind: action ?? "review_document",
+        action,
+        target,
+        title: opportunityTitle(jsonText(row.title), action, target),
+        summary,
+        confidence: jsonNumber(row.confidence),
+        source_path: jsonText(row.source_path) ?? `proposed_actions.${index}`,
+        source_hint: jsonText(row.source_hint) ?? summary,
+        target_kind: target,
+        provider_mutations: providerMutations,
+        requires_explicit_operator_approval: Boolean(
+          row.requires_explicit_operator_approval || providerMutations.length,
+        ),
+        decision: "pending",
+        notes: null,
+      },
+    ];
+  });
+}
+
 function noticeChannelReceipt(overrides: { [key: string]: JsonBody }) {
   return {
     channel: "email",
@@ -2776,6 +2869,7 @@ type MockLeasiumApiOptions = {
   vendorPortalMessagingThread?: boolean;
   operationsComplianceDemo?: boolean;
   includeUnmatchedNoticeIntake?: boolean;
+  documentIntakeOpportunitySessionUnavailable?: boolean;
 };
 
 // The fixture has two entities, so a fresh workspace defaults to the
@@ -3113,6 +3207,31 @@ export async function mockLeasiumApi(
         warnings: [],
         missing_information: [
           "No property, tenancy, lease, or rent schedule details were found.",
+        ],
+        proposed_actions: [
+          {
+            id: "action-1",
+            kind: "create_follow_up_task",
+            action: "create_follow_up_task",
+            target: "task",
+            title: "Create follow-up task",
+            summary: "Create a local review task for the overdue final notice.",
+            confidence: 0.86,
+            source_path: "key_dates.0",
+            source_hint: "Due date",
+          },
+          {
+            id: "action-2",
+            kind: "set_up_billing_pattern",
+            action: "set_up_billing_pattern",
+            target: "billing",
+            title: "Set up billing pattern",
+            summary:
+              "Use the amount and due date as clues, then ask for property, lease, recurrence, and GST context before any local billing draft.",
+            confidence: 0.72,
+            source_path: "money_amounts.0",
+            source_hint: "Amount due",
+          },
         ],
       },
       review_data: {},
@@ -10903,6 +11022,85 @@ export async function mockLeasiumApi(
             )
           : documentIntakes,
       );
+      return;
+    }
+
+    const documentIntakeOpportunitySession = path.match(
+      /^\/document-intakes\/([^/]+)\/ai-opportunity-session$/,
+    );
+    if (method === "POST" && documentIntakeOpportunitySession) {
+      if (options.documentIntakeOpportunitySessionUnavailable) {
+        await fulfillJson(
+          route,
+          { detail: "AI opportunity session is unavailable." },
+          503,
+        );
+        return;
+      }
+      const intake = documentIntakes.find(
+        (item) => item.id === documentIntakeOpportunitySession[1],
+      );
+      if (!intake) {
+        await fulfillJson(route, { detail: "Document intake not found." }, 404);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const payloadReviewData = jsonRecord(payload.review_data);
+      const payloadSession = jsonRecord(
+        payloadReviewData.ai_opportunity_session,
+      );
+      const extractedData = jsonRecord(intake.extracted_data);
+      const payloadOpportunities = normalizeAiOpportunities(
+        payloadSession.opportunities ?? payloadReviewData.proposed_actions,
+      );
+      const opportunities = payloadOpportunities.length
+        ? payloadOpportunities
+        : normalizeAiOpportunities(extractedData.proposed_actions);
+      const proposedOutput =
+        typeof payload.proposed_output === "object" &&
+        payload.proposed_output !== null &&
+        !Array.isArray(payload.proposed_output)
+          ? payload.proposed_output
+          : null;
+      const decisions = Array.isArray(payload.decisions)
+        ? payload.decisions
+        : [];
+      const opportunitiesWithDecisions = opportunities.map((opportunity) => {
+        const decision = decisions
+          .map((item) => jsonRecord(item))
+          .find(
+            (item) => jsonText(item.opportunity_id) === opportunity.id,
+          );
+        return decision
+          ? {
+              ...opportunity,
+              decision: jsonText(decision.decision) ?? opportunity.decision,
+              notes: jsonText(decision.notes),
+            }
+          : opportunity;
+      });
+      intake.review_data = {
+        ...jsonRecord(intake.review_data),
+        ai_opportunity_session: {
+          version: 1,
+          status: jsonText(payload.status) ?? "open",
+          selected_opportunity_id:
+            jsonText(payload.selected_opportunity_id) ?? null,
+          opportunities: opportunitiesWithDecisions,
+          answers: Array.isArray(payload.answers) ? payload.answers : [],
+          proposed_output: proposedOutput,
+          guardrails: [
+            "No invoice is approved, posted, emailed, or synced to Xero from this panel.",
+            "No Xero contacts are created, updated, or deleted from this panel.",
+            "No email, SMS, payment, or reconciliation action is sent from this panel.",
+          ],
+          notes: jsonText(payload.notes),
+          updated_at: "2026-06-15T01:15:00.000Z",
+          updated_by_user_id: operatorId,
+        },
+      };
+      intake.updated_at = "2026-06-15T01:15:00.000Z";
+      await fulfillJson(route, intake);
       return;
     }
 
