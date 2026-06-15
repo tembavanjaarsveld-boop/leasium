@@ -2,6 +2,8 @@
 
 import base64
 import json
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -394,10 +396,19 @@ def extract_document_file(
         raise DocumentExtractionError("OpenAI response was not valid JSON.") from exc
     if not isinstance(extracted, dict):
         raise DocumentExtractionError("OpenAI extraction returned an unexpected shape.")
-    return _normalise_extracted_document(extracted, filename), body.get("id")
+    return _normalise_extracted_document(
+        extracted,
+        filename,
+        extracted_text=extracted_text,
+    ), body.get("id")
 
 
-def _normalise_extracted_document(extracted: dict[str, Any], filename: str) -> dict[str, Any]:
+def _normalise_extracted_document(
+    extracted: dict[str, Any],
+    filename: str,
+    *,
+    extracted_text: str | None = None,
+) -> dict[str, Any]:
     document_type = str(extracted.get("document_type") or "unknown")
     if document_type not in {
         "lease",
@@ -414,4 +425,280 @@ def _normalise_extracted_document(extracted: dict[str, Any], filename: str) -> d
     summary = str(extracted.get("summary") or f"Review {Path(filename).stem}.").strip()
     extracted["document_type"] = document_type
     extracted["summary"] = summary
+    if document_type == "invoice_admin" and extracted_text:
+        _supplement_invoice_admin_from_text(extracted, extracted_text)
     return extracted
+
+
+def _supplement_invoice_admin_from_text(extracted: dict[str, Any], text: str) -> None:
+    if not _looks_like_invoice_text(text):
+        return
+
+    tenant_name = _invoice_customer_name(text)
+    issuer_name = _invoice_issuer_name(text)
+    invoice_number = _invoice_number(text)
+    address, unit_label = _invoice_property_scope(text)
+    invoice_date = _invoice_date_after("Invoice Date", text)
+    due_date = _invoice_date_after("Due Date", text)
+    total_amount = _invoice_money_after(r"\bTOTAL\s+AUD\b", text)
+    frequency = (
+        "monthly"
+        if re.search(
+            r"\b[A-Z][a-z]{2,8}\s+\d{4}\s+Rent\b|^Rent\s+-",
+            text,
+            re.IGNORECASE | re.MULTILINE,
+        )
+        else "one_off"
+    )
+
+    if not _record_list(extracted.get("parties")):
+        parties: list[dict[str, Any]] = []
+        if tenant_name:
+            parties.append(
+                {
+                    "name": tenant_name,
+                    "role": "tenant",
+                    "abn": None,
+                    "contact": None,
+                    "confidence": 0.88,
+                    "source_hint": f"Customer {tenant_name}",
+                }
+            )
+        if issuer_name:
+            parties.append(
+                {
+                    "name": issuer_name,
+                    "role": "invoice_issuer",
+                    "abn": _first_match(r"\bABN:?\s*([0-9 ]{11,})", text),
+                    "contact": _first_match(r"\bEmail:\s*([^\s]+@[^\s]+)", text),
+                    "confidence": 0.88,
+                    "source_hint": f"To: {issuer_name}",
+                }
+            )
+        if parties:
+            extracted["parties"] = parties
+
+    if address and not _record_list(extracted.get("properties")):
+        extracted["properties"] = [
+            {
+                "name": address,
+                "address": address,
+                "unit_label": unit_label,
+                "ownership_structure": None,
+                "owner_legal_name": None,
+                "owner_abn": None,
+                "trustee_name": None,
+                "trust_name": None,
+                "invoice_issuer_name": issuer_name,
+                "billing_contact_name": None,
+                "billing_email": None,
+                "invoice_reference": invoice_number,
+                "ownership_split": None,
+                "owner_gst_registered": None,
+                "xero_contact_id": None,
+                "xero_tracking_category": None,
+                "confidence": 0.88,
+                "source_hint": _first_invoice_rent_line(text) or address,
+            }
+        ]
+
+    key_dates = _record_list(extracted.get("key_dates"))
+    if invoice_date and not _has_review_label(key_dates, "Invoice date"):
+        key_dates.append(
+            {
+                "label": "Invoice date",
+                "date": invoice_date,
+                "confidence": 0.9,
+                "source_hint": f"Invoice Date {_invoice_source_date_after('Invoice Date', text)}",
+            }
+        )
+    if due_date and not _has_review_label(key_dates, "Payment due"):
+        key_dates.append(
+            {
+                "label": "Payment due",
+                "date": due_date,
+                "confidence": 0.9,
+                "source_hint": f"Due Date {_invoice_source_date_after('Due Date', text)}",
+            }
+        )
+    extracted["key_dates"] = key_dates
+
+    if total_amount is not None and not _record_list(extracted.get("money_amounts")):
+        extracted["money_amounts"] = [
+            {
+                "label": "Total rent invoice including GST",
+                "amount": total_amount,
+                "currency": "AUD",
+                "frequency": frequency,
+                "confidence": 0.9,
+                "source_hint": f"TOTAL AUD {_format_invoice_money(total_amount)}",
+            }
+        ]
+
+    links = extracted.get("suggested_links")
+    if not isinstance(links, dict):
+        links = {"property_name": None, "tenant_name": None, "lease_reference": None}
+    links["property_name"] = links.get("property_name") or address
+    links["tenant_name"] = links.get("tenant_name") or tenant_name
+    links["lease_reference"] = links.get("lease_reference")
+    extracted["suggested_links"] = links
+
+    warnings = _text_list(extracted.get("warnings"))
+    if re.search(r"\bAMOUNT\s+DUE\s+AUD\s+0(?:\.00)?\b|\bAmount Due\s+0(?:\.00)?\b", text):
+        _append_unique(
+            warnings,
+            (
+                "Invoice shows Amount Due AUD 0.00 / paid; use as historical "
+                "billing setup context before drafting a new invoice."
+            ),
+        )
+    extracted["warnings"] = warnings
+
+    missing_information = _text_list(extracted.get("missing_information"))
+    if total_amount is not None:
+        _append_unique(
+            missing_information,
+            (
+                "Confirm property, lease, billing recurrence, GST handling, and "
+                "whether this paid invoice should become a future billing pattern."
+            ),
+        )
+    extracted["missing_information"] = missing_information
+
+    if total_amount is not None and not _record_list(extracted.get("proposed_actions")):
+        extracted["proposed_actions"] = [
+            {
+                "action": "prepare_billing_review",
+                "target": "billing",
+                "summary": (
+                    "Review the source-backed rent invoice total before creating "
+                    "local billing work."
+                ),
+                "confidence": 0.86,
+            }
+        ]
+
+
+def _looks_like_invoice_text(text: str) -> bool:
+    return bool(
+        re.search(r"\bTAX\s+INVOICE\b", text, re.IGNORECASE)
+        or re.search(r"\bInvoice Number\b", text, re.IGNORECASE)
+    )
+
+
+def _record_list(value: Any) -> list[dict[str, Any]]:
+    return value if isinstance(value, list) else []
+
+
+def _text_list(value: Any) -> list[str]:
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _append_unique(items: list[str], item: str) -> None:
+    if item not in items:
+        items.append(item)
+
+
+def _has_review_label(items: list[dict[str, Any]], label: str) -> bool:
+    return any(str(item.get("label") or "").lower() == label.lower() for item in items)
+
+
+def _first_match(pattern: str, text: str) -> str | None:
+    match = re.search(pattern, text, re.IGNORECASE)
+    if not match:
+        return None
+    return " ".join(match.group(1).split())
+
+
+def _invoice_customer_name(text: str) -> str | None:
+    value = _first_match(r"\bCustomer\s+([^\n]+)", text)
+    return _trim_invoice_name(value) if value else None
+
+
+def _invoice_issuer_name(text: str) -> str | None:
+    value = _first_match(r"\bTo:\s*([^\n]+)", text) or _first_match(
+        r"\bAccount name:\s*([^\n]+)",
+        text,
+    )
+    return _trim_invoice_name(value) if value else None
+
+
+def _trim_invoice_name(value: str) -> str:
+    return re.split(
+        r"\s+(?:Amount Enclosed|Invoice Number|ABN|Email|Phone|Customer)\b",
+        value,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].strip()
+
+
+def _invoice_number(text: str) -> str | None:
+    match = re.search(
+        r"\bInvoice Number\b[\s\S]{0,160}?\b([A-Z]{2,}-\d+)\b",
+        text,
+        re.IGNORECASE,
+    )
+    return match.group(1).upper() if match else None
+
+
+def _first_invoice_rent_line(text: str) -> str | None:
+    match = re.search(r"^Rent\s+-\s+.+$", text, re.IGNORECASE | re.MULTILINE)
+    return " ".join(match.group(0).split()) if match else None
+
+
+def _invoice_property_scope(text: str) -> tuple[str | None, str | None]:
+    rent_lines = re.findall(
+        r"^Rent\s+-\s+(.+?)\s+1\.00\s+[\d,]+\.\d{2}\s+\d+%\s+[\d,]+\.\d{2}",
+        text,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    addresses: list[str] = []
+    unit_labels: list[str] = []
+    for line in rent_lines:
+        match = re.match(r"(?P<unit>U\d+,\s*B\d+)\s+(?P<address>.+)", line.strip())
+        if match:
+            unit_label = " ".join(match.group("unit").split())
+            address = " ".join(match.group("address").split())
+            if unit_label not in unit_labels:
+                unit_labels.append(unit_label)
+            if address not in addresses:
+                addresses.append(address)
+    if addresses:
+        return addresses[0], "; ".join(unit_labels) or None
+    return None, None
+
+
+def _invoice_source_date_after(label: str, text: str) -> str | None:
+    match = re.search(
+        rf"\b{re.escape(label)}\b[\s\S]{{0,80}}?(\d{{1,2}}\s+[A-Za-z]{{3,9}}\s+\d{{4}})",
+        text,
+        re.IGNORECASE,
+    )
+    return " ".join(match.group(1).split()) if match else None
+
+
+def _invoice_date_after(label: str, text: str) -> str | None:
+    raw_date = _invoice_source_date_after(label, text)
+    if not raw_date:
+        return None
+    for date_format in ("%d %b %Y", "%d %B %Y"):
+        try:
+            return datetime.strptime(raw_date, date_format).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _invoice_money_after(label_pattern: str, text: str) -> float | None:
+    match = re.search(
+        rf"{label_pattern}\s+([\d,]+\.\d{{2}})",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return float(match.group(1).replace(",", ""))
+
+
+def _format_invoice_money(amount: float) -> str:
+    return f"{amount:,.2f}"

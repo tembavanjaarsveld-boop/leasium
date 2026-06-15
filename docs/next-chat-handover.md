@@ -2,6 +2,37 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (invoice text recovery)
+
+Scope completed: the uploaded `Invoice INV-0331.pdf` was readable, but OpenAI
+returned a summary-only invoice/admin shape. Leasium AI therefore showed the
+safe fallback instead of source-backed extracted fields.
+
+What changed:
+- Backend document extraction now supplements empty invoice/admin fields from
+  readable source text before the intake is saved.
+- The supplement fills tenant/customer, invoice issuer, property address and
+  units, invoice reference, invoice/due dates, and the source-backed rent total
+  including GST when those facts are present.
+- Paid historical invoices add a warning that `Amount Due AUD 0.00` means the
+  file should be treated as billing setup context, not a live invoice to send.
+
+Verification evidence:
+- RED unit test first failed because `suggested_links.tenant_name` stayed
+  `None` for a summary-only `INV-0331` extraction.
+- GREEN checks passed:
+  `.venv/bin/python -m pytest tests/unit/test_document_intake_extraction.py -q`.
+- Full document-intake integration passed:
+  `.venv/bin/python -m pytest tests/integration/test_document_intake_api.py -q`.
+- Actual PDF bytes from `/Users/tembavanjaarsveld/Downloads/Invoice INV-0331.pdf`
+  were run through the mocked OpenAI path and produced Gorilla Grind, SJI No 1
+  Pty Ltd, `205 Leitchs Rd Brendale`, units `U1, B3; U3, B3`, dates
+  `2026-05-31` / `2026-06-03`, and `AUD 8,708.32`.
+
+Guardrails held: the recovery changes extracted review data only. It does not
+apply a Smart Intake review, create/post/send an invoice, sync Xero, send
+email/SMS, move money, or reconcile payments.
+
 ## Codex continuation - 2026-06-15 (Leasium AI zero-field invoice fallback)
 
 Scope completed: Leasium AI no longer disappears when an invoice/admin intake

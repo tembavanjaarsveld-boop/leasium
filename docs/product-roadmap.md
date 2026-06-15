@@ -16,6 +16,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Leasium AI invoice text recovery:**
+  Invoice/admin extraction now supplements a summary-only AI response with
+  source-backed facts from readable invoice text. Paid historical rent invoices
+  like `INV-0331` now surface tenant, issuer, property/unit scope, invoice/due
+  dates, and the reviewed rent total instead of landing as 0 extracted fields.
+  The recovery only prepares local review data; no invoice, Xero, email/SMS,
+  payment, or reconciliation mutation runs.
 - [x] **2026-06-15 Leasium AI zero-field invoice fallback:**
   Leasium AI now still helps when an invoice/admin intake extracts zero
   structured fields. The review assistant appears above the source/field editor,
