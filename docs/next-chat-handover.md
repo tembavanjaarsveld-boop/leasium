@@ -20,7 +20,7 @@ What changed:
   `document-intake-ai-suggestion-row`, `document-intake-ai-message-question`,
   `document-intake-ai-composer`, and `document-intake-ai-preview-panel`.
 
-Verification evidence so far:
+Verification evidence:
 - RED smoke first failed because `document-intake-ai-chat-window` was absent.
 - Focused zero-field invoice smoke passed 2/2:
   `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
@@ -33,6 +33,16 @@ Verification evidence so far:
 - Screenshots checked:
   `output/playwright/leasium-ai-zero-field-invoice-1440.png` and
   `output/playwright/leasium-ai-zero-field-invoice-390.png`.
+- `npm --prefix apps/web run lint` passed.
+- `cd apps/web && npx tsc --noEmit --pretty false` passed.
+- `npm --prefix apps/web run build` passed.
+- `git diff --check` passed.
+- Committed as `fc57685 Make Leasium AI a true chat window`, pushed to `main`,
+  and deployed to production as Vercel deployment
+  `dpl_Fs7Ax2ynxRTQgnkydL2TB2u2S21V`.
+- Production check passed: `https://leasium.ai` returned 200 and
+  `https://leasium.ai/health` reported commit
+  `fc57685b343a9b7aba827bf9c323cd0582e82957`.
 
 Guardrails held: the correction is UI structure only. It still saves only the
 local `ai-opportunity-session`; it does not apply Smart Intake, create/post/send
