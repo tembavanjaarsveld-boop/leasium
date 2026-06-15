@@ -278,6 +278,17 @@ fixes · deferrals.
   summary/file context, save only the local answer session, and show
   source-backed billing guidance instead of the generic obligation-date
   blocker · deferred: none for this fallback.
+- 2026-06-15 · Leasium AI reading-state guard · existing Document review
+  `58:352` / Leasium AI assistant pattern reused · screens checked at 1440
+  (`output/playwright/leasium-ai-reading-invoice-1440.png`) and 390
+  (`output/playwright/leasium-ai-reading-invoice-390.png`) · fixes: active
+  `uploaded`/`reading` intakes now show a calm "Leasium AI is reading this
+  document" panel, keep the no-provider-write guardrail visible, replace the
+  misleading "0 fields extracted" header copy with "Reading document and
+  preparing review", lock review/apply controls, and suppress the
+  zero-field/setup-question assistant until extraction has actually finished ·
+  deferred: existing mobile notification issue toast overlap remains covered by
+  the workspace UX debt item.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,

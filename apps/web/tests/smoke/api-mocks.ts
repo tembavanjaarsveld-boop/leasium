@@ -2870,6 +2870,8 @@ type MockLeasiumApiOptions = {
   operationsComplianceDemo?: boolean;
   includeUnmatchedNoticeIntake?: boolean;
   includeZeroFieldInvoiceIntake?: boolean;
+  includeReadingInvoiceIntake?: boolean;
+  includeUploadedInvoiceIntake?: boolean;
   documentIntakeOpportunitySessionUnavailable?: boolean;
 };
 
@@ -3290,6 +3292,109 @@ export async function mockLeasiumApi(
       applied_by_user_id: null,
       created_at: "2026-06-15T02:53:00.000Z",
       updated_at: "2026-06-15T02:53:00.000Z",
+      filename: "Invoice INV-0331.pdf",
+      content_type: "application/pdf",
+      byte_size: 72000,
+      category: "other",
+    });
+  }
+  if (options.includeReadingInvoiceIntake) {
+    documentIntakes.unshift({
+      id: "intake-reading-invoice-1",
+      entity_id: entityId,
+      document_id: "document-reading-invoice-1",
+      status: "reading",
+      document_type: "unknown",
+      summary: null,
+      confidence: null,
+      extracted_data: {
+        document_type: "unknown",
+        summary: "",
+        confidence: 0,
+        parties: [],
+        properties: [],
+        key_dates: [],
+        money_amounts: [],
+        obligations: [],
+        inspection_findings: [],
+        suggested_links: {},
+        warnings: [],
+        missing_information: [],
+      },
+      review_data: {},
+      openai_response_id: null,
+      error_message: null,
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      applied_at: null,
+      applied_by_user_id: null,
+      created_at: "2026-06-15T03:55:00.000Z",
+      updated_at: "2026-06-15T03:55:00.000Z",
+      filename: "Invoice INV-0331.pdf",
+      content_type: "application/pdf",
+      byte_size: 72000,
+      category: "other",
+    });
+  }
+  if (options.includeUploadedInvoiceIntake) {
+    documentIntakes.unshift({
+      id: "intake-uploaded-invoice-1",
+      entity_id: entityId,
+      document_id: "document-uploaded-invoice-1",
+      status: "uploaded",
+      document_type: "invoice_admin",
+      summary:
+        "Tax invoice for Gorilla Grind issued by SJI No 1 Pty Ltd for May 2026 rent.",
+      confidence: 0.72,
+      extracted_data: {
+        document_type: "invoice_admin",
+        summary:
+          "Tax invoice for Gorilla Grind issued by SJI No 1 Pty Ltd for May 2026 rent.",
+        confidence: 0.72,
+        parties: [
+          {
+            name: "Gorilla Grind",
+            role: "tenant",
+            confidence: 0.8,
+            source_hint: "Invoice customer",
+          },
+        ],
+        properties: [
+          {
+            name: "205 Leitchs Rd Brendale",
+            unit_label: "U1, B3; U3, B3",
+            confidence: 0.78,
+            source_hint: "Premises line",
+          },
+        ],
+        key_dates: [{ label: "Due date", date: "2026-06-03" }],
+        money_amounts: [
+          {
+            label: "Rent total",
+            amount: 8708.32,
+            currency: "AUD",
+            confidence: 0.74,
+            source_hint: "Invoice total",
+          },
+        ],
+        obligations: [],
+        inspection_findings: [],
+        suggested_links: {
+          tenant_name: "Gorilla Grind",
+          property_name: "205 Leitchs Rd Brendale",
+        },
+        warnings: [],
+        missing_information: [],
+      },
+      review_data: {},
+      openai_response_id: null,
+      error_message: null,
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      applied_at: null,
+      applied_by_user_id: null,
+      created_at: "2026-06-15T03:56:00.000Z",
+      updated_at: "2026-06-15T03:56:00.000Z",
       filename: "Invoice INV-0331.pdf",
       content_type: "application/pdf",
       byte_size: 72000,

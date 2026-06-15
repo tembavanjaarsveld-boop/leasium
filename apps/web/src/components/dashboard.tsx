@@ -2701,7 +2701,12 @@ function DocumentIntakeOpportunityPanel({
     );
   }, [storedSelectedOpportunityId, firstOpportunityId, opportunityIds]);
 
-  if (!opportunities.length || !selectedOpportunity || !proposedOutput) {
+  if (
+    intakeIsActive(intake) ||
+    !opportunities.length ||
+    !selectedOpportunity ||
+    !proposedOutput
+  ) {
     return null;
   }
 
@@ -2932,6 +2937,33 @@ function DocumentIntakeOpportunityPanel({
   );
 }
 
+function DocumentIntakeReadingPanel() {
+  return (
+    <div
+      data-testid="document-intake-reading-panel"
+      className="grid gap-3 rounded-2xl border border-primary/20 bg-primary-soft p-4 text-sm text-primary-hover shadow-leasiumCard"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-primary shadow-leasiumXs">
+          <Loader2 size={16} className="animate-spin" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground">
+            Leasium AI is reading this document
+          </h2>
+          <p className="mt-1 text-sm leading-5 text-primary-hover">
+            Source-backed fields, questions, and safe next steps will appear
+            here when extraction finishes.
+          </p>
+        </div>
+      </div>
+      <p className="text-xs leading-5 text-primary-hover">
+        {OPPORTUNITY_LOCAL_GUARDRAIL}
+      </p>
+    </div>
+  );
+}
+
 function DocumentIntakeReviewPanel({
   intake,
   draft,
@@ -2980,6 +3012,7 @@ function DocumentIntakeReviewPanel({
   demo?: boolean;
 }) {
   const data = draft;
+  const activeIntake = intakeIsActive(intake);
   const leaseAutoMatch = leaseAutoMatchRecommendation(draft);
   const warnings = [
     ...(data.warnings ?? []),
@@ -3181,8 +3214,9 @@ function DocumentIntakeReviewPanel({
               {intake.filename}
             </h1>
             <div className="mt-1 text-sm text-muted-foreground">
-              {reviewRows.length} fields extracted - {approvedCount} approved -{" "}
-              {toDecideCount} to decide
+              {activeIntake
+                ? "Reading document and preparing review."
+                : `${reviewRows.length} fields extracted - ${approvedCount} approved - ${toDecideCount} to decide`}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -3204,15 +3238,19 @@ function DocumentIntakeReviewPanel({
           </div>
         </div>
 
-        <DocumentIntakeOpportunityPanel
-          intake={intake}
-          draft={draft}
-          reviewedDraft={reviewedDraft}
-          disabled={demo || saving || applying || clearing}
-          selectedEntityId={intake.entity_id}
-          onNotice={onOpportunityNotice}
-          onError={onOpportunityError}
-        />
+        {activeIntake ? (
+          <DocumentIntakeReadingPanel />
+        ) : (
+          <DocumentIntakeOpportunityPanel
+            intake={intake}
+            draft={draft}
+            reviewedDraft={reviewedDraft}
+            disabled={demo || saving || applying || clearing}
+            selectedEntityId={intake.entity_id}
+            onNotice={onOpportunityNotice}
+            onError={onOpportunityError}
+          />
+        )}
 
         {noticeInvoicingGuidance.length ? (
           <div className="grid gap-1 rounded-md border border-warning/25 bg-warning-soft px-3 py-2 text-sm text-warning-strong">
@@ -3371,7 +3409,7 @@ function DocumentIntakeReviewPanel({
                               );
                               setSelectedSourceRowId(row.id);
                             }}
-                            disabled={!included[row.groupKey]}
+                            disabled={activeIntake || !included[row.groupKey]}
                             className={[
                               "min-h-11 min-w-0 rounded-lg px-2 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none sm:px-3",
                               row.action === nextAction
@@ -3418,6 +3456,7 @@ function DocumentIntakeReviewPanel({
             onChange={(event) =>
               onDraftChange({ ...draft, summary: event.target.value })
             }
+            disabled={activeIntake}
             className="min-h-20 w-full rounded-md border border-border bg-white px-3 py-2 text-sm outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
           />
         </Field>
@@ -3503,7 +3542,7 @@ function DocumentIntakeReviewPanel({
                 <Button
                   type="button"
                   onClick={onAcceptLeaseMatch}
-                  disabled={demo || acceptingLeaseMatch}
+                  disabled={demo || activeIntake || acceptingLeaseMatch}
                 >
                   {acceptingLeaseMatch ? (
                     <Loader2 size={15} className="animate-spin" />
@@ -3517,7 +3556,7 @@ function DocumentIntakeReviewPanel({
           </div>
         ) : null}
 
-        {canApplyWorkflow ? (
+        {!activeIntake && canApplyWorkflow ? (
           <div className="rounded-2xl border border-border bg-white p-3 shadow-leasiumXs">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -3734,6 +3773,7 @@ function DocumentIntakeReviewPanel({
                     type="checkbox"
                     className="h-4 w-4 accent-primary"
                     checked={included[group.key]}
+                    disabled={activeIntake}
                     onChange={(event) =>
                       onIncludedChange(group.key, event.target.checked)
                     }
@@ -3802,7 +3842,7 @@ function DocumentIntakeReviewPanel({
                                     ),
                                   );
                                 }}
-                                disabled={!included[group.key]}
+                                disabled={activeIntake || !included[group.key]}
                                 className={[
                                   "rounded-lg px-2 py-1 text-xs font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50",
                                   action === nextAction
@@ -3857,7 +3897,11 @@ function DocumentIntakeReviewPanel({
                                     ),
                                   )
                                 }
-                                disabled={!included[group.key] || ignored}
+                                disabled={
+                                  activeIntake ||
+                                  !included[group.key] ||
+                                  ignored
+                                }
                               />
                             </Field>
                           ))}
@@ -3875,7 +3919,11 @@ function DocumentIntakeReviewPanel({
           ))}
         </div>
 
-        {!canApplyWorkflow ? (
+        {activeIntake ? (
+          <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            Review actions unlock when Leasium AI finishes reading this file.
+          </div>
+        ) : !canApplyWorkflow ? (
           <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
             Apply is available for leases, certificates, compliance docs,
             guarantees, notices, billing docs, inspection reports, and
@@ -3883,12 +3931,12 @@ function DocumentIntakeReviewPanel({
             reviewed here for now.
           </div>
         ) : null}
-        {applyBlocker ? (
+        {!activeIntake && applyBlocker ? (
           <div className="rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-sm text-danger">
             {applyBlocker}
           </div>
         ) : null}
-        {canApplyWorkflow ? (
+        {!activeIntake && canApplyWorkflow ? (
           <div className="rounded-2xl border border-border bg-muted/35 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -3930,7 +3978,9 @@ function DocumentIntakeReviewPanel({
               Nothing is applied until you approve.
             </div>
             <div className="text-muted-foreground">
-              {approvedCount} approved fields, {toDecideCount} to decide.
+              {activeIntake
+                ? "Review actions unlock when reading finishes."
+                : `${approvedCount} approved fields, ${toDecideCount} to decide.`}
             </div>
           </div>
           <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
@@ -3938,7 +3988,7 @@ function DocumentIntakeReviewPanel({
             type="button"
             className="w-full sm:w-auto"
             onClick={onSave}
-            disabled={demo || saving || applying}
+            disabled={demo || activeIntake || saving || applying}
           >
             {saving ? (
               <Loader2 size={15} className="animate-spin" />
@@ -3956,6 +4006,7 @@ function DocumentIntakeReviewPanel({
               applying ||
               saving ||
               demo ||
+              activeIntake ||
               intake.status === "applied" ||
               !canApplyWorkflow ||
               Boolean(applyBlocker)

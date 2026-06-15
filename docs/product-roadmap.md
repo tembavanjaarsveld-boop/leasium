@@ -16,6 +16,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Leasium AI reading-state guard:**
+  Active document intakes now stay in a clear reading state on the review page.
+  While an invoice is still uploading/reading, Leasium AI shows a waiting panel
+  and the source/evidence frame, but does not show the zero-field fallback,
+  ask setup questions, unlock review/apply controls, or imply extraction has
+  failed. The fallback only appears after extraction finishes with no structured
+  fields. No invoice, Xero, email/SMS, payment, or reconciliation mutation runs
+  from this state.
 - [x] **2026-06-15 Leasium AI invoice text recovery:**
   Invoice/admin extraction now supplements a summary-only AI response with
   source-backed facts from readable invoice text. Paid historical rent invoices

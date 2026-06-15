@@ -1047,6 +1047,140 @@ test("Leasium AI still helps when invoice extraction has zero fields", async ({
   });
 });
 
+test("Leasium AI waits while an invoice is still reading", async ({ page }) => {
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
+  await mockLeasiumApi(page, { includeReadingInvoiceIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-reading-invoice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
+  ).toBeVisible();
+  await expect(review.getByText("Reading", { exact: true })).toBeVisible();
+  await expect(
+    review.getByText("Reading document and preparing review."),
+  ).toBeVisible();
+  const readingPanel = page.getByTestId("document-intake-reading-panel");
+  const sourcePreview = page.getByTestId("document-review-source-preview");
+  await expect(readingPanel).toBeVisible();
+  await expectAppearsBefore(readingPanel, sourcePreview);
+  await expect(
+    readingPanel.getByText("Leasium AI is reading this document"),
+  ).toBeVisible();
+  await expect(
+    readingPanel.getByText("No invoice, Xero, email, SMS, payment"),
+  ).toBeVisible();
+  await expect(
+    review.getByText("I could not extract structured fields yet"),
+  ).toHaveCount(0);
+  await expect(
+    review.getByText("Ask what this should become"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("document-intake-opportunity-panel"),
+  ).toHaveCount(0);
+  await expect(
+    review.getByRole("button", { name: "Save review" }),
+  ).toBeDisabled();
+  await expect(
+    review.getByRole("button", { name: /Apply reviewed items/ }),
+  ).toBeDisabled();
+  expect(sessionRequests).toEqual([]);
+  expect(forbiddenRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/leasium-ai-reading-invoice-1440.png",
+  });
+});
+
+test("Leasium AI blocks review actions while an uploaded invoice is active", async ({
+  page,
+}) => {
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
+  await mockLeasiumApi(page, { includeUploadedInvoiceIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-uploaded-invoice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
+  ).toBeVisible();
+  await expect(review.getByText("Uploaded", { exact: true })).toBeVisible();
+  await expect(
+    review.getByText("Reading document and preparing review."),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("document-intake-opportunity-panel"),
+  ).toHaveCount(0);
+  await expect(review.getByText("Apply target")).toHaveCount(0);
+  await expect(review.getByText("Ready to apply")).toHaveCount(0);
+  await expect(
+    review.getByText(
+      "Review actions unlock when Leasium AI finishes reading this file.",
+    ),
+  ).toBeVisible();
+  await expect(
+    review.getByRole("button", { name: "Save review" }),
+  ).toBeDisabled();
+  await expect(
+    review.getByRole("button", { name: /Apply reviewed items/ }),
+  ).toBeDisabled();
+  await expect(review.locator('input[type="checkbox"]').first()).toBeDisabled();
+  expect(sessionRequests).toEqual([]);
+  expect(forbiddenRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+});
+
+test("mobile Leasium AI waits while an invoice is still reading", async ({
+  page,
+}) => {
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
+  await mockLeasiumApi(page, { includeReadingInvoiceIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-reading-invoice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
+  ).toBeVisible();
+  await expect(review.getByText("Reading", { exact: true })).toBeVisible();
+  await expect(
+    review.getByText("Reading document and preparing review."),
+  ).toBeVisible();
+
+  const readingPanel = page.getByTestId("document-intake-reading-panel");
+  const sourcePreview = page.getByTestId("document-review-source-preview");
+  await expect(readingPanel).toBeVisible();
+  await expectAppearsBefore(readingPanel, sourcePreview);
+  await expect(
+    page.getByTestId("document-intake-opportunity-panel"),
+  ).toHaveCount(0);
+  await expect(
+    review.getByRole("button", { name: "Save review" }),
+  ).toBeDisabled();
+  await expect(
+    review.getByRole("button", { name: /Apply reviewed items/ }),
+  ).toBeDisabled();
+  expect(sessionRequests).toEqual([]);
+  expect(forbiddenRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/leasium-ai-reading-invoice-390.png",
+  });
+});
+
 test("mobile Leasium AI still helps when invoice extraction has zero fields", async ({
   page,
 }) => {

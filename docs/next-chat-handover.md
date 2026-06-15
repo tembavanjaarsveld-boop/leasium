@@ -2,6 +2,50 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Leasium AI reading-state guard)
+
+Scope completed: the live `Invoice INV-0331.pdf` review could show status
+`Reading` while also rendering the completed zero-field Leasium AI fallback.
+That made an active extraction look like a failed extraction and asked the
+operator what the document should become before the backend had finished
+reading it.
+
+What changed:
+- Frontend document review now treats `uploaded` / `reading` intakes as active
+  work. The header says "Reading document and preparing review" instead of
+  "0 fields extracted".
+- Active reviews show a compact "Leasium AI is reading this document" waiting
+  panel with the no-provider-write guardrail.
+- The AI opportunity/setup-question panel, review edits, target selectors,
+  save review, and apply actions are suppressed or disabled while the intake is
+  active. Completed zero-field invoice/admin intakes still show the billing
+  setup fallback once extraction has actually finished.
+- Smoke fixtures now include a reading invoice intake plus an uploaded
+  invoice/admin intake with partial fields, covering both active statuses.
+
+Verification evidence:
+- RED smoke first failed because the review page did not show the reading
+  message for `intake-reading-invoice-1`.
+- Focused GREEN smoke passed:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "Leasium AI waits while an invoice is still reading"` (2/2).
+- Surrounding Leasium AI smoke passed:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "one Leasium AI workspace|mobile Leasium AI landing|Leasium AI
+  assistant|mobile Leasium AI review assistant|zero fields|still
+  reading|uploaded invoice is active|save failure"` (10/10).
+- `npm --prefix apps/web run lint` passed.
+- `cd apps/web && npx tsc --noEmit --pretty false` passed.
+- `npm --prefix apps/web run build` passed.
+- `git diff --check` passed.
+- Screenshots:
+  `output/playwright/leasium-ai-reading-invoice-1440.png` and
+  `output/playwright/leasium-ai-reading-invoice-390.png`.
+
+Guardrails held: this is presentation/state gating only. It does not apply a
+Smart Intake review, create/post/send an invoice, sync Xero, send email/SMS,
+move money, or reconcile payments.
+
 ## Codex continuation - 2026-06-15 (invoice text recovery)
 
 Scope completed: the uploaded `Invoice INV-0331.pdf` was readable, but OpenAI

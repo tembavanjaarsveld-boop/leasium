@@ -1505,6 +1505,10 @@ action surface.
 Rules:
 - Opportunity cards are inferred from source-backed extraction and sit as peer
   review panels above the long source/field editor.
+- Active `uploaded` or `reading` documents are not zero-field failures. Show a
+  reading panel, keep review-first/no-provider-write guardrails visible, and do
+  not show opportunity cards, setup questions, review saves, or apply controls
+  until extraction finishes.
 - If extraction returns zero structured fields, the assistant still appears and
   uses the document summary/file context to ask one safe setup question. For
   invoice/admin documents without a source-backed money field, that fallback is a
