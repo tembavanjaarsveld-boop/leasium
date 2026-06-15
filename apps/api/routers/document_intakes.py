@@ -312,6 +312,30 @@ def _build_ai_opportunities(
         return opportunities
 
     document_type = _str(reviewed.get("document_type")) or intake.document_type
+    key_dates = _records(reviewed.get("key_dates"))
+
+    def add_follow_up_opportunity() -> None:
+        opportunities.append(
+            {
+                "id": f"action-{len(opportunities) + 1}",
+                "kind": "create_follow_up_task",
+                "title": "Create follow-up task",
+                "summary": "Turn the document date or notice wording into a local review task.",
+                "confidence": intake.confidence,
+                "source_path": "key_dates.0",
+                "source_hint": None,
+                "target_kind": "task",
+                "provider_mutations": [],
+                "requires_explicit_operator_approval": False,
+                "decision": "pending",
+                "notes": None,
+            }
+        )
+
+    if document_type == "notice":
+        add_follow_up_opportunity()
+        return opportunities
+
     first_money = _first_money_record(reviewed)
     if first_money is not None:
         opportunities.append(
@@ -333,23 +357,8 @@ def _build_ai_opportunities(
                 "notes": None,
             }
         )
-    if document_type == "notice" or _records(reviewed.get("key_dates")):
-        opportunities.append(
-            {
-                "id": f"action-{len(opportunities) + 1}",
-                "kind": "create_follow_up_task",
-                "title": "Create follow-up task",
-                "summary": "Turn the document date or notice wording into a local review task.",
-                "confidence": intake.confidence,
-                "source_path": "key_dates.0",
-                "source_hint": None,
-                "target_kind": "task",
-                "provider_mutations": [],
-                "requires_explicit_operator_approval": False,
-                "decision": "pending",
-                "notes": None,
-            }
-        )
+    if key_dates:
+        add_follow_up_opportunity()
     return opportunities
 
 

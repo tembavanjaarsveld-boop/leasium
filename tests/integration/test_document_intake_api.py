@@ -1287,6 +1287,83 @@ def test_document_intake_ai_opportunity_session_stores_review_only_metadata(
     assert _provider_mutation_audit_rows(session) == []
 
 
+def test_document_intake_ai_opportunity_session_notice_fallback_prioritises_follow_up(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    reviewed = {
+        **_fake_extraction(),
+        "document_type": "notice",
+        "summary": "Tenant notice with an amount and response deadline.",
+        "key_dates": [
+            {
+                "label": "Response deadline",
+                "date": "2026-10-15",
+                "confidence": 0.87,
+                "source_hint": "Notice deadline",
+            }
+        ],
+        "money_amounts": [
+            {
+                "label": "Claimed adjustment",
+                "amount": 1250,
+                "currency": "AUD",
+                "frequency": "one_off",
+                "confidence": 0.8,
+                "source_hint": "Notice amount",
+            }
+        ],
+        "proposed_actions": [],
+    }
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return reviewed, "resp_notice_opportunity"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("tenant-notice.txt", b"notice", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    before_counts = {
+        Obligation: _row_count(session, Obligation),
+        BillingDraft: _row_count(session, BillingDraft),
+        MaintenanceWorkOrder: _row_count(session, MaintenanceWorkOrder),
+    }
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
+        json={"review_data": reviewed, "status": "open"},
+    )
+
+    assert response.status_code == 200
+    opportunities = response.json()["review_data"]["ai_opportunity_session"][
+        "opportunities"
+    ]
+    assert opportunities[0]["id"] == "action-1"
+    assert opportunities[0]["kind"] == "create_follow_up_task"
+    assert all(row["kind"] != "set_up_billing_pattern" for row in opportunities)
+    assert {
+        Obligation: _row_count(session, Obligation),
+        BillingDraft: _row_count(session, BillingDraft),
+        MaintenanceWorkOrder: _row_count(session, MaintenanceWorkOrder),
+    } == before_counts
+    assert _provider_mutation_audit_rows(session) == []
+
+
 def test_document_intake_ai_opportunity_session_preserves_existing_review_data(
     client: TestClient,
     session: Session,
