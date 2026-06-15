@@ -12,6 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 
 import { Button, SecondaryButton, StatusBadge } from "@/components/ui";
@@ -19,9 +20,13 @@ import { cn, friendlyError } from "@/lib/utils";
 import {
   applyDocumentIntake,
   askLeasium,
+  listProperties,
+  listTenants,
   type AskCitationRecord,
   type DocumentIntakeExtraction,
   type DocumentIntakeRecord,
+  type PropertyRecord,
+  type TenantRecord,
 } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +131,67 @@ function reviewExtraction(intake: DocumentIntakeRecord): DocumentIntakeExtractio
     : intake.extracted_data;
 }
 
+// Match extracted records against what already exists so the plan links
+// instead of duplicating. Mirrors the backend find-or-create keys
+// (property name/address, tenant abn/legal_name) but resolves the id up
+// front so the operator sees "LINK EXISTING" before approving.
+type RecordMatch = { id: string; label: string };
+function norm(value: unknown): string {
+  return (typeof value === "string" ? value : "")
+    .toLowerCase()
+    .replace(/[,.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function matchProperty(
+  data: DocumentIntakeExtraction,
+  properties: PropertyRecord[],
+): RecordMatch | null {
+  const property = items(data.properties)[0];
+  if (!property) return null;
+  const exName = norm(property.name);
+  const exAddr = norm(text(property.address) ?? text(property.street_address));
+  for (const p of properties) {
+    const pName = norm(p.name);
+    const pAddr = norm(p.street_address);
+    if (pName && (pName === exName || (exName !== "" && exName.includes(pName)))) {
+      return { id: p.id, label: p.name };
+    }
+    if (
+      pAddr &&
+      exAddr !== "" &&
+      (pAddr === exAddr || exAddr.includes(pAddr) || pAddr.includes(exAddr))
+    ) {
+      return { id: p.id, label: p.name };
+    }
+    if (pAddr && exName !== "" && exName.includes(pAddr)) {
+      return { id: p.id, label: p.name };
+    }
+  }
+  return null;
+}
+function matchTenant(
+  data: DocumentIntakeExtraction,
+  tenants: TenantRecord[],
+): RecordMatch | null {
+  const tenant = items(data.parties).find((p) => {
+    const role = text(p.role)?.toLowerCase() ?? "";
+    return role.includes("tenant") || role.includes("lessee");
+  });
+  if (!tenant) return null;
+  const exAbn = norm(tenant.abn);
+  const exName = norm(text(tenant.name) ?? text(tenant.legal_name));
+  for (const rec of tenants) {
+    if (exAbn !== "" && rec.abn && norm(rec.abn) === exAbn) {
+      return { id: rec.id, label: rec.legal_name };
+    }
+    if (exName !== "" && norm(rec.legal_name) === exName) {
+      return { id: rec.id, label: rec.legal_name };
+    }
+  }
+  return null;
+}
+
 type UnderstandingRow = {
   label: string;
   value: string;
@@ -222,9 +288,10 @@ type PlanRow = {
 
 function buildPlan(
   data: DocumentIntakeExtraction,
+  propertyMatch: RecordMatch | null,
+  tenantMatch: RecordMatch | null,
 ): PlanRow[] {
   const rows: PlanRow[] = [];
-  const links = isRecord(data.suggested_links) ? data.suggested_links : {};
 
   const property = items(data.properties)[0];
   if (property) {
@@ -232,8 +299,12 @@ function buildPlan(
       key: "property",
       icon: <Building2 size={16} />,
       title: "Property",
-      value: text(property.name) ?? text(property.address) ?? "New property",
-      link: Boolean(text(links.property_id)),
+      value:
+        propertyMatch?.label ??
+        text(property.name) ??
+        text(property.address) ??
+        "New property",
+      link: Boolean(propertyMatch),
     });
     const unit = text(property.unit_label);
     rows.push({
@@ -241,7 +312,7 @@ function buildPlan(
       icon: <DoorOpen size={16} />,
       title: "Unit(s)",
       value: unit ?? "Whole-of-property unit",
-      link: Boolean(text(links.tenancy_unit_id)),
+      link: false,
     });
   }
 
@@ -254,8 +325,8 @@ function buildPlan(
       key: "tenant",
       icon: <UserRound size={16} />,
       title: "Tenant",
-      value: text(tenant.name) ?? "New tenant",
-      link: Boolean(text(links.tenant_id)),
+      value: tenantMatch?.label ?? text(tenant.name) ?? "New tenant",
+      link: Boolean(tenantMatch),
     });
   }
 
@@ -269,7 +340,7 @@ function buildPlan(
         text((items(data.key_dates)[0] ?? {}).date) != null
           ? "Lease from the dates above"
           : "New lease",
-      link: Boolean(text(links.lease_id)),
+      link: false,
     });
   }
 
@@ -359,11 +430,34 @@ export function IntakeConversationPanel({
   onApplied?: (rec: DocumentIntakeRecord) => void;
 }) {
   const data = useMemo(() => reviewExtraction(intake), [intake]);
+  const propertiesQuery = useQuery({
+    queryKey: ["intake-match-properties", entityId],
+    queryFn: () => listProperties(entityId),
+    enabled: Boolean(entityId),
+    staleTime: 60_000,
+  });
+  const tenantsQuery = useQuery({
+    queryKey: ["intake-match-tenants", entityId],
+    queryFn: () => listTenants(entityId),
+    enabled: Boolean(entityId),
+    staleTime: 60_000,
+  });
+  const propertyMatch = useMemo(
+    () => matchProperty(data, propertiesQuery.data ?? []),
+    [data, propertiesQuery.data],
+  );
+  const tenantMatch = useMemo(
+    () => matchTenant(data, tenantsQuery.data ?? []),
+    [data, tenantsQuery.data],
+  );
   const understanding = useMemo(
     () => buildUnderstanding(data, intake.confidence),
     [data, intake.confidence],
   );
-  const plan = useMemo(() => buildPlan(data), [data]);
+  const plan = useMemo(
+    () => buildPlan(data, propertyMatch, tenantMatch),
+    [data, propertyMatch, tenantMatch],
+  );
   const summary =
     text(intake.summary) ?? text(data.summary) ?? "I read this document.";
   const warnings = Array.isArray(data.warnings) ? data.warnings : [];
@@ -389,9 +483,9 @@ export function IntakeConversationPanel({
       // extraction suggests an existing record.
       const result = await applyDocumentIntake(intake.id, {
         reviewData: data,
-        propertyId: text(links.property_id),
+        propertyId: propertyMatch?.id ?? text(links.property_id),
         tenancyUnitId: text(links.tenancy_unit_id),
-        tenantId: text(links.tenant_id),
+        tenantId: tenantMatch?.id ?? text(links.tenant_id),
         leaseId: text(links.lease_id),
       });
       setAppliedRecord(result);
@@ -511,7 +605,7 @@ export function IntakeConversationPanel({
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-foreground">
-                Proposed plan — create these together
+                Proposed plan — review before anything is created
               </h3>
               <button
                 type="button"

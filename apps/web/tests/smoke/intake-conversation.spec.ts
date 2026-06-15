@@ -83,6 +83,18 @@ const appliedLeaseIntake = {
   review_data: { applied: appliedSummary },
 };
 
+// An existing property the lease should LINK to (matches the extracted
+// property name/address) rather than duplicate.
+const existingProperty = {
+  id: "property-1",
+  entity_id: "entity-1",
+  name: "Queen Street Retail Centre",
+  street_address: "12 Queen Street",
+  suburb: "Brisbane",
+  state: "QLD",
+  postcode: "4000",
+};
+
 // Reuse the forbidden-endpoint shape from smart-intake-export-parity.spec.ts:
 // the conversation panel may link to Xero / finance / tenant surfaces, but it
 // must never *call* a provider/mutation endpoint. The apply endpoint itself is
@@ -221,4 +233,77 @@ test("conversation-first intake panel reads the lease and creates records withou
 
   // 5. Guardrail: no provider / mutation endpoint was hit during the flow.
   expect(forbiddenApiCalls).toEqual([]);
+});
+
+test("links an existing property instead of creating a duplicate", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  let applyBody = "";
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([leaseIntake]),
+      });
+      return;
+    }
+    // The lease's property already exists — surface it so the panel matches.
+    if (request.method() === "GET" && path === "/properties") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([existingProperty]),
+      });
+      return;
+    }
+    // No existing tenant — Gorilla/Bright Cafe stays NEW.
+    if (request.method() === "GET" && path === "/tenants") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${leaseIntakeId}/apply`
+    ) {
+      applyBody = request.postData() ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(appliedLeaseIntake),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+  ).toBeVisible();
+  await page
+    .getByTestId(`review-intake-${leaseIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  const plan = page.getByTestId("intake-plan");
+  await expect(plan).toBeVisible();
+  // The matched property is linked, not duplicated.
+  await expect(plan).toContainText("LINK EXISTING");
+
+  await page.getByTestId("intake-create-all").click();
+  await expect(page.getByTestId("intake-created")).toBeVisible();
+  // Apply received the existing property id so the backend links rather than
+  // creating a second property.
+  expect(applyBody).toContain(existingProperty.id);
 });
