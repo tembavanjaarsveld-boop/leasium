@@ -620,18 +620,31 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       : "Workspace switcher";
 
   const filteredActions = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) {
-      return gatedCommandActions.slice(0, 8);
+    const trimmed = query.trim();
+    const needle = trimmed.toLowerCase();
+    const base = !needle
+      ? gatedCommandActions.slice(0, 8)
+      : gatedCommandActions
+          .filter(
+            (action) =>
+              action.label.toLowerCase().includes(needle) ||
+              action.meta.toLowerCase().includes(needle) ||
+              action.href.toLowerCase().includes(needle),
+          )
+          .slice(0, 8);
+    // Typing turns the command bar into a Leasium AI ask from any page: the
+    // top action carries the text to /intake, which answers it inline.
+    if (trimmed) {
+      return [
+        {
+          href: `/intake?ask=${encodeURIComponent(trimmed)}`,
+          label: `Ask Leasium AI: “${trimmed}”`,
+          meta: "Leasium AI",
+        },
+        ...base,
+      ];
     }
-    return gatedCommandActions
-      .filter(
-        (action) =>
-          action.label.toLowerCase().includes(needle) ||
-          action.meta.toLowerCase().includes(needle) ||
-          action.href.toLowerCase().includes(needle),
-      )
-      .slice(0, 8);
+    return base;
   }, [query, gatedCommandActions]);
 
   // Toggle a body class so globals.css can apply the sidebar gutter
@@ -1174,7 +1187,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   aria-label="Command search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search tenants, leases, actions..."
+                  placeholder="Ask Leasium AI, or search actions..."
                   className="min-h-[44px] flex-1 bg-transparent text-sm outline-none"
                 />
                 <button

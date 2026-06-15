@@ -1569,8 +1569,8 @@ export function Dashboard({
       error: string | null;
     }>
   >([]);
-  const handleLandingAsk = async () => {
-    const trimmed = landingQuestion.trim();
+  const handleLandingAsk = async (override?: string) => {
+    const trimmed = (override ?? landingQuestion).trim();
     if (!trimmed || landingAsking || !selectedEntityId) return;
     setLandingAsking(true);
     setLandingQuestion("");
@@ -1703,6 +1703,25 @@ export function Dashboard({
       new URLSearchParams(window.location.search).get("review"),
     );
   }, [isIntakeWorkspace]);
+
+  // Global ⌘K "Ask Leasium AI" hands a question to /intake?ask=… — run it once
+  // in the landing composer, then strip the param so refresh/back won't re-ask.
+  const askConsumedRef = useRef(false);
+  useEffect(() => {
+    if (!isIntakeWorkspace || askConsumedRef.current || !selectedEntityId) {
+      return;
+    }
+    const ask = new URLSearchParams(window.location.search).get("ask");
+    if (!ask || !ask.trim()) {
+      return;
+    }
+    askConsumedRef.current = true;
+    void handleLandingAsk(ask);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("ask");
+    window.history.replaceState(null, "", url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isIntakeWorkspace, selectedEntityId]);
 
   // Cross-entity "All entities" view (dashboard command-center mode only).
   // The intake document-review flow stays strictly single-entity. In all-mode

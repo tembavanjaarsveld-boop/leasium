@@ -337,7 +337,11 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByRole("link", { name: /Open comms queue/ }),
   ).toBeVisible();
   await commandSearch.fill("zzzz-no-match");
-  await expect(page.getByRole("status")).toContainText("No matching action.");
+  // Typing always offers an Ask Leasium AI action now (replaces the old
+  // "No matching action." empty state — you can ask the AI anything).
+  await expect(
+    page.getByRole("link", { name: /Ask Leasium AI:/ }),
+  ).toBeVisible();
   await page.mouse.click(300, 100);
   await expect(
     page.getByRole("dialog", { name: "Command search" }),
@@ -3253,9 +3257,10 @@ test("keyboard cheatsheet hides owner-statement shortcuts for self-managed accou
   await page
     .getByRole("textbox", { name: "Command search" })
     .fill("owner statements");
-  await expect(page.getByText("No matching action.")).toBeVisible();
+  // Owner statements is gated out for self-managed owners (the Ask Leasium AI
+  // fallback row may still appear, so assert on the module command itself).
   await expect(
-    page.getByRole("link", { name: /Owner statements/i }),
+    page.getByRole("link", { name: /Open owner statements/i }),
   ).toHaveCount(0);
 });
 
@@ -3283,7 +3288,7 @@ test("keyboard shortcuts include owner statements for managing-agent accounts", 
     .getByRole("textbox", { name: "Command search" })
     .fill("owner statements");
   await expect(
-    page.getByRole("link", { name: /Owner statements/i }),
+    page.getByRole("link", { name: /Open owner statements/i }),
   ).toBeVisible();
 });
 
