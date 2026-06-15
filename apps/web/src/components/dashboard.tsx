@@ -67,6 +67,8 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  askLeasium,
+  type AskCitationRecord,
   createDocumentIntake,
   deleteDocumentIntake,
   getDashboardOverview,
@@ -1557,6 +1559,47 @@ export function Dashboard({
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [intakeNotice, setIntakeNotice] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [landingQuestion, setLandingQuestion] = useState("");
+  const [landingAsking, setLandingAsking] = useState(false);
+  const [landingAsks, setLandingAsks] = useState<
+    Array<{
+      question: string;
+      answer: string | null;
+      citations: AskCitationRecord[];
+      error: string | null;
+    }>
+  >([]);
+  const handleLandingAsk = async () => {
+    const trimmed = landingQuestion.trim();
+    if (!trimmed || landingAsking || !selectedEntityId) return;
+    setLandingAsking(true);
+    setLandingQuestion("");
+    const index = landingAsks.length;
+    setLandingAsks((current) => [
+      ...current,
+      { question: trimmed, answer: null, citations: [], error: null },
+    ]);
+    try {
+      const result = await askLeasium({
+        entity_id: selectedEntityId,
+        question: trimmed,
+      });
+      setLandingAsks((current) =>
+        current.map((turn, i) =>
+          i === index
+            ? { ...turn, answer: result.answer, citations: result.citations }
+            : turn,
+        ),
+      );
+    } catch (err) {
+      const message = friendlyError(err);
+      setLandingAsks((current) =>
+        current.map((turn, i) => (i === index ? { ...turn, error: message } : turn)),
+      );
+    } finally {
+      setLandingAsking(false);
+    }
+  };
   const [reviewQueueFilter, setReviewQueueFilter] =
     useState<ReviewQueueFilter>("all");
   const [reviewIntakeId, setReviewIntakeId] = useState<string | null>(null);
@@ -3017,10 +3060,10 @@ export function Dashboard({
                 uploadSmartIntake(event.dataTransfer.files[0]);
               }}
               className={[
-                "grid min-h-[126px] place-items-center overflow-hidden rounded-[18px] border border-dashed px-4 py-6 text-center shadow-leasiumCard transition sm:min-h-[232px] sm:rounded-2xl sm:px-5 sm:py-8 md:px-8",
+                "overflow-hidden rounded-2xl border bg-white px-4 py-5 shadow-leasiumCard transition sm:px-6 sm:py-6",
                 dragActive
-                  ? "border-primary bg-primary/10"
-                  : "border-primary/30 bg-gradient-to-br from-primary/10 via-white to-success/10",
+                  ? "border-primary ring-2 ring-primary/20"
+                  : "border-border",
                 !selectedEntityId || documentIntakeMutation.isPending
                   ? "opacity-75"
                   : "",
@@ -3036,50 +3079,82 @@ export function Dashboard({
                   event.currentTarget.value = "";
                 }}
               />
-              <div className="grid max-w-3xl justify-items-center gap-2 sm:gap-4">
-                <div className="hidden h-[52px] w-[52px] place-items-center rounded-2xl border border-primary/15 bg-white text-primary shadow-leasiumXs sm:grid">
-                  {documentIntakeMutation.isPending ? (
-                    <Loader2 size={24} className="animate-spin" />
-                  ) : (
-                    <FileUp size={24} />
-                  )}
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <span
+                    aria-hidden
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-base font-semibold text-leasium-teal-strong"
+                  >
+                    ✦
+                  </span>
+                  <div>
+                    <p className="text-base font-semibold leading-5 text-foreground sm:text-lg">
+                      What do you want to get done?
+                    </p>
+                    <p className="text-xs leading-4 text-muted-foreground sm:text-sm sm:leading-5">
+                      Drop a lease, invoice or contract — or ask Leasium AI a question.
+                    </p>
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  <h2 className="text-[15px] font-semibold leading-5 tracking-[-0.01em] text-foreground sm:text-xl sm:leading-7 sm:tracking-normal">
-                    <span className="sm:hidden">Ask Leasium AI</span>
-                    <span className="hidden sm:inline">
-                      Ask Leasium AI with a document
-                    </span>
-                  </h2>
-                  <p className="text-[11px] leading-4 text-muted-foreground sm:text-sm sm:leading-5">
-                    <span className="sm:hidden">
-                      Lease, invoice, contract, rent roll
-                    </span>
-                    <span className="hidden sm:inline">
-                      It reads the file, shows confidence and source, asks what is missing, and waits for your approval.
-                    </span>
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <Button
+                <div className="flex items-center gap-2 rounded-2xl border border-border bg-leasium-slate-50 px-2 py-2 sm:gap-3 sm:px-3">
+                  <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={
-                      !selectedEntityId || documentIntakeMutation.isPending
-                    }
+                    disabled={!selectedEntityId || documentIntakeMutation.isPending}
+                    aria-label="Attach a document"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-white hover:text-foreground disabled:opacity-50"
                   >
-                    <FileUp size={15} className="hidden sm:block" />
-                    <span className="sm:hidden">Take photo</span>
-                    <span className="hidden sm:inline">Browse files</span>
+                    {documentIntakeMutation.isPending ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <FileUp size={18} />
+                    )}
+                  </button>
+                  <input
+                    value={landingQuestion}
+                    onChange={(event) => setLandingQuestion(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleLandingAsk();
+                      }
+                    }}
+                    placeholder="Message Leasium AI — drop a file, or ask a question"
+                    className="min-w-0 flex-1 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (landingQuestion.trim()) handleLandingAsk();
+                      else fileInputRef.current?.click();
+                    }}
+                    disabled={landingAsking || !selectedEntityId}
+                    className="shrink-0 px-3"
+                    aria-label="Send"
+                  >
+                    {landingAsking ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      "↑"
+                    )}
                   </Button>
-                  <span className="hidden text-sm leading-5 text-muted-foreground sm:inline">
-                    or email documents to intake@leasium.ai
-                  </span>
                 </div>
-                <div className="hidden max-w-3xl flex-wrap items-center justify-center gap-2 rounded-xl border border-primary/15 bg-white/85 px-3 py-2 text-xs leading-5 text-muted-foreground sm:flex">
-                  <StatusBadge tone="primary">Local-only until approval</StatusBadge>
-                  <span>
-                    No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.
+                <div className="flex flex-wrap items-center gap-2">
+                  {["📄 Add a lease", "💸 Log a paid invoice", "👤 Onboard a tenant"].map(
+                    (chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={!selectedEntityId}
+                        className="rounded-full bg-leasium-slate-100 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                      >
+                        {chip}
+                      </button>
+                    ),
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    or email to intake@leasium.ai
                   </span>
                 </div>
                 {documentIntakeMutation.isPending ? (
@@ -3097,6 +3172,83 @@ export function Dashboard({
                     {intakeNotice}
                   </div>
                 ) : null}
+                {landingAsks.length > 0 ? (
+                  <div className="flex flex-col gap-3 border-t border-border pt-4">
+                    {landingAsks.map((turn, i) => (
+                      <div key={i} className="flex flex-col gap-2">
+                        <div className="flex justify-end">
+                          <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-info-soft px-3 py-2 text-sm text-foreground">
+                            {turn.question}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <span
+                            aria-hidden
+                            className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-leasium-teal-strong"
+                          >
+                            ✦
+                          </span>
+                          <div className="min-w-0 flex-1 space-y-2">
+                            {turn.error ? (
+                              <p className="text-sm text-danger">{turn.error}</p>
+                            ) : turn.answer === null ? (
+                              <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 size={14} className="animate-spin" /> Thinking…
+                              </p>
+                            ) : (
+                              <>
+                                <p className="text-sm leading-6 text-foreground">
+                                  {turn.answer}
+                                </p>
+                                {turn.citations.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    {turn.citations.map((citation, ci) => (
+                                      <span
+                                        key={ci}
+                                        className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                                      >
+                                        {(typeof citation.label === "string" &&
+                                          citation.label) ||
+                                          "Source"}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="grid gap-3 rounded-xl border border-border bg-leasium-slate-50 p-3 sm:grid-cols-3">
+                  {[
+                    ["1", "Read", "I read the document and tell you what I understood, with sources."],
+                    ["2", "Propose", "I propose the exact records to create — property, tenant, lease — in one plan."],
+                    ["3", "Approve", "Nothing happens until you approve. Xero, email & SMS are a separate yes."],
+                  ].map((step) => (
+                    <div key={step[0]} className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="grid h-5 w-5 place-items-center rounded-full bg-primary-soft text-[11px] font-bold text-primary">
+                          {step[0]}
+                        </span>
+                        <span className="text-sm font-semibold text-foreground">
+                          {step[1]}
+                        </span>
+                      </div>
+                      <span className="text-xs leading-4 text-muted-foreground">
+                        {step[2]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/15 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">
+                  <StatusBadge tone="primary">Local-only until approval</StatusBadge>
+                  <span>
+                    No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.
+                  </span>
+                </div>
               </div>
             </section>
 
