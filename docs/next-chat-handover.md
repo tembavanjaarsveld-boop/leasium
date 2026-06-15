@@ -1,6 +1,39 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
+
+## Codex continuation - 2026-06-15 (AI Mailbox platform-admin alias controls v1)
+
+Scope completed: design-first platform-admin alias controls for
+`inbox.leasium.ai` virtual client aliases. Figma frames created in `Leasium —
+Design Source of Truth` on `03 Screens`: `Platform admin · Mailbox aliases`
+(`109:812`) and `Platform admin · Mailbox aliases · Mobile` (`109:908`).
+
+What changed:
+- `/admin` now has a Mailbox aliases tab beside Clients and Platform
+  integrations.
+- Platform admins can list client aliases, reserve a new local-part for a
+  selected client organisation, update alias labels, and enable/disable routing
+  through the shipped local alias API.
+- Operator Settings remains read-only for active alias display; `/inbox`
+  copy-address behaviour is unchanged.
+- Mobile `/admin` no longer shows the client bottom nav, so admin controls do
+  not sit under client hub navigation.
+
+Verification evidence:
+- Figma MCP frames created: `109:812`, `109:908`.
+- Screenshots: `output/playwright/platform-admin-mailbox-aliases-1440.png`,
+  `output/playwright/platform-admin-mailbox-aliases-390.png`.
+- Commands green: `npm --prefix apps/web run lint -- src/components/app-shell.tsx
+  src/app/admin/page.tsx src/lib/api.ts tests/smoke/platform-admin.spec.ts
+  tests/smoke/api-mocks.ts`, `npx tsc --noEmit --pretty false` in `apps/web`,
+  `NODE_ENV=development npm --prefix apps/web run test:smoke --
+  platform-admin.spec.ts --workers=1`, and `npm --prefix apps/web run build`.
+
+Guardrails held: no SendGrid/Twilio provider send, acknowledgement email,
+OpenAI triage, Smart Intake extraction/apply, tenant email, Xero/Basiq,
+payment, reconciliation, or existing inbound-message mutation is introduced by
+alias controls.
 
 ## Codex continuation - 2026-06-14 (AI Mailbox UX pass v1)
 
@@ -56,8 +89,8 @@ What changed:
   affordance, then falls back to mailbox-row `to_address` provenance, then
   `ai@leasium.ai`.
 - Settings → Organisation shows the active client mailbox alias above the
-  trusted-sender allowlist; reserve/disable controls remain display-only
-  deferred UI work for a signed-off platform-admin alias frame.
+  trusted-sender allowlist. Superseded 2026-06-15: platform-admin
+  reserve/disable controls now ship in `/admin`.
 
 Verification evidence:
 - Backend focused: `.venv/bin/python -m pytest
@@ -98,8 +131,8 @@ At planning time, the genuinely-open backend item was **AI Mailbox alias
 management API**: aliases could only be created by direct DB insert. That item
 is now shipped above with platform-admin list/reserve/update and operator
 read-only display. Remaining open items are Ticket 2 payments adapter (blocked
-on Temba's provider decision), Ticket 4 owner disbursement (parked), and the
-platform-admin alias controls UI frame/surface.
+on Temba's provider decision) and Ticket 4 owner disbursement (parked).
+Platform-admin alias controls shipped in the 2026-06-15 slice above.
 
 Split for the day:
 - **Claude** → AI Mailbox alias management API (backend, role/platform-admin
@@ -484,16 +517,16 @@ do not re-queue Remba work from them.
 
 Note: this landed while a parallel Codex session was mid-slice on the
 AI Mailbox read-only UI (entry below). Superseded 2026-06-14: the
-presentation in-loop UX pass is complete; only alias reserve/disable controls
-remain deferred to the separate alias-management slice.
+presentation in-loop UX pass is complete. Superseded 2026-06-15: alias
+reserve/disable controls now ship in `/admin`.
 
 ## Codex continuation - 2026-06-12 (AI Mailbox Intake read-only UI v1)
 
 Follow-up to the backend/read foundation below. Temba said "Go" after asking
 to start the AI Mailbox product slice; the visible work used Figma frame
 `03 Screens / AI Mailbox Intake 82:2` as the design reference. Superseded
-2026-06-14: the presentation in-loop UX pass is complete; alias
-reserve/disable controls remain the deferred follow-up.
+2026-06-14: the presentation in-loop UX pass is complete. Superseded
+2026-06-15: alias reserve/disable controls now ship in `/admin`.
 
 Shipped UI/API client:
 

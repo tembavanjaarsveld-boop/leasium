@@ -2796,7 +2796,8 @@ export async function mockLeasiumApi(
   let complianceChecks = jsonClone(initialComplianceChecks);
   const trustedMailboxMessageIds = new Set<string>();
   const discardedMailboxMessageIds = new Set<string>();
-  const mailboxAliases: MockMailboxAlias[] = [
+  let mailboxAliasSequence = 4;
+  let mailboxAliases: MockMailboxAlias[] = [
     {
       id: "mailbox-alias-1",
       organisation_id: "org-1",
@@ -2806,6 +2807,28 @@ export async function mockLeasiumApi(
       label: "SKJ intake",
       status: "active",
       created_at: "2026-06-14T00:00:00.000Z",
+      created_by_user_id: "user-1",
+    },
+    {
+      id: "mailbox-alias-2",
+      organisation_id: "client-org-1",
+      local_part: "harbour",
+      domain: "inbox.leasium.ai",
+      email_address: "harbour@inbox.leasium.ai",
+      label: "Harbour Lane intake",
+      status: "active",
+      created_at: "2026-06-14T00:10:00.000Z",
+      created_by_user_id: "user-1",
+    },
+    {
+      id: "mailbox-alias-3",
+      organisation_id: "client-org-2",
+      local_part: "rivergum",
+      domain: "inbox.leasium.ai",
+      email_address: "rivergum@inbox.leasium.ai",
+      label: "Rivergum admin",
+      status: "disabled",
+      created_at: "2026-06-14T00:20:00.000Z",
       created_by_user_id: "user-1",
     },
   ];
@@ -5799,6 +5822,126 @@ export async function mockLeasiumApi(
         aliases: mailboxAliases.filter((alias) => alias.status === "active"),
       });
       return;
+    }
+
+    if (path === "/mailbox-aliases" || path.startsWith("/mailbox-aliases/")) {
+      if (!isPlatformAdmin) {
+        await fulfillJson(
+          route,
+          { detail: "Platform admin access is required." },
+          403,
+        );
+        return;
+      }
+      if (method === "GET" && path === "/mailbox-aliases") {
+        const organisationId = url.searchParams.get("organisation_id");
+        const platformOrganisationIds = new Set(
+          platformOrganisations.map((org) => org.id),
+        );
+        const platformAliases = mailboxAliases.filter((alias) =>
+          platformOrganisationIds.has(alias.organisation_id),
+        );
+        await fulfillJson(route, {
+          aliases: organisationId
+            ? platformAliases.filter(
+                (alias) => alias.organisation_id === organisationId,
+              )
+            : platformAliases,
+        });
+        return;
+      }
+      if (method === "POST" && path === "/mailbox-aliases") {
+        const payload = request.postDataJSON() as {
+          organisation_id?: string;
+          local_part?: string;
+          domain?: string | null;
+          label?: string | null;
+        };
+        const organisation = platformOrganisations.find(
+          (org) => org.id === payload.organisation_id,
+        );
+        if (!organisation) {
+          await fulfillJson(route, { detail: "Organisation not found." }, 404);
+          return;
+        }
+        const localPart = String(payload.local_part ?? "")
+          .trim()
+          .toLowerCase();
+        const domain = String(payload.domain ?? "inbox.leasium.ai")
+          .trim()
+          .toLowerCase();
+        if (!/^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/.test(localPart)) {
+          await fulfillJson(
+            route,
+            {
+              detail:
+                "local_part must be lowercase letters/digits with . _ - separators.",
+            },
+            422,
+          );
+          return;
+        }
+        const emailAddress = `${localPart}@${domain}`;
+        if (
+          mailboxAliases.some((alias) => alias.email_address === emailAddress)
+        ) {
+          await fulfillJson(
+            route,
+            { detail: "An active alias already exists for this address." },
+            409,
+          );
+          return;
+        }
+        const alias: MockMailboxAlias = {
+          id: `mailbox-alias-${mailboxAliasSequence++}`,
+          organisation_id: organisation.id,
+          local_part: localPart,
+          domain,
+          email_address: emailAddress,
+          label: payload.label?.trim() || null,
+          status: "active",
+          created_at: "2026-06-15T00:00:00.000Z",
+          created_by_user_id: "user-1",
+        };
+        mailboxAliases = [...mailboxAliases, alias];
+        await fulfillJson(route, alias, 201);
+        return;
+      }
+      const aliasPatchMatch = path.match(/^\/mailbox-aliases\/([^/]+)$/);
+      if (method === "PATCH" && aliasPatchMatch) {
+        const aliasId = aliasPatchMatch[1];
+        const payload = request.postDataJSON() as {
+          status?: "active" | "disabled";
+          label?: string | null;
+        };
+        const current = mailboxAliases.find((alias) => alias.id === aliasId);
+        if (!current) {
+          await fulfillJson(route, { detail: "Mailbox alias not found." }, 404);
+          return;
+        }
+        if (
+          payload.status !== undefined &&
+          payload.status !== "active" &&
+          payload.status !== "disabled"
+        ) {
+          await fulfillJson(
+            route,
+            { detail: "status must be one of: active, disabled." },
+            422,
+          );
+          return;
+        }
+        const updated: MockMailboxAlias = {
+          ...current,
+          status: payload.status ?? current.status,
+          label: payload.label !== undefined ? payload.label : current.label,
+        };
+        mailboxAliases = mailboxAliases.map((alias) =>
+          alias.id === aliasId ? updated : alias,
+        );
+        await fulfillJson(route, updated);
+        return;
+      }
     }
 
     if (method === "GET" && path === "/comms/trusted-senders") {

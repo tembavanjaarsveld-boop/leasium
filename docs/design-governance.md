@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -128,7 +128,8 @@ map for agents:
 | 03 Screens / People 61:580 | `apps/web/src/app/people/page.tsx` — Horizon People v1 |
 | 03 Screens / Money 61:842 | `apps/web/src/app/money/page.tsx` — Horizon Money v1 |
 | 03 Screens / Insights 61:1063 | `apps/web/src/app/insights/page.tsx` — Horizon Insights v1 |
-| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 + 2026-06-14 UX pass (routed copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions, reviewed promote provenance, Settings allowlist context); alias reserve/disable controls remain future design/API work |
+| 03 Screens / AI Mailbox Intake 82:2 | `apps/web/src/app/inbox/page.tsx` — AI Mailbox UI foundation + trust/discard v1 + 2026-06-14 UX pass (routed copy address, trusted queue, quarantine bucket, provenance detail, local trust/discard actions, reviewed promote provenance, Settings allowlist context) |
+| 03 Screens / Platform admin · Mailbox aliases 109:812 + Mobile 109:908 | `apps/web/src/app/admin/page.tsx` + `apps/web/src/components/app-shell.tsx` — platform-admin alias reserve/list/label/status controls v1 |
 
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
@@ -201,8 +202,9 @@ fixes · deferrals.
   internal fallback copy, distinguishes trusted/quarantined rows with calm
   left rails, explains trust/discard consequences in the selected-message
   panel, tightens shipped promote-kind copy, and adds Settings context linking
-  virtual aliases to trusted forwarders · deferred: reserve/disable alias
-  controls need the separate alias-management API/design frame; this pass was
+  virtual aliases to trusted forwarders · deferred at the time:
+  reserve/disable alias controls needed the separate alias-management
+  API/design frame; shipped separately 2026-06-15. This pass was
   presentation-only and changed no provider or API behavior.
 - 2026-06-14 · AI Mailbox alias display · active aliases now come from the
   read-only alias API for `/inbox` copy-address and Settings Organisation
@@ -210,8 +212,15 @@ fixes · deferrals.
   (`output/playwright/ai-mailbox-alias-*.png`) · fixes: Settings
   shows a compact active-alias row above trusted senders, and `/inbox`
   prefers the active alias API result while preserving per-message mailbox
-  provenance · deferred: platform-admin reserve/disable controls still need a
-  signed-off admin/alias frame.
+  provenance · deferred at the time: platform-admin reserve/disable controls
+  needed a signed-off admin/alias frame; shipped separately 2026-06-15.
+- 2026-06-15 · Platform admin Mailbox aliases · Figma frames `109:812` and
+  `109:908` created from Horizon/admin patterns · screens checked at 1440/390
+  (`output/playwright/platform-admin-mailbox-aliases-1440.png`,
+  `platform-admin-mailbox-aliases-390.png`) · fixes: hid the client mobile
+  bottom nav on `/admin`, removed long visible per-row alias label copy,
+  filtered platform mock aliases to client organisations, and hid the dev-only
+  Next overlay in screenshots · deferred: none for alias controls.
 
 ## UX Debt Register
 
@@ -219,14 +228,6 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **AI mailbox platform-admin alias controls** — 2026-06-14 UX pass closed
-  the presentation debt for `/inbox` placement, trusted-vs-quarantine
-  distinction, selected-message provenance/trust/discard copy, Review email →
-  Review promotion placement, promote provenance density, shipped per-kind
-  promote copy, Settings trusted-sender context, and read-only active-alias
-  display. Still deferred: reserve/disable controls for virtual aliases need a
-  signed-off platform-admin alias frame before UI code; backend endpoints now
-  exist, but the operator Settings panel remains display-only.
 - **Comms message-panel density** — contractor notification checkbox
   density and channel-evidence placement in the Work message panel
   (flagged 2026-06-12, vendor message notifications v1).
@@ -2839,7 +2840,8 @@ provenance detail with sender/auth result, stored body text, raw-email
 download link, local Trust sender / Discard controls, and reviewed promote
 handoff into the existing promote panel. Acknowledgement, provider-send,
 auto-apply, richer action variants, and alias reserve/disable controls remain
-omitted.
+omitted from `/inbox`; alias reserve/disable controls now ship separately in
+the platform-admin `/admin` Mailbox aliases tab.
 
 1. 2026-06-14 in-loop UX pass covered the panel's placement above the existing
    paste classifier, the trusted/quarantine left-rail distinction,

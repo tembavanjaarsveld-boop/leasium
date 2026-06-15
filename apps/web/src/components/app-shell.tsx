@@ -610,6 +610,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         "Leasium";
   const orgName = currentOperatorQuery.data?.organisation.name ?? "Leasium";
   const entityCount = entitiesQuery.data?.length ?? 0;
+  const isPlatformAdminRoute = pathname.startsWith("/admin");
   const entityCountLabel = entitiesQuery.isLoading
     ? "Checking entities"
     : entityCount > 0
@@ -857,7 +858,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       </nav>
       <div className="px-3 pb-4 pt-2 text-xs text-leasium-slate-300">
         <HorizonOperatorCard
-          clerkConfigured={clerkConfigured}
+          clerkConfigured={clerkConfigured && !isPlatformAdminRoute}
           currentOperator={currentOperatorQuery.data}
         />
       </div>
@@ -912,98 +913,100 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </div>
       ) : null}
 
-      <nav
-        aria-label="Mobile primary"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-leasium-card-border bg-white/95 px-3 pt-3 shadow-[0_-8px_24px_rgba(16,24,40,0.08)] backdrop-blur md:hidden"
-        style={{
-          paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
-        }}
-      >
-        <div className="mx-auto grid h-[56px] max-w-md grid-cols-5 items-start gap-0.5">
-          {mobileBottomNavItems.slice(0, 2).map((item) => {
-            const active = isNavActive(item);
-            const Icon = item.icon;
-            const label = item.href === "/" ? "Home" : item.label;
-            return (
-              <Link
-                {...shellLinkProps}
-                key={item.href}
-                href={item.href}
-                aria-label={label}
-                aria-current={active ? "page" : undefined}
-                onMouseEnter={() => router.prefetch(item.href)}
-                onFocus={() => router.prefetch(item.href)}
-                className={cn(
-                  "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-semibold leading-none text-leasium-slate-500 transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
-                  active && "text-primary",
-                )}
-              >
-                <Icon
-                  key="icon"
-                  size={18}
-                  aria-hidden="true"
-                  className="shrink-0"
-                />
-                <span key="label" className="max-w-full truncate">
-                  {label}
-                </span>
-                {active ? (
-                  <span
-                    key="active-dot"
-                    className="h-1 w-1 rounded-full bg-leasium-teal"
+      {!isPlatformAdminRoute ? (
+        <nav
+          aria-label="Mobile primary"
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-leasium-card-border bg-white/95 px-3 pt-3 shadow-[0_-8px_24px_rgba(16,24,40,0.08)] backdrop-blur md:hidden"
+          style={{
+            paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
+          }}
+        >
+          <div className="mx-auto grid h-[56px] max-w-md grid-cols-5 items-start gap-0.5">
+            {mobileBottomNavItems.slice(0, 2).map((item) => {
+              const active = isNavActive(item);
+              const Icon = item.icon;
+              const label = item.href === "/" ? "Home" : item.label;
+              return (
+                <Link
+                  {...shellLinkProps}
+                  key={item.href}
+                  href={item.href}
+                  aria-label={label}
+                  aria-current={active ? "page" : undefined}
+                  onMouseEnter={() => router.prefetch(item.href)}
+                  onFocus={() => router.prefetch(item.href)}
+                  className={cn(
+                    "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-semibold leading-none text-leasium-slate-500 transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+                    active && "text-primary",
+                  )}
+                >
+                  <Icon
+                    key="icon"
+                    size={18}
+                    aria-hidden="true"
+                    className="shrink-0"
                   />
-                ) : null}
-              </Link>
-            );
-          })}
-          <Link
-            {...shellLinkProps}
-            href="/intake"
-            aria-label="Smart Intake"
-            aria-current={isNavActive(navItems[1]) ? "page" : undefined}
-            onMouseEnter={() => router.prefetch("/intake")}
-            onFocus={() => router.prefetch("/intake")}
-            className="mx-auto -mt-6 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-b from-primary to-leasium-teal text-white shadow-[0_10px_24px_rgba(36,91,255,0.35)] transition duration-200 ease-leasium hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
-          >
-            <FileUp size={22} aria-hidden="true" />
-          </Link>
-          {mobileBottomNavItems.slice(2).map((item) => {
-            const active = isNavActive(item);
-            const Icon = item.icon;
-            return (
-              <Link
-                {...shellLinkProps}
-                key={item.href}
-                href={item.href}
-                aria-label={item.label}
-                aria-current={active ? "page" : undefined}
-                onMouseEnter={() => router.prefetch(item.href)}
-                onFocus={() => router.prefetch(item.href)}
-                className={cn(
-                  "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-semibold leading-none text-leasium-slate-500 transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
-                  active && "text-primary",
-                )}
-              >
-                <Icon
-                  key="icon"
-                  size={18}
-                  aria-hidden="true"
-                  className="shrink-0"
-                />
-                <span key="label" className="max-w-full truncate">
-                  {item.label}
-                </span>
-                {active ? (
-                  <span
-                    key="active-dot"
-                    className="h-1 w-1 rounded-full bg-leasium-teal"
+                  <span key="label" className="max-w-full truncate">
+                    {label}
+                  </span>
+                  {active ? (
+                    <span
+                      key="active-dot"
+                      className="h-1 w-1 rounded-full bg-leasium-teal"
+                    />
+                  ) : null}
+                </Link>
+              );
+            })}
+            <Link
+              {...shellLinkProps}
+              href="/intake"
+              aria-label="Smart Intake"
+              aria-current={isNavActive(navItems[1]) ? "page" : undefined}
+              onMouseEnter={() => router.prefetch("/intake")}
+              onFocus={() => router.prefetch("/intake")}
+              className="mx-auto -mt-6 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-b from-primary to-leasium-teal text-white shadow-[0_10px_24px_rgba(36,91,255,0.35)] transition duration-200 ease-leasium hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
+            >
+              <FileUp size={22} aria-hidden="true" />
+            </Link>
+            {mobileBottomNavItems.slice(2).map((item) => {
+              const active = isNavActive(item);
+              const Icon = item.icon;
+              return (
+                <Link
+                  {...shellLinkProps}
+                  key={item.href}
+                  href={item.href}
+                  aria-label={item.label}
+                  aria-current={active ? "page" : undefined}
+                  onMouseEnter={() => router.prefetch(item.href)}
+                  onFocus={() => router.prefetch(item.href)}
+                  className={cn(
+                    "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-semibold leading-none text-leasium-slate-500 transition duration-200 ease-leasium hover:bg-muted hover:text-foreground",
+                    active && "text-primary",
+                  )}
+                >
+                  <Icon
+                    key="icon"
+                    size={18}
+                    aria-hidden="true"
+                    className="shrink-0"
                   />
-                ) : null}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+                  <span key="label" className="max-w-full truncate">
+                    {item.label}
+                  </span>
+                  {active ? (
+                    <span
+                      key="active-dot"
+                      className="h-1 w-1 rounded-full bg-leasium-teal"
+                    />
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      ) : null}
 
       <header className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-2 min-[1600px]:max-w-none sm:px-4">

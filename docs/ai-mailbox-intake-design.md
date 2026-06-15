@@ -2,14 +2,15 @@
 
 Status: Backend foundation/read APIs + `/inbox` UI foundation + local
 trust/discard decisions + Settings trusted-sender management + trusted-row
-reviewed promote handoff + virtual client alias routing shipped · alias
-reserve/disable controls and source/trust filters pending · in-loop UX pass
-for shipped `/inbox` + Settings presentation completed · 2026-06-14
+reviewed promote handoff + virtual client alias routing shipped ·
+platform-admin alias reserve/disable controls shipped · source/trust filters
+pending if queue volume grows · in-loop UX pass for shipped `/inbox` +
+Settings presentation completed · 2026-06-15
 Figma: concept frame exists in "Leasium — Design Source of Truth"
 (PO2jOANgmqgZHfqWZXOZGU) → 03 Screens / AI Mailbox Intake `82:2`; v1
 UI implemented from this frame, with trust/discard action placement and the
-Settings allowlist panel covered by the 2026-06-14 in-loop UX pass; future
-alias reserve/disable controls still need a signed-off Settings/alias frame.
+Settings allowlist panel covered by the 2026-06-14 in-loop UX pass. Platform
+admin alias controls ship from frames `109:812` desktop and `109:908` mobile.
 
 ## Problem
 
@@ -247,14 +248,13 @@ Decision for foundation v1: (a) no acknowledgement reply.
   operator clicks Promote to draft. Property/admin rows reuse existing
   attachment reviews first, then fall back to email-body drafts when there is
   no routed attachment review.
-- Still pending: source/trust-state filters if the queue grows, plus the
-  platform-admin reserve/disable alias controls UI once its design frame is
-  signed off. The local alias-management API and operator read-only display
-  are now shipped.
+- Shipped on `/admin`: platform-admin Mailbox aliases controls let Leasium
+  reserve client aliases, edit labels, and enable/disable routing from the
+  local alias-management API. Figma frames: `109:812` desktop and `109:908`
+  mobile.
+- Still pending: source/trust-state filters if the queue grows.
 - Figma first for actions: duplicate/update `03 Screens / AI Mailbox Intake
-  82:2` for promote variants before implementation; sync the shipped Settings
-  allowlist panel through the in-loop UX pass/design debt track
-  (design-governance §Figma-First).
+  82:2` for future promote/filter variants before implementation.
 
 ## Foundation v1 scope cut
 
@@ -270,10 +270,9 @@ reuse when the mailbox email already routed attachments, and
 property/task/owner-admin local review targets with property/admin attachment
 review reuse.
 
-Out (next slices): alias Settings API management and reserve/disable controls,
-source/trust-state filters if volume grows, auto-ack replies, reply-by-email
-threads, plus-addressing hints, agent-facing confirmations, cross-org agent
-senders, auto-apply of any kind.
+Out (next slices): source/trust-state filters if volume grows, auto-ack
+replies, reply-by-email threads, plus-addressing hints, agent-facing
+confirmations, cross-org agent senders, auto-apply of any kind.
 
 ## Test plan
 

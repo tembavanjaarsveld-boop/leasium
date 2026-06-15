@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
@@ -47,6 +49,56 @@ test("platform admin sees the /admin clients list and platform integrations", as
     page.getByRole("heading", { name: "Integrations" }),
   ).toBeVisible();
   await expect(page.getByText("SerpAPI Google Images")).toBeVisible();
+
+  // AI Mailbox aliases are controlled from the platform tier, not client
+  // Settings. These actions mutate only the mocked local routing API.
+  await page.getByRole("tab", { name: "Mailbox aliases" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Mailbox aliases" }),
+  ).toBeVisible();
+  const harbourAliasRow = page
+    .getByRole("listitem")
+    .filter({ hasText: "harbour@inbox.leasium.ai" });
+  await expect(harbourAliasRow).toBeVisible();
+  await expect(
+    page.getByText(
+      "Changing aliases does not send email, apply Smart Intake, move money, or reconcile.",
+    ),
+  ).toBeVisible();
+
+  const reserveAliasForm = page
+    .locator("form")
+    .filter({ hasText: "Reserve client alias" });
+  await reserveAliasForm
+    .getByLabel("Client organisation")
+    .selectOption("client-org-2");
+  await reserveAliasForm.getByLabel("Alias").fill("rivergum-new");
+  await reserveAliasForm
+    .getByLabel("Label", { exact: true })
+    .fill("Rivergum intake");
+  await reserveAliasForm.getByRole("button", { name: "Reserve alias" }).click();
+  await expect(
+    page
+      .getByRole("listitem")
+      .filter({ hasText: "rivergum-new@inbox.leasium.ai" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reserved rivergum-new@inbox.leasium.ai."),
+  ).toBeVisible();
+
+  await harbourAliasRow
+    .getByLabel("Label for harbour@inbox.leasium.ai")
+    .fill("Harbour mailroom");
+  await harbourAliasRow.getByRole("button", { name: "Save label" }).click();
+  await expect(
+    page.getByText("Updated harbour@inbox.leasium.ai."),
+  ).toBeVisible();
+  await expect(
+    harbourAliasRow.getByLabel("Label for harbour@inbox.leasium.ai"),
+  ).toHaveValue("Harbour mailroom");
+
+  await harbourAliasRow.getByRole("button", { name: "Disable" }).click();
+  await expect(harbourAliasRow.getByText("Disabled")).toBeVisible();
 });
 
 test("client operator cannot access /admin and has no admin nav entry", async ({
@@ -85,4 +137,45 @@ test("client Settings no longer shows the Integrations panel", async ({
   await expect(
     page.getByRole("heading", { name: "Integrations", exact: true }),
   ).toHaveCount(0);
+});
+
+test("platform admin mailbox aliases fit desktop and mobile", async ({
+  page,
+}) => {
+  await mkdir("../../output/playwright", { recursive: true });
+
+  for (const viewport of [
+    { label: "1440", width: 1440, height: 900 },
+    { label: "390", width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    await mockLeasiumApi(page, { platformAdmin: true });
+    await page.goto("/admin");
+    await page.addStyleTag({
+      content:
+        "nextjs-portal, script[data-nextjs-dev-overlay='true'] { display: none !important; }",
+    });
+    await page.getByRole("tab", { name: "Mailbox aliases" }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "Mailbox aliases" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reserve alias" })).toBeVisible();
+    await expect(
+      page.getByText("Disabled aliases quarantine future mail as evidence"),
+    ).toBeVisible();
+
+    const horizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(horizontalOverflow).toBeLessThanOrEqual(1);
+
+    await page.screenshot({
+      path: `../../output/playwright/platform-admin-mailbox-aliases-${viewport.label}.png`,
+      fullPage: true,
+    });
+  }
 });

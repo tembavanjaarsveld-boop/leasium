@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,18 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 AI Mailbox platform-admin alias controls v1:**
+  `/admin` now includes a platform-admin Mailbox aliases tab, backed by the
+  shipped local alias-management API and the new Figma frames `Platform admin
+  · Mailbox aliases` (`109:812`) and `Platform admin · Mailbox aliases ·
+  Mobile` (`109:908`). Platform admins can list client aliases, reserve a new
+  `*@inbox.leasium.ai` recipient for a client organisation, update alias
+  labels, and enable/disable routing; operator Settings remains read-only for
+  active alias display. The mobile admin route now avoids the client bottom-nav
+  overlay. Alias changes only affect local routing/audit state: no
+  SendGrid/Twilio send, acknowledgement email, OpenAI triage, Smart Intake
+  extraction/apply, Xero/Basiq, payment, reconciliation, or existing
+  inbound-message mutation is introduced.
 - [x] **2026-06-14 AI Mailbox alias management API + read-only display v1:**
   Platform admins can now list, reserve, and disable `inbox.leasium.ai`
   virtual client aliases through a dedicated local API, while operators can
@@ -38,8 +50,8 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   forwarders work together, linking operators back to mailbox review while
   keeping trusted-sender add/revoke local-only. No API shape, classification,
   promote payload, SendGrid/Twilio/Xero/Basiq/payment/reconciliation, Smart
-  Intake apply, or provider behavior changed; reserve/disable alias controls
-  remain deferred to the platform-admin alias controls design/UI slice.
+  Intake apply, or provider behavior changed; platform-admin reserve/disable
+  controls now ship separately in the 2026-06-15 alias controls slice.
 - [x] **2026-06-14 AI Mailbox virtual client alias routing v1:**
   `mailbox_alias` now lets one SendGrid Inbound Parse pipeline serve many
   client-specific virtual addresses such as `skj@inbox.leasium.ai`. The

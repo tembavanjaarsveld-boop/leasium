@@ -4,12 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   Loader2,
+  Mail,
   PlugZap,
+  Plus,
   ShieldCheck,
+  ShieldHalf,
   UserPlus,
   UsersRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { IntegrationsHealthCard } from "@/components/integrations-health-card";
@@ -31,11 +34,15 @@ import {
   createPlatformOrganisationMember,
   getApiHealth,
   getIntegrationStatus,
+  listPlatformMailboxAliases,
   listPlatformOrganisationMembers,
   listPlatformOrganisations,
+  reservePlatformMailboxAlias,
   resendPlatformOrganisationMemberInvite,
   setPlatformOrganisationActive,
   setPlatformOrganisationOperatingMode,
+  updatePlatformMailboxAlias,
+  type MailboxAliasRecord,
   updatePlatformOrganisationMember,
   type OperatingMode,
   type PlatformOrganisationRecord,
@@ -43,10 +50,11 @@ import {
 } from "@/lib/api";
 import { usePlatformAdmin } from "@/lib/use-platform-admin";
 
-type AdminTab = "clients" | "integrations";
+type AdminTab = "clients" | "aliases" | "integrations";
 
 const TABS: Array<{ id: AdminTab; label: string }> = [
   { id: "clients", label: "Clients" },
+  { id: "aliases", label: "Mailbox aliases" },
   { id: "integrations", label: "Platform integrations" },
 ];
 
@@ -510,6 +518,336 @@ function ClientsTab() {
   );
 }
 
+function mailboxAliasStatusTone(status: MailboxAliasRecord["status"]) {
+  return status === "active" ? "success" : "neutral";
+}
+
+function MailboxAliasesTab() {
+  const queryClient = useQueryClient();
+  const [organisationId, setOrganisationId] = useState("");
+  const [localPart, setLocalPart] = useState("");
+  const [label, setLabel] = useState("");
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
+
+  const organisationsQuery = useQuery({
+    queryKey: ["platform-organisations"],
+    queryFn: listPlatformOrganisations,
+  });
+  const aliasesQuery = useQuery({
+    queryKey: ["platform-mailbox-aliases"],
+    queryFn: () => listPlatformMailboxAliases(),
+  });
+
+  const organisations = useMemo(
+    () => organisationsQuery.data ?? [],
+    [organisationsQuery.data],
+  );
+  const aliases = useMemo(
+    () => aliasesQuery.data?.aliases ?? [],
+    [aliasesQuery.data?.aliases],
+  );
+  const organisationById = useMemo(
+    () => new Map(organisations.map((org) => [org.id, org.name])),
+    [organisations],
+  );
+  const activeAliasCount = aliases.filter(
+    (alias) => alias.status === "active",
+  ).length;
+
+  useEffect(() => {
+    if (!organisationId && organisations[0]) {
+      setOrganisationId(organisations[0].id);
+    }
+  }, [organisationId, organisations]);
+
+  useEffect(() => {
+    setLabelDrafts((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const alias of aliases) {
+        if (next[alias.id] === undefined) {
+          next[alias.id] = alias.label ?? "";
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [aliases]);
+
+  const invalidateAliases = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ["platform-mailbox-aliases"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["mailbox-aliases-mine"],
+    });
+  };
+
+  const reserveAlias = useMutation({
+    mutationFn: () =>
+      reservePlatformMailboxAlias({
+        organisation_id: organisationId,
+        local_part: localPart.trim(),
+        label: label.trim() || null,
+      }),
+    onSuccess: (alias) => {
+      setLocalPart("");
+      setLabel("");
+      setReceipt(`Reserved ${alias.email_address}.`);
+      invalidateAliases();
+    },
+  });
+
+  const updateAlias = useMutation({
+    mutationFn: ({
+      aliasId,
+      payload,
+    }: {
+      aliasId: string;
+      payload: { status?: MailboxAliasRecord["status"]; label?: string | null };
+    }) => updatePlatformMailboxAlias(aliasId, payload),
+    onSuccess: (alias) => {
+      setReceipt(`Updated ${alias.email_address}.`);
+      invalidateAliases();
+    },
+  });
+
+  const canReserve =
+    Boolean(organisationId) &&
+    localPart.trim().length > 0 &&
+    !reserveAlias.isPending;
+
+  return (
+    <div className="grid gap-5">
+      <SectionPanel
+        title="Mailbox aliases"
+        description="Reserve and manage inbox.leasium.ai routing aliases for client organisations. These controls change local routing only."
+        icon={<Mail size={17} className="text-primary" />}
+        actions={
+          <StatusBadge tone={activeAliasCount ? "success" : "neutral"}>
+            {activeAliasCount} active
+          </StatusBadge>
+        }
+      >
+        <div className="grid gap-4 p-4 xl:grid-cols-[minmax(280px,340px)_1fr]">
+          <form
+            className="grid content-start gap-3 rounded-md border border-border bg-muted/20 p-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canReserve) {
+                reserveAlias.mutate();
+              }
+            }}
+          >
+            <div className="grid gap-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Reserve client alias
+              </p>
+              <p className="text-sm leading-5 text-muted-foreground">
+                The alias chooses the organisation before sender trust, AI
+                review, or attachment promotion.
+              </p>
+            </div>
+            <Field label="Client organisation">
+              <Select
+                value={organisationId}
+                disabled={organisationsQuery.isLoading}
+                onChange={(event) => setOrganisationId(event.target.value)}
+                required
+              >
+                {organisations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Alias">
+              <div className="flex min-h-11 overflow-hidden rounded-xl border border-border bg-white focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
+                <input
+                  className="min-w-0 flex-1 px-3 text-sm outline-none"
+                  value={localPart}
+                  pattern="[a-z0-9]([a-z0-9._-]*[a-z0-9])?"
+                  placeholder="skj"
+                  onChange={(event) =>
+                    setLocalPart(event.target.value.toLowerCase())
+                  }
+                  required
+                />
+                <span className="flex items-center border-l border-border bg-muted px-3 text-xs font-semibold text-muted-foreground">
+                  @inbox.leasium.ai
+                </span>
+              </div>
+            </Field>
+            <Field label="Label">
+              <Input
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="SKJ intake"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="submit" disabled={!canReserve}>
+                {reserveAlias.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Plus size={14} />
+                )}
+                Reserve alias
+              </Button>
+              {reserveAlias.isError ? (
+                <span className="text-xs text-danger" role="alert">
+                  {(reserveAlias.error as Error).message}
+                </span>
+              ) : null}
+            </div>
+          </form>
+
+          <div className="grid content-start gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Client mailbox aliases
+                </p>
+                <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                  Disabled aliases quarantine future mail as evidence and never
+                  run AI or extraction.
+                </p>
+              </div>
+            </div>
+            {aliasesQuery.isLoading ? (
+              <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
+                Loading aliases.
+              </div>
+            ) : aliases.length === 0 ? (
+              <EmptyState
+                icon={<Mail size={18} />}
+                title="No aliases reserved"
+                description="Reserve the first client alias before asking operators to forward mail."
+              />
+            ) : (
+              <ul className="grid gap-2">
+                {aliases.map((alias) => {
+                  const draftLabel = labelDrafts[alias.id] ?? "";
+                  const labelChanged = draftLabel !== (alias.label ?? "");
+                  const nextStatus =
+                    alias.status === "active" ? "disabled" : "active";
+                  return (
+                    <li
+                      key={alias.id}
+                      className="grid gap-3 rounded-md border border-border bg-white p-3 text-sm md:grid-cols-[minmax(210px,1fr)_120px_minmax(180px,260px)_auto] md:items-center"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground">
+                          {organisationById.get(alias.organisation_id) ??
+                            "Unknown organisation"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {alias.email_address}
+                        </p>
+                      </div>
+                      <StatusBadge tone={mailboxAliasStatusTone(alias.status)}>
+                        {alias.status === "active" ? "Active" : "Disabled"}
+                      </StatusBadge>
+                      <label className="grid gap-1.5 text-sm">
+                        <span className="font-medium text-foreground">
+                          Label
+                        </span>
+                        <Input
+                          aria-label={`Label for ${alias.email_address}`}
+                          value={draftLabel}
+                          onChange={(event) =>
+                            setLabelDrafts((current) => ({
+                              ...current,
+                              [alias.id]: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 rounded-md px-2.5 text-xs"
+                          disabled={!labelChanged || updateAlias.isPending}
+                          onClick={() =>
+                            updateAlias.mutate({
+                              aliasId: alias.id,
+                              payload: { label: draftLabel.trim() || null },
+                            })
+                          }
+                        >
+                          Save label
+                        </SecondaryButton>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 rounded-md px-2.5 text-xs"
+                          disabled={updateAlias.isPending}
+                          onClick={() =>
+                            updateAlias.mutate({
+                              aliasId: alias.id,
+                              payload: { status: nextStatus },
+                            })
+                          }
+                        >
+                          {alias.status === "active" ? "Disable" : "Enable"}
+                        </SecondaryButton>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {updateAlias.isError ? (
+              <span className="text-xs text-danger" role="alert">
+                {(updateAlias.error as Error).message}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </SectionPanel>
+
+      <SectionPanel>
+        <div className="grid gap-3 p-4 md:grid-cols-3">
+          {[
+            [
+              "Resolve organisation first",
+              "Alias routing selects the client before trust checks or AI context loading.",
+            ],
+            [
+              "Trusted sender still required",
+              "An active alias never bypasses the SPF/DKIM and allowlist gates.",
+            ],
+            [
+              "No provider mutation",
+              "Changing aliases does not send email, apply Smart Intake, move money, or reconcile.",
+            ],
+          ].map(([title, detail]) => (
+            <div
+              key={title}
+              className="grid gap-2 rounded-md border border-border bg-muted/20 p-3"
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <ShieldHalf size={15} className="text-accent-foreground" />
+                {title}
+              </div>
+              <p className="text-sm leading-5 text-muted-foreground">
+                {detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      </SectionPanel>
+
+      {receipt ? (
+        <div className="rounded-full bg-accent-soft px-4 py-2 text-center text-sm font-semibold text-accent-foreground">
+          {receipt}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PlatformIntegrationsTab() {
   const integrationStatusQuery = useQuery({
     queryKey: ["integration-status"],
@@ -590,6 +928,8 @@ function AdminWorkspace() {
                   >
                     {tab.id === "clients" ? (
                       <Building2 size={15} />
+                    ) : tab.id === "aliases" ? (
+                      <Mail size={15} />
                     ) : (
                       <PlugZap size={15} />
                     )}
@@ -599,6 +939,7 @@ function AdminWorkspace() {
               })}
             </div>
             {activeTab === "clients" ? <ClientsTab /> : null}
+            {activeTab === "aliases" ? <MailboxAliasesTab /> : null}
             {activeTab === "integrations" ? <PlatformIntegrationsTab /> : null}
           </>
         )}

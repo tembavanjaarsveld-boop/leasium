@@ -3771,6 +3771,48 @@ export function listMyMailboxAliases() {
   return request<MailboxAliasListRecord>("/mailbox-aliases/mine");
 }
 
+export type MailboxAliasCreatePayload = {
+  organisation_id: string;
+  local_part: string;
+  domain?: string | null;
+  label?: string | null;
+};
+
+export type MailboxAliasUpdatePayload = {
+  status?: MailboxAliasRecord["status"];
+  label?: string | null;
+};
+
+export function listPlatformMailboxAliases(organisationId?: string) {
+  const params = new URLSearchParams();
+  if (organisationId) {
+    params.set("organisation_id", organisationId);
+  }
+  const query = params.toString();
+  return request<MailboxAliasListRecord>(
+    `/mailbox-aliases${query ? `?${query}` : ""}`,
+  );
+}
+
+export function reservePlatformMailboxAlias(
+  payload: MailboxAliasCreatePayload,
+) {
+  return request<MailboxAliasRecord>("/mailbox-aliases", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updatePlatformMailboxAlias(
+  aliasId: string,
+  payload: MailboxAliasUpdatePayload,
+) {
+  return request<MailboxAliasRecord>(`/mailbox-aliases/${aliasId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function listCommsTrustedSenders(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
   return request<TrustedSenderRecord[]>(`/comms/trusted-senders?${params}`);
