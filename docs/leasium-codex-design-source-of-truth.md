@@ -1505,6 +1505,10 @@ action surface.
 Rules:
 - Opportunity cards are inferred from source-backed extraction and sit as peer
   review panels above the long source/field editor.
+- If extraction returns zero structured fields, the assistant still appears and
+  uses the document summary/file context to ask one safe setup question. For
+  invoice/admin documents without a source-backed money field, that fallback is a
+  billing-setup question, not an obligation/compliance blocker.
 - Notice guidance appears before billing-looking opportunities. Old notices can
   create local follow-up/evidence work; they do not set up recurring invoicing
   or create billing drafts unless a later explicit workflow says so.

@@ -16,6 +16,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-15 Leasium AI zero-field invoice fallback:**
+  Leasium AI now still helps when an invoice/admin intake extracts zero
+  structured fields. The review assistant appears above the source/field editor,
+  uses the summary/file context to ask the billing setup question, saves only the
+  local AI answer session, and replaces the generic "obligation due date" blocker
+  with source-backed billing guidance. No invoice, Xero, email/SMS, payment, or
+  reconciliation mutation runs from the fallback.
 - [x] **2026-06-15 Leasium AI workspace v1:**
   `/intake` now presents as Leasium AI, the single operator AI workspace for
   document drop, question-led review, safe next steps, and source-backed

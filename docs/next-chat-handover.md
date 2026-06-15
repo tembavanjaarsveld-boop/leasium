@@ -2,6 +2,43 @@
 
 Last updated: 2026-06-15
 
+## Codex continuation - 2026-06-15 (Leasium AI zero-field invoice fallback)
+
+Scope completed: Leasium AI no longer disappears when an invoice/admin intake
+has 0 extracted fields. This fixes the live SKJ-style failure where an invoice
+showed the old empty review panel and a wrong obligation-date blocker.
+
+What changed:
+- Frontend opportunity fallback now creates a safe `set_up_billing_pattern`
+  card for `invoice_admin` documents only when there are no money/date fields,
+  using the summary/file context as the source hint.
+- Other documents with no inferred safe next step get a generic local review
+  question instead of no assistant at all.
+- The assistant copy now explicitly says when structured fields were not
+  extracted.
+- Invoice/admin apply guidance now asks for a source-backed billing amount and
+  treats the saved Leasium AI answer as setup context, instead of asking for an
+  obligation due date.
+
+Verification evidence:
+- RED smoke first failed because `document-intake-opportunity-panel` was absent
+  for `intake-zero-field-invoice-1`.
+- GREEN smoke passed:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "zero fields"`.
+- Surrounding Leasium AI smoke passed 7/7:
+  `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "one Leasium AI workspace|mobile Leasium AI landing|Leasium AI
+  assistant|mobile Leasium AI review assistant|zero fields|save failure"`.
+- Screenshots:
+  `output/playwright/leasium-ai-zero-field-invoice-1440.png` and
+  `output/playwright/leasium-ai-zero-field-invoice-390.png`.
+
+Guardrails held: the zero-field invoice fallback saves only the local
+`ai-opportunity-session`; no Smart Intake apply/review/accept-lease-match,
+invoice draft/delivery, SendGrid/Twilio/comms dispatch, owner dispatch,
+Xero/Basiq, payment, or reconciliation mutation runs.
+
 ## Codex continuation - 2026-06-15 (Leasium AI workspace v1)
 
 Scope completed: `/intake` now reads as Leasium AI, one operator AI workspace

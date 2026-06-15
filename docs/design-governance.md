@@ -269,6 +269,15 @@ fixes · deferrals.
   the compact review queue stays clear of the fixed bottom nav · deferred:
   mobile notification issue toast still overlaps the bottom-nav/content zone and
   is logged in the UX Debt Register.
+- 2026-06-15 · Leasium AI zero-field invoice fallback · existing Document review
+  `58:352` / Leasium AI assistant pattern reused · screen checked at 1440
+  (`output/playwright/leasium-ai-zero-field-invoice-1440.png`) and 390
+  (`output/playwright/leasium-ai-zero-field-invoice-390.png`) · fixes:
+  invoice/admin reviews with 0 extracted fields now still render the Leasium AI
+  assistant above source/evidence, infer a safe billing-setup question from the
+  summary/file context, save only the local answer session, and show
+  source-backed billing guidance instead of the generic obligation-date
+  blocker · deferred: none for this fallback.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,

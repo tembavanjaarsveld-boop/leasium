@@ -2331,8 +2331,9 @@ function documentIntakeOpportunityCards(
   const cards: DocumentIntakeOpportunityRecord[] = [];
   const moneyRows = groupItems(draft, "money_amounts");
   const keyDateRows = groupItems(draft, "key_dates");
-  const isNoticeDocument =
-    fieldText(draft.document_type ?? intake.document_type) === "notice";
+  const documentType = fieldText(draft.document_type ?? intake.document_type);
+  const isNoticeDocument = documentType === "notice";
+  const summary = fieldText(draft.summary ?? intake.summary);
   if (isNoticeDocument || keyDateRows.length > 0) {
     cards.push({
       id: "action-1",
@@ -2354,6 +2355,29 @@ function documentIntakeOpportunityCards(
       notes: null,
     });
   }
+  if (
+    cards.length === 0 &&
+    documentType === "invoice_admin" &&
+    moneyRows.length === 0
+  ) {
+    cards.push({
+      id: "action-1",
+      kind: "set_up_billing_pattern",
+      action: "set_up_billing_pattern",
+      target: "billing",
+      title: "Set up billing pattern",
+      summary:
+        "Use the invoice/admin summary as a clue, then ask for property, lease, charge, recurrence, and GST context before any local billing draft.",
+      confidence: intake.confidence,
+      source_path: summary ? "summary" : "document_type",
+      source_hint: summary,
+      target_kind: "billing",
+      provider_mutations: [],
+      requires_explicit_operator_approval: false,
+      decision: "pending",
+      notes: null,
+    });
+  }
   if (moneyRows.length > 0 && !isNoticeDocument) {
     cards.push({
       id: `action-${cards.length + 1}`,
@@ -2367,6 +2391,25 @@ function documentIntakeOpportunityCards(
       source_path: "money_amounts.0",
       source_hint: itemSource(moneyRows[0]),
       target_kind: "billing",
+      provider_mutations: [],
+      requires_explicit_operator_approval: false,
+      decision: "pending",
+      notes: null,
+    });
+  }
+  if (cards.length === 0) {
+    cards.push({
+      id: "action-1",
+      kind: "review_document",
+      action: "review_document",
+      target: "local_review",
+      title: "Ask what this should become",
+      summary:
+        "No safe next step was inferred, but Leasium AI can still ask what record or workflow this document should support.",
+      confidence: intake.confidence,
+      source_path: summary ? "summary" : "document_type",
+      source_hint: summary,
+      target_kind: "local_review",
       provider_mutations: [],
       requires_explicit_operator_approval: false,
       decision: "pending",
@@ -2643,6 +2686,14 @@ function DocumentIntakeOpportunityPanel({
   const visibleGuardrails = session?.guardrails.length
     ? session.guardrails
     : [OPPORTUNITY_LOCAL_GUARDRAIL];
+  const extractedFieldCount = reviewGroups.reduce(
+    (total, group) => total + groupItems(draft, group.key).length,
+    0,
+  );
+  const assistantIntro =
+    extractedFieldCount === 0
+      ? "I could not extract structured fields yet, but I can still use the summary and file context to ask what to set up next."
+      : "I read this document and found safe next steps I can help prepare for review.";
 
   useEffect(() => {
     setSelectedOpportunityId(
@@ -2704,7 +2755,7 @@ function DocumentIntakeOpportunityPanel({
               Leasium AI
             </h2>
             <p className="mt-1 text-sm leading-5 text-primary-hover">
-              I read this document and found safe next steps I can help prepare for review.
+              {assistantIntro}
             </p>
           </div>
         </div>
@@ -2955,6 +3006,8 @@ function DocumentIntakeReviewPanel({
       : workflowType === "purchase_contract" &&
           !hasReviewedPropertyIdentity(reviewedDraft, applyTarget)
         ? "Choose or confirm the property before applying."
+        : workflowType === "invoice_admin" && obligationApplyCount === 0
+          ? "Apply needs a source-backed billing amount. Save the Leasium AI answer as setup context for now."
         : workflowType === "inspection_report" && obligationApplyCount === 0
           ? "Confirm at least one inspection finding before applying."
           : canApplyWorkflow &&
@@ -3850,7 +3903,9 @@ function DocumentIntakeReviewPanel({
                             : "skip milestone tasks"
                         } from ${applyScope}. `
                       : workflowType === "invoice_admin"
-                        ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
+                        ? obligationApplyCount
+                          ? `Prepare ${obligationApplyCount} billing review ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. Nothing will be invoiced or synced. `
+                          : "Leasium AI needs the billing context before preparing local billing review work. Nothing will be invoiced or synced. "
                         : workflowType === "inspection_report"
                           ? `Create ${obligationApplyCount} requested work order ${obligationApplyCount === 1 ? "draft" : "drafts"} at ${applyScope}. No contractor message will be sent. `
                           : `Create ${obligationApplyCount} document-driven ${obligationApplyCount === 1 ? "task" : "tasks"} at ${applyScope}. `}

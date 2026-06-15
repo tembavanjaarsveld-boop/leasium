@@ -2869,6 +2869,7 @@ type MockLeasiumApiOptions = {
   vendorPortalMessagingThread?: boolean;
   operationsComplianceDemo?: boolean;
   includeUnmatchedNoticeIntake?: boolean;
+  includeZeroFieldInvoiceIntake?: boolean;
   documentIntakeOpportunitySessionUnavailable?: boolean;
 };
 
@@ -3246,6 +3247,52 @@ export async function mockLeasiumApi(
       filename: "_UTAUS_16705142_00001.pdf",
       content_type: "application/pdf",
       byte_size: 65000,
+      category: "other",
+    });
+  }
+  if (options.includeZeroFieldInvoiceIntake) {
+    documentIntakes.unshift({
+      id: "intake-zero-field-invoice-1",
+      entity_id: entityId,
+      document_id: "document-zero-field-invoice-1",
+      status: "needs_attention",
+      document_type: "invoice_admin",
+      summary:
+        "Tax invoice for Gorilla Grind issued by SJI No 1 Pty Ltd for May 2026 rent across two premises.",
+      confidence: 0.81,
+      extracted_data: {
+        document_type: "invoice_admin",
+        summary:
+          "Tax invoice for Gorilla Grind issued by SJI No 1 Pty Ltd for May 2026 rent across two premises.",
+        confidence: 0.81,
+        parties: [],
+        properties: [],
+        key_dates: [],
+        money_amounts: [],
+        obligations: [],
+        inspection_findings: [],
+        suggested_links: {
+          tenant_name: "Gorilla Grind",
+          property_name: "205 Leitchs Rd Brendale",
+          issuer_name: "SJI No 1 Pty Ltd",
+        },
+        warnings: [],
+        missing_information: [
+          "No structured invoice fields were extracted.",
+        ],
+      },
+      review_data: {},
+      openai_response_id: "resp-zero-field-invoice-smoke",
+      error_message: null,
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      applied_at: null,
+      applied_by_user_id: null,
+      created_at: "2026-06-15T02:53:00.000Z",
+      updated_at: "2026-06-15T02:53:00.000Z",
+      filename: "Invoice INV-0331.pdf",
+      content_type: "application/pdf",
+      byte_size: 72000,
       category: "other",
     });
   }

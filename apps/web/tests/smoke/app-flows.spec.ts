@@ -985,6 +985,105 @@ test("smart intake review opens as Leasium AI assistant and saves one answer wit
   });
 });
 
+test("Leasium AI still helps when invoice extraction has zero fields", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+  const { forbiddenRequests, sessionRequests } =
+    watchForbiddenAiOpportunityRequests(page);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-zero-field-invoice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
+  ).toBeVisible();
+  await expect(review.getByText("0 fields extracted")).toBeVisible();
+
+  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
+  const sourcePreview = page.getByTestId("document-review-source-preview");
+  await expect(opportunityPanel).toBeVisible();
+  await expectAppearsBefore(opportunityPanel, sourcePreview);
+  await expect(
+    opportunityPanel.getByText(
+      "I could not extract structured fields yet, but I can still use the summary and file context to ask what to set up next.",
+    ),
+  ).toBeVisible();
+  await expect(
+    opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
+  ).toContainText("Set up billing pattern");
+  await expect(
+    opportunityPanel
+      .getByTestId("document-intake-opportunity-chat")
+      .getByText("Which property, unit, tenant, or lease should this billing setup use?"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Confirm at least one obligation due date before applying."),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Apply needs a source-backed billing amount. Save the Leasium AI answer as setup context for now.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Prepare 0 billing review tasks"),
+  ).toHaveCount(0);
+
+  const chat = opportunityPanel.getByTestId("document-intake-opportunity-chat");
+  await chat
+    .getByRole("textbox")
+    .fill("Use SKJ Capital, 205 Leitchs Rd Brendale. Ask for GST and recurrence before creating any local billing review.");
+  await chat.getByRole("button", { name: "Save answer" }).click();
+
+  await expect(page.getByText("Leasium AI answer saved.")).toBeVisible();
+  await expect(sessionRequests).toHaveLength(1);
+  expect(forbiddenRequests).toEqual([]);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/leasium-ai-zero-field-invoice-1440.png",
+  });
+});
+
+test("mobile Leasium AI still helps when invoice extraction has zero fields", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
+  await mkdir("../../output/playwright", { recursive: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/intake?entity_id=entity-1&review=intake-zero-field-invoice-1");
+
+  const review = page.getByTestId("horizon-document-review");
+  await expect(
+    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
+  ).toBeVisible();
+  await expect(review.getByText("0 fields extracted")).toBeVisible();
+
+  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
+  const sourcePreview = page.getByTestId("document-review-source-preview");
+  await expect(opportunityPanel).toBeVisible();
+  await expectAppearsBefore(opportunityPanel, sourcePreview);
+  await expect(
+    opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
+  ).toContainText("Set up billing pattern");
+  await expect(
+    page.getByText(
+      "Apply needs a source-backed billing amount. Save the Leasium AI answer as setup context for now.",
+    ),
+  ).toBeVisible();
+  await expectTouchTarget(
+    opportunityPanel.getByRole("button", { name: "Save answer" }),
+  );
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/leasium-ai-zero-field-invoice-390.png",
+  });
+});
+
 test("mobile Leasium AI review assistant keeps one-question flow touch-safe", async ({
   page,
 }) => {
