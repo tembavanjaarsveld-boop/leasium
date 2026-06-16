@@ -266,9 +266,9 @@ fixes · deferrals.
   and tenant/comms review links now present the operator destination as
   Leasium AI; document review starts with the assistant panel instead of a
   hidden opportunity widget; mobile hides the extra desktop guardrail banner so
-  the compact review queue stays clear of the fixed bottom nav · deferred:
-  mobile notification issue toast still overlaps the bottom-nav/content zone and
-  is logged in the UX Debt Register.
+  the compact review queue stays clear of the fixed bottom nav · deferred then:
+  mobile notification issue toast placement, resolved in the 2026-06-16
+  remaining-polish pass.
 - 2026-06-15 · Leasium AI zero-field invoice fallback · existing Document review
   `58:352` / Leasium AI assistant pattern reused · screen checked at 1440
   (`output/playwright/leasium-ai-zero-field-invoice-1440.png`) and 390
@@ -287,8 +287,8 @@ fixes · deferrals.
   misleading "0 fields extracted" header copy with "Reading document and
   preparing review", lock review/apply controls, and suppress the
   zero-field/setup-question assistant until extraction has actually finished ·
-  deferred: existing mobile notification issue toast overlap remains covered by
-  the workspace UX debt item.
+  deferred then: mobile notification issue toast placement, resolved in the
+  2026-06-16 remaining-polish pass.
 - 2026-06-15 · Leasium AI chat-led review panel · existing Document review
   `58:352` / Leasium AI assistant pattern reused · screens checked at 1440
   (`output/playwright/leasium-ai-zero-field-invoice-1440.png`,
@@ -303,8 +303,8 @@ fixes · deferrals.
   local replies, 503 no-persist behavior, mobile touch targets, no horizontal
   overflow, and no Smart Intake apply/review, provider, invoice delivery,
   Xero/Basiq, payment, or reconciliation mutations · deferred: existing mobile
-  notification issue toast overlap remains covered by the workspace UX debt
-  item.
+  notification issue toast placement, resolved in the 2026-06-16
+  remaining-polish pass.
 - 2026-06-15 · Leasium AI true chat-window correction · existing Document
   review `58:352` / Leasium AI assistant pattern reused · screens checked at
   1440 (`output/playwright/leasium-ai-zero-field-invoice-1440.png`) and 390
@@ -315,8 +315,8 @@ fixes · deferrals.
   The review-only output moved to a secondary preview rail/bottom panel instead
   of competing as an equal card. Smoke coverage now asserts the chat-window
   structure directly and keeps the same no-provider-write checks · deferred:
-  existing mobile notification issue toast overlap remains covered by the
-  workspace UX debt item.
+  existing mobile notification issue toast placement, resolved in the
+  2026-06-16 remaining-polish pass.
 - 2026-06-15 · Work message-panel density · Figma frames `123:812` and
   `124:850` created from the Horizon Work patterns · screens checked at
   1440/390 (`output/playwright/work-message-density-1440.png`,
@@ -367,6 +367,21 @@ fixes · deferrals.
   next step" promote → done turn · screen checked at 1440
   (`apps/web/test-results/inbox-conversation-1440.png`) · promote stays
   review-first/local-only (no email/SMS/Xero).
+- 2026-06-16 · Leasium AI conversation-first remaining polish · built to the
+  approved concept Home frames (file `PO2jOANgmqgZHfqWZXOZGU`, Home desktop
+  `148:52`, mobile `158:52`) with Figma MCP design context and screenshots ·
+  screens checked at 1440/390
+  (`output/playwright/leasium-ai-workspace-1440.png`,
+  `output/playwright/leasium-ai-workspace-390.png`) · fixes: created-record
+  rows now deep-link to the property workspace or tenant record; gated next-step
+  actions route to Xero settings, billing readiness, and tenant-scoped Comms
+  review; `/intake` Home now uses the centered composer, right-rail AI review
+  queue, two-row mobile queue, and compact guardrail; and the mobile issue pill
+  is positioned clear of the fixed bottom navigation · provider guardrails
+  remain intact: Xero, email/SMS, payment, reconciliation, and Smart Intake
+  apply still require explicit approval or stay mocked in tests · deferred:
+  persistent page-aware Leasium AI thread / richer global launcher is
+  decision-gated.
 
 ## UX Debt Register
 
@@ -377,18 +392,15 @@ remove entries by shipping a slice whose UX pass covers them.
 - **Leasium AI conversation-first — remaining polish** (2026-06-15, updated) —
   shipped since the first slice: conversational review for both intake and the
   AI Inbox, the composer landing, page consolidation, link-existing matching,
-  inline "Edit before creating", and a ⌘K "Ask Leasium AI" launcher. Still
-  pending from the concept: the full approved Home layout (centered composer +
-  right-rail queue, rather than the current stacked page), real deep-links to
-  the created records and the gated next-step actions (Xero / invoicing /
-  email), and a ⌘K agent that carries full page context as a persistent thread.
+  inline "Edit before creating", a ⌘K "Ask Leasium AI" launcher, exact
+  created-record / next-step links, and the approved Home layout with the
+  centered composer plus right-rail queue. Still pending from the concept:
+  a ⌘K agent that carries full page context as a persistent thread. Decision
+  gate: confirm whether this should live in the existing command palette,
+  `/intake`, or a global assistant drawer.
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).
-- **Mobile issue toast placement** — the fixed red issue toast can overlap
-  mobile bottom navigation and lower content in screenshots; surfaced during
-  the 2026-06-15 Leasium AI workspace UX pass. Needs a notification-positioning
-  slice rather than being folded into intake semantics.
 
 ## Standing UX Direction
 

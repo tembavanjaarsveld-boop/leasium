@@ -600,43 +600,45 @@ test("smart intake review filter keeps a 44px touch target", async ({
 
 test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   await mkdir("../../output/playwright", { recursive: true });
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/intake");
 
   await expect(
     page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
+  const home = page.getByTestId("leasium-ai-home");
+  await expect(home).toBeVisible();
+  const composer = page.getByTestId("leasium-ai-home-composer");
+  const rail = page.getByTestId("leasium-ai-home-rail");
+  await expect(composer).toBeVisible();
+  await expect(rail).toBeVisible();
+  const composerBox = await composer.boundingBox();
+  const railBox = await rail.boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect(railBox).not.toBeNull();
+  expect(composerBox!.x + composerBox!.width).toBeLessThanOrEqual(
+    railBox!.x - 16,
+  );
   await expect(
     page.getByText(
-      "One AI workspace for documents, questions, review, and safe next steps.",
+      "Your single workspace — drop a document, ask a question, or tell me what to do.",
     ),
   ).toBeVisible();
+  await expect(page.getByText("Good morning, Temba.")).toBeVisible();
+  await expect(page.getByPlaceholder("Message Leasium AI…")).toBeVisible();
+  await expect(page.getByText("📊 What's overdue?")).toBeVisible();
+  await expect(page.getByText("Recent")).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      name: "Ask Leasium AI with a document",
-    }),
+    page.getByTestId("leasium-ai-home-how").getByText("Read", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "It reads the file, shows confidence and source, asks what is missing, and waits for your approval.",
-    ),
-  ).toBeVisible();
-  await expect(page.getByText("Local-only until approval")).toBeVisible();
-  await expect(
-    page.getByText(
-      "No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.",
-    ),
+    page.getByTestId("leasium-ai-home-how").getByText("Propose", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("or email documents to intake@leasium.ai"),
+    page.getByTestId("leasium-ai-home-how").getByText("Approve", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /AI review queue/i }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", {
-      name: "Recently applied — full provenance",
-    }),
+    rail.getByRole("heading", { name: "AI review queue" }),
   ).toBeVisible();
   await expect(
     page
@@ -644,19 +646,14 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
       .getByText("bright-cafe-lease.pdf"),
   ).toBeVisible();
   await expect(
-    page
-      .getByTestId("smart-intake-applied-panel")
-      .getByText("bright-cafe-insurance.pdf"),
-  ).toBeVisible();
-  await expect(
     page.getByText(
-      "Leasium AI is review-first — fields, answers, and next steps wait for your approval.",
+      "Nothing is applied until you approve it.",
     ),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../../output/playwright/leasium-ai-workspace-1280.png",
+    path: "../../output/playwright/leasium-ai-workspace-1440.png",
   });
 });
 
@@ -670,18 +667,11 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "Leasium AI" }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Drop it. Ask it. Review it."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Ask Leasium AI" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Take photo" })).toBeVisible();
-  await expect(
-    page.getByText(
-      "It reads the file, shows confidence and source, asks what is missing, and waits for your approval.",
-    ),
-  ).toBeHidden();
+  const composer = page.getByTestId("leasium-ai-home-composer");
+  await expect(composer).toBeVisible();
+  await expect(composer.getByText("Good morning, Temba.")).toBeVisible();
+  await expect(page.getByPlaceholder("Message Leasium AI…")).toBeVisible();
+  await expect(page.getByText("📊 Overdue?")).toBeVisible();
   await expect(page.getByLabel("Review filter")).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Copy review queue CSV" }),
@@ -690,7 +680,7 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   const reviewPanel = page.getByTestId("smart-intake-review-panel");
   await expect(reviewPanel).toBeVisible();
   await expect(page.getByTestId("horizon-document-review")).toHaveCount(0);
-  await expect(reviewPanel.getByText("AI review queue — 4")).toBeVisible();
+  await expect(reviewPanel.getByRole("heading", { name: "AI review queue" })).toBeVisible();
 
   const firstRow = page.getByTestId("review-intake-intake-1");
   await expect(firstRow).toBeVisible();
@@ -699,17 +689,15 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   expect(rowBox).not.toBeNull();
   expect(rowBox!.height).toBeLessThanOrEqual(150);
 
-  const thirdRow = page.getByTestId(
-    "review-intake-intake-tenant-upload-insurance-1",
-  );
-  await expect(thirdRow).toBeVisible();
-  const thirdRowBox = await thirdRow.boundingBox();
+  const guardrail = page.getByTestId("leasium-ai-home-guardrail");
+  await expect(guardrail).toBeVisible();
+  const guardrailBox = await guardrail.boundingBox();
   const mobileNavBox = await page
     .getByRole("navigation", { name: "Mobile primary" })
     .boundingBox();
-  expect(thirdRowBox).not.toBeNull();
+  expect(guardrailBox).not.toBeNull();
   expect(mobileNavBox).not.toBeNull();
-  expect(thirdRowBox!.y + thirdRowBox!.height).toBeLessThanOrEqual(
+  expect(guardrailBox!.y + guardrailBox!.height).toBeLessThanOrEqual(
     mobileNavBox!.y - 8,
   );
 
@@ -724,9 +712,7 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
 
   await firstRow.getByRole("button", { name: "Review" }).click();
   await expect(
-    page.getByTestId("horizon-document-review").getByRole("heading", {
-      name: "Review document",
-    }),
+    page.getByTestId("intake-conversation"),
   ).toBeVisible();
 });
 

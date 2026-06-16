@@ -744,6 +744,12 @@ function CommsContent() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const requestedEntityId = params.get("entity_id");
+    if (requestedEntityId) {
+      setSelectedEntityId(requestedEntityId);
+      return;
+    }
     const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
     // The All-entities sentinel is a valid restore target even though it is not
     // a real entity id, so the cross-entity view survives navigation/reload.

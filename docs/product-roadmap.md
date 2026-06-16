@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-15
+Last updated: 2026-06-16
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-16 Leasium AI conversation-first remaining polish:**
+  The remaining approved A-D polish is shipped. Created record rows now link to
+  the exact property workspace and tenant record; gated next steps route to
+  Xero settings, billing readiness, and tenant-scoped Comms review with
+  provider writes still held behind explicit approval; `/intake` now matches the
+  approved Home layout with a centered composer, right-rail AI review queue, two
+  mobile queue rows, and a compact review-first guardrail; and the mobile dev
+  issue pill is lifted clear of the bottom navigation. Verified with focused
+  smoke coverage for intake creation, next-step links, Home desktop/mobile
+  layout, and Work mobile toast placement. Remaining decision-gated work:
+  persistent page-aware Leasium AI thread / richer global launcher.
 - [x] **2026-06-15 AI Inbox conversation-first review:**
   Opening a trusted `/inbox` message now uses the same conversation panel
   (`apps/web/src/components/intake/InboxConversationPanel.tsx`): a forwarded-email
@@ -60,9 +71,9 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   Figma `PO2jOANgmqgZHfqWZXOZGU`; details in
   [design-governance.md](design-governance.md) and
   [leasium-ai-conversation-redesign-2026-06-15.md](leasium-ai-conversation-redesign-2026-06-15.md).
-  Deferred to later slices (UX Debt Register): full centered-composer Home +
-  right-rail queue, inline value editing, global ⌘K agent thread, record
-  deep-links.
+  Deferred to later slices (UX Debt Register): inline value editing and global
+  page-aware Leasium AI thread. The centered-composer Home, right-rail queue,
+  record deep-links, and gated next-step links shipped on 2026-06-16.
 - [x] **2026-06-15 Leasium AI chat-window review shell v2:**
   The document assistant now renders as a true chat window instead of the old
   three-column review panel with chat wording. The conversation shows an AI

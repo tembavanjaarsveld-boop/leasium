@@ -2706,9 +2706,9 @@ export function Dashboard({
                 Leasium AI
               </PageTitle>
               <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">Drop it. Ask it. Review it.</span>
+                <span className="sm:hidden">Drop a document, ask a question, or tell me what to do.</span>
                 <span className="hidden sm:inline">
-                  One AI workspace for documents, questions, review, and safe next steps.
+                  Your single workspace — drop a document, ask a question, or tell me what to do.
                 </span>
               </p>
             </div>
@@ -3051,7 +3051,10 @@ export function Dashboard({
         ) : null}
 
         {isIntakeWorkspace ? (
-          <section className="grid gap-4">
+          <section
+            data-testid="leasium-ai-home"
+            className="grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start"
+          >
             {lastApplyOutcome ? (
               <DocumentIntakeApplyOutcomeCard
                 outcome={lastApplyOutcome}
@@ -3062,6 +3065,7 @@ export function Dashboard({
 
             {!selectedDocumentReviewPanel ? (
             <section
+              data-testid="leasium-ai-home-composer"
               onDragEnter={(event) => {
                 event.preventDefault();
                 setDragActive(true);
@@ -3080,7 +3084,7 @@ export function Dashboard({
                 uploadSmartIntake(event.dataTransfer.files[0]);
               }}
               className={[
-                "overflow-hidden rounded-2xl border bg-white px-4 py-5 shadow-leasiumCard transition sm:px-6 sm:py-6",
+                "overflow-hidden rounded-[18px] border bg-white px-4 py-5 shadow-leasiumCard transition sm:px-6 sm:py-6 xl:col-start-1 xl:row-start-1 xl:rounded-[20px] xl:px-6",
                 dragActive
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-border",
@@ -3108,11 +3112,11 @@ export function Dashboard({
                     ✦
                   </span>
                   <div>
-                    <p className="text-base font-semibold leading-5 text-foreground sm:text-lg">
-                      What do you want to get done?
+                    <p className="text-base font-semibold leading-5 text-foreground sm:text-[17px]">
+                      Good morning, Temba.
                     </p>
-                    <p className="text-xs leading-4 text-muted-foreground sm:text-sm sm:leading-5">
-                      Drop a lease, invoice or contract — or ask Leasium AI a question.
+                    <p className="text-xs leading-4 text-muted-foreground sm:text-[13px] sm:leading-5">
+                      What do you want to get done? Drop a lease, invoice or contract — or just ask.
                     </p>
                   </div>
                 </div>
@@ -3139,7 +3143,7 @@ export function Dashboard({
                         handleLandingAsk();
                       }
                     }}
-                    placeholder="Message Leasium AI — drop a file, or ask a question"
+                    placeholder="Message Leasium AI…"
                     className="min-w-0 flex-1 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   />
                   <Button
@@ -3160,20 +3164,42 @@ export function Dashboard({
                   </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {["📄 Add a lease", "💸 Log a paid invoice", "👤 Onboard a tenant"].map(
+                  {[
+                    { label: "📄 Add a lease" },
+                    {
+                      label: "💸 Log a paid invoice",
+                      mobileLabel: "💸 Log invoice",
+                    },
+                    {
+                      label: "📊 What's overdue?",
+                      mobileLabel: "📊 Overdue?",
+                    },
+                    {
+                      label: "👤 Onboard a tenant",
+                      mobileLabel: "👤 Onboard",
+                    },
+                    { label: "✉ Draft a rent review" },
+                  ].map(
                     (chip) => (
                       <button
-                        key={chip}
+                        key={chip.label}
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={!selectedEntityId}
                         className="rounded-full bg-leasium-slate-100 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground disabled:opacity-50"
                       >
-                        {chip}
+                        {chip.mobileLabel ? (
+                          <>
+                            <span className="sm:hidden">{chip.mobileLabel}</span>
+                            <span className="hidden sm:inline">{chip.label}</span>
+                          </>
+                        ) : (
+                          chip.label
+                        )}
                       </button>
                     ),
                   )}
-                  <span className="text-xs text-muted-foreground">
+                  <span className="hidden text-xs text-muted-foreground sm:inline">
                     or email to intake@leasium.ai
                   </span>
                 </div>
@@ -3242,13 +3268,17 @@ export function Dashboard({
                     ))}
                   </div>
                 ) : null}
-                <div className="grid gap-3 rounded-xl border border-border bg-leasium-slate-50 p-3 sm:grid-cols-3">
+                <div className="hidden gap-3 rounded-xl border border-border bg-leasium-slate-50 p-3 sm:grid sm:grid-cols-3">
                   {[
                     ["1", "Read", "I read the document and tell you what I understood, with sources."],
-                    ["2", "Propose", "I propose the exact records to create — property, tenant, lease — in one plan."],
+                    ["2", "Propose", "I propose the exact records — property, tenant, lease — in one plan."],
                     ["3", "Approve", "Nothing happens until you approve. Xero, email & SMS are a separate yes."],
                   ].map((step) => (
-                    <div key={step[0]} className="flex flex-col gap-1">
+                    <div
+                      key={step[0]}
+                      data-testid="leasium-ai-home-how"
+                      className="flex flex-col gap-1"
+                    >
                       <div className="flex items-center gap-2">
                         <span className="grid h-5 w-5 place-items-center rounded-full bg-primary-soft text-[11px] font-bold text-primary">
                           {step[0]}
@@ -3263,7 +3293,7 @@ export function Dashboard({
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/15 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">
+                <div className="hidden flex-wrap items-center gap-2 rounded-xl border border-primary/15 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground sm:flex">
                   <StatusBadge tone="primary">Local-only until approval</StatusBadge>
                   <span>
                     No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.
@@ -3273,18 +3303,18 @@ export function Dashboard({
             </section>
             ) : null}
 
-            <section className="grid gap-4 xl:grid-cols-2">
+            <section
+              data-testid="leasium-ai-home-rail"
+              className="grid gap-4 xl:col-start-2 xl:row-start-1 xl:grid-cols-1"
+            >
               <div
                 data-testid="smart-intake-review-panel"
-                className="overflow-visible sm:overflow-hidden sm:rounded-2xl sm:border sm:border-border sm:bg-white sm:shadow-leasiumCard"
+                className="overflow-visible sm:overflow-hidden sm:rounded-2xl sm:border sm:border-border sm:bg-white sm:shadow-leasiumCard xl:rounded-[16px]"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3 pb-0 sm:border-b sm:border-border sm:px-4 sm:py-3">
                   <div>
-                    <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                      AI review queue —{" "}
-                      {documentIntakesLoading
-                        ? "preparing"
-                        : filteredReviewIntakes.length}
+                    <h2 className="text-sm font-semibold text-foreground">
+                      AI review queue
                     </h2>
                     <p className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">
                       Open a document to keep working with Leasium AI: approve, edit, answer, or ignore before anything changes.
@@ -3292,11 +3322,11 @@ export function Dashboard({
                   </div>
                   <StatusBadge
                     tone={needsReviewCount ? "primary" : "neutral"}
-                    className="hidden sm:inline-flex"
+                    className="hidden sm:inline-flex xl:inline-flex"
                   >
                     {documentIntakesLoading
                       ? "Preparing"
-                      : `${needsReviewCount} waiting`}
+                      : `${filteredReviewIntakes.length}`}
                   </StatusBadge>
                 </div>
                 <div className="hidden flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/25 px-4 py-3 sm:flex">
@@ -3352,7 +3382,7 @@ export function Dashboard({
                   </div>
                 </div>
                 <div className="grid gap-3 pt-3 sm:block sm:divide-y sm:divide-border sm:pt-0">
-                  {filteredReviewIntakes.slice(0, 3).map((item) => {
+                  {filteredReviewIntakes.slice(0, 3).map((item, index) => {
                     const propertyName = firstField(
                       item.extracted_data.properties,
                       "name",
@@ -3365,7 +3395,10 @@ export function Dashboard({
                       <div
                         key={item.id}
                         data-testid={`review-intake-${item.id}`}
-                        className="relative grid gap-2 overflow-hidden rounded-[14px] border border-border bg-white py-3 pl-[18px] pr-[14px] text-sm shadow-leasiumCard sm:gap-3 sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent sm:px-4 sm:shadow-none sm:grid-cols-[3px_minmax(0,1fr)_auto] sm:items-start"
+                        className={cn(
+                          "relative grid gap-2 overflow-hidden rounded-[14px] border border-border bg-white py-3 pl-[18px] pr-[14px] text-sm shadow-leasiumCard sm:gap-3 sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent sm:px-4 sm:shadow-none sm:grid-cols-[3px_minmax(0,1fr)_auto] sm:items-start",
+                          index > 1 ? "hidden sm:grid" : null,
+                        )}
                       >
                         <div
                           aria-hidden="true"
@@ -3473,7 +3506,7 @@ export function Dashboard({
                     />
                   ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2 border-t border-border bg-muted/25 px-4 py-3">
+                <div className="hidden flex-wrap gap-2 border-t border-border bg-muted/25 px-4 py-3 sm:flex">
                   <Link
                     href="/properties?action=new"
                     className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-medium shadow-leasiumXs transition hover:bg-muted"
@@ -3493,7 +3526,7 @@ export function Dashboard({
 
               <div
                 data-testid="smart-intake-applied-panel"
-                className="overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard"
+                className="hidden overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard xl:block"
               >
                 <div className="border-b border-border px-4 py-3">
                   <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -3551,8 +3584,11 @@ export function Dashboard({
               </div>
             </section>
 
-            <div className="flex min-h-9 items-center justify-center rounded-2xl border border-primary/20 bg-white px-4 py-2 text-center text-sm font-medium text-foreground shadow-leasiumXs">
-              Leasium AI is review-first — fields, answers, and next steps wait for your approval.
+            <div
+              data-testid="leasium-ai-home-guardrail"
+              className="flex min-h-9 items-center justify-center rounded-full border border-accent/20 bg-accent-soft px-4 py-2 text-center text-sm font-medium text-leasium-teal-strong shadow-leasiumXs xl:col-start-2 xl:row-start-2"
+            >
+              Nothing is applied until you approve it.
             </div>
 
             {!selectedDocumentReviewPanel ? (

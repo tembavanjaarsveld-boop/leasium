@@ -653,3 +653,13 @@ body.app-shell-active {
   animation: leasiumRowFadeIn var(--leasium-duration-base) var(--leasium-ease)
     both;
 }
+
+#devtools-indicator {
+  bottom: calc(6rem + env(safe-area-inset-bottom)) !important;
+}
+
+@media (min-width: 768px) {
+  #devtools-indicator {
+    bottom: 1rem !important;
+  }
+}

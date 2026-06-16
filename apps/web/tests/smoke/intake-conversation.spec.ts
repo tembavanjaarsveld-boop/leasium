@@ -226,8 +226,46 @@ test("conversation-first intake panel reads the lease and creates records withou
   await expect(created).toBeVisible();
   await expect(created).toContainText("Queen Street Retail Centre");
   await expect(created).toContainText("Bright Cafe Pty Ltd");
+  await expect(created.getByRole("link", { name: "View" }).first()).toHaveAttribute(
+    "href",
+    `/properties?entity_id=${leaseIntake.entity_id}&property_id=${appliedSummary.property_id}`,
+  );
+  await expect(created.getByText("1 lease").locator("..").getByRole("link")).toHaveAttribute(
+    "href",
+    `/properties?entity_id=${leaseIntake.entity_id}&property_id=${appliedSummary.property_id}`,
+  );
+  await expect(
+    created.getByText("Tenant — Bright Cafe Pty Ltd").locator("..").getByRole("link"),
+  ).toHaveAttribute("href", `/tenants/${appliedSummary.tenant_id}`);
 
-  await expect(page.getByTestId("intake-next-steps")).toBeVisible();
+  const nextSteps = page.getByTestId("intake-next-steps");
+  await expect(nextSteps).toBeVisible();
+  await expect(
+    nextSteps.getByText("Sync tenant to Xero").locator("..").getByRole("link", {
+      name: "Review",
+    }),
+  ).toHaveAttribute(
+    "href",
+    `/settings?tab=xero&entity_id=${leaseIntake.entity_id}`,
+  );
+  await expect(
+    nextSteps
+      .getByText("Set up monthly rent invoicing")
+      .locator("..")
+      .getByRole("link", { name: "Review" }),
+  ).toHaveAttribute(
+    "href",
+    `/billing-readiness?entity_id=${leaseIntake.entity_id}&tab=readiness`,
+  );
+  const emailReview = nextSteps
+    .getByText("Email the tenant")
+    .locator("..")
+    .getByRole("link", { name: "Review" });
+  await expect(emailReview).toHaveAttribute(
+    "href",
+    `/comms?entity_id=${leaseIntake.entity_id}&target_kind=tenant&target_id=${appliedSummary.tenant_id}`,
+  );
+  await emailReview.click();
 
   expect(applyCallCount).toBe(1);
 

@@ -487,25 +487,79 @@ function buildPlan(
 
 // Created turn: read the apply response review_data.applied summary.
 type CreatedRow = { label: string; href?: string };
+type NextStepRow = { label: string; href: string };
 
-function buildCreated(applied: Record<string, unknown>): CreatedRow[] {
+function propertyHref(entityId: string, propertyId: string | null) {
+  if (!propertyId) return "/properties";
+  const params = new URLSearchParams({
+    entity_id: entityId,
+    property_id: propertyId,
+  });
+  return `/properties?${params.toString()}`;
+}
+
+function tenantHref(tenantId: string | null) {
+  return tenantId ? `/tenants/${encodeURIComponent(tenantId)}` : "/tenants";
+}
+
+function nextStepRows(
+  applied: Record<string, unknown>,
+  entityId: string,
+): NextStepRow[] {
+  const tenantId = text(applied.tenant_id);
+  const xeroParams = new URLSearchParams([
+    ["tab", "xero"],
+    ["entity_id", entityId],
+  ]);
+  const billingParams = new URLSearchParams([
+    ["entity_id", entityId],
+    ["tab", "readiness"],
+  ]);
+  const commsParams = new URLSearchParams([["entity_id", entityId]]);
+  if (tenantId) {
+    commsParams.set("target_kind", "tenant");
+    commsParams.set("target_id", tenantId);
+  }
+
+  return [
+    {
+      label: "Sync tenant to Xero",
+      href: `/settings?${xeroParams.toString()}`,
+    },
+    {
+      label: "Set up monthly rent invoicing",
+      href: `/billing-readiness?${billingParams.toString()}`,
+    },
+    {
+      label: "Email the tenant",
+      href: `/comms?${commsParams.toString()}`,
+    },
+  ];
+}
+
+function buildCreated(
+  applied: Record<string, unknown>,
+  entityId: string,
+): CreatedRow[] {
   const rows: CreatedRow[] = [];
   const propertyId = text(applied.property_id);
+  const propertyLink = propertyHref(entityId, propertyId);
   if (text(applied.property_name) || propertyId) {
     rows.push({
       label: `Property — ${text(applied.property_name) ?? "created"}`,
-      href: "/properties",
+      href: propertyLink,
     });
   }
   const leaseCount = num(applied.created_lease_count);
   if (leaseCount) {
-    rows.push({ label: `${leaseCount} lease`, href: "/properties" });
+    rows.push({ label: `${leaseCount} lease`, href: propertyLink });
   }
   const tenantName = text(applied.tenant_name);
-  if (tenantName || text(applied.tenant_id)) {
+  const tenantId = text(applied.tenant_id);
+  if (tenantName || tenantId) {
     rows.push({
       label: `Tenant — ${tenantName ?? "created"}`,
-      href: "/tenants",
+      href: tenantHref(tenantId),
     });
   }
   const obligationCount =
@@ -1008,7 +1062,7 @@ export function IntakeConversationPanel({
               Done — created in Leasium and linked together
             </h3>
             <ul className="space-y-2">
-              {buildCreated(applied).map((row, i) => (
+              {buildCreated(applied, entityId).map((row, i) => (
                 <li key={i} className="flex items-center justify-between gap-3 text-sm">
                   <span className="text-foreground">{row.label}</span>
                   {row.href ? (
@@ -1032,11 +1086,7 @@ export function IntakeConversationPanel({
               Suggested next steps
             </h3>
             <ul className="space-y-2">
-              {[
-                { label: "Sync tenant to Xero", href: "/finance" },
-                { label: "Set up monthly rent invoicing", href: "/finance" },
-                { label: "Email the tenant", href: "/tenants" },
-              ].map((step) => (
+              {nextStepRows(applied, entityId).map((step) => (
                 <li
                   key={step.label}
                   className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm"

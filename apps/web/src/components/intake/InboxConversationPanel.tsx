@@ -93,6 +93,13 @@ function GuardrailNote({ children }: { children: ReactNode }) {
 const GUARDRAIL =
   "This creates a local draft only — I won't send an email or SMS reply, or post to Xero, unless you ask.";
 
+function promotedHref(promoted: InboxPromoteRecord) {
+  if (promoted.target_kind === "tenant" && promoted.target_id) {
+    return `/tenants/${encodeURIComponent(promoted.target_id)}`;
+  }
+  return promoted.target_href;
+}
+
 // ---------------------------------------------------------------------------
 // Classification → display + plan helpers.
 // ---------------------------------------------------------------------------
@@ -431,7 +438,7 @@ export function InboxConversationPanel({
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-foreground">{promoted.target_label}</span>
               <Link
-                href={promoted.target_href}
+                href={promotedHref(promoted)}
                 className="text-xs font-medium text-primary hover:underline"
               >
                 View →

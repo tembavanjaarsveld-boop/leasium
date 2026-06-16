@@ -1,6 +1,50 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-15
+Last updated: 2026-06-16
+
+## Codex continuation - 2026-06-16 (Leasium AI remaining polish A-D)
+
+Scope completed: finished the autonomous A-D polish from the conversation-first
+brief. Slice E remains decision-gated because it changes the global assistant
+model and needs Temba's direction on where the persistent page-aware thread
+should live.
+
+What changed:
+- Created-record result rows in the intake conversation now deep-link to the
+  exact property workspace and tenant record instead of generic list pages.
+- Suggested next steps now route to gated review destinations: Xero settings,
+  billing readiness, and tenant-scoped Comms review. These links do not fire
+  Xero, SendGrid, Twilio, payment, or reconciliation calls.
+- `/intake` Home now matches the approved Figma Home frames with a centered
+  composer, right-rail AI review queue, compact two-row mobile queue, and the
+  review-first guardrail above the mobile nav.
+- The mobile issue pill is positioned clear of the fixed bottom navigation.
+
+Verification evidence:
+- RED smoke first failed on the old generic `/properties` created-record link,
+  then passed after exact property/tenant links were added.
+- RED smoke first failed on the old `/finance` next-step links, then passed
+  after routing to Settings, Billing Readiness, and Comms review.
+- RED Home smoke first failed because `leasium-ai-home` was absent, then passed
+  after implementing the approved layout.
+- `NODE_ENV=development npm --prefix apps/web run test:smoke --
+  intake-conversation.spec.ts` passed 3/3.
+- `PORT=3010 NODE_ENV=development npm --prefix apps/web run test:smoke --
+  app-flows.spec.ts --grep "smart intake quick-add links|smart intake review
+  filter|smart intake opens as one Leasium AI workspace|mobile Leasium AI
+  landing keeps"` passed 4/4.
+- `PORT=3015 NODE_ENV=development npm --prefix apps/web run test:smoke --
+  app-flows.spec.ts --grep "smart intake opens as one Leasium AI
+  workspace|mobile Leasium AI landing keeps"` passed 2/2 after the mobile issue
+  pill offset.
+- Existing Work mobile toast coverage passed:
+  `NODE_ENV=development npm --prefix apps/web run test:smoke --
+  operations-ux.spec.ts --grep "maintenance inline undo toast controls stay
+  touch-safe on mobile"`.
+
+Guardrails held: this slice changes navigation, presentation, and local review
+handoffs only. It does not apply Smart Intake, sync Xero/Basiq, send email/SMS,
+move money, reconcile payments, or mutate provider state.
 
 ## Codex continuation - 2026-06-15 (Leasium AI true chat-window correction)
 
