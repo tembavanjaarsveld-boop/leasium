@@ -228,11 +228,13 @@ def _clear_orphaned_unit_leases(
         )
     ).all()
     now = utcnow()
+    cleared = False
     for lease in leases:
         tenant = session.get(Tenant, lease.tenant_id)
         if tenant is not None and tenant.deleted_at is None:
             continue
         lease.deleted_at = now
+        cleared = True
         audit_log(
             session,
             actor=user.actor,
@@ -246,6 +248,10 @@ def _clear_orphaned_unit_leases(
                 "Orphaned lease (tenant removed) cleared before re-creating the lease."
             ),
         )
+    if cleared:
+        # Make the soft-delete visible to the overlap check that follows,
+        # regardless of the session's autoflush setting.
+        session.flush()
 
 
 def _get_intake(

@@ -25,6 +25,7 @@ from stewart.core.models import (
     TenancyUnit,
     Tenant,
 )
+from stewart.core.db import utcnow
 from stewart.core.settings import Settings
 from stewart.integrations.communications import DeliveryResult
 
@@ -796,6 +797,80 @@ def test_document_intake_can_be_cleared(
     assert document is not None
     assert intake.deleted_at is not None
     assert document.deleted_at is not None
+
+
+def test_apply_clears_orphaned_lease_so_lease_can_be_reimported(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    extraction = {
+        **_fake_extraction(),
+        "key_dates": [
+            {"label": "Lease start", "date": "2026-01-01", "confidence": 0.9},
+            {"label": "Lease expiry", "date": "2028-12-31", "confidence": 0.9},
+        ],
+    }
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_orphan_reimport"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    def import_lease() -> int:
+        created = client.post(
+            "/api/v1/document-intakes",
+            data={"entity_id": entity_id},
+            files={"file": ("lease.txt", b"lease", "text/plain")},
+        )
+        assert created.status_code == 201
+        applied = client.post(
+            f"/api/v1/document-intakes/{created.json()['id']}/apply",
+            json={"review_data": extraction},
+        )
+        return applied.status_code
+
+    assert import_lease() == 200
+
+    tenant = session.scalar(
+        select(Tenant).where(
+            Tenant.legal_name == "Northlakes Allied Health Pty Ltd",
+            Tenant.deleted_at.is_(None),
+        )
+    )
+    assert tenant is not None
+    orphan_lease = session.scalar(
+        select(Lease).where(Lease.tenant_id == tenant.id, Lease.deleted_at.is_(None))
+    )
+    assert orphan_lease is not None
+
+    # Simulate a tenant deleted before the cascade fix: the lease stays active
+    # and orphaned.
+    tenant.deleted_at = utcnow()
+    session.commit()
+
+    # Re-importing the lease must not be blocked by the orphaned lease.
+    assert import_lease() == 200
+
+    session.refresh(orphan_lease)
+    assert orphan_lease.deleted_at is not None
+
+    active_leases = session.scalars(
+        select(Lease).where(Lease.deleted_at.is_(None))
+    ).all()
+    assert len(active_leases) == 1
+    new_tenant = session.get(Tenant, active_leases[0].tenant_id)
+    assert new_tenant is not None and new_tenant.deleted_at is None
 
 
 def test_document_intake_review_and_apply_insurance_obligation(
