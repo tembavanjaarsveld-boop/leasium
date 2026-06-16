@@ -3310,8 +3310,32 @@ export function Dashboard({
                   </div>
                 ) : null}
                 {documentIntakeMutation.isPending ? (
-                  <div className="rounded-md bg-primary/5 px-3 py-2 text-sm text-primary">
-                    Reading document and preparing review.
+                  <div className="flex flex-col gap-3 border-t border-border pt-4">
+                    {documentIntakeMutation.variables ? (
+                      <div className="flex justify-end">
+                        <div className="inline-flex max-w-[85%] items-center gap-2 rounded-2xl rounded-tr-md bg-info-soft px-3 py-2 text-sm text-foreground">
+                          <FileText size={14} className="shrink-0" />
+                          <span className="truncate">
+                            {documentIntakeMutation.variables.name}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="flex gap-2">
+                      <span
+                        aria-hidden
+                        className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-leasium-teal-strong"
+                      >
+                        ✦
+                      </span>
+                      <p
+                        aria-live="polite"
+                        className="inline-flex items-center gap-2 pt-1 text-sm text-muted-foreground"
+                      >
+                        <Loader2 size={14} className="animate-spin" />
+                        Reading your document…
+                      </p>
+                    </div>
                   </div>
                 ) : null}
                 {intakeError ? (

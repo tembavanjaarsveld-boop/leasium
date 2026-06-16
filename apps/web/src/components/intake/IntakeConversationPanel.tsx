@@ -3,6 +3,7 @@
 import {
   Building2,
   CalendarClock,
+  ChevronDown,
   DoorOpen,
   FileText,
   Loader2,
@@ -200,6 +201,11 @@ type UnderstandingRow = {
   value: string;
   level: ConfidenceLevel;
 };
+
+// The facts that map straight to what gets created. Everything else is
+// secondary and stays tucked behind "more details" so the card leads with
+// what the operator actually needs.
+const PRIMARY_UNDERSTANDING = new Set(["Tenant", "Property", "Unit", "Term", "Rent"]);
 
 function moneyLabel(item: Record<string, unknown>): string {
   const amount = num(item.amount);
@@ -663,6 +669,11 @@ export function IntakeConversationPanel({
     intake.status === "applied" ? intake : null,
   );
 
+  // Progressive disclosure: lead with the key facts and keep the "we didn't
+  // find X" notes collapsed so they don't fill the screen.
+  const [showDetails, setShowDetails] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [asks, setAsks] = useState<AskTurn[]>([]);
@@ -827,6 +838,22 @@ export function IntakeConversationPanel({
         : {})
     : null;
 
+  const primaryUnderstanding = understanding.filter((row) =>
+    PRIMARY_UNDERSTANDING.has(row.label),
+  );
+  const secondaryUnderstanding = understanding.filter(
+    (row) => !PRIMARY_UNDERSTANDING.has(row.label),
+  );
+  // If nothing maps to a primary field, just show everything rather than an
+  // empty-looking card.
+  const leadUnderstanding =
+    primaryUnderstanding.length > 0 ? primaryUnderstanding : understanding;
+  const extraUnderstanding =
+    primaryUnderstanding.length > 0 ? secondaryUnderstanding : [];
+  const shownUnderstanding = showDetails
+    ? [...leadUnderstanding, ...extraUnderstanding]
+    : leadUnderstanding;
+
   return (
     <div
       data-testid="intake-conversation"
@@ -849,42 +876,78 @@ export function IntakeConversationPanel({
             data-testid="intake-understanding"
             className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs"
           >
-            <div className="mb-3 flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-foreground">
-                What I understood
-              </h3>
-              <span className="inline-flex items-center rounded-full bg-accent-soft px-2 py-0.5 text-leasium-micro font-semibold text-leasium-teal-strong">
-                SOURCE-BACKED
-              </span>
-            </div>
-            <dl className="space-y-2">
-              {understanding.map((row, i) => (
+            <h3 className="mb-3 text-sm font-semibold text-foreground">
+              Here&apos;s what I can use from this document
+            </h3>
+            <dl className="space-y-2.5">
+              {shownUnderstanding.map((row, i) => (
                 <div key={`${row.label}-${i}`} className="flex items-start gap-3 text-sm">
-                  <dt className="w-[120px] shrink-0 text-muted-foreground">
+                  <dt className="w-[110px] shrink-0 text-muted-foreground">
                     {row.label}
                   </dt>
                   <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="font-semibold text-foreground">{row.value}</span>
-                    <ConfidenceBadge level={row.level} />
-                    <button
-                      type="button"
-                      className="text-leasium-micro font-medium text-primary hover:underline"
-                    >
-                      source
-                    </button>
+                    <span className="font-medium text-foreground">{row.value}</span>
+                    {row.level !== "high" ? (
+                      <ConfidenceBadge level={row.level} />
+                    ) : null}
                   </dd>
                 </div>
               ))}
             </dl>
-            {warnings.map((warning, i) => (
-              <div
-                key={`warning-${i}`}
-                className="mt-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-xs leading-5 text-warning-strong"
+            {extraUnderstanding.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowDetails((value) => !value)}
+                className="mt-3 text-xs font-medium text-primary hover:underline"
               >
-                <span aria-hidden>⚑</span>
-                <span>{warning}</span>
+                {showDetails
+                  ? "Hide extra details"
+                  : `Show ${extraUnderstanding.length} more detail${
+                      extraUnderstanding.length === 1 ? "" : "s"
+                    }`}
+              </button>
+            ) : null}
+            {warnings.length > 0 ? (
+              <div className="mt-3 border-t border-border pt-3">
+                <button
+                  type="button"
+                  data-testid="intake-notes-toggle"
+                  onClick={() => setShowNotes((value) => !value)}
+                  aria-expanded={showNotes}
+                  className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden className="text-warning-strong">
+                      ⚑
+                    </span>
+                    {warnings.length} thing{warnings.length === 1 ? "" : "s"} to
+                    check before applying
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={cn(
+                      "shrink-0 transition-transform",
+                      showNotes && "rotate-180",
+                    )}
+                  />
+                </button>
+                {showNotes ? (
+                  <ul className="mt-2 space-y-1.5">
+                    {warnings.map((warning, i) => (
+                      <li
+                        key={`warning-${i}`}
+                        className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"
+                      >
+                        <span aria-hidden className="mt-0.5 text-warning-strong">
+                          •
+                        </span>
+                        <span>{warning}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
-            ))}
+            ) : null}
           </div>
         ) : null}
       </AiTurn>
