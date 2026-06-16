@@ -626,13 +626,32 @@ export function IntakeConversationPanel({
     () => matchTenant(data, tenantsQuery.data ?? []),
     [data, tenantsQuery.data],
   );
+  // Whether to link the matched property/tenant or create a new one. Defaults
+  // to linking when a match was found, but the operator can override either way
+  // — so a new building that happens to share a street isn't forced onto an
+  // existing property, and a genuine re-import can still link.
+  const [linkProperty, setLinkProperty] = useState(false);
+  const [linkTenant, setLinkTenant] = useState(false);
+  const propertyMatchId = propertyMatch?.id ?? null;
+  const tenantMatchId = tenantMatch?.id ?? null;
+  useEffect(() => {
+    setLinkProperty(propertyMatchId !== null);
+  }, [propertyMatchId]);
+  useEffect(() => {
+    setLinkTenant(tenantMatchId !== null);
+  }, [tenantMatchId]);
   const understanding = useMemo(
     () => buildUnderstanding(data, intake.confidence),
     [data, intake.confidence],
   );
   const plan = useMemo(
-    () => buildPlan(data, propertyMatch, tenantMatch),
-    [data, propertyMatch, tenantMatch],
+    () =>
+      buildPlan(
+        data,
+        linkProperty ? propertyMatch : null,
+        linkTenant ? tenantMatch : null,
+      ),
+    [data, propertyMatch, tenantMatch, linkProperty, linkTenant],
   );
   const summary =
     text(intake.summary) ?? text(data.summary) ?? "I read this document.";
@@ -717,6 +736,13 @@ export function IntakeConversationPanel({
   }, [defaultEdits]);
   const setEdit = (key: keyof EditState, value: string) =>
     setEdits((current) => ({ ...current, [key]: value }));
+  const segBtn = (active: boolean) =>
+    cn(
+      "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+      active
+        ? "bg-primary text-primary-foreground"
+        : "text-muted-foreground hover:text-foreground",
+    );
 
   async function handleCreateAll() {
     if (applying) return;
@@ -727,12 +753,7 @@ export function IntakeConversationPanel({
     // this is equivalent to the raw extraction when nothing was changed, but it
     // means corrections persist whether or not the edit form is open — closing
     // it with "Done" no longer silently discards them.
-    const reviewData = buildEditedReviewData(
-      data,
-      edits,
-      Boolean(propertyMatch),
-      Boolean(tenantMatch),
-    );
+    const reviewData = buildEditedReviewData(data, edits, linkProperty, linkTenant);
     try {
       const currentThread = await ensureThread();
       if (!currentThread) {
@@ -743,10 +764,13 @@ export function IntakeConversationPanel({
       // property/tenant already exists.
       const result = await applyDocumentIntake(intake.id, {
         reviewData,
-        propertyId: propertyMatch?.id ?? text(links.property_id),
-        tenancyUnitId: text(links.tenancy_unit_id),
-        tenantId: tenantMatch?.id ?? text(links.tenant_id),
-        leaseId: text(links.lease_id),
+        // Only pass link ids when the operator chose to link. When creating new,
+        // also drop the suggested unit/lease links (they belong to the existing
+        // property) so the apply builds a fresh property/unit/lease.
+        propertyId: linkProperty ? (propertyMatch?.id ?? text(links.property_id)) : undefined,
+        tenancyUnitId: linkProperty ? text(links.tenancy_unit_id) : undefined,
+        tenantId: linkTenant ? (tenantMatch?.id ?? text(links.tenant_id)) : undefined,
+        leaseId: linkProperty ? text(links.lease_id) : undefined,
         threadId: currentThread.id,
       });
       setAppliedRecord(result);
@@ -894,20 +918,54 @@ export function IntakeConversationPanel({
                     <span className="text-sm font-semibold text-foreground">
                       Property &amp; units
                     </span>
-                    {propertyMatch ? (
-                      <StatusBadge tone="neutral" className="text-leasium-micro">
-                        LINK EXISTING
-                      </StatusBadge>
-                    ) : null}
                   </div>
                   {propertyMatch ? (
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      Linking to your existing property{" "}
-                      <span className="font-medium text-foreground">
-                        {propertyMatch.label}
-                      </span>
-                      .
-                    </p>
+                    <div className="mb-3">
+                      <div className="mb-2 inline-flex rounded-lg border border-border bg-muted p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setLinkProperty(true)}
+                          className={segBtn(linkProperty)}
+                        >
+                          Link existing
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLinkProperty(false)}
+                          className={segBtn(!linkProperty)}
+                        >
+                          Create new
+                        </button>
+                      </div>
+                      {linkProperty ? (
+                        <p className="text-xs text-muted-foreground">
+                          Linking to your existing property{" "}
+                          <span className="font-medium text-foreground">
+                            {propertyMatch.label}
+                          </span>
+                          .
+                        </p>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="Property name">
+                            <Input
+                              value={edits.propertyName}
+                              onChange={(e) =>
+                                setEdit("propertyName", e.target.value)
+                              }
+                            />
+                          </Field>
+                          <Field label="Address">
+                            <Input
+                              value={edits.propertyAddress}
+                              onChange={(e) =>
+                                setEdit("propertyAddress", e.target.value)
+                              }
+                            />
+                          </Field>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="mb-3 grid gap-3 sm:grid-cols-2">
                       <Field label="Property name">
@@ -943,20 +1001,42 @@ export function IntakeConversationPanel({
                     <span className="text-sm font-semibold text-foreground">
                       Tenant
                     </span>
-                    {tenantMatch ? (
-                      <StatusBadge tone="neutral" className="text-leasium-micro">
-                        LINK EXISTING
-                      </StatusBadge>
-                    ) : null}
                   </div>
                   {tenantMatch ? (
-                    <p className="text-xs text-muted-foreground">
-                      Linking to your existing tenant{" "}
-                      <span className="font-medium text-foreground">
-                        {tenantMatch.label}
-                      </span>
-                      .
-                    </p>
+                    <div>
+                      <div className="mb-2 inline-flex rounded-lg border border-border bg-muted p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setLinkTenant(true)}
+                          className={segBtn(linkTenant)}
+                        >
+                          Link existing
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLinkTenant(false)}
+                          className={segBtn(!linkTenant)}
+                        >
+                          Create new
+                        </button>
+                      </div>
+                      {linkTenant ? (
+                        <p className="text-xs text-muted-foreground">
+                          Linking to your existing tenant{" "}
+                          <span className="font-medium text-foreground">
+                            {tenantMatch.label}
+                          </span>
+                          .
+                        </p>
+                      ) : (
+                        <Field label="Legal name">
+                          <Input
+                            value={edits.tenantName}
+                            onChange={(e) => setEdit("tenantName", e.target.value)}
+                          />
+                        </Field>
+                      )}
+                    </div>
                   ) : (
                     <Field label="Legal name">
                       <Input
