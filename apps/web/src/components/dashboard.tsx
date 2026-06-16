@@ -69,13 +69,16 @@ import {
 import {
   askLeasium,
   type AskCitationRecord,
+  createConversationThread,
   createDocumentIntake,
   deleteDocumentIntake,
+  getConversationThread,
   getDashboardOverview,
   DocumentIntakeExtraction,
   DocumentIntakeRecord,
   listEntities,
   listDocumentIntakes,
+  listConversationThreads,
   listObligations,
   listProperties,
   getInsightsOverview,
@@ -97,6 +100,20 @@ type ReviewApplyTarget = {
   tenantId: string;
   leaseId: string;
 };
+
+function queryRecordRefs(search: URLSearchParams): Record<string, unknown> {
+  const raw = search.get("context_record_refs");
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 type ReviewQueueFilter =
   | "all"
   | "tenant_portal"
@@ -1580,9 +1597,23 @@ export function Dashboard({
       { question: trimmed, answer: null, citations: [], error: null },
     ]);
     try {
+      const params = new URLSearchParams(window.location.search);
+      const contextRoute = params.get("context_route") || "/intake";
+      const contextRefs = queryRecordRefs(params);
+      const thread = await createConversationThread({
+        entity_id: selectedEntityId,
+        source: params.get("context_route") ? "cmdk" : "intake",
+        context_route: contextRoute,
+        context_record_refs: contextRefs,
+        title: trimmed.slice(0, 120),
+      });
       const result = await askLeasium({
         entity_id: selectedEntityId,
         question: trimmed,
+        thread_id: thread.id,
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["conversation-threads", selectedEntityId],
       });
       setLandingAsks((current) =>
         current.map((turn, i) =>
@@ -1783,6 +1814,54 @@ export function Dashboard({
     refetchInterval: (query) =>
       query.state.data?.some(intakeIsActive) ? 2500 : false,
   });
+  const conversationThreadsQuery = useQuery({
+    queryKey: ["conversation-threads", scopedEntityId],
+    queryFn: () => listConversationThreads({ entity_id: scopedEntityId, limit: 5 }),
+    enabled: isIntakeWorkspace && Boolean(scopedEntityId),
+    staleTime: 30_000,
+  });
+  const requestedThreadId =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("thread_id");
+  const selectedThreadQuery = useQuery({
+    queryKey: ["conversation-thread", requestedThreadId],
+    queryFn: () => getConversationThread(requestedThreadId ?? ""),
+    enabled: isIntakeWorkspace && Boolean(requestedThreadId),
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    const thread = selectedThreadQuery.data;
+    if (!isIntakeWorkspace || !thread) return;
+    const restored: typeof landingAsks = [];
+    for (const turn of thread.turns) {
+      const textValue = turn.payload.text;
+      if (turn.role === "user" && typeof textValue === "string") {
+        restored.push({
+          question: textValue,
+          answer: null,
+          citations: [],
+          error: null,
+        });
+        continue;
+      }
+      if (
+        turn.role === "ai" &&
+        turn.kind === "text" &&
+        typeof textValue === "string" &&
+        restored.length > 0
+      ) {
+        const last = restored[restored.length - 1];
+        if (last.answer === null) {
+          last.answer = textValue;
+        }
+      }
+    }
+    if (restored.length > 0) {
+      setLandingAsks(restored);
+    }
+  }, [isIntakeWorkspace, selectedThreadQuery.data]);
 
   // All-entities command center reads. Each uses one org-wide request (the
   // API scopes a missing entity_id to every readable entity) instead of a
@@ -2005,6 +2084,7 @@ export function Dashboard({
   const documentIntakes = demoMode
     ? [demoDocumentIntake, ...liveDocumentIntakes]
     : liveDocumentIntakes;
+  const recentConversationThreads = conversationThreadsQuery.data ?? [];
 
   const openObligations = useMemo(
     () =>
@@ -3203,6 +3283,32 @@ export function Dashboard({
                     or email to intake@leasium.ai
                   </span>
                 </div>
+                {recentConversationThreads.length > 0 ? (
+                  <div
+                    data-testid="leasium-ai-home-recent"
+                    className="grid gap-2 rounded-xl border border-border bg-leasium-slate-50 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        Recent
+                      </p>
+                      <span className="text-[11px] text-muted-foreground">
+                        {recentConversationThreads.length}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {recentConversationThreads.slice(0, 3).map((thread) => (
+                        <Link
+                          key={thread.id}
+                          href={`/intake?thread_id=${encodeURIComponent(thread.id)}`}
+                          className="inline-flex min-h-9 max-w-full items-center rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-leasiumXs transition hover:bg-muted"
+                        >
+                          <span className="truncate">{thread.title}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {documentIntakeMutation.isPending ? (
                   <div className="rounded-md bg-primary/5 px-3 py-2 text-sm text-primary">
                     Reading document and preparing review.

@@ -1,7 +1,8 @@
 # Leasium AI — Conversation-first redesign (concept v3)
 
-Status: **Figma concept + clickable prototype done; pending Temba sign-off
-before implementation.** 2026-06-15.
+Status: **Concept approved and implemented through Slice E.** 2026-06-16.
+The remaining follow-up is richer full cross-page history surfacing; v1 carries
+page context into `/intake` and persists the resulting thread.
 Figma: file `PO2jOANgmqgZHfqWZXOZGU`, frames on page `01 Foundations`
 at x≈11200 (a fresh page would not persist through the remote MCP, so the
 concept set lives beside the existing token/AI-Mailbox art). Section title
@@ -84,19 +85,24 @@ on 2026-06-15 all re-skinned the costume.
   post/charge/email, and offers file/attach/ignore.
 - **Mobile (390)** — Home and the Understanding+plan hero, with bottom nav.
 
-## Open decisions for Temba (before build)
+## Build decisions
 
 1. Does "Create all records" need a confirm dialog, or is the proposal card
-   itself the confirmation? (Lean: card is the confirm; show an undo toast.)
+   itself the confirmation? Built v1 with the proposal card as the confirmation.
 2. How much does the global ⌘K agent carry across pages in v1 — full thread
-   history, or just a contextual launcher that opens the workspace?
+   history, or just a contextual launcher that opens the workspace? Built v1 as
+   a contextual launcher carrying route + record refs into `/intake`; full
+   cross-page history surfacing is a follow-up.
 3. Editing a proposed value inline vs opening the field editor — depth for v1.
+   Built v1 with inline editing for the core intake plan fields.
 4. Where does the thread/transcript persist (review_data vs a first-class
-   conversation record)? Affects "Recent" and cross-device history.
+   conversation record)? **Decided by Temba 2026-06-16:** persist threads as
+   first-class conversation records. `review_data` stays the per-intake apply
+   payload only.
 
 ## Build note
 
-This is a UX/IA concept, not code. Implementation should reuse the existing
-review-first apply path (it already creates property/unit/tenant/lease with
-provenance) behind the new conversational surface, and must keep every
-provider mutation review-first per §2.1.
+Implementation reuses the existing review-first apply path behind the
+conversational surface and keeps every provider mutation review-first per §2.1.
+Slice E adds first-class thread persistence; provider next steps remain links
+into gated flows, not provider writes.

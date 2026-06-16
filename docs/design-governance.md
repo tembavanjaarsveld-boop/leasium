@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-15
+Last updated: 2026-06-16
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -379,9 +379,23 @@ fixes · deferrals.
   queue, two-row mobile queue, and compact guardrail; and the mobile issue pill
   is positioned clear of the fixed bottom navigation · provider guardrails
   remain intact: Xero, email/SMS, payment, reconciliation, and Smart Intake
-  apply still require explicit approval or stay mocked in tests · deferred:
-  persistent page-aware Leasium AI thread / richer global launcher is
-  decision-gated.
+  apply still require explicit approval or stay mocked in tests · deferred at
+  that point: persistent page-aware Leasium AI thread, shipped separately in
+  Slice E below.
+- 2026-06-16 · Leasium AI persistent threads + page-context ⌘K · built from
+  the approved Slice E design note
+  `docs/superpowers/plans/2026-06-16-leasium-ai-conversation-thread.md`;
+  reuses the approved conversation-first Home / command palette patterns
+  rather than adding a new surface · screens checked at 1440/390
+  (`output/ux/leasium-ai-conversation-thread/2026-06-16-desktop-1440.png`,
+  `output/ux/leasium-ai-conversation-thread/2026-06-16-mobile-390.png`) ·
+  fixes: Home "Recent" now reads first-class conversation threads, ⌘K ask
+  links carry page route + record refs into `/intake`, and intake/inbox panels
+  persist their thread context while preserving the existing layout density ·
+  visual smoke `conversation-thread-visual.spec.ts` passed desktop/mobile
+  no-overflow and clipped-action checks · deferred: full cross-page history
+  surfacing/global drawer remains follow-up; v1 cut line is contextual launch
+  + persisted thread.
 
 ## UX Debt Register
 
@@ -389,15 +403,15 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **Leasium AI conversation-first — remaining polish** (2026-06-15, updated) —
+- **Leasium AI cross-page history surfacing** (2026-06-16) —
   shipped since the first slice: conversational review for both intake and the
   AI Inbox, the composer landing, page consolidation, link-existing matching,
   inline "Edit before creating", a ⌘K "Ask Leasium AI" launcher, exact
   created-record / next-step links, and the approved Home layout with the
-  centered composer plus right-rail queue. Still pending from the concept:
-  a ⌘K agent that carries full page context as a persistent thread. Decision
-  gate: confirm whether this should live in the existing command palette,
-  `/intake`, or a global assistant drawer.
+  centered composer plus right-rail queue. Slice E also shipped first-class
+  persisted threads and page-context ⌘K launch. Still pending from the concept:
+  surfacing full cross-page history beyond recent-thread links, likely as a
+  richer global assistant/history drawer after the internal v1 proves useful.
 - **Portfolio QA IA** — page structure and command-search placement were
   never re-designed in the Horizon set; oldest standing flag
   (2026-05-20 platform scan).

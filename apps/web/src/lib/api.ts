@@ -3649,11 +3649,106 @@ export type AskRecord = {
   response_id: string | null;
 };
 
-export function askLeasium(payload: { entity_id: string; question: string }) {
+export type ConversationTurnRole = "user" | "ai";
+export type ConversationTurnKind =
+  | "text"
+  | "understanding"
+  | "plan"
+  | "created"
+  | "question";
+
+export type ConversationTurnRecord = {
+  id: string;
+  thread_id: string;
+  role: ConversationTurnRole;
+  kind: ConversationTurnKind;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ConversationThreadSummaryRecord = {
+  id: string;
+  organisation_id: string;
+  entity_id: string | null;
+  created_by_user_id: string | null;
+  source: string;
+  context_route: string | null;
+  context_record_refs: Record<string, unknown>;
+  title: string;
+  turn_count: number;
+  last_turn_at: string | null;
+  last_turn_preview: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConversationThreadRecord = Omit<
+  ConversationThreadSummaryRecord,
+  "turn_count" | "last_turn_at" | "last_turn_preview"
+> & {
+  metadata: Record<string, unknown>;
+  turns: ConversationTurnRecord[];
+};
+
+export type ConversationTurnPayload = {
+  role: ConversationTurnRole;
+  kind: ConversationTurnKind;
+  payload: Record<string, unknown>;
+};
+
+export function askLeasium(payload: {
+  entity_id: string;
+  question: string;
+  thread_id?: string | null;
+}) {
   return request<AskRecord>("/ai/ask", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function createConversationThread(payload: {
+  entity_id?: string | null;
+  source?: string;
+  context_route?: string | null;
+  context_record_refs?: Record<string, unknown>;
+  title?: string | null;
+  initial_turn?: ConversationTurnPayload | null;
+}) {
+  return request<ConversationThreadRecord>("/conversation-threads", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function appendConversationTurn(
+  threadId: string,
+  payload: ConversationTurnPayload,
+) {
+  return request<ConversationThreadRecord>(
+    `/conversation-threads/${threadId}/turns`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function listConversationThreads(params?: {
+  entity_id?: string | null;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.entity_id) search.set("entity_id", params.entity_id);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const suffix = search.toString();
+  return request<ConversationThreadSummaryRecord[]>(
+    `/conversation-threads${suffix ? `?${suffix}` : ""}`,
+  );
+}
+
+export function getConversationThread(threadId: string) {
+  return request<ConversationThreadRecord>(`/conversation-threads/${threadId}`);
 }
 
 export type InboxTriageKind =
@@ -5779,6 +5874,7 @@ export function applyDocumentIntake(
     tenancyUnitId?: string | null;
     tenantId?: string | null;
     leaseId?: string | null;
+    threadId?: string | null;
   },
 ) {
   return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/apply`, {
@@ -5789,6 +5885,7 @@ export function applyDocumentIntake(
       tenancy_unit_id: payload.tenancyUnitId || undefined,
       tenant_id: payload.tenantId || undefined,
       lease_id: payload.leaseId || undefined,
+      thread_id: payload.threadId || undefined,
     }),
   });
 }

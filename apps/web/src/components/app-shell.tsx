@@ -313,6 +313,43 @@ type ShortcutNav = {
   label: string;
 };
 
+function commandContextRefs(
+  pathname: string,
+  searchParams: URLSearchParams,
+): Record<string, string> {
+  const refs: Record<string, string> = {};
+  const propertyId = searchParams.get("property_id");
+  const reviewId = searchParams.get("review");
+  if (pathname === "/properties" && propertyId) {
+    refs.property_id = propertyId;
+  }
+  const tenantMatch = pathname.match(/^\/tenants\/([^/]+)$/);
+  if (tenantMatch) {
+    refs.tenant_id = decodeURIComponent(tenantMatch[1]);
+  }
+  const workOrderMatch = pathname.match(/^\/operations\/maintenance\/([^/]+)$/);
+  if (workOrderMatch) {
+    refs.maintenance_work_order_id = decodeURIComponent(workOrderMatch[1]);
+  }
+  if (pathname === "/intake" && reviewId) {
+    refs.document_intake_id = reviewId;
+  }
+  return refs;
+}
+
+function commandAskHref(
+  question: string,
+  pathname: string,
+  searchParams: URLSearchParams,
+) {
+  const params = new URLSearchParams({ ask: question, context_route: pathname });
+  const refs = commandContextRefs(pathname, searchParams);
+  if (Object.keys(refs).length > 0) {
+    params.set("context_record_refs", JSON.stringify(refs));
+  }
+  return `/intake?${params.toString()}`;
+}
+
 // Linear-style "Go to" navigation. Press G, then the key, to jump.
 // Kept intentionally small — these are the routes operators visit
 // most often during a typical session.
@@ -526,6 +563,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const [shortcutPending, setShortcutPending] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [locationSearch, setLocationSearch] = useState("");
   // Delayed-unmount controls so each modal/drawer plays its exit
   // animation before unmounting. Durations match the enter side: modals
   // use Base=200ms (matches modal-fade-scale), the mobile drawer uses
@@ -619,6 +657,17 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         }`
       : "Workspace switcher";
 
+  useEffect(() => {
+    function syncLocationSearch() {
+      setLocationSearch(window.location.search);
+    }
+    syncLocationSearch();
+    window.addEventListener("popstate", syncLocationSearch);
+    return () => {
+      window.removeEventListener("popstate", syncLocationSearch);
+    };
+  }, [pathname]);
+
   const filteredActions = useMemo(() => {
     const trimmed = query.trim();
     const needle = trimmed.toLowerCase();
@@ -637,7 +686,11 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     if (trimmed) {
       return [
         {
-          href: `/intake?ask=${encodeURIComponent(trimmed)}`,
+          href: commandAskHref(
+            trimmed,
+            pathname,
+            new URLSearchParams(locationSearch),
+          ),
           label: `Ask Leasium AI: “${trimmed}”`,
           meta: "Leasium AI",
         },
@@ -645,7 +698,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ];
     }
     return base;
-  }, [query, gatedCommandActions]);
+  }, [query, gatedCommandActions, locationSearch, pathname]);
 
   // Toggle a body class so globals.css can apply the sidebar gutter
   // only when AppHeader is on the page (auth/setup pages skip it).

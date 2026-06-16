@@ -40,6 +40,30 @@ type XeroContactMapping = {
   xero_email: string | null;
 };
 
+type MockConversationTurn = {
+  id: string;
+  thread_id: string;
+  role: "user" | "ai";
+  kind: "text" | "understanding" | "plan" | "created" | "question";
+  payload: { [key: string]: JsonBody };
+  created_at: string;
+};
+
+type MockConversationThread = {
+  id: string;
+  organisation_id: string;
+  entity_id: string | null;
+  created_by_user_id: string | null;
+  source: string;
+  context_route: string | null;
+  context_record_refs: { [key: string]: JsonBody };
+  title: string;
+  metadata: { [key: string]: JsonBody };
+  created_at: string;
+  updated_at: string;
+  turns: MockConversationTurn[];
+};
+
 const entityId = "entity-1";
 const propertyId = "property-1";
 const siblingPropertyId = "property-2";
@@ -59,6 +83,40 @@ const migrationTemplateXlsx = Buffer.from(
   "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",
   "base64",
 );
+
+const initialConversationThreads: MockConversationThread[] = [
+  {
+    id: "thread-recent-1",
+    organisation_id: "org-1",
+    entity_id: entityId,
+    created_by_user_id: operatorId,
+    source: "cmdk",
+    context_route: "/properties",
+    context_record_refs: { property_id: propertyId },
+    title: "Add lease for Queen Street",
+    metadata: {},
+    created_at: "2026-06-16T00:00:00.000Z",
+    updated_at: "2026-06-16T00:05:00.000Z",
+    turns: [
+      {
+        id: "turn-recent-1",
+        thread_id: "thread-recent-1",
+        role: "user",
+        kind: "text",
+        payload: { text: "Add the lease for these tenants" },
+        created_at: "2026-06-16T00:00:00.000Z",
+      },
+      {
+        id: "turn-recent-2",
+        thread_id: "thread-recent-1",
+        role: "ai",
+        kind: "text",
+        payload: { text: "I can help with that from the property context." },
+        created_at: "2026-06-16T00:05:00.000Z",
+      },
+    ],
+  },
+];
 
 const entities = [
   {
@@ -3158,6 +3216,9 @@ export async function mockLeasiumApi(
   let insightSnapshots: JsonBody[] = [];
   let tenantPortalDocumentCount = initialTenantPortalDocuments.length;
   let documentIntakes = jsonClone(initialDocumentIntakes);
+  let conversationThreadSequence = 2;
+  let conversationTurnSequence = 3;
+  let conversationThreads = jsonClone(initialConversationThreads);
   if (options.includeUnmatchedNoticeIntake) {
     documentIntakes.unshift({
       id: "intake-unmatched-notice-1",
@@ -11161,6 +11222,137 @@ export async function mockLeasiumApi(
       record.disbursed_at = "2026-06-09T02:00:00.000Z";
       record.disbursed_note = payload.note ?? null;
       await fulfillJson(route, record);
+      return;
+    }
+
+    if (method === "GET" && path === "/conversation-threads") {
+      const requestedEntityId = url.searchParams.get("entity_id");
+      const scopedThreads = conversationThreads.filter(
+        (thread) =>
+          !requestedEntityId ||
+          thread.entity_id === requestedEntityId ||
+          thread.entity_id === null,
+      );
+      await fulfillJson(
+        route,
+        scopedThreads.map((thread) => {
+          const lastTurn = thread.turns[thread.turns.length - 1] ?? null;
+          return {
+            id: thread.id,
+            organisation_id: thread.organisation_id,
+            entity_id: thread.entity_id,
+            created_by_user_id: thread.created_by_user_id,
+            source: thread.source,
+            context_route: thread.context_route,
+            context_record_refs: thread.context_record_refs,
+            title: thread.title,
+            turn_count: thread.turns.length,
+            last_turn_at: lastTurn?.created_at ?? null,
+            last_turn_preview:
+              typeof lastTurn?.payload.text === "string"
+                ? lastTurn.payload.text
+                : null,
+            created_at: thread.created_at,
+            updated_at: thread.updated_at,
+          };
+        }),
+      );
+      return;
+    }
+
+    if (method === "POST" && path === "/conversation-threads") {
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const now = "2026-06-16T01:00:00.000Z";
+      const threadId = `thread-created-${conversationThreadSequence}`;
+      conversationThreadSequence += 1;
+      const initialTurn = jsonRecord(payload.initial_turn);
+      const initialPayload = jsonRecord(initialTurn.payload);
+      const turns: MockConversationTurn[] =
+        typeof initialTurn.role === "string" && typeof initialTurn.kind === "string"
+          ? [
+              {
+                id: `turn-created-${conversationTurnSequence}`,
+                thread_id: threadId,
+                role: initialTurn.role === "ai" ? "ai" : "user",
+                kind:
+                  initialTurn.kind === "understanding" ||
+                  initialTurn.kind === "plan" ||
+                  initialTurn.kind === "created" ||
+                  initialTurn.kind === "question"
+                    ? initialTurn.kind
+                    : "text",
+                payload: initialPayload,
+                created_at: now,
+              },
+            ]
+          : [];
+      conversationTurnSequence += turns.length;
+      const thread: MockConversationThread = {
+        id: threadId,
+        organisation_id: "org-1",
+        entity_id: jsonText(payload.entity_id),
+        created_by_user_id: operatorId,
+        source: jsonText(payload.source) ?? "cmdk",
+        context_route: jsonText(payload.context_route),
+        context_record_refs: jsonRecord(payload.context_record_refs),
+        title:
+          jsonText(payload.title) ??
+          jsonText(initialPayload.text)?.slice(0, 80) ??
+          "Leasium AI thread",
+        metadata: {},
+        created_at: now,
+        updated_at: now,
+        turns,
+      };
+      conversationThreads.unshift(thread);
+      await fulfillJson(route, thread, 201);
+      return;
+    }
+
+    const conversationThreadTurn = path.match(
+      /^\/conversation-threads\/([^/]+)\/turns$/,
+    );
+    if (method === "POST" && conversationThreadTurn) {
+      const thread = conversationThreads.find(
+        (item) => item.id === conversationThreadTurn[1],
+      );
+      if (!thread) {
+        await fulfillJson(route, { detail: "Conversation thread not found." }, 404);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const now = "2026-06-16T01:05:00.000Z";
+      const turn: MockConversationTurn = {
+        id: `turn-created-${conversationTurnSequence}`,
+        thread_id: thread.id,
+        role: jsonText(payload.role) === "ai" ? "ai" : "user",
+        kind:
+          jsonText(payload.kind) === "understanding" ||
+          jsonText(payload.kind) === "plan" ||
+          jsonText(payload.kind) === "created" ||
+          jsonText(payload.kind) === "question"
+            ? (jsonText(payload.kind) as MockConversationTurn["kind"])
+            : "text",
+        payload: jsonRecord(payload.payload),
+        created_at: now,
+      };
+      conversationTurnSequence += 1;
+      thread.turns.push(turn);
+      thread.updated_at = now;
+      await fulfillJson(route, thread, 201);
+      return;
+    }
+
+    const conversationThreadDetail = path.match(/^\/conversation-threads\/([^/]+)$/);
+    if (method === "GET" && conversationThreadDetail) {
+      const thread = conversationThreads.find(
+        (item) => item.id === conversationThreadDetail[1],
+      );
+      await fulfillJson(
+        route,
+        thread ?? { detail: "Conversation thread not found." },
+        thread ? 200 : 404,
+      );
       return;
     }
 

@@ -25,6 +25,8 @@ from stewart.core.models import (
     BillingDraft,
     BillingDraftLine,
     BillingDraftStatus,
+    ConversationTurnKind,
+    ConversationTurnRole,
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -58,6 +60,10 @@ from apps.api.deps import (
     get_current_user,
     get_session,
     readable_entity_ids,
+)
+from apps.api.routers.conversation_threads import (
+    append_conversation_turn,
+    get_thread_for_write,
 )
 from apps.api.routers.lease_intakes import _apply_lease_records
 from apps.api.routers.obligations import _validate_obligation_scope
@@ -112,6 +118,78 @@ def _read_intake(intake: DocumentIntake) -> DocumentIntakeRead:
             "byte_size": document.byte_size,
             "category": document.category,
         }
+    )
+
+
+def _append_apply_created_turn(
+    *,
+    thread_id: UUID | None,
+    intake: DocumentIntake,
+    user: CurrentUser,
+    session: Session,
+) -> None:
+    if thread_id is None:
+        return
+    thread = get_thread_for_write(thread_id, session, user, intake.entity_id)
+    applied = _dict(intake.review_data).get("applied")
+    if not isinstance(applied, dict):
+        return
+    property_id = _str(applied.get("property_id"))
+    tenant_id = _str(applied.get("tenant_id"))
+    property_href = (
+        f"/properties?entity_id={intake.entity_id}&property_id={property_id}"
+        if property_id
+        else f"/properties?entity_id={intake.entity_id}"
+    )
+    links: list[dict[str, str]] = []
+    if property_id:
+        links.append(
+            {
+                "label": "Property",
+                "href": property_href,
+                "target_id": property_id,
+            }
+        )
+    if tenant_id:
+        links.append(
+            {
+                "label": "Tenant",
+                "href": f"/tenants/{tenant_id}",
+                "target_id": tenant_id,
+            }
+        )
+    append_conversation_turn(
+        thread=thread,
+        role=ConversationTurnRole.ai,
+        kind=ConversationTurnKind.created,
+        payload={
+            "applied": applied,
+            "links": links,
+            "provider_gate": True,
+            "next_steps": [
+                {
+                    "label": "Sync tenant to Xero",
+                    "href": f"/settings?tab=xero&entity_id={intake.entity_id}",
+                    "needs_approval": True,
+                },
+                {
+                    "label": "Set up monthly rent invoicing",
+                    "href": f"/billing-readiness?entity_id={intake.entity_id}&tab=readiness",
+                    "needs_approval": True,
+                },
+                {
+                    "label": "Email the tenant",
+                    "href": (
+                        f"/comms?entity_id={intake.entity_id}"
+                        f"&target_kind=tenant&target_id={tenant_id}"
+                        if tenant_id
+                        else f"/comms?entity_id={intake.entity_id}"
+                    ),
+                    "needs_approval": True,
+                },
+            ],
+        },
+        session=session,
     )
 
 
@@ -3241,6 +3319,12 @@ def apply_document_intake(
                 f"Created lease {lease.id} from Smart Intake document {intake.id}."
             ),
         )
+        _append_apply_created_turn(
+            thread_id=payload.thread_id,
+            intake=intake,
+            user=user,
+            session=session,
+        )
         session.commit()
         session.refresh(intake)
         return _read_intake(intake)
@@ -3311,6 +3395,12 @@ def apply_document_intake(
                     f"from Smart Intake document {intake.id}."
                 ),
             )
+        _append_apply_created_turn(
+            thread_id=payload.thread_id,
+            intake=intake,
+            user=user,
+            session=session,
+        )
         session.commit()
         session.refresh(intake)
         return _read_intake(intake)
@@ -3350,6 +3440,12 @@ def apply_document_intake(
                 f"Applied inspection report; {len(work_order_ids)} maintenance "
                 "work order(s) created with no provider dispatch."
             ),
+        )
+        _append_apply_created_turn(
+            thread_id=payload.thread_id,
+            intake=intake,
+            user=user,
+            session=session,
         )
         session.commit()
         session.refresh(intake)
@@ -3429,6 +3525,12 @@ def apply_document_intake(
         target_table="document_intake",
         target_id=intake.id,
         tool_output_summary=f"Applied {len(obligation_ids)} document obligation(s).",
+    )
+    _append_apply_created_turn(
+        thread_id=payload.thread_id,
+        intake=intake,
+        user=user,
+        session=session,
     )
     session.commit()
     session.refresh(intake)

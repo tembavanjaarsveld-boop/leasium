@@ -518,6 +518,31 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(page.getByText("Review only. This does not send")).toBeVisible();
 });
 
+test("Cmd-K Leasium AI ask carries page context into the persistent thread launcher", async ({
+  page,
+}) => {
+  await page.goto("/properties?property_id=property-1");
+
+  await page.getByRole("button", { name: "Open search" }).click();
+  const commandSearch = page.getByRole("textbox", { name: "Command search" });
+  await commandSearch.fill("add the lease for this property");
+
+  const askAction = page.getByRole("link", {
+    name: /Ask Leasium AI: “add the lease for this property”/,
+  });
+  await expect(askAction).toBeVisible();
+  const href = await askAction.getAttribute("href");
+  const target = new URL(href ?? "", "http://localhost:3000");
+  expect(target.pathname).toBe("/intake");
+  expect(target.searchParams.get("ask")).toBe(
+    "add the lease for this property",
+  );
+  expect(target.searchParams.get("context_route")).toBe("/properties");
+  expect(target.searchParams.get("context_record_refs")).toContain(
+    '"property_id":"property-1"',
+  );
+});
+
 test("mobile header keeps utility touch targets at least 44px", async ({
   page,
 }) => {
@@ -627,7 +652,11 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   await expect(page.getByText("Good morning, Temba.")).toBeVisible();
   await expect(page.getByPlaceholder("Message Leasium AI…")).toBeVisible();
   await expect(page.getByText("📊 What's overdue?")).toBeVisible();
-  await expect(page.getByText("Recent")).toBeVisible();
+  const recentThreads = page.getByTestId("leasium-ai-home-recent");
+  await expect(recentThreads.getByText("Recent")).toBeVisible();
+  await expect(
+    recentThreads.getByRole("link", { name: /Add lease for Queen Street/ }),
+  ).toHaveAttribute("href", "/intake?thread_id=thread-recent-1");
   await expect(
     page.getByTestId("leasium-ai-home-how").getByText("Read", { exact: true }),
   ).toBeVisible();

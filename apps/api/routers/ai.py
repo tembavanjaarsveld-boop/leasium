@@ -41,6 +41,8 @@ from stewart.core.models import (
     ArrearsCase,
     ArrearsCaseStatus,
     Contractor,
+    ConversationTurnKind,
+    ConversationTurnRole,
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
@@ -59,6 +61,10 @@ from stewart.core.models import (
 from stewart.core.settings import Settings, get_settings
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.routers.conversation_threads import (
+    append_conversation_turn,
+    get_thread_for_write,
+)
 from apps.api.schemas.ai import (
     AskCitation,
     AskRead,
@@ -106,6 +112,11 @@ def ask(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AskRead:
     assert_entity_role(session, user, payload.entity_id, READ_ROLES)
+    thread = (
+        get_thread_for_write(payload.thread_id, session, user, payload.entity_id)
+        if payload.thread_id is not None
+        else None
+    )
     context = _build_ask_context(payload.entity_id, session)
 
     try:
@@ -139,6 +150,29 @@ def ask(
             if isinstance(warning, str) and warning.strip():
                 warnings.append(warning.strip())
 
+    answer_text = answer or "I don't have an answer for that yet."
+    if thread is not None:
+        append_conversation_turn(
+            thread=thread,
+            role=ConversationTurnRole.user,
+            kind=ConversationTurnKind.text,
+            payload={"text": payload.question},
+            session=session,
+        )
+        append_conversation_turn(
+            thread=thread,
+            role=ConversationTurnRole.ai,
+            kind=ConversationTurnKind.text,
+            payload={
+                "text": answer_text,
+                "citations": [citation.model_dump(mode="json") for citation in citations],
+                "warnings": warnings,
+                "guardrails": list(ASK_GUARDRAILS),
+                "response_id": response_id,
+            },
+            session=session,
+        )
+
     audit_log(
         session,
         actor=user.actor,
@@ -163,7 +197,7 @@ def ask(
     session.commit()
 
     return AskRead(
-        answer=answer or "I don't have an answer for that yet.",
+        answer=answer_text,
         citations=citations,
         warnings=warnings,
         guardrails=list(ASK_GUARDRAILS),

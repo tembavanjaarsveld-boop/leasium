@@ -2,6 +2,63 @@
 
 Last updated: 2026-06-16
 
+## Codex continuation - 2026-06-16 (Leasium AI persistent conversation threads)
+
+Scope completed: Slice E shipped after Temba approved the required design note
+and decided that Leasium AI threads are first-class conversation records, not
+`review_data`. `review_data` remains the per-intake apply payload only.
+
+What changed:
+- Added `ConversationThread` and `ConversationTurn` models plus migration
+  `20260616_0045_conversation_threads.py`, scoped by organisation/entity and
+  readable entity access.
+- Added scoped thread APIs: create thread, append turn, list recent threads
+  org-wide, and get thread.
+- `/ai/ask` now optionally attaches the user + AI text turns to a scoped
+  thread; Smart Intake apply optionally attaches an AI `created` turn with
+  internal links and provider-gate metadata.
+- `/intake` Home "Recent" reads the list endpoint; opening a thread restores
+  text Q&A turns.
+- `IntakeConversationPanel` and `InboxConversationPanel` now create backing
+  thread records and attach apply/promote outcomes to the thread.
+- ⌘K ask links now carry page context into `/intake` (`context_route` plus
+  record refs such as `property_id`). Full cross-page history surfacing/global
+  drawer remains a follow-up.
+
+Verification evidence:
+- Required design note:
+  `docs/superpowers/plans/2026-06-16-leasium-ai-conversation-thread.md`.
+- RED backend test first failed on missing `ConversationThread`, then passed.
+- `.venv/bin/python -m pytest tests/integration/test_conversation_threads_api.py -q`
+  passed 5/5.
+- `.venv/bin/python -m pytest tests/integration/test_conversation_threads_api.py tests/integration/test_ai_ask_api.py tests/integration/test_document_intake_api.py tests/integration/test_org_wide_scope_api.py -q`
+  passed 44/44.
+- `.venv/bin/python -m ruff check stewart/core/models.py apps/api/schemas/conversation_threads.py apps/api/routers/conversation_threads.py apps/api/routers/ai.py apps/api/routers/document_intakes.py tests/integration/test_conversation_threads_api.py`
+  passed.
+- Full backend pytest passed: 687 passed, 1 skipped.
+- `npm --prefix apps/web run lint` passed.
+- `cd apps/web && npx tsc --noEmit` passed.
+- `npm --prefix apps/web run build` passed.
+- `NODE_ENV=development npm --prefix apps/web run test:smoke --
+  intake-conversation.spec.ts` passed 3/3.
+- `PORT=3020 NODE_ENV=development npm --prefix apps/web run test:smoke --
+  app-flows.spec.ts --grep "Cmd-K Leasium AI ask carries|smart intake opens
+  as one Leasium AI workspace"` passed 2/2.
+- Visual/UX smoke `NODE_ENV=development npm --prefix apps/web run test:smoke --
+  conversation-thread-visual.spec.ts` passed 2/2 and produced
+  `output/ux/leasium-ai-conversation-thread/2026-06-16-desktop-1440.png` and
+  `output/ux/leasium-ai-conversation-thread/2026-06-16-mobile-390.png`.
+
+Guardrails held: persisted turns are internal data only. No Xero write,
+SendGrid/Twilio/tenant email, payment, reconciliation, Basiq, or provider
+dispatch path was introduced or called. Provider next steps stay links into
+existing gated flows.
+
+Committed as `Persist Leasium AI threads`. Push still requires Temba's go;
+Vercel READY verification is therefore still pending. Existing unrelated
+untracked docs/marketing/output files and the unrelated payments handoff edit
+were left alone.
+
 ## Codex continuation - 2026-06-16 (Leasium AI remaining polish A-D)
 
 Scope completed: finished the autonomous A-D polish from the conversation-first

@@ -13,14 +13,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, StatusBadge } from "@/components/ui";
 import { friendlyError } from "@/lib/utils";
 import {
+  appendConversationTurn,
+  createConversationThread,
   listTenants,
   promoteInboxMessage,
   type CommsInboundMessageDetailRecord,
+  type ConversationThreadRecord,
   type InboxPromoteKind,
   type InboxPromoteRecord,
   type InboxTriageKind,
@@ -258,6 +261,76 @@ export function InboxConversationPanel({
   const [promoting, setPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
   const [promoted, setPromoted] = useState<InboxPromoteRecord | null>(null);
+  const [thread, setThread] = useState<ConversationThreadRecord | null>(null);
+  const [threadError, setThreadError] = useState<string | null>(null);
+  const threadRequestRef = useRef<Promise<ConversationThreadRecord> | null>(null);
+  const threadSeed = useMemo(
+    () => ({
+      entity_id: entityId,
+      source: "inbox",
+      context_route: "/inbox",
+      context_record_refs: { inbound_message_id: message.id },
+      title: subject,
+      initial_turn: {
+        role: "user" as const,
+        kind: "text" as const,
+        payload: {
+          text: `Forwarded email: ${subject}`,
+          subject,
+          from_address: fromAddress,
+          inbound_message_id: message.id,
+        },
+      },
+    }),
+    [entityId, fromAddress, message.id, subject],
+  );
+
+  async function ensureThread() {
+    if (thread) return thread;
+    if (!threadRequestRef.current) {
+      threadRequestRef.current = createConversationThread(threadSeed);
+    }
+    const request = threadRequestRef.current;
+    try {
+      const created = await request;
+      setThread(created);
+      setThreadError(null);
+      return created;
+    } catch (error) {
+      setThreadError(friendlyError(error));
+      return null;
+    } finally {
+      if (threadRequestRef.current === request) {
+        threadRequestRef.current = null;
+      }
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setThread(null);
+    setThreadError(null);
+    const request = createConversationThread(threadSeed);
+    threadRequestRef.current = request;
+    request
+      .then((created) => {
+        if (!cancelled) setThread(created);
+      })
+      .catch((error) => {
+        if (!cancelled) setThreadError(friendlyError(error));
+      })
+      .finally(() => {
+        if (threadRequestRef.current === request) {
+          threadRequestRef.current = null;
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (threadRequestRef.current === request) {
+        threadRequestRef.current = null;
+      }
+    };
+  }, [threadSeed]);
 
   const primaryDisabled =
     promoting ||
@@ -270,6 +343,10 @@ export function InboxConversationPanel({
     setPromoting(true);
     setPromoteError(null);
     try {
+      const currentThread = await ensureThread();
+      if (!currentThread) {
+        throw new Error("Couldn't start the conversation thread.");
+      }
       const result = await promoteInboxMessage({
         entity_id: entityId,
         kind: plan.promoteKind,
@@ -278,6 +355,18 @@ export function InboxConversationPanel({
         inbound_message_id: message.id,
         tenant_id: message.attributed_tenant_id ?? undefined,
       });
+      appendConversationTurn(currentThread.id, {
+        role: "ai",
+        kind: "created",
+        payload: {
+          summary: "Promoted email to a Leasium draft.",
+          target_kind: result.target_kind,
+          target_id: result.target_id,
+          target_label: result.target_label,
+          target_href: promotedHref(result),
+          provider_gate: true,
+        },
+      }).catch((error) => setThreadError(friendlyError(error)));
       setPromoted(result);
       onPromoted?.(result);
     } catch (error) {
@@ -403,6 +492,9 @@ export function InboxConversationPanel({
             </div>
             {promoteError ? (
               <p className="mt-3 text-sm text-danger">{promoteError}</p>
+            ) : null}
+            {threadError ? (
+              <p className="mt-3 text-sm text-muted-foreground">{threadError}</p>
             ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button

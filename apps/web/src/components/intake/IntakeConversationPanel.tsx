@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Button,
@@ -27,9 +27,11 @@ import { cn, friendlyError } from "@/lib/utils";
 import {
   applyDocumentIntake,
   askLeasium,
+  createConversationThread,
   listProperties,
   listTenants,
   type AskCitationRecord,
+  type ConversationThreadRecord,
   type DocumentIntakeExtraction,
   type DocumentIntakeRecord,
   type PropertyRecord,
@@ -651,6 +653,66 @@ export function IntakeConversationPanel({
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [asks, setAsks] = useState<AskTurn[]>([]);
+  const [thread, setThread] = useState<ConversationThreadRecord | null>(null);
+  const [threadError, setThreadError] = useState<string | null>(null);
+  const threadRequestRef = useRef<Promise<ConversationThreadRecord> | null>(null);
+  const threadSeed = useMemo(
+    () => ({
+      entity_id: entityId,
+      source: "intake",
+      context_route: "/intake",
+      context_record_refs: { document_intake_id: intake.id },
+      title: intake.filename || intake.summary || "Leasium AI review",
+    }),
+    [entityId, intake.filename, intake.id, intake.summary],
+  );
+
+  async function ensureThread() {
+    if (thread) return thread;
+    if (!threadRequestRef.current) {
+      threadRequestRef.current = createConversationThread(threadSeed);
+    }
+    const request = threadRequestRef.current;
+    try {
+      const created = await request;
+      setThread(created);
+      setThreadError(null);
+      return created;
+    } catch (error) {
+      setThreadError(friendlyError(error));
+      return null;
+    } finally {
+      if (threadRequestRef.current === request) {
+        threadRequestRef.current = null;
+      }
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setThread(null);
+    setThreadError(null);
+    const request = createConversationThread(threadSeed);
+    threadRequestRef.current = request;
+    request
+      .then((created) => {
+        if (!cancelled) setThread(created);
+      })
+      .catch((error) => {
+        if (!cancelled) setThreadError(friendlyError(error));
+      })
+      .finally(() => {
+        if (threadRequestRef.current === request) {
+          threadRequestRef.current = null;
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (threadRequestRef.current === request) {
+        threadRequestRef.current = null;
+      }
+    };
+  }, [threadSeed]);
 
   const defaultEdits = useMemo(() => initialEdits(data), [data]);
   const [editing, setEditing] = useState(false);
@@ -689,6 +751,10 @@ export function IntakeConversationPanel({
           : data;
     }
     try {
+      const currentThread = await ensureThread();
+      if (!currentThread) {
+        throw new Error("Couldn't start the conversation thread.");
+      }
       // reviewData = the reviewed extraction plus the parsed lease term, so the
       // backend has a confirmed expiry. Link ids are passed through when the
       // property/tenant already exists.
@@ -698,6 +764,7 @@ export function IntakeConversationPanel({
         tenancyUnitId: text(links.tenancy_unit_id),
         tenantId: tenantMatch?.id ?? text(links.tenant_id),
         leaseId: text(links.lease_id),
+        threadId: currentThread.id,
       });
       setAppliedRecord(result);
       onApplied?.(result);
@@ -719,7 +786,15 @@ export function IntakeConversationPanel({
       { question: trimmed, answer: null, citations: [], error: null },
     ]);
     try {
-      const result = await askLeasium({ entity_id: entityId, question: trimmed });
+      const currentThread = await ensureThread();
+      if (!currentThread) {
+        throw new Error("Couldn't start the conversation thread.");
+      }
+      const result = await askLeasium({
+        entity_id: entityId,
+        question: trimmed,
+        thread_id: currentThread.id,
+      });
       setAsks((current) =>
         current.map((turn, i) =>
           i === index
@@ -999,6 +1074,9 @@ export function IntakeConversationPanel({
             </div>
             {applyError ? (
               <p className="mt-3 text-sm text-danger">{applyError}</p>
+            ) : null}
+            {threadError ? (
+              <p className="mt-3 text-sm text-muted-foreground">{threadError}</p>
             ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button

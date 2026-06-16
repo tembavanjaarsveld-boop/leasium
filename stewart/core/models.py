@@ -240,6 +240,19 @@ class DocumentIntakeStatus(enum.StrEnum):
     failed = "failed"
 
 
+class ConversationTurnRole(enum.StrEnum):
+    user = "user"
+    ai = "ai"
+
+
+class ConversationTurnKind(enum.StrEnum):
+    text = "text"
+    understanding = "understanding"
+    plan = "plan"
+    created = "created"
+    question = "question"
+
+
 class BillingDraftStatus(enum.StrEnum):
     draft = "draft"
     needs_review = "needs_review"
@@ -378,6 +391,9 @@ class Entity(Base):
     ] = relationship(back_populates="entity")
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="entity")
     document_intakes: Mapped[list["DocumentIntake"]] = relationship(back_populates="entity")
+    conversation_threads: Mapped[list["ConversationThread"]] = relationship(
+        back_populates="entity"
+    )
     register_import_plans: Mapped[list["RegisterImportPlan"]] = relationship(
         back_populates="entity"
     )
@@ -2196,6 +2212,98 @@ Index(
 )
 Index("document_intake_document_idx", DocumentIntake.document_id)
 Index("document_intake_status_idx", DocumentIntake.status)
+
+
+class ConversationThread(Base):
+    __tablename__ = "conversation_thread"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    organisation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    entity_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id")
+    )
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="cmdk")
+    context_route: Mapped[str | None] = mapped_column(Text)
+    context_record_refs: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    thread_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    organisation: Mapped[Organisation] = relationship()
+    entity: Mapped[Entity | None] = relationship(back_populates="conversation_threads")
+    created_by_user: Mapped["AppUser | None"] = relationship(
+        foreign_keys=[created_by_user_id]
+    )
+    turns: Mapped[list["ConversationTurn"]] = relationship(
+        back_populates="thread",
+        order_by="ConversationTurn.created_at, ConversationTurn.id",
+        cascade="all, delete-orphan",
+    )
+
+
+Index(
+    "conversation_thread_org_recent_idx",
+    ConversationThread.organisation_id,
+    ConversationThread.updated_at,
+    postgresql_where=ConversationThread.deleted_at.is_(None),
+    sqlite_where=ConversationThread.deleted_at.is_(None),
+)
+Index(
+    "conversation_thread_entity_recent_idx",
+    ConversationThread.entity_id,
+    ConversationThread.updated_at,
+    postgresql_where=ConversationThread.deleted_at.is_(None),
+    sqlite_where=ConversationThread.deleted_at.is_(None),
+)
+Index("conversation_thread_created_by_idx", ConversationThread.created_by_user_id)
+
+
+class ConversationTurn(Base):
+    __tablename__ = "conversation_turn"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    thread_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("conversation_thread.id"), nullable=False
+    )
+    role: Mapped[ConversationTurnRole] = mapped_column(
+        Enum(ConversationTurnRole, name="conversation_turn_role"),
+        nullable=False,
+    )
+    kind: Mapped[ConversationTurnKind] = mapped_column(
+        Enum(ConversationTurnKind, name="conversation_turn_kind"),
+        nullable=False,
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    thread: Mapped[ConversationThread] = relationship(back_populates="turns")
+
+
+Index(
+    "conversation_turn_thread_created_idx",
+    ConversationTurn.thread_id,
+    ConversationTurn.created_at,
+    ConversationTurn.id,
+)
 
 
 class RegisterImportPlan(Base):

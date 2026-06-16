@@ -16,6 +16,24 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-16 Leasium AI persistent conversation threads:**
+  Slice E shipped the approved first-class conversation record model:
+  `ConversationThread` + `ConversationTurn` with org/entity scope, page route,
+  record refs, title, metadata, timestamps, and role/kind/payload turns.
+  New scoped APIs create/list/get threads and append turns; recent threads use
+  the same org-wide readable-entity pattern as the fan-out endpoints. The
+  Leasium AI ask endpoint and Smart Intake apply path attach their user/AI and
+  created turns to a thread instead of `review_data`; `review_data` remains the
+  per-intake apply payload only. The intake and inbox conversation panels now
+  create backing thread records, and ⌘K carries page context (route + record
+  refs such as `property_id`) into `/intake`, where the conversation persists
+  and the Home "Recent" list reads the thread endpoint. Provider guardrails
+  stayed inert: no Xero, SendGrid, Twilio, tenant email, payment, or
+  reconciliation calls. Verified with backend integration tests (happy path,
+  403/auth scope, org-wide list, ask attach, apply attach), full backend
+  pytest, frontend lint/tsc/build, focused smokes, and 1440/390 visual slop
+  coverage. Full cross-page history surfacing/global drawer remains a
+  follow-up, not part of v1.
 - [x] **2026-06-16 Leasium AI conversation-first remaining polish:**
   The remaining approved A-D polish is shipped. Created record rows now link to
   the exact property workspace and tenant record; gated next steps route to
@@ -26,7 +44,7 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   issue pill is lifted clear of the bottom navigation. Verified with focused
   smoke coverage for intake creation, next-step links, Home desktop/mobile
   layout, and Work mobile toast placement. Remaining decision-gated work:
-  persistent page-aware Leasium AI thread / richer global launcher.
+  the richer cross-page history surface beyond the v1 contextual launcher.
 - [x] **2026-06-15 AI Inbox conversation-first review:**
   Opening a trusted `/inbox` message now uses the same conversation panel
   (`apps/web/src/components/intake/InboxConversationPanel.tsx`): a forwarded-email
@@ -1263,8 +1281,12 @@ Equifax/illion; RTBA/state RTAs).
   A review-first provider-agnostic rails scaffold now exists (commit `915ffc5`):
   the `stewart.integrations.payment_rails` boundary + `GET /payments/rail-status`
   (no money movement, no provider call), ready for an AU adapter to drop in.
-  **Remaining:** the concrete rail adapter (Monoova / Zai / Stripe AU — the
-  provider decision still to make) + an in-portal "pay now" surface.
+  **Remaining — PARKED / deprioritised (2026-06-16, Temba):** the concrete rail
+  adapter (Monoova / Zai / Stripe AU) + in-portal "pay now" surface are on hold
+  until the business decides what it wants to do on payments. Do not start the
+  adapter, draft provider outreach, or re-prioritise this without Temba raising
+  it again. The provider comparison + decision gates remain captured in
+  `payment-rail-provider-comparison-2026-06-12.md` for when it's revived.
 - [x] **Installable PWA (mobile runway).** Operator field use (inspections / photos /
   approvals) + tenant portal on a phone, ahead of any native build. **v1 shipped**
   (was stale `[ ]` until 2026-06-07): typed `app/manifest.ts` (id/scope/standalone,

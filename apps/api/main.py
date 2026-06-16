@@ -20,6 +20,7 @@ from apps.api.routers import (
     charge_rules,
     comms,
     compliance,
+    conversation_threads,
     contractors,
     dashboard,
     document_intakes,
@@ -171,6 +172,7 @@ app.include_router(branded_templates.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(activity_feed.router, prefix="/api/v1")
 app.include_router(comms.router, prefix="/api/v1")
+app.include_router(conversation_threads.router, prefix="/api/v1")
 app.include_router(contractors.router, prefix="/api/v1")
 app.include_router(owners.router, prefix="/api/v1")
 app.include_router(owner_entities.router, prefix="/api/v1")

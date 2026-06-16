@@ -18,6 +18,7 @@ AskCitationKind = Literal[
 class AskRequest(BaseModel):
     entity_id: UUID
     question: str = Field(min_length=1, max_length=600)
+    thread_id: UUID | None = None
 
 
 class AskCitation(BaseModel):

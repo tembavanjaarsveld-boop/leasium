@@ -140,10 +140,68 @@ test("conversation-first intake panel reads the lease and creates records withou
 
   let applyCallCount = 0;
   const forbiddenApiCalls: string[] = [];
+  const threadId = "thread-intake-conversation-1";
+  let createdThread = false;
+  let applyThreadId: string | null = null;
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "POST" && path === "/conversation-threads") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      createdThread = true;
+      expect(payload.entity_id).toBe(leaseIntake.entity_id);
+      expect(payload.source).toBe("intake");
+      expect(payload.context_route).toBe("/intake");
+      expect(payload.context_record_refs).toMatchObject({
+        document_intake_id: leaseIntake.id,
+      });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: threadId,
+          organisation_id: "org-1",
+          entity_id: leaseIntake.entity_id,
+          created_by_user_id: "operator-1",
+          source: "intake",
+          context_route: "/intake",
+          context_record_refs: { document_intake_id: leaseIntake.id },
+          title: "bright-cafe-lease.pdf",
+          metadata: {},
+          created_at: "2026-06-16T00:00:00.000Z",
+          updated_at: "2026-06-16T00:00:00.000Z",
+          turns: [],
+        }),
+      });
+      return;
+    }
+
+    if (
+      request.method() === "POST" &&
+      path === `/conversation-threads/${threadId}/turns`
+    ) {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: threadId,
+          organisation_id: "org-1",
+          entity_id: leaseIntake.entity_id,
+          created_by_user_id: "operator-1",
+          source: "intake",
+          context_route: "/intake",
+          context_record_refs: { document_intake_id: leaseIntake.id },
+          title: "bright-cafe-lease.pdf",
+          metadata: {},
+          created_at: "2026-06-16T00:00:00.000Z",
+          updated_at: "2026-06-16T00:01:00.000Z",
+          turns: [],
+        }),
+      });
+      return;
+    }
 
     // Surface the lease intake in the review queue.
     if (request.method() === "GET" && path === "/document-intakes") {
@@ -162,6 +220,7 @@ test("conversation-first intake panel reads the lease and creates records withou
       path === `/document-intakes/${leaseIntakeId}/apply`
     ) {
       applyCallCount += 1;
+      applyThreadId = (request.postDataJSON() as { thread_id?: string }).thread_id ?? null;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -268,6 +327,8 @@ test("conversation-first intake panel reads the lease and creates records withou
   await emailReview.click();
 
   expect(applyCallCount).toBe(1);
+  expect(createdThread).toBe(true);
+  expect(applyThreadId).toBe(threadId);
 
   // 5. Guardrail: no provider / mutation endpoint was hit during the flow.
   expect(forbiddenApiCalls).toEqual([]);
