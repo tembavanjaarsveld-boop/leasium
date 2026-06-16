@@ -70,7 +70,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.4-mini"
+    openai_model: str = "gpt-5.4"
     serpapi_api_key: str = ""
     # Payment reconciliation is considered "stale" after this many days without a
     # preview or apply. Surfaces in /xero/status and accounting readiness snapshots.
