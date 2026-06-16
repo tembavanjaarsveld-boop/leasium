@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from pypdf import PdfReader
 
 from stewart.core.settings import Settings
@@ -300,10 +302,38 @@ def _extract_document_text(file_data: bytes, filename: str, content_type: str | 
     if suffix == ".docx":
         try:
             doc = Document(BytesIO(file_data))
-            return _clean_extracted_text("\n".join(paragraph.text for paragraph in doc.paragraphs))
+            return _clean_extracted_text(_docx_text(doc))
         except Exception as exc:
             raise LeaseExtractionError("Word document text could not be read.") from exc
     return None
+
+
+def _docx_text(doc: Document) -> str:
+    """Read paragraphs AND tables in document order.
+
+    Commercial leases (e.g. Queensland Titles Registry Form 7/20) carry the
+    parties, dates, options, rent review, and security details in tables. The
+    old paragraphs-only read dropped all of it, so the model never saw the
+    tenant/landlord names or the lease term. Walk the body in order, flattening
+    each table row to "cell | cell" so labelled fields stay readable.
+    """
+
+    parts: list[str] = []
+    for child in doc.element.body.iterchildren():
+        tag = child.tag.rsplit("}", 1)[-1]
+        if tag == "p":
+            parts.append(Paragraph(child, doc).text)
+        elif tag == "tbl":
+            for row in Table(child, doc).rows:
+                cells: list[str] = []
+                for cell in row.cells:
+                    flat = " ".join(cell.text.split())
+                    # python-docx repeats a cell across a horizontal merge.
+                    if flat and (not cells or cells[-1] != flat):
+                        cells.append(flat)
+                if cells:
+                    parts.append(" | ".join(cells))
+    return "\n".join(parts)
 
 
 def _clean_extracted_text(text: str) -> str | None:

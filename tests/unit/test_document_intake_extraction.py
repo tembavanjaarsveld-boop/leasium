@@ -1,7 +1,10 @@
 import json
+from io import BytesIO
 from typing import Any
 
+from docx import Document
 from stewart.ai.document_intake import extract_document_file
+from stewart.ai.lease_intake import _extract_document_text
 from stewart.core.settings import Settings
 
 INVOICE_TEXT = """PAYMENT ADVICE
@@ -191,3 +194,32 @@ def test_extract_document_file_supplements_column_layout_invoice_text(
     assert extracted["properties"][0]["invoice_reference"] == "INV-0331"
     assert extracted["properties"][0]["invoice_issuer_name"] == "SJI No 1 Pty Ltd"
     assert extracted["money_amounts"][0]["frequency"] == "monthly"
+
+
+def test_extract_document_text_reads_docx_tables() -> None:
+    # Commercial leases (QTR Form 7/20) keep parties and dates in tables. The
+    # reader must include table cells, not just paragraphs, or the model never
+    # sees the tenant/landlord names or the lease term.
+    doc = Document()
+    doc.add_paragraph("QUEENSLAND TITLES REGISTRY — LEASE")
+    table = doc.add_table(rows=0, cols=2)
+    for label, value in [
+        ("Lessor (Landlord)", "SKJ Property"),
+        ("Lessee (Tenant)", "SKJ Capital"),
+        ("Commencement date", "01/08/2022"),
+        ("Expiry date", "31/07/2027"),
+    ]:
+        cells = table.add_row().cells
+        cells[0].text = label
+        cells[1].text = value
+    buffer = BytesIO()
+    doc.save(buffer)
+
+    text = _extract_document_text(buffer.getvalue(), "lease.docx", None)
+
+    assert text is not None
+    assert "QUEENSLAND TITLES REGISTRY" in text
+    assert "Lessee (Tenant) | SKJ Capital" in text
+    assert "SKJ Property" in text
+    assert "01/08/2022" in text
+    assert "31/07/2027" in text
