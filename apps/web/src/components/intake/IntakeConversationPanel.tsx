@@ -158,22 +158,16 @@ function matchProperty(
 ): RecordMatch | null {
   const property = items(data.properties)[0];
   if (!property) return null;
+  // Match on the property NAME only. Buildings on a shared street (e.g. B3 and
+  // B6 at "205 Leitchs Road") have identical street addresses, so any
+  // address-substring match would wrongly merge a new building into an
+  // existing one. Default to NEW unless the names are an exact normalised
+  // match; the operator can link explicitly when a re-import truly is the same
+  // property.
   const exName = norm(property.name);
-  const exAddr = norm(text(property.address) ?? text(property.street_address));
+  if (exName === "") return null;
   for (const p of properties) {
-    const pName = norm(p.name);
-    const pAddr = norm(p.street_address);
-    if (pName && (pName === exName || (exName !== "" && exName.includes(pName)))) {
-      return { id: p.id, label: p.name };
-    }
-    if (
-      pAddr &&
-      exAddr !== "" &&
-      (pAddr === exAddr || exAddr.includes(pAddr) || pAddr.includes(exAddr))
-    ) {
-      return { id: p.id, label: p.name };
-    }
-    if (pAddr && exName !== "" && exName.includes(pAddr)) {
+    if (norm(p.name) === exName) {
       return { id: p.id, label: p.name };
     }
   }
@@ -729,27 +723,16 @@ export function IntakeConversationPanel({
     setApplying(true);
     setApplyError(null);
     const links = isRecord(data.suggested_links) ? data.suggested_links : {};
-    let reviewData: DocumentIntakeExtraction;
-    if (editing) {
-      reviewData = buildEditedReviewData(
-        data,
-        edits,
-        Boolean(propertyMatch),
-        Boolean(tenantMatch),
-      );
-    } else {
-      const leaseDates = leaseDatesFrom(data);
-      reviewData =
-        leaseDates.commencement_date || leaseDates.expiry_date
-          ? {
-              ...data,
-              lease: {
-                ...(isRecord(data.lease) ? data.lease : {}),
-                ...leaseDates,
-              },
-            }
-          : data;
-    }
+    // Always apply the current edits. `edits` is seeded from the extraction, so
+    // this is equivalent to the raw extraction when nothing was changed, but it
+    // means corrections persist whether or not the edit form is open — closing
+    // it with "Done" no longer silently discards them.
+    const reviewData = buildEditedReviewData(
+      data,
+      edits,
+      Boolean(propertyMatch),
+      Boolean(tenantMatch),
+    );
     try {
       const currentThread = await ensureThread();
       if (!currentThread) {
@@ -1038,12 +1021,6 @@ export function IntakeConversationPanel({
                     key={row.key}
                     className="flex items-center gap-3 rounded-xl border border-border px-3 py-2"
                   >
-                    <input
-                      type="checkbox"
-                      defaultChecked
-                      aria-label={row.title}
-                      className="h-4 w-4 shrink-0 rounded border-border accent-primary"
-                    />
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
                       {row.icon}
                     </span>
