@@ -1,6 +1,35 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
+
+## Continuation - 2026-06-17 (Building-as-property — B6 proving slice)
+
+Temba chose the building-as-property model (Properties → Units, §2.10) after the
+Leitchs B6 U5 lease created a duplicate property instead of attaching U5 as a
+unit of B6. Phase 1 (backend only) shipped:
+- `_building_key` + building-aware match in `apps/api/routers/lease_intakes.py`
+  (`_find_or_create_property`): a dropped lease for another unit of a known
+  building attaches as a unit (not a new property); building-level naming; key
+  stamped in `property_metadata`. Entity-scoped so cross-trust sites never merge;
+  falls back to legacy exact-name match when there's no building token (no
+  regression; B3 ≠ B6 holds). Explicit `property_id` link/override unchanged.
+- `scripts/reconcile_building_units.py` — dry-run-first, idempotent, provider-
+  inert merge of per-unit properties into one building property (units,
+  obligations, documents re-pointed; leases ride units; duplicates soft-deleted).
+- Design note + Phase 2 backlog:
+  `docs/superpowers/plans/2026-06-17-building-as-property.md`.
+
+Verification (Temba's Mac): `ruff` clean on the four changed/new files;
+`pytest tests/unit/test_building_key.py` 4/4; the attach + B3-guard test and full
+`test_document_intake_api.py` 36/36; lease/register/property selection 102
+passed; `test_reconcile_building_units.py` 2/2. No frontend change — behaviour
+surfaces through the existing matched-property + link/new toggle and the
+Property → Units rendering.
+
+Next action for Temba: run the B6 reconcile dry-run on the hosted register,
+review the plan, then re-run with `--apply`. A pre-existing import-sort (I001) in
+`tests/integration/test_document_intake_api.py` was left untouched (not this
+slice).
 
 ## Codex continuation - 2026-06-16 (Leasium AI persistent conversation threads)
 

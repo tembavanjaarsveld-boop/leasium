@@ -2810,6 +2810,118 @@ def test_document_intake_apply_lease_reuses_selected_records(
     assert generated_tenant is None
 
 
+def test_document_intake_apply_lease_attaches_new_unit_to_existing_building(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """A second lease for another unit of the same building attaches as a new
+    unit under the existing building property instead of spawning a duplicate
+    (the Leitchs B6 U4/U5 case), while a different building on the same street
+    stays separate (the 2026-06-16 B3 != B6 guard)."""
+
+    def make_extraction(unit_label: str, name: str, tenant: str) -> dict[str, Any]:
+        data = _fake_smart_lease_extraction()
+        data["properties"] = [
+            {
+                "name": name,
+                "address": "205 Leitchs Road, Brendale",
+                "unit_label": unit_label,
+                "confidence": 0.9,
+                "source_hint": "Premises",
+            }
+        ]
+        data["parties"] = [
+            {
+                "name": tenant,
+                "role": "tenant",
+                "abn": None,
+                "contact": None,
+                "confidence": 0.9,
+                "source_hint": "Tenant",
+            }
+        ]
+        return data
+
+    holder: dict[str, Any] = {}
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return holder["data"], "resp_building"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    def apply_lease(unit_label: str, name: str, tenant: str) -> dict[str, Any]:
+        holder["data"] = make_extraction(unit_label, name, tenant)
+        create = client.post(
+            "/api/v1/document-intakes",
+            data={"entity_id": entity_id},
+            files={"file": ("lease.txt", b"lease", "text/plain")},
+        )
+        assert create.status_code == 201
+        applied = client.post(
+            f"/api/v1/document-intakes/{create.json()['id']}/apply",
+            json={"review_data": make_extraction(unit_label, name, tenant)},
+        )
+        assert applied.status_code == 200
+        return applied.json()
+
+    # First lease: register-style name carrying the unit.
+    body1 = apply_lease("U4", "Leitchs B6 U4", "SKJ Capital U4 Pty Ltd")
+    lease1 = session.get(Lease, UUID(body1["review_data"]["applied"]["lease_id"]))
+    assert lease1 is not None
+    unit1 = session.get(TenancyUnit, lease1.tenancy_unit_id)
+    assert unit1 is not None
+    building_id = unit1.property_id
+    building = session.get(Property, building_id)
+    assert building is not None
+    # Stored at building level, not the unit-qualified premises, and keyed.
+    assert building.name == "Leitchs B6"
+    building_key = building.property_metadata.get("building_key")
+    assert building_key
+
+    # Second lease: extraction-style name with the unit inline -> same building.
+    body2 = apply_lease(
+        "Unit 5",
+        "Building 6, Unit 5, 205 Leitchs Road, Brendale",
+        "SKJ Capital U5 Pty Ltd",
+    )
+    lease2 = session.get(Lease, UUID(body2["review_data"]["applied"]["lease_id"]))
+    assert lease2 is not None
+    unit2 = session.get(TenancyUnit, lease2.tenancy_unit_id)
+    assert unit2 is not None
+    assert unit2.property_id == building_id
+    assert unit1.id != unit2.id
+
+    # A different building on the same street must NOT merge into B6.
+    body3 = apply_lease(
+        "Unit 1",
+        "Building 3, 205 Leitchs Road, Brendale",
+        "Other Tenant Pty Ltd",
+    )
+    lease3 = session.get(Lease, UUID(body3["review_data"]["applied"]["lease_id"]))
+    assert lease3 is not None
+    unit3 = session.get(TenancyUnit, lease3.tenancy_unit_id)
+    assert unit3 is not None
+    assert unit3.property_id != building_id
+
+    building_props = [
+        prop
+        for prop in session.scalars(select(Property)).all()
+        if prop.property_metadata.get("building_key") == building_key
+    ]
+    assert len(building_props) == 1
+
+
 def test_document_intake_apply_rejects_unsupported_document_type(
     client: TestClient,
     session: Session,

@@ -16,6 +16,26 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-17 Building-as-property (Phase 1, B6 proving slice):**
+  Temba chose the Properties → Units model (§2.10) after a Building 6 Unit 5
+  lease created a duplicate property instead of attaching U5 as a unit of the
+  existing B6 building. Backend-only Phase 1: a new `_building_key` (building
+  token + street core, unit stripped) plus building-aware matching in
+  `_find_or_create_property` so a dropped lease for another unit of a known
+  building attaches as a unit, names new building properties at building level,
+  and stamps `property_metadata.building_key`. The match is entity-scoped (a
+  site spanning trusts never merges — `Property.entity_id` is single) and falls
+  back to the legacy exact-name match when there's no building token, so the
+  2026-06-16 B3 ≠ B6 guard still holds. Added `scripts/reconcile_building_units.py`
+  — a dry-run-first, idempotent, provider-inert tool that merges per-unit
+  properties into one building property (units/obligations/documents re-pointed,
+  leases ride their units, duplicates soft-deleted). No frontend change. Verified
+  on the Mac: ruff clean; `test_building_key` 4/4, the attach/B3-guard test +
+  full `test_document_intake_api` 36/36, lease/register/property selection 102
+  passed, `test_reconcile_building_units` 2/2. Design note + Phase 2 backlog
+  (portfolio migration, owner-grain, Properties UX, purchase-path mirror):
+  `docs/superpowers/plans/2026-06-17-building-as-property.md`.
+
 - [x] **2026-06-16 Leasium AI document-intake accuracy + review declutter:**
   A cluster of operator-reported intake fixes. Document text extraction now
   reads `.docx` tables, not just paragraphs — commercial leases (Queensland
