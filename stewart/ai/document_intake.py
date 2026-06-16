@@ -333,7 +333,15 @@ def extract_document_file(
         "or bank guarantee due dates, key dates, money, obligations, warnings, "
         "missing information, proposed actions, and inspection findings that should "
         "become reviewed maintenance work orders. Use ISO dates where possible and "
-        "mark uncertainty with lower confidence and warnings."
+        "mark uncertainty with lower confidence and warnings. "
+        "For rent and other recurring charges, record the payment frequency EXACTLY "
+        "as the document states it — e.g. the 'per: month / year' selection on REIQ "
+        "commercial lease forms, or wording like 'per annum', 'p.a.', 'per calendar "
+        "month', 'pcm'. Do NOT assume monthly. The stated amount is the amount for "
+        "that period (e.g. '$95,000 + GST per year' is $95,000 per year, not per "
+        "month). If you cannot tell whether the amount is per month or per year, set "
+        "the frequency to null and add a warning asking the operator to confirm the "
+        "rent frequency rather than guessing."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     try:
