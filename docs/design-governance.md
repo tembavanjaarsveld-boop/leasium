@@ -396,6 +396,23 @@ fixes · deferrals.
   no-overflow and clipped-action checks · deferred: full cross-page history
   surfacing/global drawer remains follow-up; v1 cut line is contextual launch
   + persisted thread.
+- 2026-06-16 · Leasium AI review declutter + drop thinking-state · reused the
+  approved conversation-first review pattern (no new surface, no token change);
+  driven by operator feedback that the review buried the action under a
+  half-page wall of warnings · screens checked at 1440/390 with a warnings-
+  populated fixture (collapsed + expanded notes, desktop + mobile) · fixes:
+  understanding card now leads with the create-mapped facts (Tenant, Property,
+  Unit, Term, Rent) and collapses secondary fields behind "Show N more
+  details"; warnings moved into a single collapsed "N things to check before
+  applying" disclosure instead of stacked full-width amber blocks; dropped the
+  dead per-row "source" buttons and SOURCE-BACKED chip; confidence badge shown
+  only for non-high values; dropping a document now renders chat turns (file
+  user bubble + animated "Reading your document…" reply) instead of a flat
+  banner · also in the same slice: a Link existing / Create new toggle so a
+  matched property/tenant can be overridden either way · intake-conversation
+  smoke passed; provider guardrails unchanged (apply stays the only mutation,
+  no Xero/SendGrid/Twilio/payment writes) · deferred: true token-by-token
+  streaming of the AI reply (needs backend SSE) is a follow-up.
 
 ## UX Debt Register
 

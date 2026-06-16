@@ -16,6 +16,30 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-16 Leasium AI document-intake accuracy + review declutter:**
+  A cluster of operator-reported intake fixes. Document text extraction now
+  reads `.docx` tables, not just paragraphs — commercial leases (Queensland
+  Titles Registry Form 7/20, REIQ schedules) keep parties, commencement/expiry
+  dates, options, rent review, outgoings, and bond in tables, so the model was
+  never shown the tenant/landlord names or the lease term and reported them
+  missing; the reader now walks the body in order and flattens table rows. The
+  default extraction model moved from `gpt-5.4-mini` to `gpt-5.4` for stronger
+  date/checkbox/table reading. On the review surface: property matching
+  tightened to normalised name-equality so a new building sharing a street
+  (B6 vs B3 at 205 Leitchs Road) no longer merges into an existing property;
+  edits now always persist on apply (closing the editor no longer discards
+  them); a Link existing / Create new toggle lets the operator override a
+  matched property/tenant either way; the decorative plan checkbox was removed.
+  The review panel was decluttered — it leads with the create-mapped facts
+  (Tenant, Property, Unit, Term, Rent), collapses secondary fields behind
+  "Show N more details", and moves warnings into a single collapsed
+  "N things to check before applying" disclosure instead of a half-page wall;
+  dropping a document now renders chat turns with an animated "Reading your
+  document…" reply. Provider guardrails unchanged: apply stays the only
+  mutation; no Xero/SendGrid/Twilio/payment writes. Verified on the Mac with
+  backend ruff + pytest (incl. a docx-tables regression), frontend tsc/eslint,
+  intake-conversation smoke, production build, and 1440/390 UX screenshots.
+  True token-by-token streaming of the reply (backend SSE) remains a follow-up.
 - [x] **2026-06-16 Leasium AI persistent conversation threads:**
   Slice E shipped the approved first-class conversation record model:
   `ConversationThread` + `ConversationTurn` with org/entity scope, page route,
