@@ -212,6 +212,42 @@ def _assert_no_overlapping_lease(
         )
 
 
+def _clear_orphaned_unit_leases(
+    unit: TenancyUnit,
+    entity_id: UUID,
+    user: CurrentUser,
+    session: Session,
+) -> None:
+    """Soft-delete leases on this unit whose tenant has been deleted. An
+    orphaned lease (its tenant removed) must not block — or later duplicate —
+    a fresh lease when the document is re-imported."""
+    leases = session.scalars(
+        select(Lease).where(
+            Lease.tenancy_unit_id == unit.id,
+            Lease.deleted_at.is_(None),
+        )
+    ).all()
+    now = utcnow()
+    for lease in leases:
+        tenant = session.get(Tenant, lease.tenant_id)
+        if tenant is not None and tenant.deleted_at is None:
+            continue
+        lease.deleted_at = now
+        audit_log(
+            session,
+            actor=user.actor,
+            user_id=user.id,
+            entity_id=entity_id,
+            action="delete",
+            target_table="lease",
+            target_id=lease.id,
+            tool_name="lease_intake.apply",
+            tool_output_summary=(
+                "Orphaned lease (tenant removed) cleared before re-creating the lease."
+            ),
+        )
+
+
 def _get_intake(
     intake_id: UUID,
     user: CurrentUser,
@@ -520,6 +556,7 @@ def _apply_lease_records(
     intake.extracted_data = extracted
     prop = _find_or_create_property(payload.property_id, intake, extracted, user, session)
     unit = _find_or_create_unit(payload.tenancy_unit_id, prop, extracted, intake, session)
+    _clear_orphaned_unit_leases(unit, prop.entity_id, user, session)
     _assert_no_overlapping_lease(unit, extracted, session)
     tenant = _find_or_create_tenant(payload.tenant_id, intake, extracted, user, session)
     lease = _create_lease(unit, tenant, intake, extracted, session)
