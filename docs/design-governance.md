@@ -433,6 +433,16 @@ fixes · deferrals.
   unchanged: no
   Xero, email/SMS, payment, reconciliation, provider dispatch, or Smart Intake
   apply runs without explicit approval · deferred: none for this UX correction.
+- 2026-06-17 · Leasium AI home colour pass · reused the approved Horizon hero
+  wash and blue/teal automation palette from Figma `03 Screens / Smart Intake
+  55:166` plus the Codex design source of truth · screens checked at 1440/390
+  (`output/ux/leasium-ai-conversation-thread/2026-06-17-colour-desktop-1440.png`,
+  `output/ux/leasium-ai-conversation-thread/2026-06-17-colour-mobile-390.png`)
+  · fixes: the AI home composer now has the blue-to-teal wash, subtle primary
+  border/glow, and tinted source/action chips; the Recent threads strip was
+  removed from the assistant area per operator preference so the page stays
+  focused on ask/upload and the document queue below · provider guardrails
+  unchanged; no provider or Smart Intake apply path changed · deferred: none.
 
 ## UX Debt Register
 

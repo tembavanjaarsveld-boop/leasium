@@ -16,6 +16,16 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-17 Leasium AI home colour pass:** `/intake` Home keeps the
+  chat-first assistant structure but now uses the approved Horizon blue-to-teal
+  hero wash, subtle primary border/glow, and tinted source/action chips so the
+  page reads as Leasium AI rather than a plain white form. Removed the Recent
+  threads strip from the assistant area per operator preference; the home stays
+  focused on ask/upload and the document queue below. Verified with Leasium AI
+  app-flow smoke 10/10 and desktop/mobile visual smoke
+  (`output/ux/leasium-ai-conversation-thread/2026-06-17-colour-desktop-1440.png`,
+  `output/ux/leasium-ai-conversation-thread/2026-06-17-colour-mobile-390.png`).
+
 - [x] **2026-06-17 Building-as-property (Phase 1, B6 proving slice):**
   Temba chose the Properties → Units model (§2.10) after a Building 6 Unit 5
   lease created a duplicate property instead of attaching U5 as a unit of the

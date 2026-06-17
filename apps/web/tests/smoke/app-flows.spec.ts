@@ -627,11 +627,7 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
     page.getByPlaceholder("Ask Leasium anything, or add a file..."),
   ).toBeVisible();
   await expect(page.getByText("What's overdue?")).toBeVisible();
-  const recentThreads = page.getByTestId("leasium-ai-home-recent");
-  await expect(recentThreads.getByText("Recent")).toBeVisible();
-  await expect(
-    recentThreads.getByRole("link", { name: /Add lease for Queen Street/ }),
-  ).toHaveAttribute("href", "/intake?thread_id=thread-recent-1");
+  await expect(page.getByTestId("leasium-ai-home-recent")).toHaveCount(0);
   await expect(
     rail.getByRole("heading", { name: "Documents waiting" }),
   ).toBeVisible();

@@ -2,6 +2,35 @@
 
 Last updated: 2026-06-17
 
+## Continuation - 2026-06-17 (Leasium AI home colour pass)
+
+Temba liked the simplified Leasium AI shape but called out that the home surface
+was too bland in colour, then clarified that the assistant area should not show a
+Recent threads strip.
+
+What changed:
+- `/intake` Home composer now uses the approved Horizon blue-to-teal hero wash,
+  a subtle primary border/glow, and tinted source/action chips.
+- The Recent threads strip was removed from the Leasium AI home. Direct
+  `thread_id` restore still works; the removed home query only fed that strip.
+- Visual smokes now assert the colour wash and assert that the Recent strip is
+  absent.
+
+Verification:
+- Red visual smoke first failed on the old white/slate composer.
+- Red visual smoke then failed while the Recent strip still rendered.
+- `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "Leasium AI" --workers=1` passed 10/10.
+- `cd apps/web && npx playwright test tests/smoke/conversation-thread-visual.spec.ts
+  --workers=1` passed 2/2 and produced
+  `output/ux/leasium-ai-conversation-thread/2026-06-17-colour-desktop-1440.png`
+  and
+  `output/ux/leasium-ai-conversation-thread/2026-06-17-colour-mobile-390.png`.
+
+Guardrails held: UI styling/query removal only. No Xero, SendGrid, Twilio,
+tenant email, payment, reconciliation, provider dispatch, or Smart Intake apply
+path changed.
+
 ## Continuation - 2026-06-17 (Leasium AI chat UX simplification)
 
 Temba clarified there was no functional AI issue in this slice: the intake AI

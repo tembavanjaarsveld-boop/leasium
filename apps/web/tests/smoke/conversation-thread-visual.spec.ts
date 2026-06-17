@@ -73,7 +73,23 @@ async function openLeasiumAiHome(page: Page) {
   await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
   await page.goto("/intake");
-  await expect(page.getByTestId("leasium-ai-home-recent")).toBeVisible();
+  await expect(page.getByTestId("leasium-ai-home-composer")).toBeVisible();
+  await expect(page.getByTestId("leasium-ai-home-recent")).toHaveCount(0);
+}
+
+async function expectLeasiumAiColourWash(page: Page) {
+  const composer = page.getByTestId("leasium-ai-home-composer");
+  const visualStyle = await composer.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return {
+      backgroundImage: style.backgroundImage,
+      borderColor: style.borderColor,
+    };
+  });
+
+  expect(visualStyle.backgroundImage).toContain("234, 240, 255");
+  expect(visualStyle.backgroundImage).toContain("232, 250, 247");
+  expect(visualStyle.borderColor).toContain("36, 91, 255");
 }
 
 test("Leasium AI conversation thread home stays clean at 1440", async ({
@@ -81,10 +97,11 @@ test("Leasium AI conversation thread home stays clean at 1440", async ({
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openLeasiumAiHome(page);
+  await expectLeasiumAiColourWash(page);
   await expectNoViewportSlop(page);
   await mkdir(screenshotDir, { recursive: true });
   await page.screenshot({
-    path: path.join(screenshotDir, "2026-06-16-desktop-1440.png"),
+    path: path.join(screenshotDir, "2026-06-17-colour-desktop-1440.png"),
     fullPage: false,
   });
 });
@@ -97,7 +114,7 @@ test("Leasium AI conversation thread home stays clean at 390", async ({
   await expectNoViewportSlop(page);
   await mkdir(screenshotDir, { recursive: true });
   await page.screenshot({
-    path: path.join(screenshotDir, "2026-06-16-mobile-390.png"),
+    path: path.join(screenshotDir, "2026-06-17-colour-mobile-390.png"),
     fullPage: false,
   });
 });

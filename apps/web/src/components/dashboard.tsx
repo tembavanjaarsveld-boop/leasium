@@ -80,7 +80,6 @@ import {
   DocumentIntakeRecord,
   listEntities,
   listDocumentIntakes,
-  listConversationThreads,
   listObligations,
   listProperties,
   getInsightsOverview,
@@ -1816,12 +1815,6 @@ export function Dashboard({
     refetchInterval: (query) =>
       query.state.data?.some(intakeIsActive) ? 2500 : false,
   });
-  const conversationThreadsQuery = useQuery({
-    queryKey: ["conversation-threads", scopedEntityId],
-    queryFn: () => listConversationThreads({ entity_id: scopedEntityId, limit: 5 }),
-    enabled: isIntakeWorkspace && Boolean(scopedEntityId),
-    staleTime: 30_000,
-  });
   const requestedThreadId =
     typeof window === "undefined"
       ? null
@@ -2086,7 +2079,6 @@ export function Dashboard({
   const documentIntakes = demoMode
     ? [demoDocumentIntake, ...liveDocumentIntakes]
     : liveDocumentIntakes;
-  const recentConversationThreads = conversationThreadsQuery.data ?? [];
 
   const openObligations = useMemo(
     () =>
@@ -3193,10 +3185,10 @@ export function Dashboard({
                 uploadSmartIntake(event.dataTransfer.files[0]);
               }}
               className={[
-                "overflow-hidden rounded-[22px] border bg-gradient-to-b from-white via-white to-leasium-slate-50 px-4 py-6 shadow-leasiumCard transition sm:px-6 sm:py-10 xl:px-10",
+                "overflow-hidden rounded-[22px] border bg-[linear-gradient(135deg,var(--leasium-hero-wash-from)_0%,rgba(255,255,255,0.94)_46%,var(--leasium-hero-wash-to)_100%)] px-4 py-6 shadow-[0_18px_44px_rgba(36,91,255,0.08),0_1px_3px_rgba(16,24,40,0.04)] transition sm:px-6 sm:py-10 xl:px-10",
                 dragActive
                   ? "border-primary ring-2 ring-primary/20"
-                  : "border-border",
+                  : "border-primary/35",
                 !selectedEntityId || documentIntakeMutation.isPending
                   ? "opacity-75"
                   : "",
@@ -3226,7 +3218,7 @@ export function Dashboard({
                   </p>
                 </div>
 
-                <div className="overflow-hidden rounded-[20px] border border-border bg-white shadow-leasiumCard">
+                <div className="overflow-hidden rounded-[20px] border border-primary/20 bg-white/95 shadow-leasiumCard">
                   <textarea
                     value={landingQuestion}
                     onChange={(event) => setLandingQuestion(event.target.value)}
@@ -3237,15 +3229,15 @@ export function Dashboard({
                       }
                     }}
                     placeholder="Ask Leasium anything, or add a file..."
-                    className="min-h-[112px] w-full resize-none bg-white px-4 py-4 text-base leading-7 text-foreground outline-none placeholder:text-muted-foreground sm:min-h-[132px] sm:px-5"
+                    className="min-h-[112px] w-full resize-none bg-white/95 px-4 py-4 text-base leading-7 text-foreground outline-none placeholder:text-muted-foreground sm:min-h-[132px] sm:px-5"
                   />
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-leasium-slate-50 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-primary/10 bg-gradient-to-r from-primary-soft/60 via-white to-accent-soft/70 px-3 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={!selectedEntityId || documentIntakeMutation.isPending}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-foreground shadow-leasiumXs transition hover:bg-muted disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-white px-3 text-sm font-medium text-primary-hover shadow-leasiumXs transition hover:border-primary/35 hover:bg-primary-soft disabled:opacity-50"
                       >
                         {documentIntakeMutation.isPending ? (
                           <Loader2 size={16} className="animate-spin" />
@@ -3254,12 +3246,12 @@ export function Dashboard({
                         )}
                         Files
                       </button>
-                      <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-muted-foreground shadow-leasiumXs">
+                      <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-accent/25 bg-white px-3 text-sm font-medium text-leasium-teal-strong shadow-leasiumXs">
                         <Building2 size={16} />
                         <span className="sm:hidden">Portfolio</span>
                         <span className="hidden sm:inline">Current portfolio</span>
                       </span>
-                      <span className="hidden min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-muted-foreground shadow-leasiumXs sm:inline-flex">
+                      <span className="hidden min-h-11 items-center gap-2 rounded-full border border-warning/25 bg-white px-3 text-sm font-medium text-warning-strong shadow-leasiumXs sm:inline-flex">
                         <ShieldCheck size={16} />
                         Approval first
                       </span>
@@ -3331,7 +3323,7 @@ export function Dashboard({
                           fileInputRef.current?.click();
                         }}
                         disabled={!selectedEntityId}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-muted-foreground shadow-leasiumXs transition hover:border-primary/30 hover:text-foreground disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/15 bg-white px-3 text-sm font-medium text-primary-hover shadow-leasiumXs transition hover:border-primary/35 hover:bg-primary-soft disabled:opacity-50"
                       >
                         {chip.icon}
                         {chip.mobileLabel ? (
@@ -3349,32 +3341,6 @@ export function Dashboard({
                     or email to intake@leasium.ai
                   </span>
                 </div>
-                {recentConversationThreads.length > 0 ? (
-                  <div
-                    data-testid="leasium-ai-home-recent"
-                    className="grid gap-2 rounded-xl border border-border bg-leasium-slate-50 px-3 py-2"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                        Recent
-                      </p>
-                      <span className="text-[11px] text-muted-foreground">
-                        {recentConversationThreads.length}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {recentConversationThreads.slice(0, 3).map((thread) => (
-                        <Link
-                          key={thread.id}
-                          href={`/intake?thread_id=${encodeURIComponent(thread.id)}`}
-                          className="inline-flex min-h-9 max-w-full items-center rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-leasiumXs transition hover:bg-muted"
-                        >
-                          <span className="truncate">{thread.title}</span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
                 {documentIntakeMutation.isPending ? (
                   <div className="flex flex-col gap-3 border-t border-border pt-4">
                     {documentIntakeMutation.variables ? (
