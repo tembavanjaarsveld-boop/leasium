@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowLeft,
   Building2,
   CalendarClock,
   Check,
@@ -17,6 +18,7 @@ import {
   Loader2,
   ReceiptText,
   RefreshCw,
+  Send,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -2559,18 +2561,40 @@ export function Dashboard({
     );
   }
 
+  function closeDocumentReview() {
+    setReviewIntakeId(null);
+    setRequestedReviewId(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("review");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    }
+  }
+
   const selectedDocumentReviewPanel = selectedReviewIntake ? (
-    <IntakeConversationPanel
-      entityId={selectedEntityId}
-      intake={selectedReviewIntake}
-      onApplied={() => {
-        setIntakeNotice("Document workflow applied.");
-        refreshDashboardData();
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard-document-intakes", selectedEntityId],
-        });
-      }}
-    />
+    <section data-testid="leasium-ai-document-chat" className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={closeDocumentReview}
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-primary transition hover:bg-primary/5"
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          Back to Leasium AI
+        </button>
+      </div>
+      <IntakeConversationPanel
+        entityId={selectedEntityId}
+        intake={selectedReviewIntake}
+        onApplied={() => {
+          setIntakeNotice("Document workflow applied.");
+          refreshDashboardData();
+          queryClient.invalidateQueries({
+            queryKey: ["dashboard-document-intakes", selectedEntityId],
+          });
+        }}
+      />
+    </section>
   ) : null;
 
   const upcomingEvents = [
@@ -2786,9 +2810,9 @@ export function Dashboard({
                 Leasium AI
               </PageTitle>
               <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">Drop a document, ask a question, or tell me what to do.</span>
+                <span className="sm:hidden">Drop a document or ask in plain English.</span>
                 <span className="hidden sm:inline">
-                  Your single workspace — drop a document, ask a question, or tell me what to do.
+                  Drop a lease, invoice, contract, or question. Leasium AI reads first and asks before anything changes.
                 </span>
               </p>
             </div>
@@ -3133,7 +3157,12 @@ export function Dashboard({
         {isIntakeWorkspace ? (
           <section
             data-testid="leasium-ai-home"
-            className="grid gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start"
+            className={cn(
+              "grid gap-3 sm:gap-4",
+              selectedDocumentReviewPanel
+                ? "mx-auto w-full max-w-5xl"
+                : "mx-auto w-full max-w-6xl",
+            )}
           >
             {lastApplyOutcome ? (
               <DocumentIntakeApplyOutcomeCard
@@ -3164,7 +3193,7 @@ export function Dashboard({
                 uploadSmartIntake(event.dataTransfer.files[0]);
               }}
               className={[
-                "overflow-hidden rounded-[18px] border bg-white px-4 py-5 shadow-leasiumCard transition sm:px-6 sm:py-6 xl:col-start-1 xl:row-start-1 xl:rounded-[20px] xl:px-6",
+                "overflow-hidden rounded-[22px] border bg-gradient-to-b from-white via-white to-leasium-slate-50 px-4 py-6 shadow-leasiumCard transition sm:px-6 sm:py-10 xl:px-10",
                 dragActive
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-border",
@@ -3183,91 +3212,128 @@ export function Dashboard({
                   event.currentTarget.value = "";
                 }}
               />
-              <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <span
-                    aria-hidden
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-base font-semibold text-leasium-teal-strong"
-                  >
-                    ✦
-                  </span>
-                  <div>
-                    <p className="text-base font-semibold leading-5 text-foreground sm:text-[17px]">
-                      Good morning, Temba.
-                    </p>
-                    <p className="text-xs leading-4 text-muted-foreground sm:text-[13px] sm:leading-5">
-                      What do you want to get done? Drop a lease, invoice or contract — or just ask.
-                    </p>
+              <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+                <div className="text-center">
+                  <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-primary to-leasium-teal text-white shadow-leasiumXs">
+                    <Sparkles size={22} />
                   </div>
+                  <p className="text-2xl font-semibold leading-8 text-foreground sm:text-4xl sm:leading-[44px]">
+                    Leasium AI
+                  </p>
+                  <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+                    Ask a question, drop in a lease or invoice, and I&apos;ll talk you
+                    through the next step before anything changes.
+                  </p>
                 </div>
-                <div className="flex items-center gap-2 rounded-2xl border border-border bg-leasium-slate-50 px-2 py-2 sm:gap-3 sm:px-3">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!selectedEntityId || documentIntakeMutation.isPending}
-                    aria-label="Attach a document"
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-white hover:text-foreground disabled:opacity-50"
-                  >
-                    {documentIntakeMutation.isPending ? (
-                      <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                      <FileUp size={18} />
-                    )}
-                  </button>
-                  <input
+
+                <div className="overflow-hidden rounded-[20px] border border-border bg-white shadow-leasiumCard">
+                  <textarea
                     value={landingQuestion}
                     onChange={(event) => setLandingQuestion(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") {
+                      if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
                         handleLandingAsk();
                       }
                     }}
-                    placeholder="Message Leasium AI…"
-                    className="min-w-0 flex-1 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                    placeholder="Ask Leasium anything, or add a file..."
+                    className="min-h-[112px] w-full resize-none bg-white px-4 py-4 text-base leading-7 text-foreground outline-none placeholder:text-muted-foreground sm:min-h-[132px] sm:px-5"
                   />
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (landingQuestion.trim()) handleLandingAsk();
-                      else fileInputRef.current?.click();
-                    }}
-                    disabled={landingAsking || !selectedEntityId}
-                    className="shrink-0 px-3"
-                    aria-label="Send"
-                  >
-                    {landingAsking ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      "↑"
-                    )}
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-leasium-slate-50 px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={!selectedEntityId || documentIntakeMutation.isPending}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-foreground shadow-leasiumXs transition hover:bg-muted disabled:opacity-50"
+                      >
+                        {documentIntakeMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <FileUp size={16} />
+                        )}
+                        Files
+                      </button>
+                      <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-muted-foreground shadow-leasiumXs">
+                        <Building2 size={16} />
+                        <span className="sm:hidden">Portfolio</span>
+                        <span className="hidden sm:inline">Current portfolio</span>
+                      </span>
+                      <span className="hidden min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-muted-foreground shadow-leasiumXs sm:inline-flex">
+                        <ShieldCheck size={16} />
+                        Approval first
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (landingQuestion.trim()) handleLandingAsk();
+                        else fileInputRef.current?.click();
+                      }}
+                      disabled={landingAsking || !selectedEntityId}
+                      className="min-h-11"
+                    >
+                      {landingAsking ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Asking
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Ask
+                        </>
+                      )}
+                    </Button>
+                    <div
+                      data-testid="leasium-ai-home-guardrail"
+                      className="flex min-h-9 w-full items-center gap-2 rounded-xl border border-accent/20 bg-accent-soft px-3 py-2 text-sm font-medium text-leasium-teal-strong"
+                    >
+                      <ShieldCheck size={15} className="shrink-0" />
+                      <span>Nothing is sent, synced, charged, or changed until you approve it.</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+
+                <div className="flex flex-wrap justify-center gap-2">
                   {[
-                    { label: "📄 Add a lease" },
+                    { label: "Add a lease", icon: <FileText size={15} /> },
                     {
-                      label: "💸 Log a paid invoice",
-                      mobileLabel: "💸 Log invoice",
+                      label: "Use an old invoice",
+                      mobileLabel: "Old invoice",
+                      icon: <ReceiptText size={15} />,
                     },
                     {
-                      label: "📊 What's overdue?",
-                      mobileLabel: "📊 Overdue?",
+                      label: "What's overdue?",
+                      mobileLabel: "Overdue?",
+                      icon: <ClipboardList size={15} />,
+                      ask: "What's overdue?",
                     },
                     {
-                      label: "👤 Onboard a tenant",
-                      mobileLabel: "👤 Onboard",
+                      label: "Onboard a tenant",
+                      mobileLabel: "Onboard",
+                      icon: <UserRound size={15} />,
                     },
-                    { label: "✉ Draft a rent review" },
+                    {
+                      label: "Draft a rent review",
+                      icon: <FileText size={15} />,
+                    },
                   ].map(
                     (chip) => (
                       <button
                         key={chip.label}
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => {
+                          if ("ask" in chip && chip.ask) {
+                            void handleLandingAsk(chip.ask);
+                            return;
+                          }
+                          fileInputRef.current?.click();
+                        }}
                         disabled={!selectedEntityId}
-                        className="rounded-full bg-leasium-slate-100 px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-medium text-muted-foreground shadow-leasiumXs transition hover:border-primary/30 hover:text-foreground disabled:opacity-50"
                       >
+                        {chip.icon}
                         {chip.mobileLabel ? (
                           <>
                             <span className="sm:hidden">{chip.mobileLabel}</span>
@@ -3321,13 +3387,13 @@ export function Dashboard({
                         </div>
                       </div>
                     ) : null}
-                    <div className="flex gap-2">
-                      <span
-                        aria-hidden
-                        className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-leasium-teal-strong"
-                      >
-                        ✦
-                      </span>
+	                    <div className="flex gap-2">
+	                      <span
+	                        aria-hidden
+	                        className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-leasium-teal-strong"
+	                      >
+	                        <Sparkles size={14} />
+	                      </span>
                       <p
                         aria-live="polite"
                         className="inline-flex items-center gap-2 pt-1 text-sm text-muted-foreground"
@@ -3357,13 +3423,13 @@ export function Dashboard({
                             {turn.question}
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          <span
-                            aria-hidden
-                            className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-leasium-teal-strong"
-                          >
-                            ✦
-                          </span>
+	                        <div className="flex gap-2">
+	                          <span
+	                            aria-hidden
+	                            className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-leasium-teal-strong"
+	                          >
+	                            <Sparkles size={14} />
+	                          </span>
                           <div className="min-w-0 flex-1 space-y-2">
                             {turn.error ? (
                               <p className="text-sm text-danger">{turn.error}</p>
@@ -3398,44 +3464,20 @@ export function Dashboard({
                     ))}
                   </div>
                 ) : null}
-                <div className="hidden gap-3 rounded-xl border border-border bg-leasium-slate-50 p-3 sm:grid sm:grid-cols-3">
-                  {[
-                    ["1", "Read", "I read the document and tell you what I understood, with sources."],
-                    ["2", "Propose", "I propose the exact records — property, tenant, lease — in one plan."],
-                    ["3", "Approve", "Nothing happens until you approve. Xero, email & SMS are a separate yes."],
-                  ].map((step) => (
-                    <div
-                      key={step[0]}
-                      data-testid="leasium-ai-home-how"
-                      className="flex flex-col gap-1"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="grid h-5 w-5 place-items-center rounded-full bg-primary-soft text-[11px] font-bold text-primary">
-                          {step[0]}
-                        </span>
-                        <span className="text-sm font-semibold text-foreground">
-                          {step[1]}
-                        </span>
-                      </div>
-                      <span className="text-xs leading-4 text-muted-foreground">
-                        {step[2]}
-                      </span>
-                    </div>
-                  ))}
-                </div>
                 <div className="hidden flex-wrap items-center gap-2 rounded-xl border border-primary/15 bg-white px-3 py-2 text-xs leading-5 text-muted-foreground sm:flex">
                   <StatusBadge tone="primary">Local-only until approval</StatusBadge>
                   <span>
-                    No invoices, Xero syncs, emails, SMS, payments, or reconciliation run from the AI workspace.
+                    I can read and suggest from here. Xero, email, payments, and reconciliation still need a separate approval.
                   </span>
                 </div>
               </div>
             </section>
             ) : null}
 
+            {!selectedDocumentReviewPanel ? (
             <section
               data-testid="leasium-ai-home-rail"
-              className="grid gap-4 xl:col-start-2 xl:row-start-1 xl:grid-cols-1"
+              className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]"
             >
               <div
                 data-testid="smart-intake-review-panel"
@@ -3444,10 +3486,10 @@ export function Dashboard({
                 <div className="flex flex-wrap items-start justify-between gap-3 pb-0 sm:border-b sm:border-border sm:px-4 sm:py-3">
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">
-                      AI review queue
+                      Documents waiting
                     </h2>
                     <p className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">
-                      Open a document to keep working with Leasium AI: approve, edit, answer, or ignore before anything changes.
+                      Open one document at a time. Leasium AI will ask what it needs before anything changes.
                     </p>
                   </div>
                   <StatusBadge
@@ -3713,13 +3755,7 @@ export function Dashboard({
                 </div>
               </div>
             </section>
-
-            <div
-              data-testid="leasium-ai-home-guardrail"
-              className="flex min-h-9 items-center justify-center rounded-full border border-accent/20 bg-accent-soft px-4 py-2 text-center text-sm font-medium text-leasium-teal-strong shadow-leasiumXs xl:col-start-2 xl:row-start-2"
-            >
-              Nothing is applied until you approve it.
-            </div>
+            ) : null}
 
             {!selectedDocumentReviewPanel ? (
               <RegisterImportPanel

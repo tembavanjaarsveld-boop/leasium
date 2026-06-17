@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -413,6 +413,26 @@ fixes · deferrals.
   smoke passed; provider guardrails unchanged (apply stays the only mutation,
   no Xero/SendGrid/Twilio/payment writes) · deferred: true token-by-token
   streaming of the AI reply (needs backend SSE) is a follow-up.
+- 2026-06-17 · Leasium AI chat UX simplification · reused the approved
+  conversation-first Leasium AI pattern, adjusted for operator feedback that the
+  working AI still felt like a clunky admin review surface · screens checked at
+  1440/390 (`output/playwright/leasium-ai-workspace-1440.png`,
+  `output/playwright/leasium-ai-workspace-390.png`,
+  `output/playwright/leasium-ai-zero-field-invoice-1440.png`,
+  `output/playwright/leasium-ai-zero-field-invoice-390.png`,
+  `output/playwright/leasium-ai-reading-invoice-1440.png`) · fixes: Home now has
+  a centered assistant prompt (large Leasium AI identity, one ask/file box,
+  source chips, workflow suggestions underneath), simpler Documents waiting
+  copy below the assistant, and the approval-first receipt inside the mobile
+  composer; opening a document hides the queue rail and renders one chat shell
+  with header, transcript, and reply composer as the only main surface;
+  zero-field invoices/admin documents ask one setup question; notices ask
+  whether to follow up, link, or ignore; reading/uploaded files show a calm
+  reading state with no apply controls; stale Horizon/opportunity-panel smoke
+  expectations were replaced with chat-first coverage · provider guardrails
+  unchanged: no
+  Xero, email/SMS, payment, reconciliation, provider dispatch, or Smart Intake
+  apply runs without explicit approval · deferred: none for this UX correction.
 
 ## UX Debt Register
 

@@ -2,6 +2,47 @@
 
 Last updated: 2026-06-17
 
+## Continuation - 2026-06-17 (Leasium AI chat UX simplification)
+
+Temba clarified there was no functional AI issue in this slice: the intake AI
+worked, but the interface still felt clunky and too much like an admin review
+panel for older, technophobic property operators.
+
+What changed:
+- `/intake` Home now leads with a centered assistant-style prompt: large
+  Leasium AI identity, one ask/file box, source chips, simple workflow
+  suggestions, and an approval-first guardrail inside the composer.
+- `Documents waiting` and recently applied provenance moved underneath the
+  assistant so the first mental model is chat, not queue management.
+- Opening a document now hides the right queue rail and focuses the page on one
+  Leasium AI chat shell with a header, transcript, and attached reply composer.
+- `IntakeConversationPanel` copy and density were simplified: larger AI/user
+  turns, plain confidence labels, friendlier guardrail language, and a clearer
+  primary action (`Approve and create records` / `Save for review`) embedded in
+  the assistant message rather than a separate review dashboard.
+- Zero-field invoice/admin documents now ask one setup question in the chat
+  (`Which property, unit, tenant, or lease should this invoice help with?`).
+  Notices ask whether to create a follow-up, link to a lease, or ignore.
+- Uploaded/reading intakes now show a calm reading chat state and no apply
+  controls until extraction finishes.
+- Stale Horizon/opportunity-panel smoke expectations were replaced with current
+  chat-first coverage. The old `document-intake-opportunity-panel` strings are
+  now historical doc references only, not current UI/test anchors.
+
+Verification:
+- `npm --prefix apps/web run lint -- --quiet`
+- `cd apps/web && npx tsc --noEmit --pretty false`
+- `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "Leasium AI|smart intake opens|mobile Leasium AI|document review|invoice
+  extraction|still reading|follow-up chat" --workers=1` (10/10)
+- `cd apps/web && npx playwright test tests/smoke/intake-conversation.spec.ts
+  --workers=1` (3/3)
+- `npm --prefix apps/web run build`
+
+Guardrails held: no Xero, SendGrid, Twilio, tenant email, payment,
+reconciliation, provider dispatch, or Smart Intake apply runs from the read-only
+chat checks. Apply remains the explicit operator-approved mutation path.
+
 ## Continuation - 2026-06-17 (Building-as-property — B6 proving slice)
 
 Temba chose the building-as-property model (Properties → Units, §2.10) after the

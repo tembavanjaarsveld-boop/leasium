@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -35,6 +35,27 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   passed, `test_reconcile_building_units` 2/2. Design note + Phase 2 backlog
   (portfolio migration, owner-grain, Properties UX, purchase-path mirror):
   `docs/superpowers/plans/2026-06-17-building-as-property.md`.
+
+- [x] **2026-06-17 Leasium AI chat UX simplification:** operator feedback was
+  that AI intake worked but still felt clunky and too admin-like for older,
+  technophobic property operators. `/intake` now leads with a centered
+  assistant-style prompt: large Leasium AI identity, one ask/file box, source
+  chips, simple workflow suggestions, and an always-visible approval-first
+  guardrail inside the composer. Documents waiting and recently applied records
+  sit below the assistant instead of as the first mental model. Opening a
+  document now hides the right queue rail and renders one chat shell
+  (header/transcript/reply composer) where the document is the user message,
+  Leasium's plain-English read/question/plan are assistant messages, and apply
+  stays an explicit reviewed action. Zero-field invoices/admin files ask one
+  plain-English setup question; notices ask whether to create a follow-up, link,
+  or ignore; active uploaded/reading files show a calm reading state with no
+  apply controls. The old Horizon/opportunity-panel smoke expectations were
+  replaced with current chat-first checks. Provider guardrails stayed inert: no
+  Xero, email/SMS, payment, reconciliation, or provider mutation runs from this
+  surface. Verified with frontend eslint/tsc, `intake-conversation.spec.ts`
+  3/3, focused Leasium AI app-flow smokes 10/10, production build, and
+  desktop/mobile screenshots (`leasium-ai-workspace-1440/390`,
+  `leasium-ai-zero-field-invoice-1440/390`, `leasium-ai-reading-invoice-1440`).
 
 - [x] **2026-06-16 Leasium AI document-intake accuracy + review declutter:**
   A cluster of operator-reported intake fixes. Document text extraction now

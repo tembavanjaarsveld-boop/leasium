@@ -85,48 +85,16 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
-async function expectAppearsBefore(first: Locator, second: Locator) {
-  await expect(first).toBeVisible();
-  await expect(second).toBeVisible();
-  const firstBox = await first.boundingBox();
-  const secondBox = await second.boundingBox();
-  expect(firstBox).not.toBeNull();
-  expect(secondBox).not.toBeNull();
-  expect(firstBox!.y).toBeLessThan(secondBox!.y);
-}
-
-function watchForbiddenAiOpportunityRequests(page: Page) {
+function watchForbiddenDocumentReviewRequests(page: Page) {
   const forbiddenRequests: string[] = [];
-  const sessionRequests: string[] = [];
-  const sessionPayloads: Array<Record<string, unknown>> = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     const path = url.pathname;
     const method = request.method();
     const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(method);
-    const aiOpportunitySession =
-      unsafeMethod &&
-      /^\/api\/v1\/document-intakes\/[^/]+\/ai-opportunity-session$/.test(
-        path,
-      );
-    if (aiOpportunitySession) {
-      sessionRequests.push(`${method} ${url.toString()}`);
-      const postData = request.postData();
-      if (postData) {
-        try {
-          const parsed = JSON.parse(postData);
-          if (parsed && typeof parsed === "object") {
-            sessionPayloads.push(parsed as Record<string, unknown>);
-          }
-        } catch {
-          sessionPayloads.push({ raw: postData });
-        }
-      }
-      return;
-    }
     const smartIntakeMutation =
       unsafeMethod &&
-      /^\/api\/v1\/document-intakes\/[^/]+\/(apply|review|accept-lease-match)$/.test(
+      /^\/api\/v1\/document-intakes\/[^/]+\/(apply|review|accept-lease-match|ai-opportunity-session)$/.test(
         path,
       );
     const providerMutation =
@@ -156,7 +124,7 @@ function watchForbiddenAiOpportunityRequests(page: Page) {
       forbiddenRequests.push(`${method} ${url.toString()}`);
     }
   });
-  return { forbiddenRequests, sessionRequests, sessionPayloads };
+  return forbiddenRequests;
 }
 
 async function selectWorkspaceEntity(page: Page, value: string) {
@@ -641,33 +609,31 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   const railBox = await rail.boundingBox();
   expect(composerBox).not.toBeNull();
   expect(railBox).not.toBeNull();
-  expect(composerBox!.x + composerBox!.width).toBeLessThanOrEqual(
-    railBox!.x - 16,
+  expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(
+    railBox!.y - 12,
   );
   await expect(
     page.getByText(
-      "Your single workspace — drop a document, ask a question, or tell me what to do.",
+      "Drop a lease, invoice, contract, or question. Leasium AI reads first and asks before anything changes.",
     ),
   ).toBeVisible();
-  await expect(page.getByText("Good morning, Temba.")).toBeVisible();
-  await expect(page.getByPlaceholder("Message Leasium AI…")).toBeVisible();
-  await expect(page.getByText("📊 What's overdue?")).toBeVisible();
+  await expect(composer.getByText("Leasium AI")).toBeVisible();
+  await expect(
+    composer.getByText(
+      "Ask a question, drop in a lease or invoice, and I'll talk you through the next step before anything changes.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Ask Leasium anything, or add a file..."),
+  ).toBeVisible();
+  await expect(page.getByText("What's overdue?")).toBeVisible();
   const recentThreads = page.getByTestId("leasium-ai-home-recent");
   await expect(recentThreads.getByText("Recent")).toBeVisible();
   await expect(
     recentThreads.getByRole("link", { name: /Add lease for Queen Street/ }),
   ).toHaveAttribute("href", "/intake?thread_id=thread-recent-1");
   await expect(
-    page.getByTestId("leasium-ai-home-how").getByText("Read", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("leasium-ai-home-how").getByText("Propose", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("leasium-ai-home-how").getByText("Approve", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    rail.getByRole("heading", { name: "AI review queue" }),
+    rail.getByRole("heading", { name: "Documents waiting" }),
   ).toBeVisible();
   await expect(
     page
@@ -676,7 +642,7 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Nothing is applied until you approve it.",
+      "Nothing is sent, synced, charged, or changed until you approve it.",
     ),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -686,7 +652,7 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   });
 });
 
-test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
+test("mobile Leasium AI landing keeps the assistant prompt first", async ({
   page,
 }) => {
   await mkdir("../../output/playwright", { recursive: true });
@@ -698,9 +664,11 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   ).toBeVisible();
   const composer = page.getByTestId("leasium-ai-home-composer");
   await expect(composer).toBeVisible();
-  await expect(composer.getByText("Good morning, Temba.")).toBeVisible();
-  await expect(page.getByPlaceholder("Message Leasium AI…")).toBeVisible();
-  await expect(page.getByText("📊 Overdue?")).toBeVisible();
+  await expect(composer.getByText("Leasium AI")).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Ask Leasium anything, or add a file..."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Overdue?" })).toBeVisible();
   await expect(page.getByLabel("Review filter")).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Copy review queue CSV" }),
@@ -709,7 +677,7 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   const reviewPanel = page.getByTestId("smart-intake-review-panel");
   await expect(reviewPanel).toBeVisible();
   await expect(page.getByTestId("horizon-document-review")).toHaveCount(0);
-  await expect(reviewPanel.getByRole("heading", { name: "AI review queue" })).toBeVisible();
+  await expect(reviewPanel.getByRole("heading", { name: "Documents waiting" })).toBeVisible();
 
   const firstRow = page.getByTestId("review-intake-intake-1");
   await expect(firstRow).toBeVisible();
@@ -745,705 +713,171 @@ test("mobile Leasium AI landing keeps the compact Horizon queue first", async ({
   ).toBeVisible();
 });
 
-test("smart intake Horizon document review keeps source preview beside extracted fields without mutations", async ({
+test("document review opens as a focused Leasium AI chat without provider writes", async ({
   page,
 }) => {
-  const forbiddenRequests: string[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    const path = url.pathname;
-    const smartIntakeMutation =
-      request.method() !== "GET" &&
-      /\/document-intakes\/[^/]+\/(apply|review|accept-lease-match)$/.test(
-        path,
-      );
-    const providerMutation =
-      request.method() !== "GET" &&
-      (path.includes("/xero/") ||
-        path.includes("/sendgrid/") ||
-        path.includes("/twilio/") ||
-        path.includes("/payments/") ||
-        path.includes("/reconciliation"));
-    if (smartIntakeMutation || providerMutation) {
-      forbiddenRequests.push(`${request.method()} ${url.toString()}`);
-    }
-  });
+  const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/intake?entity_id=entity-1&review=intake-1");
 
-  const review = page.getByTestId("horizon-document-review");
+  const documentChat = page.getByTestId("leasium-ai-document-chat");
+  await expect(documentChat).toBeVisible();
+  await expect(page.getByTestId("leasium-ai-home-rail")).toHaveCount(0);
+  await expect(documentChat.getByText("Review first")).toBeVisible();
   await expect(
-    review.getByRole("link", { name: "Leasium AI" }),
-  ).toBeVisible();
-  await expect(
-    review.getByRole("heading", { name: "bright-cafe-lease.pdf" }),
-  ).toBeVisible();
-  await expect(review.getByText("In review")).toBeVisible();
-  await expect(review.getByText(/\d+ fields extracted/)).toBeVisible();
-
-  const sourcePreview = page.getByTestId("document-review-source-preview");
-  await expect(sourcePreview.getByText(/SOURCE.*PAGE 3 OF 24/)).toBeVisible();
-  await expect(
-    sourcePreview.getByText("Highlight follows the selected field"),
+    documentChat.getByRole("button", { name: "Back to Leasium AI" }),
   ).toBeVisible();
 
-  const fieldsPanel = page.getByTestId("document-review-fields");
-  await expect(
-    fieldsPanel.getByRole("heading", { name: "EXTRACTED FIELDS" }),
-  ).toBeVisible();
-  await expect(fieldsPanel.getByText("approved")).toBeVisible();
-  await expect(fieldsPanel.getByText("to decide")).toBeVisible();
-
-  await expect(
-    page.getByTestId("document-review-field-parties-0").getByText("Tenant"),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByTestId("document-review-field-parties-0")
-      .getByText("Bright Cafe Pty Ltd"),
-  ).toBeVisible();
-
-  const optionRow = page.getByTestId("document-review-field-obligations-0");
-  await expect(optionRow.getByText("Option")).toBeVisible();
-  await expect(
-    optionRow.getByText("1 x 3 years - exercise by 28 Jun 2026"),
-  ).toBeVisible();
-  await expect(optionRow.getByText("71%")).toBeVisible();
-  await expect(optionRow.getByRole("button", { name: "Approve" })).toBeVisible();
-  await expect(optionRow.getByRole("button", { name: "Edit" })).toBeVisible();
-
-  await optionRow.click();
-  await expect(sourcePreview.getByText(/PAGE 11 OF 24/)).toBeVisible();
-  await expect(sourcePreview.getByText("Option exercise notice")).toBeVisible();
-  await expect(
-    page.getByText("Nothing is applied until you approve."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Apply .*approved fields/ }),
-  ).toBeVisible();
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toBeVisible();
+  await expect(conversation).toContainText("bright-cafe-lease.pdf");
+  await expect(page.getByTestId("intake-understanding")).toContainText(
+    "Bright Cafe Pty Ltd",
+  );
+  await expect(page.getByTestId("intake-plan")).toContainText(
+    "I can create these Leasium records",
+  );
+  await expect(page.getByTestId("intake-create-all")).toHaveText(
+    "Approve and create records",
+  );
+  await expect(conversation).toContainText(
+    "I will not send anything to Xero, email anyone, charge anyone, or mark an invoice approved from here.",
+  );
+  await expectNoHorizontalOverflow(page);
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("mobile Smart Intake document review keeps touch guardrails above bottom nav without provider writes", async ({
+test("mobile Leasium AI document review keeps one touch-safe conversation", async ({
   page,
 }) => {
-  const forbiddenLoadRequests: string[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    const path = url.pathname;
-    const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(
-      request.method(),
-    );
-    const documentReviewWrite =
-      unsafeMethod &&
-      /\/document-intakes\/[^/]+\/(apply|review|accept-lease-match)$/.test(
-        path,
-      );
-    const providerOrPaymentWrite =
-      unsafeMethod &&
-      (/\/(sendgrid|twilio|basiq)\b/i.test(path) ||
-        path.includes("/provider-dispatch") ||
-        path.includes("/provider-refresh") ||
-        path.includes("/provider-history") ||
-        path.includes("/xero/") ||
-        path.includes("/payments/") ||
-        path.includes("/reconciliation"));
-    if (documentReviewWrite || providerOrPaymentWrite) {
-      forbiddenLoadRequests.push(`${request.method()} ${url.toString()}`);
-    }
-  });
+  const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/intake?entity_id=entity-1&review=intake-1");
 
-  await expect(
-    page.getByTestId("horizon-document-review").getByRole("heading", {
-      name: "bright-cafe-lease.pdf",
-    }),
-  ).toBeVisible();
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toBeVisible();
+  await expect(conversation).toContainText("bright-cafe-lease.pdf");
+  await expect(page.getByTestId("leasium-ai-home-rail")).toHaveCount(0);
+  await expectTouchTarget(page.getByTestId("intake-create-all"));
+  await expectTouchTarget(page.getByTestId("intake-edit"));
   await expectNoHorizontalOverflow(page);
 
-  const fieldsPanel = page.getByTestId("document-review-fields");
-  await expect(fieldsPanel).toBeVisible();
-  const fieldActionButtons = fieldsPanel.getByRole("button", {
-    name: /^(approve|edit|ignore)$/i,
-  });
-  await expect(fieldActionButtons.first()).toBeVisible();
-  const fieldActionButtonCount = await fieldActionButtons.count();
-  expect(fieldActionButtonCount).toBeGreaterThan(0);
-  for (let index = 0; index < fieldActionButtonCount; index += 1) {
-    const button = fieldActionButtons.nth(index);
-    await button.scrollIntoViewIfNeeded();
-    const box = await button.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
-  }
-
-  const stickyActions = page.getByTestId("document-review-sticky-actions");
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
-  await stickyActions.scrollIntoViewIfNeeded();
-  await expect(stickyActions).toBeVisible();
   await expect(mobileNav).toBeVisible();
-  const stickyBox = await stickyActions.boundingBox();
-  const navBox = await mobileNav.boundingBox();
-  expect(stickyBox).not.toBeNull();
-  expect(navBox).not.toBeNull();
-  expect(stickyBox!.y + stickyBox!.height).toBeLessThanOrEqual(navBox!.y);
-  expect(forbiddenLoadRequests).toEqual([]);
-});
-
-test("smart intake explains unmatched notices do not set up invoicing", async ({
-  page,
-}) => {
-  await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
-  await mkdir("../../output/playwright", { recursive: true });
-
-  for (const viewport of [
-    { label: "1440", width: 1440, height: 900 },
-    { label: "390", width: 390, height: 844 },
-  ]) {
-    await page.setViewportSize({
-      width: viewport.width,
-      height: viewport.height,
-    });
-    await page.goto(
-      "/intake?entity_id=entity-1&review=intake-unmatched-notice-1",
-    );
-
-    const review = page.getByTestId("horizon-document-review");
-    await expect(
-      review.getByRole("heading", { name: "_UTAUS_16705142_00001.pdf" }),
-    ).toBeVisible();
-    await expect(
-      review.getByText(
-        "No property, tenancy, lease, or rent schedule details were found.",
-      ),
-    ).toBeVisible();
-    const noticeGuidance = review.getByText(
-      "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
-    );
-    await expect(noticeGuidance).toBeVisible();
-    await expect(
-      review.getByText(
-        "For billing setup, upload a lease, rent schedule, or invoice document that identifies the property, tenant, lease, and charge details.",
-      ),
-    ).toBeVisible();
-    await expectNoHorizontalOverflow(page);
-    await page.screenshot({
-      fullPage: true,
-      path: `../../output/playwright/smart-intake-unmatched-notice-${viewport.label}.png`,
-    });
-    if (viewport.label === "390") {
-      await noticeGuidance.scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: "../../output/playwright/smart-intake-unmatched-notice-390-guidance.png",
-      });
-    }
-  }
-});
-
-test("smart intake review opens as Leasium AI assistant and saves one answer without provider mutations", async ({
-  page,
-}) => {
-  await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
-  await mkdir("../../output/playwright", { recursive: true });
-  const { forbiddenRequests, sessionRequests, sessionPayloads } =
-    watchForbiddenAiOpportunityRequests(page);
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/intake?entity_id=entity-1&review=intake-unmatched-notice-1");
-
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "_UTAUS_16705142_00001.pdf" }),
-  ).toBeVisible();
-  const noticeGuidance = review.getByText(
-    "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
-  );
-  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
-  await expectAppearsBefore(opportunityPanel, noticeGuidance);
-  await expect(opportunityPanel).toBeVisible();
-  await expect(
-    opportunityPanel.getByRole("heading", { name: "Leasium AI" }),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-message-intro"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-suggestion-row"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-message-question"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-composer"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-preview-panel"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByText(
-      "I read this document and found source-backed next steps I can help prepare for review.",
-    ),
-  ).toBeVisible();
-
-  const followUpCard = opportunityPanel.getByTestId(
-    "document-intake-opportunity-card-action-1",
-  );
-  const billingCard = opportunityPanel.getByTestId(
-    "document-intake-opportunity-card-action-2",
-  );
-  await expect(followUpCard).toBeVisible();
-  await expect(billingCard).toBeVisible();
-  await expect(followUpCard).toContainText("Create follow-up task");
-  await expect(billingCard).toContainText("Set up billing pattern");
-
-  const chat = opportunityPanel.getByTestId("document-intake-opportunity-chat");
-  await expect(
-    chat.getByText("Who should own this follow-up and what due date should we use?"),
-  ).toBeVisible();
-  await billingCard.click();
-  await expect(
-    chat.getByText(
-      "Which property, unit, tenant, or lease should this billing setup use?",
-    ),
-  ).toBeVisible();
-  await followUpCard.click();
-  await expect(
-    chat.getByText("Who should own this follow-up and what due date should we use?"),
-  ).toBeVisible();
-  const answerBox = chat.getByRole("textbox");
-  await answerBox.fill(
-    "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
-  );
-  await chat.getByRole("button", { name: "Send reply" }).click();
-
-  await expect(page.getByText("Leasium AI reply saved.")).toBeVisible();
-  const output = page.getByTestId("document-intake-opportunity-output");
-  await expect(output).toBeVisible();
-  await expect(output).toContainText(
-    "No email, SMS, provider dispatch, payment, or reconciliation action is sent.",
-  );
-  await expect(output).toContainText(
-    "No invoice is approved, posted, emailed, or synced to Xero from this panel.",
-  );
-  await expect(
-    chat.getByText(
-      "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
-    ),
-  ).toBeVisible();
-  expect(sessionRequests).toHaveLength(1);
-  expect(sessionPayloads).toHaveLength(1);
-  expect(sessionPayloads[0]).toMatchObject({
-    selected_opportunity_id: "action-1",
-    answers: [
-      {
-        question_id: "action-1",
-        answer:
-          "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
-      },
-    ],
-  });
   expect(forbiddenRequests).toEqual([]);
-  await expectNoHorizontalOverflow(page);
-  await page.screenshot({
-    fullPage: true,
-    path: "../../output/playwright/leasium-ai-review-assistant-1440.png",
-  });
 });
 
-test("Leasium AI still helps when invoice extraction has zero fields", async ({
+test("Leasium AI asks one plain-English question when invoice extraction has zero fields", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
-  const { forbiddenRequests, sessionRequests, sessionPayloads } =
-    watchForbiddenAiOpportunityRequests(page);
+  const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/intake?entity_id=entity-1&review=intake-zero-field-invoice-1");
 
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
-  ).toBeVisible();
-  await expect(review.getByText("0 fields extracted")).toBeVisible();
-
-  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
-  const sourcePreview = page.getByTestId("document-review-source-preview");
-  await expect(opportunityPanel).toBeVisible();
-  await expectAppearsBefore(opportunityPanel, sourcePreview);
-  await expect(
-    opportunityPanel.getByTestId("document-intake-chat-thread"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-message-intro"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-suggestion-row"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-message-question"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-composer"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-preview-panel"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByText("This looks like an invoice/admin document."),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
-  ).toContainText("Set up billing pattern");
-  await expect(
-    opportunityPanel
-      .getByTestId("document-intake-opportunity-chat")
-      .getByText("Leasium AI asks"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel
-      .getByTestId("document-intake-opportunity-chat")
-      .getByText(
-        "Which property, unit, tenant, or lease should this billing setup use?",
-      ),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Confirm at least one obligation due date before applying."),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText(
-      "Apply needs a source-backed billing amount. Send a Leasium AI reply as setup context for now.",
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Prepare 0 billing review tasks"),
-  ).toHaveCount(0);
-
-  const chat = opportunityPanel.getByTestId("document-intake-opportunity-chat");
-  await chat
-    .getByRole("textbox")
-    .fill("Use SKJ Capital, 205 Leitchs Rd Brendale. Ask for GST and recurrence before creating any local billing review.");
-  await chat.getByRole("button", { name: "Send reply" }).click();
-
-  await expect(page.getByText("Leasium AI reply saved.")).toBeVisible();
-  await expect(sessionRequests).toHaveLength(1);
-  expect(sessionPayloads).toHaveLength(1);
-  expect(sessionPayloads[0]).toMatchObject({
-    selected_opportunity_id: "action-1",
-    answers: [
-      {
-        question_id: "action-1",
-        answer:
-          "Use SKJ Capital, 205 Leitchs Rd Brendale. Ask for GST and recurrence before creating any local billing review.",
-      },
-    ],
-  });
-  expect(forbiddenRequests).toEqual([]);
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toContainText("Invoice INV-0331.pdf");
+  await expect(conversation).toContainText(
+    "Tax invoice for Gorilla Grind issued by SJI No 1 Pty Ltd",
+  );
+  const question = page.getByTestId("intake-question");
+  await expect(question).toBeVisible();
+  await expect(question).toContainText("Leasium needs one answer");
+  await expect(question).toContainText(
+    "Which property, unit, tenant, or lease should this invoice help with?",
+  );
+  await expect(page.getByTestId("intake-plan")).toContainText(
+    "I can keep this ready for review",
+  );
+  await expect(page.getByTestId("intake-create-all")).toHaveText("Save for review");
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
     path: "../../output/playwright/leasium-ai-zero-field-invoice-1440.png",
   });
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("Leasium AI waits while an invoice is still reading", async ({ page }) => {
-  const { forbiddenRequests, sessionRequests } =
-    watchForbiddenAiOpportunityRequests(page);
   await mockLeasiumApi(page, { includeReadingInvoiceIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
+  const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/intake?entity_id=entity-1&review=intake-reading-invoice-1");
 
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
-  ).toBeVisible();
-  await expect(review.getByText("Reading", { exact: true })).toBeVisible();
-  await expect(
-    review.getByText("Reading document and preparing review."),
-  ).toBeVisible();
-  const readingPanel = page.getByTestId("document-intake-reading-panel");
-  const sourcePreview = page.getByTestId("document-review-source-preview");
-  await expect(readingPanel).toBeVisible();
-  await expectAppearsBefore(readingPanel, sourcePreview);
-  await expect(
-    readingPanel.getByText("Leasium AI is reading this document"),
-  ).toBeVisible();
-  await expect(
-    readingPanel.getByText("No invoice, Xero, email, SMS, payment"),
-  ).toBeVisible();
-  await expect(
-    review.getByText("I could not extract structured fields yet"),
-  ).toHaveCount(0);
-  await expect(
-    review.getByText("Ask what this should become"),
-  ).toHaveCount(0);
-  await expect(
-    page.getByTestId("document-intake-opportunity-panel"),
-  ).toHaveCount(0);
-  await expect(
-    review.getByRole("button", { name: "Save review" }),
-  ).toBeDisabled();
-  await expect(
-    review.getByRole("button", { name: /Apply reviewed items/ }),
-  ).toBeDisabled();
-  expect(sessionRequests).toEqual([]);
-  expect(forbiddenRequests).toEqual([]);
+  const reading = page.getByTestId("intake-reading");
+  await expect(reading).toBeVisible();
+  await expect(reading).toContainText("I'm reading this document now.");
+  await expect(reading).toContainText(
+    "Nothing is sent, synced, charged, or changed while I'm reading.",
+  );
+  await expect(page.getByTestId("intake-create-all")).toHaveCount(0);
+  await expect(page.getByTestId("intake-question")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
     path: "../../output/playwright/leasium-ai-reading-invoice-1440.png",
   });
-});
-
-test("Leasium AI blocks review actions while an uploaded invoice is active", async ({
-  page,
-}) => {
-  const { forbiddenRequests, sessionRequests } =
-    watchForbiddenAiOpportunityRequests(page);
-  await mockLeasiumApi(page, { includeUploadedInvoiceIntake: true });
-  await mkdir("../../output/playwright", { recursive: true });
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/intake?entity_id=entity-1&review=intake-uploaded-invoice-1");
-
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
-  ).toBeVisible();
-  await expect(review.getByText("Uploaded", { exact: true })).toBeVisible();
-  await expect(
-    review.getByText("Reading document and preparing review."),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("document-intake-opportunity-panel"),
-  ).toHaveCount(0);
-  await expect(review.getByText("Apply target")).toHaveCount(0);
-  await expect(review.getByText("Ready to apply")).toHaveCount(0);
-  await expect(
-    review.getByText(
-      "Review actions unlock when Leasium AI finishes reading this file.",
-    ),
-  ).toBeVisible();
-  await expect(
-    review.getByRole("button", { name: "Save review" }),
-  ).toBeDisabled();
-  await expect(
-    review.getByRole("button", { name: /Apply reviewed items/ }),
-  ).toBeDisabled();
-  await expect(review.locator('input[type="checkbox"]').first()).toBeDisabled();
-  expect(sessionRequests).toEqual([]);
   expect(forbiddenRequests).toEqual([]);
-  await expectNoHorizontalOverflow(page);
 });
 
-test("mobile Leasium AI waits while an invoice is still reading", async ({
+test("mobile Leasium AI still asks one question for a zero-field invoice", async ({
   page,
 }) => {
-  const { forbiddenRequests, sessionRequests } =
-    watchForbiddenAiOpportunityRequests(page);
-  await mockLeasiumApi(page, { includeReadingInvoiceIntake: true });
-  await mkdir("../../output/playwright", { recursive: true });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/intake?entity_id=entity-1&review=intake-reading-invoice-1");
-
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
-  ).toBeVisible();
-  await expect(review.getByText("Reading", { exact: true })).toBeVisible();
-  await expect(
-    review.getByText("Reading document and preparing review."),
-  ).toBeVisible();
-
-  const readingPanel = page.getByTestId("document-intake-reading-panel");
-  const sourcePreview = page.getByTestId("document-review-source-preview");
-  await expect(readingPanel).toBeVisible();
-  await expectAppearsBefore(readingPanel, sourcePreview);
-  await expect(
-    page.getByTestId("document-intake-opportunity-panel"),
-  ).toHaveCount(0);
-  await expect(
-    review.getByRole("button", { name: "Save review" }),
-  ).toBeDisabled();
-  await expect(
-    review.getByRole("button", { name: /Apply reviewed items/ }),
-  ).toBeDisabled();
-  expect(sessionRequests).toEqual([]);
-  expect(forbiddenRequests).toEqual([]);
-  await expectNoHorizontalOverflow(page);
-  await page.screenshot({
-    fullPage: true,
-    path: "../../output/playwright/leasium-ai-reading-invoice-390.png",
-  });
-});
-
-test("mobile Leasium AI still helps when invoice extraction has zero fields", async ({
-  page,
-}) => {
-  const { forbiddenRequests, sessionRequests } =
-    watchForbiddenAiOpportunityRequests(page);
   await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
+  const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/intake?entity_id=entity-1&review=intake-zero-field-invoice-1");
 
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "Invoice INV-0331.pdf" }),
-  ).toBeVisible();
-  await expect(review.getByText("0 fields extracted")).toBeVisible();
-
-  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
-  const sourcePreview = page.getByTestId("document-review-source-preview");
-  await expect(opportunityPanel).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
-  ).toBeVisible();
-  await expectAppearsBefore(opportunityPanel, sourcePreview);
-  await expect(
-    opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
-  ).toContainText("Set up billing pattern");
-  await expect(
-    page.getByText(
-      "Apply needs a source-backed billing amount. Send a Leasium AI reply as setup context for now.",
-    ),
-  ).toBeVisible();
-  await expectTouchTarget(
-    opportunityPanel.getByRole("button", { name: "Send reply" }),
+  const question = page.getByTestId("intake-question");
+  await expect(question).toBeVisible();
+  await expect(question).toContainText(
+    "Which property, unit, tenant, or lease should this invoice help with?",
   );
-  expect(sessionRequests).toEqual([]);
-  expect(forbiddenRequests).toEqual([]);
+  await expectTouchTarget(page.getByRole("button", { name: "Send" }));
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
     path: "../../output/playwright/leasium-ai-zero-field-invoice-390.png",
   });
+  expect(forbiddenRequests).toEqual([]);
 });
 
-test("mobile Leasium AI review assistant keeps one-question flow touch-safe", async ({
+test("Leasium AI follow-up chat stays read-only in document review", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
-  await mkdir("../../output/playwright", { recursive: true });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/intake?entity_id=entity-1&review=intake-unmatched-notice-1");
-
-  const review = page.getByTestId("horizon-document-review");
-  await expect(
-    review.getByRole("heading", { name: "_UTAUS_16705142_00001.pdf" }),
-  ).toBeVisible();
-  const noticeGuidance = review.getByText(
-    "This notice can become a local review task, but it will not set up recurring invoicing or create a billing draft.",
-  );
-  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
-  const sourcePreview = page.getByTestId("document-review-source-preview");
-  const fieldsPanel = page.getByTestId("document-review-fields");
-  await expectAppearsBefore(opportunityPanel, noticeGuidance);
-  await expectAppearsBefore(noticeGuidance, sourcePreview);
-  await expectAppearsBefore(noticeGuidance, fieldsPanel);
-  await expectAppearsBefore(opportunityPanel, sourcePreview);
-  await expectAppearsBefore(opportunityPanel, fieldsPanel);
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-chat-window"),
-  ).toBeVisible();
-  await expect(
-    opportunityPanel.getByTestId("document-intake-ai-composer"),
-  ).toBeVisible();
-
-  await expectTouchTarget(
-    opportunityPanel.getByTestId("document-intake-opportunity-card-action-1"),
-  );
-  const saveAnswer = opportunityPanel.getByRole("button", {
-    name: "Send reply",
-  });
-  await expectTouchTarget(saveAnswer);
-  await expectNoHorizontalOverflow(page);
-  await page.screenshot({
-    fullPage: true,
-    path: "../../output/playwright/leasium-ai-review-assistant-390.png",
-  });
-
-  await opportunityPanel
-    .getByTestId("document-intake-opportunity-chat")
-    .scrollIntoViewIfNeeded();
-  await page.screenshot({
-    path: "../../output/playwright/leasium-ai-review-assistant-390-question.png",
-  });
-
-  const stickyActions = page.getByTestId("document-review-sticky-actions");
-  const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
-  await stickyActions.scrollIntoViewIfNeeded();
-  await expect(stickyActions).toBeVisible();
-  await expect(mobileNav).toBeVisible();
-  const stickyBox = await stickyActions.boundingBox();
-  const navBox = await mobileNav.boundingBox();
-  expect(stickyBox).not.toBeNull();
-  expect(navBox).not.toBeNull();
-  expect(stickyBox!.y + stickyBox!.height).toBeLessThanOrEqual(navBox!.y);
-});
-
-test("smart intake AI opportunity save failure keeps review output local", async ({
-  page,
-}) => {
-  await mockLeasiumApi(page, {
-    includeUnmatchedNoticeIntake: true,
-    documentIntakeOpportunitySessionUnavailable: true,
-  });
-  const { forbiddenRequests, sessionRequests } =
-    watchForbiddenAiOpportunityRequests(page);
+  const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/intake?entity_id=entity-1&review=intake-unmatched-notice-1");
 
-  const opportunityPanel = page.getByTestId("document-intake-opportunity-panel");
-  const chat = opportunityPanel.getByTestId("document-intake-opportunity-chat");
-  const applyReviewedItems = page.getByRole("button", {
-    name: /Apply reviewed items/,
-  });
-  await expect(applyReviewedItems).toBeVisible();
-  const applyReviewedItemsWasDisabled = await applyReviewedItems.isDisabled();
-  await chat
-    .getByRole("textbox")
-    .fill("Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.");
-  await chat.getByRole("button", { name: "Send reply" }).click();
-
-  await expect(
-    page.getByText("AI opportunity session is unavailable."),
-  ).toBeVisible();
-  await expect(chat.getByText("Last saved reply")).toHaveCount(0);
-  expect(sessionRequests).toHaveLength(1);
-  expect(forbiddenRequests).toEqual([]);
-  await expect(applyReviewedItems).toBeVisible();
-  expect(await applyReviewedItems.isDisabled()).toBe(
-    applyReviewedItemsWasDisabled,
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toContainText("_UTAUS_16705142_00001.pdf");
+  await expect(page.getByTestId("intake-question")).toContainText(
+    "Should I turn this into a follow-up task, link it to a lease, or ignore it?",
   );
 
-  await page.reload();
-  const reloadedPanel = page.getByTestId("document-intake-opportunity-panel");
-  await expect(reloadedPanel).toBeVisible();
+  await page
+    .getByTestId("intake-ask-input")
+    .fill("Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.");
+  await page.getByRole("button", { name: "Send" }).click();
   await expect(
-    reloadedPanel.getByTestId("document-intake-opportunity-chat"),
-  ).toBeVisible();
-  await expect(
-    reloadedPanel.getByText(
+    conversation.getByText(
       "Use Scope Plaza, Suite 8. Monthly outgoings, GST review needed.",
     ),
-  ).toHaveCount(0);
-  await expect(reloadedPanel.getByText("Last saved reply")).toHaveCount(0);
+  ).toBeVisible();
+  await expect(
+    conversation.getByText("1 lease expires within the next 90 days"),
+  ).toBeVisible();
+  expect(forbiddenRequests).toEqual([]);
 });
 
 test("billing readiness mobile actions keep 44px touch targets", async ({

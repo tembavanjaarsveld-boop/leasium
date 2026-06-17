@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Sparkles,
   UserRound,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -41,20 +42,67 @@ import {
 
 // ---------------------------------------------------------------------------
 // Small token-driven primitives (Horizon look: soft borders, 16–20px radii).
-// Teal = accent (✦ / source-backed / guardrail). Blue = primary (plan border,
+// Teal = accent (source-backed / guardrail). Blue = primary (plan border,
 // one CTA). Info-soft = the user bubble fill.
 // ---------------------------------------------------------------------------
 
+function ChatShell({
+  children,
+  composer,
+  status,
+}: {
+  children: ReactNode;
+  composer?: ReactNode;
+  status: ReactNode;
+}) {
+  return (
+    <section
+      data-testid="intake-conversation"
+      className="relative mx-auto w-full max-w-[900px] overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary-soft/40 via-white to-accent-soft/25 shadow-leasiumCard"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+      />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-primary/10 px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-leasium-teal text-white shadow-leasiumXs">
+            <Sparkles size={18} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold leading-5 text-foreground">
+              Leasium AI
+              {status}
+            </h2>
+            <p className="mt-0.5 max-w-2xl text-xs leading-4 text-muted-foreground">
+              Chat with the document. I&apos;ll ask one question at a time and wait
+              for your approval before anything changes.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-4 px-4 py-4 sm:px-5">{children}</div>
+      {composer ? (
+        <div className="border-t border-primary/10 bg-white/85 px-3 py-3 sm:px-4">
+          {composer}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function AiTurn({ children }: { children: ReactNode }) {
   return (
-    <div className="flex gap-3">
+    <div className="grid grid-cols-[32px_minmax(0,1fr)] gap-2 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-4">
       <span
         aria-hidden
-        className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-base font-semibold text-leasium-teal-strong"
+        className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-primary shadow-leasiumXs ring-1 ring-primary/15 sm:h-10 sm:w-10"
       >
-        ✦
+        <Sparkles size={16} />
       </span>
-      <div className="min-w-0 flex-1 space-y-3">{children}</div>
+      <div className="min-w-0 rounded-2xl rounded-tl-md border border-border bg-white px-3 py-3 shadow-leasiumXs sm:px-5 sm:py-4">
+        <div className="space-y-3">{children}</div>
+      </div>
     </div>
   );
 }
@@ -62,7 +110,7 @@ function AiTurn({ children }: { children: ReactNode }) {
 function UserTurn({ children }: { children: ReactNode }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-info-soft px-4 py-3 text-sm leading-5 text-foreground">
+      <div className="max-w-[92%] rounded-2xl rounded-tr-md bg-info-soft px-4 py-3 text-[15px] leading-6 text-foreground sm:max-w-[82%]">
         {children}
       </div>
     </div>
@@ -70,7 +118,7 @@ function UserTurn({ children }: { children: ReactNode }) {
 }
 
 function Prose({ children }: { children: ReactNode }) {
-  return <p className="text-sm leading-6 text-foreground">{children}</p>;
+  return <p className="text-base leading-7 text-foreground">{children}</p>;
 }
 
 type ConfidenceLevel = "high" | "med" | "low";
@@ -86,9 +134,10 @@ function confidenceLevel(value: number | null | undefined): ConfidenceLevel {
 
 function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   const tone = level === "high" ? "success" : level === "med" ? "warning" : "danger";
-  const label = level === "high" ? "HIGH" : level === "med" ? "MED" : "LOW";
+  const label =
+    level === "high" ? "High confidence" : level === "med" ? "Check this" : "Needs review";
   return (
-    <StatusBadge tone={tone} className="text-leasium-micro">
+    <StatusBadge tone={tone} className="text-xs">
       {label}
     </StatusBadge>
   );
@@ -144,7 +193,7 @@ function reviewExtraction(intake: DocumentIntakeRecord): DocumentIntakeExtractio
 // Match extracted records against what already exists so the plan links
 // instead of duplicating. Mirrors the backend find-or-create keys
 // (property name/address, tenant abn/legal_name) but resolves the id up
-// front so the operator sees "LINK EXISTING" before approving.
+// front so the operator sees whether Leasium will use an existing record before approving.
 type RecordMatch = { id: string; label: string };
 function norm(value: unknown): string {
   return (typeof value === "string" ? value : "")
@@ -411,7 +460,7 @@ type PlanRow = {
   icon: ReactNode;
   title: string;
   value: string;
-  link: boolean; // LINK EXISTING vs NEW
+  link: boolean; // Use existing vs New
 };
 
 function buildPlan(
@@ -580,17 +629,46 @@ function buildCreated(
 }
 
 const GUARDRAIL_PRE =
-  "This creates records in Leasium only. I won't sync to Xero, email the tenant, or set up billing unless you ask — that's always a separate yes.";
+  "I can create the Leasium records after you approve this. I will not send anything to Xero, email anyone, charge anyone, or mark an invoice approved from here.";
 const GUARDRAIL_POST =
-  "I haven't contacted Xero, the tenant, or set up any charges. Nothing sends until you pick one and approve it.";
+  "I created only the Leasium records you approved. Xero, email, charges, and tenant messages still need a separate yes.";
 
 function GuardrailNote({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-xl bg-accent-soft px-3 py-2 text-xs leading-5 text-leasium-teal-strong">
-      <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+    <div className="flex items-start gap-2 rounded-xl border border-accent/20 bg-accent-soft px-3 py-2 text-sm leading-6 text-leasium-teal-strong">
+      <ShieldCheck size={16} className="mt-1 shrink-0" />
       <span>{children}</span>
     </div>
   );
+}
+
+function intakeQuestion(data: DocumentIntakeExtraction, plan: PlanRow[]) {
+  const docType = text(data.document_type)?.toLowerCase() ?? "";
+  const hasProperty = items(data.properties).length > 0;
+  const hasTenant = items(data.parties).some((party) => {
+    const role = text(party.role)?.toLowerCase() ?? "";
+    return role.includes("tenant") || role.includes("lessee");
+  });
+  if (docType.includes("notice")) {
+    return {
+      title: "Leasium needs one answer",
+      body: "Should I turn this into a follow-up task, link it to a lease, or ignore it?",
+    };
+  }
+  if (docType.includes("invoice") || docType.includes("admin")) {
+    if (!hasProperty && !hasTenant) {
+      return {
+        title: "Leasium needs one answer",
+        body: "Which property, unit, tenant, or lease should this invoice help with?",
+      };
+    }
+    return null;
+  }
+  if (plan.length > 0) return null;
+  return {
+    title: "Leasium needs one answer",
+    body: "What should this document become in Leasium?",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -659,9 +737,11 @@ export function IntakeConversationPanel({
       ),
     [data, propertyMatch, tenantMatch, linkProperty, linkTenant],
   );
+  const nextQuestion = useMemo(() => intakeQuestion(data, plan), [data, plan]);
   const summary =
     text(intake.summary) ?? text(data.summary) ?? "I read this document.";
   const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+  const intakeIsReading = intake.status === "uploaded" || intake.status === "reading";
 
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -853,15 +933,92 @@ export function IntakeConversationPanel({
   const shownUnderstanding = showDetails
     ? [...leadUnderstanding, ...extraUnderstanding]
     : leadUnderstanding;
+  const chatStatus = intakeIsReading ? (
+    <StatusBadge tone="primary" className="text-xs">
+      Reading
+    </StatusBadge>
+  ) : appliedRecord ? (
+    <StatusBadge tone="success" className="text-xs">
+      Done
+    </StatusBadge>
+  ) : nextQuestion ? (
+    <StatusBadge tone="warning" className="text-xs">
+      Needs your help
+    </StatusBadge>
+  ) : (
+    <StatusBadge tone="primary" className="text-xs">
+      Review first
+    </StatusBadge>
+  );
+  const replyComposer = (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        handleAsk();
+      }}
+    >
+      <input
+        data-testid="intake-ask-input"
+        value={question}
+        onChange={(event) => setQuestion(event.target.value)}
+        placeholder={
+          nextQuestion
+            ? "Reply in plain English..."
+            : "Ask Leasium AI anything about this document..."
+        }
+        className="min-h-12 w-full rounded-xl border border-border bg-white px-4 text-base outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+      />
+      <Button
+        type="submit"
+        disabled={asking || !question.trim()}
+        className={cn("h-12 w-12 shrink-0 px-0")}
+        aria-label="Send"
+      >
+        {asking ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+      </Button>
+    </form>
+  );
+
+  if (intakeIsReading) {
+    return (
+      <ChatShell status={chatStatus}>
+        <UserTurn>
+          <div className="mb-1 inline-flex items-center gap-2 rounded-lg bg-white/70 px-2 py-1 text-sm font-medium text-foreground">
+            <FileText size={13} />
+            {intake.filename}
+          </div>
+          <div>Added this document.</div>
+        </UserTurn>
+        <AiTurn>
+          <div
+            data-testid="intake-reading"
+            className="rounded-xl border border-dashed border-primary/20 bg-primary/5 p-3"
+          >
+            <p className="inline-flex items-center gap-2 text-base font-semibold text-foreground">
+              <Loader2 size={16} className="animate-spin" />
+              I&apos;m reading this document now.
+            </p>
+            <p className="mt-2 text-base leading-7 text-muted-foreground">
+              I&apos;ll show what I found and ask the next plain-English question
+              as soon as the file is ready.
+            </p>
+            <div className="mt-3">
+              <GuardrailNote>
+                Nothing is sent, synced, charged, or changed while I&apos;m reading.
+              </GuardrailNote>
+            </div>
+          </div>
+        </AiTurn>
+      </ChatShell>
+    );
+  }
 
   return (
-    <div
-      data-testid="intake-conversation"
-      className="mx-auto w-full max-w-[760px] space-y-5"
-    >
+    <ChatShell status={chatStatus} composer={replyComposer}>
       {/* 1. User turn — the dropped document. */}
       <UserTurn>
-        <div className="mb-1 inline-flex items-center gap-2 rounded-lg bg-white/70 px-2 py-1 text-xs font-medium text-foreground">
+        <div className="mb-1 inline-flex items-center gap-2 rounded-lg bg-white/70 px-2 py-1 text-sm font-medium text-foreground">
           <FileText size={13} />
           {intake.filename}
         </div>
@@ -874,19 +1031,22 @@ export function IntakeConversationPanel({
         {understanding.length > 0 ? (
           <div
             data-testid="intake-understanding"
-            className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs"
+            className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4"
           >
-            <h3 className="mb-3 text-sm font-semibold text-foreground">
-              Here&apos;s what I can use from this document
+            <h3 className="mb-3 text-base font-semibold text-foreground">
+              What I found
             </h3>
             <dl className="space-y-2.5">
               {shownUnderstanding.map((row, i) => (
-                <div key={`${row.label}-${i}`} className="flex items-start gap-3 text-sm">
-                  <dt className="w-[110px] shrink-0 text-muted-foreground">
+                <div
+                  key={`${row.label}-${i}`}
+                  className="grid gap-1 text-sm sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-3"
+                >
+                  <dt className="text-muted-foreground">
                     {row.label}
                   </dt>
                   <dd className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="font-medium text-foreground">{row.value}</span>
+                    <span className="font-semibold text-foreground">{row.value}</span>
                     {row.level !== "high" ? (
                       <ConfidenceBadge level={row.level} />
                     ) : null}
@@ -898,7 +1058,7 @@ export function IntakeConversationPanel({
               <button
                 type="button"
                 onClick={() => setShowDetails((value) => !value)}
-                className="mt-3 text-xs font-medium text-primary hover:underline"
+                className="mt-3 min-h-11 rounded-lg px-1 text-sm font-medium text-primary hover:underline"
               >
                 {showDetails
                   ? "Hide extra details"
@@ -917,9 +1077,11 @@ export function IntakeConversationPanel({
                   className="flex w-full items-center justify-between gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden className="text-warning-strong">
-                      ⚑
-                    </span>
+                    <AlertTriangle
+                      size={13}
+                      aria-hidden="true"
+                      className="text-warning-strong"
+                    />
                     {warnings.length} thing{warnings.length === 1 ? "" : "s"} to
                     check before applying
                   </span>
@@ -938,9 +1100,11 @@ export function IntakeConversationPanel({
                         key={`warning-${i}`}
                         className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"
                       >
-                        <span aria-hidden className="mt-0.5 text-warning-strong">
-                          •
-                        </span>
+                        <AlertTriangle
+                          size={12}
+                          aria-hidden="true"
+                          className="mt-1 shrink-0 text-warning-strong"
+                        />
                         <span>{warning}</span>
                       </li>
                     ))}
@@ -952,28 +1116,48 @@ export function IntakeConversationPanel({
         ) : null}
       </AiTurn>
 
+      {nextQuestion ? (
+        <AiTurn>
+          <div
+            data-testid="intake-question"
+            className="rounded-xl border border-primary/25 bg-primary/5 p-3 sm:p-4"
+          >
+            <p className="text-sm font-semibold text-primary">{nextQuestion.title}</p>
+            <p className="mt-2 text-[17px] font-semibold leading-7 text-foreground">
+              {nextQuestion.body}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Reply below in plain English. I&apos;ll keep working from your answer,
+              and nothing changes until you approve the final step.
+            </p>
+          </div>
+        </AiTurn>
+      ) : null}
+
       {/* 3. AI turn — bundled plan card (or already-created state). */}
       {!appliedRecord ? (
         <AiTurn>
           <div
             data-testid="intake-plan"
-            className="rounded-2xl border-[1.5px] border-primary bg-white p-4 shadow-leasiumXs"
+            className="rounded-xl border-[1.5px] border-primary/40 bg-primary/5 p-3 sm:p-4"
           >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-foreground">
-                Proposed plan — review before anything is created
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-base font-semibold text-foreground">
+                {plan.length > 0
+                  ? "I can create these Leasium records"
+                  : "I can keep this ready for review"}
               </h3>
               <button
                 type="button"
                 onClick={() => setEditing((value) => !value)}
-                className="text-xs font-medium text-primary hover:underline"
+                className="min-h-11 rounded-lg px-1 text-sm font-medium text-primary hover:underline"
               >
-                {editing ? "Done" : "Adjust"}
+                {editing ? "Done" : "Check/change details"}
               </button>
             </div>
             {editing ? (
               <div data-testid="intake-edit-form" className="space-y-3">
-                <div className="rounded-xl border border-border p-3">
+                <div className="rounded-xl border border-border bg-white/70 p-3">
                   <div className="mb-2 flex items-center gap-2">
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
                       <Building2 size={16} />
@@ -1056,7 +1240,7 @@ export function IntakeConversationPanel({
                   </Field>
                 </div>
 
-                <div className="rounded-xl border border-border p-3">
+                <div className="rounded-xl border border-border bg-white/70 p-3">
                   <div className="mb-2 flex items-center gap-2">
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
                       <UserRound size={16} />
@@ -1110,7 +1294,7 @@ export function IntakeConversationPanel({
                   )}
                 </div>
 
-                <div className="rounded-xl border border-border p-3">
+                <div className="rounded-xl border border-border bg-white/70 p-3">
                   <div className="mb-2 flex items-center gap-2">
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
                       <FileText size={16} />
@@ -1162,7 +1346,7 @@ export function IntakeConversationPanel({
                 {plan.map((row) => (
                   <li
                     key={row.key}
-                    className="flex items-center gap-3 rounded-xl border border-border px-3 py-2"
+                    className="flex items-center gap-3 rounded-xl border border-border bg-white px-3 py-3"
                   >
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
                       {row.icon}
@@ -1171,22 +1355,23 @@ export function IntakeConversationPanel({
                       <span className="block text-sm font-semibold text-foreground">
                         {row.title}
                       </span>
-                      <span className="block truncate text-xs text-muted-foreground">
+                      <span className="block text-sm leading-5 text-muted-foreground">
                         {row.value}
                       </span>
                     </span>
                     <StatusBadge
                       tone={row.link ? "neutral" : "primary"}
-                      className="text-leasium-micro"
+                      className="text-xs"
                     >
-                      {row.link ? "LINK EXISTING" : "NEW"}
+                      {row.link ? "Use existing" : "New"}
                     </StatusBadge>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                I&apos;ll record this document against your portfolio on approval.
+              <p className="text-base leading-7 text-muted-foreground">
+                I&apos;ll keep this document in the review trail and use your answer
+                as context for the next setup step.
               </p>
             )}
             <div className="mt-3">
@@ -1211,7 +1396,7 @@ export function IntakeConversationPanel({
                     Creating…
                   </>
                 ) : (
-                  "Create all records"
+                  plan.length > 0 ? "Approve and create records" : "Save for review"
                 )}
               </Button>
               {editing ? (
@@ -1232,16 +1417,16 @@ export function IntakeConversationPanel({
                   disabled={applying}
                   onClick={() => setEditing(true)}
                 >
-                  Edit before creating
+                  Check/change details
                 </SecondaryButton>
               )}
               {!editing ? (
                 <button
                   type="button"
                   disabled={applying}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  className="min-h-11 rounded-lg px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                 >
-                  Ignore
+                  Not this document
                 </button>
               ) : null}
             </div>
@@ -1254,10 +1439,10 @@ export function IntakeConversationPanel({
         <AiTurn>
           <div
             data-testid="intake-created"
-            className="rounded-2xl border-[1.5px] border-success bg-white p-4 shadow-leasiumXs"
+            className="rounded-xl border-[1.5px] border-success/50 bg-success-soft/40 p-3 sm:p-4"
           >
-            <h3 className="mb-3 text-sm font-semibold text-foreground">
-              Done — created in Leasium and linked together
+            <h3 className="mb-3 text-base font-semibold text-foreground">
+              Done. I created the records in Leasium.
             </h3>
             <ul className="space-y-2">
               {buildCreated(applied, entityId).map((row, i) => (
@@ -1278,21 +1463,21 @@ export function IntakeConversationPanel({
 
           <div
             data-testid="intake-next-steps"
-            className="rounded-2xl border border-border bg-white p-4 shadow-leasiumXs"
+            className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4"
           >
-            <h3 className="mb-3 text-sm font-semibold text-foreground">
-              Suggested next steps
+            <h3 className="mb-3 text-base font-semibold text-foreground">
+              What you can approve next
             </h3>
             <ul className="space-y-2">
               {nextStepRows(applied, entityId).map((step) => (
                 <li
                   key={step.label}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border bg-white px-3 py-2 text-sm"
                 >
                   <span className="font-medium text-foreground">{step.label}</span>
                   <span className="flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-full bg-warning-soft px-2 py-0.5 text-leasium-micro font-semibold text-warning-strong">
-                      NEEDS APPROVAL
+                    <span className="inline-flex items-center rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning-strong">
+                      Needs your approval
                     </span>
                     <Link
                       href={step.href}
@@ -1348,29 +1533,6 @@ export function IntakeConversationPanel({
         </div>
       ))}
 
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleAsk();
-        }}
-      >
-        <input
-          data-testid="intake-ask-input"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask a follow-up — e.g. when does this lease end?"
-          className="min-h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
-        />
-        <Button
-          type="submit"
-          disabled={asking || !question.trim()}
-          className={cn("shrink-0 px-3")}
-          aria-label="Send"
-        >
-          {asking ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        </Button>
-      </form>
-    </div>
+    </ChatShell>
   );
 }

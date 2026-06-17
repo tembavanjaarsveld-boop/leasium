@@ -1455,18 +1455,30 @@ Approve/edit/apply source-backed changes separately
 ### Recommended layout
 
 ```txt
-Left panel:
-Document preview
+Home:
+Centered Leasium AI identity
+One large ask/file composer
+Files / source chips / approval-first guardrail inside the composer
+Simple workflow suggestions underneath
+Documents waiting and provenance below the assistant, never as the first mode
 
-Right panel:
-Extracted fields and review controls
+Primary column:
+One Leasium AI conversation
+User document bubble
+Plain-English read
+One question or one proposed plan
+Reply/composer
+One primary approval action when ready
 
-Bottom action bar:
-Approve selected
-Apply to lease
-Save draft
-Cancel
+Secondary / collapsible detail:
+Source preview
+Extracted fields
+Confidence and evidence
+Recently applied / queue context
 ```
+
+When a document is open, the conversation takes the full stage. The review
+queue, source detail, and provenance are secondary context, not equal panels.
 
 ### Extracted field card
 
@@ -1499,11 +1511,11 @@ Nothing is applied until you approve it.
 ### Leasium AI review assistant
 
 Document review may include a Leasium AI assistant window inside the existing
-review surface. It is chat-led in structure, not just copy: explanation bubble
-first, suggested cards inside the conversation, one AI question bubble, one
-plain-English operator reply/composer, then a review-only preview rail or
-bottom panel. It must remain a review panel, not a new wizard or a provider
-action surface.
+review surface. It is chat-led in structure, not just copy: one shell with a
+Leasium AI header, transcript, and attached reply composer; explanation bubble
+first; optional suggested next step inside the conversation; one AI question
+bubble or one review plan; then source/provenance detail as secondary context.
+It must remain a review panel, not a new wizard or a provider action surface.
 
 Rules:
 - Start with a short assistant message that names what the document appears to
@@ -1511,6 +1523,8 @@ Rules:
 - Opportunity cards are inferred from source-backed extraction and sit as peer
   suggestions inside the chat thread, not as separate product modules or a
   three-column dashboard layout.
+- Opening a document hides the queue rail and gives the conversation full
+  focus. The queue can return when the operator goes back to Leasium AI Home.
 - Active `uploaded` or `reading` documents are not zero-field failures. Show a
   reading panel, keep review-first/no-provider-write guardrails visible, and do
   not show opportunity cards, setup questions, review saves, or apply controls

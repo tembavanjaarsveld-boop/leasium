@@ -398,7 +398,7 @@ test("links an existing property instead of creating a duplicate", async ({
   const plan = page.getByTestId("intake-plan");
   await expect(plan).toBeVisible();
   // The matched property is linked, not duplicated.
-  await expect(plan).toContainText("LINK EXISTING");
+  await expect(plan).toContainText("Use existing");
 
   await page.getByTestId("intake-create-all").click();
   await expect(page.getByTestId("intake-created")).toBeVisible();

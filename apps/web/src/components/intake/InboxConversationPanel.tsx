@@ -7,6 +7,7 @@ import {
   Mail,
   Paperclip,
   ShieldCheck,
+  Sparkles,
   UserCog,
   UserRound,
   Wrench,
@@ -31,7 +32,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Token-driven primitives — mirror IntakeConversationPanel exactly so the
-// inbox review reads identically. Teal = accent (✦ / source-backed /
+// inbox review reads identically. Teal = accent (source-backed /
 // guardrail). Blue = primary (plan border, one CTA). Info-soft = user bubble.
 // ---------------------------------------------------------------------------
 
@@ -40,9 +41,9 @@ function AiTurn({ children }: { children: ReactNode }) {
     <div className="flex gap-3">
       <span
         aria-hidden
-        className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-base font-semibold text-leasium-teal-strong"
+        className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-accent-soft text-leasium-teal-strong"
       >
-        ✦
+        <Sparkles size={16} />
       </span>
       <div className="min-w-0 flex-1 space-y-3">{children}</div>
     </div>
