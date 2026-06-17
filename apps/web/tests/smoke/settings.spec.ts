@@ -61,17 +61,16 @@ test("settings render the Horizon operator controls without provider mutation on
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   for (const section of [
     "Organisation",
-    "Security",
+    "People & access",
     "Notifications",
-    "Connect",
+    "Integrations",
   ]) {
     await expect(page.getByRole("tab", { name: section })).toBeVisible();
   }
-  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
-  await expect(page.getByText("Assignment email").first()).toBeVisible();
-  await expect(page.getByText("Assignment SMS").first()).toBeVisible();
-  await expect(page.getByText("Managed").first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "OWNERSHIP TAGS" }).first()).toBeVisible();
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "OWNERSHIP TAGS" }).first(),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await expect(
     page.getByText(
@@ -161,7 +160,7 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("mobile settings keeps the approved compact tab rail", async ({ page }) => {
+test("mobile settings keeps the clean section picker touch-safe", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");
 
@@ -169,18 +168,20 @@ test("mobile settings keeps the approved compact tab rail", async ({ page }) => 
   const settingsSections = page.getByRole("tablist", {
     name: "Settings sections",
   });
-  await expect(settingsSections.getByRole("tab")).toHaveCount(3);
-  for (const section of ["Organisation", "Security", "Connect"]) {
+  await expect(settingsSections.getByRole("tab")).toHaveCount(4);
+  for (const section of [
+    "Organisation",
+    "People & access",
+    "Notifications",
+    "Integrations",
+  ]) {
     const tab = settingsSections.getByRole("tab", { name: section });
     await expect(tab).toBeVisible();
     const tabBox = await tab.boundingBox();
     expect(tabBox).not.toBeNull();
     expect(tabBox!.height).toBeGreaterThanOrEqual(44);
   }
-  await expect(
-    settingsSections.getByRole("tab", { name: "Notifications" }),
-  ).toHaveCount(0);
-  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toHaveCount(0);
 
   const horizontalOverflow = await page.evaluate(
     () =>
@@ -196,7 +197,7 @@ test("mobile settings keeps the approved compact tab rail", async ({ page }) => 
   });
   await expect(
     deepLinkSections.getByRole("tab", { name: "Notifications" }),
-  ).toHaveCount(0);
+  ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
 });
 
@@ -710,10 +711,9 @@ test("settings exports communication template override review CSV", async ({
   expect(forbiddenExportCalls).toEqual([]);
 });
 
-test("settings can switch operating mode without orphaning self-managed owner records", async ({
+test("settings keeps account type read-only without orphaning self-managed owner records", async ({
   page,
 }) => {
-  const operatingModePayloads: unknown[] = [];
   const forbiddenProviderRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -744,22 +744,22 @@ test("settings can switch operating mode without orphaning self-managed owner re
       });
     },
   );
-  await page.route(
-    "**/api/v1/security/organisation/operating-mode",
-    async (route) => {
-      operatingModePayloads.push(route.request().postDataJSON());
-      await route.fallback();
-    },
-  );
-
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Organisation" }).click();
 
-  const operatingModeSelect = page.getByLabel("Account operating mode");
+  const accountTypePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Account type" }),
+  });
+  await expect(accountTypePanel).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Operating mode" }),
+    accountTypePanel.getByText("Self-managed owner", { exact: true }),
   ).toBeVisible();
-  await expect(operatingModeSelect).toHaveValue("self_managed_owner");
+  await expect(
+    accountTypePanel.getByText(/set by Leasium for your account/i),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Account operating mode" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Your entities & properties" }),
   ).toBeVisible();
@@ -790,18 +790,10 @@ test("settings can switch operating mode without orphaning self-managed owner re
     splitPanel.getByText(/Created 2 entities, moved 3 properties/),
   ).toBeVisible();
 
-  await operatingModeSelect.selectOption("hybrid");
-
-  await expect.poll(() => operatingModePayloads.length).toBe(1);
-  expect(operatingModePayloads[0]).toEqual({ operating_mode: "hybrid" });
-  await expect(operatingModeSelect).toHaveValue("hybrid");
-  await expect(
-    page.getByRole("heading", { name: "Your entities & properties" }),
-  ).toHaveCount(0);
   expect(forbiddenProviderRequests).toEqual([]);
 });
 
-test("settings operating-mode control is disabled without manage-security", async ({
+test("settings account type stays read-only without manage-security", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { canManageSecurity: false });
@@ -809,13 +801,17 @@ test("settings operating-mode control is disabled without manage-security", asyn
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Organisation" }).click();
 
+  const accountTypePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Account type" }),
+  });
+  await expect(accountTypePanel).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Operating mode" }),
+    accountTypePanel.getByText("Self-managed owner", { exact: true }),
   ).toBeVisible();
-  const operatingModeSelect = page.getByLabel("Account operating mode");
-  await expect(operatingModeSelect).toHaveValue("self_managed_owner");
-  await expect(operatingModeSelect).toBeDisabled();
   await expect(
-    page.getByText("Only an owner or admin can change the operating mode."),
+    accountTypePanel.getByText(/set by Leasium for your account/i),
   ).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Account operating mode" }),
+  ).toHaveCount(0);
 });

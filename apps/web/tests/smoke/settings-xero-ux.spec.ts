@@ -135,7 +135,7 @@ test("settings Xero exceptions use contextual loading copy", async ({
   });
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const exceptionPanel = page
     .locator("section")
@@ -167,7 +167,7 @@ test("mobile settings Xero exceptions use readable review cards", async ({
   await mockXeroExceptionQueue(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const exceptionPanel = page
     .locator("section")
@@ -224,7 +224,7 @@ test("desktop settings Xero exception actions stay touch-safe", async ({
   await mockXeroExceptionQueue(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const exceptionPanel = page
     .locator("section")
@@ -263,7 +263,7 @@ test("desktop settings Xero readiness handoffs stay touch-safe", async ({
   await mockXeroExceptionQueue(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const accountingFreshnessPanel = page
     .locator("section")

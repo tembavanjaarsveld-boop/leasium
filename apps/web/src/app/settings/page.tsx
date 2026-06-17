@@ -216,31 +216,45 @@ const settingsTabs: Array<{
   label: string;
   description: string;
   icon: ReactNode;
+  group: "Workspace" | "Account" | "Apps";
 }> = [
   {
     id: "organisation",
     label: "Organisation",
     description: "Entities, tags, profile",
     icon: <Building2 size={15} />,
+    group: "Workspace",
   },
   {
     id: "security",
-    label: "Security",
+    label: "People & access",
     description: "Operators and access",
     icon: <ShieldCheck size={15} />,
+    group: "Workspace",
   },
   {
     id: "notifications",
     label: "Notifications",
     description: "Channels and templates",
     icon: <Bell size={15} />,
+    group: "Account",
   },
   {
     id: "connect",
-    label: "Connect",
-    description: "Xero, SendGrid, Twilio",
+    label: "Integrations",
+    description: "Xero, email, bank feed",
     icon: <PlugZap size={15} />,
+    group: "Apps",
   },
+];
+
+const settingsNavGroups: Array<{
+  label: "Workspace" | "Account" | "Apps";
+  helper: string;
+}> = [
+  { label: "Workspace", helper: "Company setup" },
+  { label: "Account", helper: "Messages and preferences" },
+  { label: "Apps", helper: "Connected services" },
 ];
 
 const ENTITY_TYPE_OPTIONS: EntityType[] = [
@@ -3555,6 +3569,8 @@ function SettingsWorkspace() {
     const draft = normalisedTemplateDraft(workNotificationTemplateDraft(member));
     return `Digest ${draft.digestVersion}`.trim();
   };
+  const activeSettingsTab =
+    settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
 
   return (
     <main className="min-h-screen">
@@ -3592,45 +3608,103 @@ function SettingsWorkspace() {
           }
         />
 
-        <div
-          aria-label="Settings sections"
-          className="no-scrollbar flex gap-1 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumCard md:grid md:grid-cols-4 md:gap-2 md:rounded-2xl"
-          role="tablist"
-        >
-          {settingsTabs.map((tab) => (
-            <button
-              key={tab.id}
-              aria-label={tab.label}
-              aria-selected={activeTab === tab.id}
-              className={`min-h-11 shrink-0 items-center gap-2 rounded-full px-4 py-2 text-left transition-shadow duration-200 ease-leasium md:min-h-[54px] md:rounded-xl md:py-3 ${
-                tab.id === "notifications" ? "hidden md:flex" : "flex"
-              } ${
-                activeTab === tab.id
-                  ? "bg-primary text-white shadow-leasiumXs"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-              onClick={() => setActiveTab(tab.id)}
-              role="tab"
-              type="button"
+        <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+          <aside className="overflow-hidden rounded-2xl border border-leasium-card-border bg-white shadow-leasiumCard lg:sticky lg:top-24">
+            <div className="border-b border-border px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Settings
+              </div>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                Pick the area you want to change.
+              </p>
+            </div>
+            <nav
+              aria-label="Settings sections"
+              className="grid gap-4 p-3"
+              role="tablist"
             >
-              <span className="hidden shrink-0 md:inline-flex">{tab.icon}</span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">
-                  {tab.label}
-                </span>
-                <span
-                  className={`hidden text-xs font-medium md:block ${
-                    activeTab === tab.id
-                      ? "text-white/85"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {tab.description}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
+              {settingsNavGroups.map((group) => (
+                <div key={group.label} className="grid gap-1.5">
+                  <div className="flex items-center justify-between px-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      {group.label}
+                    </span>
+                    <span className="hidden text-[11px] text-muted-foreground sm:inline">
+                      {group.helper}
+                    </span>
+                  </div>
+                  <div className="grid gap-1">
+                    {settingsTabs
+                      .filter((tab) => tab.group === group.label)
+                      .map((tab) => {
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            aria-label={tab.label}
+                            aria-selected={isActive}
+                            className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-shadow duration-200 ease-leasium ${
+                              isActive
+                                ? "bg-primary text-white shadow-leasiumXs"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                            onClick={() => setActiveTab(tab.id)}
+                            role="tab"
+                            type="button"
+                          >
+                            <span
+                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                                isActive
+                                  ? "bg-white/15 text-white"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {tab.icon}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold">
+                                {tab.label}
+                              </span>
+                              <span
+                                className={`block text-xs ${
+                                  isActive
+                                    ? "text-white/85"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                {tab.description}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </aside>
+
+          <div className="min-w-0 grid gap-5">
+            <section className="rounded-2xl border border-primary/15 bg-gradient-to-br from-white via-white to-primary-soft/25 p-4 shadow-leasiumCard">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-leasiumXs">
+                    {activeSettingsTab.icon}
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold leading-6 text-foreground">
+                      {activeSettingsTab.label}
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      {activeSettingsTab.description}
+                    </p>
+                  </div>
+                </div>
+                <StatusBadge tone={activeTab === "connect" ? "warning" : "primary"}>
+                  {activeSettingsTab.group}
+                </StatusBadge>
+              </div>
+            </section>
 
         {entitiesQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
@@ -3766,139 +3840,153 @@ function SettingsWorkspace() {
 
         {showHorizonOverview ? (
           <>
-            <SectionPanel
-              title="WORK NOTIFICATIONS — PER OPERATOR"
-              icon={<Bell size={17} className="text-primary" />}
-              actions={
-                <div className="flex flex-wrap gap-2">
-                  <StatusBadge tone="success">
-                    {workEmailEnabledCount} email on
-                  </StatusBadge>
-                  <StatusBadge tone={workSmsReadyCount ? "primary" : "neutral"}>
-                    {workSmsReadyCount} SMS ready
-                  </StatusBadge>
-                </div>
-              }
-            >
-              <div className="grid gap-3 p-4 xl:grid-cols-2">
-                {selectedEntityRoleMembers.map((member, index) => {
-                  const isUpdating =
-                    memberMutation.isPending &&
-                    memberMutation.variables?.memberId === member.id;
-                  const workEmailEnabled = workAssignmentEmailEnabled(member);
-                  const workSmsEnabled = workAssignmentSmsEnabled(member);
-                  const smsPhone = workAssignmentSmsPhone(member);
-                  return (
-                    <article
-                      key={`${member.id}-horizon-notifications`}
-                      className="grid gap-4 rounded-2xl border border-leasium-card-border bg-white p-4 text-sm shadow-leasiumXs"
+            {activeTab === "notifications" ? (
+              <SectionPanel
+                title="WORK NOTIFICATIONS — PER OPERATOR"
+                icon={<Bell size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <StatusBadge tone="success">
+                      {workEmailEnabledCount} email on
+                    </StatusBadge>
+                    <StatusBadge
+                      tone={workSmsReadyCount ? "primary" : "neutral"}
                     >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold text-white ${
-                            index % 2 === 0 ? "bg-primary" : "bg-leasium-teal"
-                          }`}
-                        >
-                          {member.display_name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold text-foreground">
-                            {member.display_name}
+                      {workSmsReadyCount} SMS ready
+                    </StatusBadge>
+                  </div>
+                }
+              >
+                <div className="grid gap-3 p-4 xl:grid-cols-2">
+                  {selectedEntityRoleMembers.map((member, index) => {
+                    const isUpdating =
+                      memberMutation.isPending &&
+                      memberMutation.variables?.memberId === member.id;
+                    const workEmailEnabled = workAssignmentEmailEnabled(member);
+                    const workSmsEnabled = workAssignmentSmsEnabled(member);
+                    const smsPhone = workAssignmentSmsPhone(member);
+                    return (
+                      <article
+                        key={`${member.id}-horizon-notifications`}
+                        className="grid gap-4 rounded-2xl border border-leasium-card-border bg-white p-4 text-sm shadow-leasiumXs"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold text-white ${
+                              index % 2 === 0
+                                ? "bg-primary"
+                                : "bg-leasium-teal"
+                            }`}
+                          >
+                            {member.display_name.slice(0, 1).toUpperCase()}
                           </div>
-                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {horizonOperatorRole(member)}
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-foreground">
+                              {member.display_name}
+                            </div>
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {horizonOperatorRole(member)}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="grid gap-2">
-                        <label className="flex min-h-11 items-center justify-between gap-3">
-                          <span className="flex items-center gap-2 font-medium text-foreground">
-                            <input
-                              aria-label={`${member.display_name} assignment email notifications`}
-                              checked={workEmailEnabled}
-                              className="h-4 w-4 accent-primary"
-                              disabled={!horizonCanManageSecurity || isUpdating}
-                              onChange={(event) =>
-                                memberMutation.mutate({
-                                  memberId: member.id,
-                                  payload: {
-                                    notification_preferences:
-                                      nextNotificationPreferences(member, {
-                                        work_assignment_email_enabled:
-                                          event.target.checked,
-                                      }),
-                                  },
-                                })
-                              }
-                              type="checkbox"
-                            />
-                            Assignment email
+                        <div className="grid gap-2">
+                          <label className="flex min-h-11 items-center justify-between gap-3">
+                            <span className="flex items-center gap-2 font-medium text-foreground">
+                              <input
+                                aria-label={`${member.display_name} assignment email notifications`}
+                                checked={workEmailEnabled}
+                                className="h-4 w-4 accent-primary"
+                                disabled={
+                                  !horizonCanManageSecurity || isUpdating
+                                }
+                                onChange={(event) =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    payload: {
+                                      notification_preferences:
+                                        nextNotificationPreferences(member, {
+                                          work_assignment_email_enabled:
+                                            event.target.checked,
+                                        }),
+                                    },
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              Assignment email
+                            </span>
+                            <StatusBadge tone="neutral">
+                              {horizonDigestLabel(member)}
+                            </StatusBadge>
+                          </label>
+
+                          <label className="flex min-h-11 items-center justify-between gap-3">
+                            <span className="flex items-center gap-2 font-medium text-foreground">
+                              <input
+                                aria-label={`${member.display_name} assignment SMS notifications`}
+                                checked={workSmsEnabled}
+                                className="h-4 w-4 accent-primary"
+                                disabled={
+                                  !horizonCanManageSecurity || isUpdating
+                                }
+                                onChange={(event) =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    payload: {
+                                      notification_preferences:
+                                        nextNotificationPreferences(member, {
+                                          work_assignment_sms_enabled:
+                                            event.target.checked,
+                                        }),
+                                    },
+                                  })
+                                }
+                                type="checkbox"
+                              />
+                              Assignment SMS
+                            </span>
+                            <span className="flex flex-wrap justify-end gap-2">
+                              {smsPhone ? (
+                                <StatusBadge tone="primary">
+                                  {smsPhone}
+                                </StatusBadge>
+                              ) : null}
+                              <StatusBadge
+                                tone={workSmsEnabled ? "success" : "neutral"}
+                              >
+                                {workSmsEnabled ? "Reviewed" : "Off"}
+                              </StatusBadge>
+                            </span>
+                          </label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-semibold text-muted-foreground">
+                            Templates
                           </span>
                           <StatusBadge tone="neutral">
-                            {horizonDigestLabel(member)}
+                            {horizonNoticeTemplateLabel(member)}
                           </StatusBadge>
-                        </label>
-
-                        <label className="flex min-h-11 items-center justify-between gap-3">
-                          <span className="flex items-center gap-2 font-medium text-foreground">
-                            <input
-                              aria-label={`${member.display_name} assignment SMS notifications`}
-                              checked={workSmsEnabled}
-                              className="h-4 w-4 accent-primary"
-                              disabled={!horizonCanManageSecurity || isUpdating}
-                              onChange={(event) =>
-                                memberMutation.mutate({
-                                  memberId: member.id,
-                                  payload: {
-                                    notification_preferences:
-                                      nextNotificationPreferences(member, {
-                                        work_assignment_sms_enabled:
-                                          event.target.checked,
-                                      }),
-                                  },
-                                })
-                              }
-                              type="checkbox"
-                            />
-                            Assignment SMS
-                          </span>
-                          <span className="flex flex-wrap justify-end gap-2">
-                            {smsPhone ? (
-                              <StatusBadge tone="primary">{smsPhone}</StatusBadge>
-                            ) : null}
-                            <StatusBadge tone={workSmsEnabled ? "success" : "neutral"}>
-                              {workSmsEnabled ? "Reviewed" : "Off"}
-                            </StatusBadge>
-                          </span>
-                        </label>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="font-semibold text-muted-foreground">
-                          Templates
-                        </span>
-                        <StatusBadge tone="neutral">
-                          {horizonNoticeTemplateLabel(member)}
-                        </StatusBadge>
-                        <StatusBadge tone="neutral">
-                          {horizonDigestTemplateLabel(member)}
-                        </StatusBadge>
-                        <StatusBadge tone="success">Managed</StatusBadge>
-                      </div>
-                    </article>
-                  );
-                })}
-                {!securityQuery.isLoading &&
-                selectedEntityRoleMembers.length === 0 ? (
-                  <EmptyState
-                    icon={<UsersRound size={18} />}
-                    title="No operators yet"
-                    description="Invite an operator before setting Work notification preferences."
-                  />
-                ) : null}
-              </div>
-            </SectionPanel>
+                          <StatusBadge tone="neutral">
+                            {horizonDigestTemplateLabel(member)}
+                          </StatusBadge>
+                          <StatusBadge tone="success">Managed</StatusBadge>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!securityQuery.isLoading &&
+                  selectedEntityRoleMembers.length === 0 ? (
+                    <EmptyState
+                      icon={<UsersRound size={18} />}
+                      title="No operators yet"
+                      description="Invite an operator before setting Work notification preferences."
+                    />
+                  ) : null}
+                </div>
+              </SectionPanel>
+            ) : null}
 
             {activeTab === "organisation" ? (
               <div className="grid items-start gap-4 lg:grid-cols-2">
@@ -9381,6 +9469,8 @@ function SettingsWorkspace() {
             </div>
           </>
         ) : null}
+          </div>
+        </div>
       </div>
     </main>
   );

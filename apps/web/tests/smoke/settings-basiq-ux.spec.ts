@@ -30,7 +30,7 @@ test("Basiq apply only fires for approved transactions and is gated", async ({
   await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const basiqPanel = page
     .locator("section")
@@ -86,7 +86,7 @@ test("Basiq connection block is inert and Connect is gated when unconfigured", a
   await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const basiqPanel = page
     .locator("section")
@@ -145,7 +145,7 @@ test("Basiq imported transaction remove action stays touch-safe without applying
   await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const basiqPanel = page
     .locator("section")
@@ -172,7 +172,7 @@ test("Basiq consent handoff stays touch-safe without opening provider", async ({
   await mockLeasiumApi(page, { basiqConsentReady: true });
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   const basiqPanel = page
     .locator("section")

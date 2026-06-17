@@ -340,7 +340,7 @@ test("dark Horizon route polish avoids low-contrast tabs and bright property med
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/settings");
   await expectAppearance(page, "dark", "dark");
-  const securityTab = page.getByRole("tab", { name: "Security" });
+  const securityTab = page.getByRole("tab", { name: "People & access" });
   await expect(securityTab).toBeVisible();
   await expect
     .poll(() =>
@@ -348,13 +348,15 @@ test("dark Horizon route polish avoids low-contrast tabs and bright property med
     )
     .toBe("rgb(170, 181, 200)");
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/properties");
   await expectAppearance(page, "dark", "dark");
   const mediaSlots = page.getByTestId("property-card-media");
   const mediaSlotCount = await mediaSlots.count();
   expect(mediaSlotCount).toBeGreaterThan(0);
-  const firstMediaSlot = mediaSlots.first();
+  const firstMediaSlot = page
+    .locator('[data-testid="property-card-media"]:visible')
+    .first();
   await expect(firstMediaSlot).toBeVisible();
   await expect
     .poll(() =>

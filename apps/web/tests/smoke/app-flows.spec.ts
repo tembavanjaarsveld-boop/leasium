@@ -980,9 +980,9 @@ test("settings mobile tabs keep 44px touch targets", async ({ page }) => {
   await page.goto("/settings");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expectTouchTarget(page.getByRole("tab", { name: "Security" }));
+  await expectTouchTarget(page.getByRole("tab", { name: "People & access" }));
   await expectTouchTarget(page.getByRole("tab", { name: "Organisation" }));
-  await expectTouchTarget(page.getByRole("tab", { name: "Connect" }));
+  await expectTouchTarget(page.getByRole("tab", { name: "Integrations" }));
 });
 
 test("notifications mobile actions keep intended touch targets", async ({
@@ -6639,8 +6639,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(entitySwitcherFits).toBe(true);
   expect(primaryNavFits).toBe(true);
   expect(settingsNavFits).toBe(true);
-  await expect(page.getByText("Owner Operator").first()).toBeVisible();
-  await expect(page.getByText("Work notifications")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "OWNERSHIP TAGS" }).first(),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "Notifications" }).click();
+  await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
   await expect(page.getByText("2 email on").first()).toBeVisible();
   await expect(page.getByText("1 SMS ready").first()).toBeVisible();
   const ownerNotificationCard = page
@@ -6656,7 +6660,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(ownerNotificationCard.getByText("Digest v1")).toBeVisible();
   await expect(ownerNotificationCard.getByText("Managed")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Security" }).click();
+  await page.getByRole("tab", { name: "People & access" }).click();
   await expect(page.getByText("Operator access")).toBeVisible();
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
@@ -6703,7 +6707,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     ownershipTagsPanel.getByRole("link", { name: /Queen Street Retail Centre/ }),
   );
 
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
   await expect(
     page.getByRole("heading", { name: "Entities & Xero" }),
   ).toBeVisible();
@@ -7263,7 +7267,7 @@ test("settings keeps provider readiness visible when API release is unavailable"
   await mockLeasiumApi(page, { apiHealthUnavailable: true });
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   await expect(
     page.getByRole("heading", { name: "Entities & Xero" }),
@@ -7295,7 +7299,7 @@ test("settings explains Xero setup preflight readiness", async ({ page }) => {
   await mockLeasiumApi(page);
 
   await page.goto("/settings");
-  await page.getByRole("tab", { name: "Connect" }).click();
+  await page.getByRole("tab", { name: "Integrations" }).click();
 
   await expect(
     page.getByRole("heading", { name: "Connect Xero" }),
@@ -7341,7 +7345,7 @@ test("settings shows Xero OAuth callback success feedback", async ({
 
   await expect(page.getByText("Xero connected")).toBeVisible();
   await expect(page.getByText(/Next, review suggested contacts/)).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Connect" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Integrations" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -7354,7 +7358,7 @@ test("settings shows Xero OAuth callback error feedback without tab param", asyn
 
   await expect(page.getByText("Xero connection needs attention")).toBeVisible();
   await expect(page.getByText(/access denied/)).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Connect" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Integrations" })).toHaveAttribute(
     "aria-selected",
     "true",
   );

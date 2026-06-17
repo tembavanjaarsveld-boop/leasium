@@ -16,6 +16,20 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-17 Settings IA simplification:** `/settings` now uses a
+  clean grouped section picker instead of four equal tab cards, matching the
+  operator preference for simple, non-technical navigation. The picker is
+  grouped as Workspace (Organisation, People & access), Account
+  (Notifications), and Apps (Integrations). Organisation now opens on
+  organisation-supporting panels instead of per-operator notification controls;
+  Work notification controls live under Notifications; Xero/Basiq/provider
+  readiness remains under Integrations. Account type stays read-only and
+  Leasium-controlled. Provider guardrails unchanged: no Xero, email/SMS,
+  payment, reconciliation, or provider write runs from Settings without explicit
+  operator approval. Verified with eslint, TypeScript, focused Settings smoke
+  11/11, Settings-adjacent Xero/Basiq/appearance/nav smoke 28/28, and app-flow
+  Settings smoke 12/12.
+
 - [x] **2026-06-17 Leasium AI home colour pass:** `/intake` Home keeps the
   chat-first assistant structure but now uses the approved Horizon blue-to-teal
   hero wash, subtle primary border/glow, and tinted source/action chips so the

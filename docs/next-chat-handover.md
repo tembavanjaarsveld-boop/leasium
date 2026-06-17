@@ -2,6 +2,37 @@
 
 Last updated: 2026-06-17
 
+## Continuation - 2026-06-17 (Settings IA simplification)
+
+Temba wanted Settings to feel clean and easy to pick from, closer to a grouped
+settings menu than a dense admin surface.
+
+What changed:
+- `/settings` now uses a grouped section picker: Workspace (Organisation,
+  People & access), Account (Notifications), Apps (Integrations).
+- Security/Connect labels are now People & access/Integrations.
+- Organisation no longer opens with Work notification controls; Work
+  notifications live under Notifications.
+- Organisation still keeps ownership tags, appearance, profile, payment
+  instructions, trusted senders, and read-only Account type.
+- Integrations still owns Xero/Basiq/provider readiness and stays review-first.
+
+Verification:
+- `npm --prefix apps/web run lint -- --quiet`
+- `cd apps/web && npx tsc --noEmit --pretty false`
+- `cd apps/web && npx playwright test tests/smoke/settings.spec.ts --workers=1`
+  (11/11)
+- `cd apps/web && npx playwright test tests/smoke/settings-xero-ux.spec.ts
+  tests/smoke/settings-basiq-ux.spec.ts tests/smoke/appearance.spec.ts
+  tests/smoke/nav-consolidation.spec.ts --workers=1` (28/28)
+- `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
+  "settings" --workers=1` (12/12)
+
+Guardrails held: this is UI/navigation only. No Xero, SendGrid, Twilio, tenant
+email, payment, reconciliation, provider dispatch, or provider write path
+changed. Follow-up recorded in design governance: refresh canonical Figma
+Settings frame to match the shipped grouped picker.
+
 ## Continuation - 2026-06-17 (Leasium AI home colour pass)
 
 Temba liked the simplified Leasium AI shape but called out that the home surface
