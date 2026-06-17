@@ -1345,11 +1345,11 @@ Primary hub count is 7; Settings remains visible as the utility destination.
   opens a middle category pane, and the selected category opens as the
   right-hand page. Categories are Workspace (Organisation, People & access),
   Account (Notifications), and Apps (Integrations). Organisation should open on
-  organisation profile, ownership/appearance, payment instructions, trusted
-  senders, and account type; Notifications owns per-operator message/digest
-  controls; Integrations owns Xero, email/provider, and bank-feed readiness.
-  Account type remains read-only for clients and is set by Leasium/platform
-  admin.
+  a short Overview, then use clear in-page sub-tabs for Payments, Comms, and
+  Entities instead of making operators scroll through every organisation panel
+  at once. Notifications owns per-operator message/digest controls;
+  Integrations owns Xero, email/provider, and bank-feed readiness. Account type
+  remains read-only for clients and is set by Leasium/platform admin.
 
 ### Command palette actions
 

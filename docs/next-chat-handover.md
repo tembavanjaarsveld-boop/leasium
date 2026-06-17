@@ -6,7 +6,9 @@ Last updated: 2026-06-18
 
 Temba clarified the prior Settings pass was still not the intended structure:
 clicking Settings should open a middle Settings pane with subcategories, and
-clicking a subcategory should open that category's page on the right.
+clicking a subcategory should open that category's page on the right. Follow-up
+feedback on the Organisation page: it was still too massive and the helper copy
+under the Settings heading was unnecessary.
 
 What changed:
 - `/settings` now behaves as a two-pane Settings module: primary app sidebar on
@@ -19,8 +21,12 @@ What changed:
 - Security/Connect labels are now People & access/Integrations.
 - Organisation no longer opens with Work notification controls; Work
   notifications live under Notifications.
-- Organisation still keeps ownership tags, appearance, profile, payment
-  instructions, trusted senders, and read-only Account type.
+- Organisation now opens on a compact Overview and exposes four in-page choices:
+  Overview, Payments, Comms, and Entities. Payment instructions, trusted senders
+  and templates, ownership tags, and entity access are behind those sub-tabs
+  instead of one long scroll.
+- The middle Settings pane no longer shows the helper sentence "Pick an area,
+  then make the change on the page beside it."
 - Integrations still owns Xero/Basiq/provider readiness and stays review-first.
 
 Verification:
@@ -34,7 +40,9 @@ Verification:
   "settings" --workers=1` (12/12)
 - Desktop/mobile visual check:
   `output/playwright/settings-two-pane-desktop.png`,
-  `output/playwright/settings-two-pane-mobile.png`
+  `output/playwright/settings-two-pane-mobile.png`,
+  `output/playwright/settings-organisation-subtabs-desktop.png`,
+  `output/playwright/settings-organisation-subtabs-mobile.png`
 
 Guardrails held: this is UI/navigation only. No Xero, SendGrid, Twilio, tenant
 email, payment, reconciliation, provider dispatch, or provider write path

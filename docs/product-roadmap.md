@@ -22,16 +22,21 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   on the right. This corrects the earlier grouped-picker-only pass and better
   matches the operator preference for simple, non-technical navigation.
   Categories remain Workspace (Organisation, People & access), Account
-  (Notifications), and Apps (Integrations). Organisation opens on
-  organisation-supporting panels; Work notification controls live under
-  Notifications; Xero/Basiq/provider readiness remains under Integrations.
+  (Notifications), and Apps (Integrations). Organisation opens on a compact
+  Overview and then offers sub-tabs for Payments, Comms, and Entities, so tenant
+  payment instructions, mailbox/template settings, and ownership/entity panels
+  are deliberate choices rather than one long scroll. Work notification controls
+  live under Notifications; Xero/Basiq/provider readiness remains under
+  Integrations.
   Account type stays read-only and Leasium-controlled. Provider guardrails
   unchanged: no Xero, email/SMS, payment, reconciliation, or provider write runs
   from Settings without explicit operator approval. Verified with eslint,
   TypeScript, focused Settings smoke 11/11, Xero/Basiq Settings smoke 9/9,
   app-flow Settings smoke 12/12, and desktop/mobile visual screenshots
   (`output/playwright/settings-two-pane-desktop.png`,
-  `output/playwright/settings-two-pane-mobile.png`).
+  `output/playwright/settings-two-pane-mobile.png`,
+  `output/playwright/settings-organisation-subtabs-desktop.png`,
+  `output/playwright/settings-organisation-subtabs-mobile.png`).
 
 - [x] **2026-06-17 Leasium AI home colour pass:** `/intake` Home keeps the
   chat-first assistant structure but now uses the approved Horizon blue-to-teal

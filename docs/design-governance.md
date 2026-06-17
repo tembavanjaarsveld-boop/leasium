@@ -457,6 +457,19 @@ fixes · deferrals.
   payment, reconciliation, email/SMS, or Xero write path changed · deferred:
   refresh the canonical Figma Settings frame to match this shipped two-pane
   workspace before the next Settings design slice.
+- 2026-06-18 · Settings Organisation sub-tabs · screens checked at 1440/390
+  local preview (`output/playwright/settings-organisation-subtabs-desktop.png`,
+  `output/playwright/settings-organisation-subtabs-mobile.png`) plus focused
+  mocked Settings/app-flow smoke coverage · fixes: Organisation no longer
+  renders payment instructions, trusted senders/templates, ownership tags,
+  entity access, and account/profile/appearance panels as one massive scroll;
+  it now opens on a compact Overview with explicit Payments, Comms, and
+  Entities sub-tabs. Removed the middle-pane helper sentence Temba marked as
+  unnecessary. Mobile uses compact one-row sub-tabs so the choices remain
+  visible above the bottom app navigation · provider guardrails unchanged; no
+  provider, payment, reconciliation, email/SMS, or Xero write path changed ·
+  deferred: fold this sub-tab variant into the canonical Figma Settings refresh
+  already logged below.
 - 2026-06-18 · Properties → property Billing tab, Quick charge rule panel ·
   screens checked at 1440/390 (mocked smoke capture) · fixes in-slice: the
   Add charge form gave no success feedback, so the operator re-submitted and

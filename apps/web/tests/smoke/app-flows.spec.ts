@@ -6639,9 +6639,9 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   expect(entitySwitcherFits).toBe(true);
   expect(primaryNavFits).toBe(true);
   expect(settingsNavFits).toBe(true);
-  await expect(
-    page.getByRole("heading", { name: "OWNERSHIP TAGS" }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Overview\b/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Entities\b/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Notifications" }).click();
   await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
@@ -6665,6 +6665,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(page.getByText("Owner Operator").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Organisation" }).click();
+  await page.getByRole("tab", { name: /^Comms\b/ }).click();
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
@@ -6681,6 +6682,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     page.getByText("/api/v1/invoice-drafts/webhooks/sendgrid-events"),
   ).toBeVisible();
+  await page.getByRole("tab", { name: /^Entities\b/ }).click();
   const ownershipTagsPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Ownership tags" }),
   }).last();

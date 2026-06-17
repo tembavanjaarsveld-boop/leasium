@@ -156,6 +156,7 @@ const OPERATING_MODE_LABELS: Record<string, string> = {
 };
 
 type SettingsTab = "organisation" | "security" | "notifications" | "connect";
+type OrganisationSubTab = "overview" | "payments" | "comms" | "entities";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
   noticeKey: string;
@@ -254,6 +255,38 @@ const settingsNavGroups: Array<{
   { label: "Workspace", helper: "Company setup" },
   { label: "Account", helper: "Messages and preferences" },
   { label: "Apps", helper: "Connected services" },
+];
+
+const organisationSubTabs: Array<{
+  id: OrganisationSubTab;
+  label: string;
+  description: string;
+  icon: ReactNode;
+}> = [
+  {
+    id: "overview",
+    label: "Overview",
+    description: "Profile and appearance",
+    icon: <Building2 size={15} />,
+  },
+  {
+    id: "payments",
+    label: "Payments",
+    description: "Tenant instructions",
+    icon: <CircleDollarSign size={15} />,
+  },
+  {
+    id: "comms",
+    label: "Comms",
+    description: "Mailbox and templates",
+    icon: <MailCheck size={15} />,
+  },
+  {
+    id: "entities",
+    label: "Entities",
+    description: "Properties and access",
+    icon: <Tags size={15} />,
+  },
 ];
 
 const ENTITY_TYPE_OPTIONS: EntityType[] = [
@@ -2387,6 +2420,8 @@ function TrustedSendersPanel({ entityId }: { entityId: string }) {
 function SettingsWorkspace() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<SettingsTab>("organisation");
+  const [activeOrganisationTab, setActiveOrganisationTab] =
+    useState<OrganisationSubTab>("overview");
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [xeroTenantId, setXeroTenantId] = useState("");
   const [xeroContactPreview, setXeroContactPreview] =
@@ -3538,8 +3573,7 @@ function SettingsWorkspace() {
     }
     scrollToPanel(xeroConnectionPanelRef);
   };
-  const showHorizonOverview =
-    activeTab === "organisation" || activeTab === "notifications";
+  const showHorizonOverview = activeTab === "notifications";
   const horizonCanManageSecurity =
     Boolean(securityQuery.data?.can_manage_security) &&
     !memberMutation.isPending;
@@ -3604,9 +3638,6 @@ function SettingsWorkspace() {
               <h1 className="text-xs font-semibold uppercase text-muted-foreground">
                 Settings
               </h1>
-              <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                Pick an area, then make the change on the page beside it.
-              </p>
             </div>
             <nav
               aria-label="Settings sections"
@@ -3710,6 +3741,52 @@ function SettingsWorkspace() {
                 </StatusBadge>
               </div>
             </div>
+
+            {activeTab === "organisation" ? (
+              <div
+                aria-label="Organisation settings"
+                className="grid grid-cols-4 gap-1.5 sm:gap-2"
+                role="tablist"
+              >
+                {organisationSubTabs.map((tab) => {
+                  const isActive = activeOrganisationTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      aria-selected={isActive}
+                      className={`flex min-h-12 w-full flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 text-center text-xs transition-colors duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left sm:text-sm ${
+                        isActive
+                          ? "border-primary/30 bg-primary-soft text-primary"
+                          : "border-border bg-white text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                      }`}
+                      onClick={() => setActiveOrganisationTab(tab.id)}
+                      role="tab"
+                      type="button"
+                    >
+                      <span
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${
+                          isActive ? "bg-white" : "bg-muted"
+                        }`}
+                      >
+                        {tab.icon}
+                      </span>
+                      <span className="min-w-0 max-w-full">
+                        <span className="block max-w-full truncate font-semibold leading-5">
+                          {tab.label}
+                        </span>
+                        <span
+                          className={`hidden text-xs leading-4 sm:block ${
+                            isActive ? "text-primary/80" : "text-muted-foreground"
+                          }`}
+                        >
+                          {tab.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
         {entitiesQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
@@ -3991,56 +4068,6 @@ function SettingsWorkspace() {
                   ) : null}
                 </div>
               </SectionPanel>
-            ) : null}
-
-            {activeTab === "organisation" ? (
-              <div className="grid items-start gap-4 lg:grid-cols-2">
-                <SectionPanel title="OWNERSHIP TAGS" icon={<Tags size={17} />}>
-                  <div className="divide-y divide-border px-4 py-2">
-                    {propertiesQuery.isLoading ? (
-                      <div className="py-3 text-sm text-muted-foreground">
-                        Checking ownership tags
-                      </div>
-                    ) : ownershipTags.length ? (
-                      ownershipTags.slice(0, 4).map((tag) => (
-                        <div
-                          key={`horizon-${tag.key}`}
-                          className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <span
-                              className={`inline-flex max-w-44 items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold leading-4 ${ownershipChipClassName(tag.palette)}`}
-                              title={tag.label}
-                            >
-                              {tag.label}
-                            </span>
-                            <span className="text-muted-foreground">
-                              {tag.propertyCount}{" "}
-                              {tag.propertyCount === 1
-                                ? "property"
-                                : "properties"}
-                            </span>
-                          </div>
-                          <Link
-                            href={`/properties?entity_id=${selectedEntityId}&owner_tag=${encodeURIComponent(tag.key)}`}
-                            className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs font-semibold text-primary hover:text-primary-hover"
-                          >
-                            View <ChevronRight size={13} />
-                          </Link>
-                        </div>
-                      ))
-                    ) : (
-                      <EmptyState
-                        icon={<Tags size={18} />}
-                        title="No ownership tags yet"
-                        description="Import or edit property ownership and billing identity data to build this directory."
-                      />
-                    )}
-                  </div>
-                </SectionPanel>
-
-                <SettingsAppearancePanel />
-              </div>
             ) : null}
 
             <div className="flex justify-center">
@@ -5250,73 +5277,97 @@ function SettingsWorkspace() {
 
         {activeTab === "organisation" ? (
           <>
-            <SectionPanel
-              title="Organisation profile"
-              description="The operator account, entities, and integration settings all sit under this organisation."
-              icon={<Building2 size={17} className="text-primary" />}
-              actions={
-                securityQuery.data ? (
-                  <StatusBadge tone="primary">
-                    {securityQuery.data.organisation.country_code}
-                  </StatusBadge>
-                ) : null
-              }
-            >
-              <div className="grid gap-3 p-4 md:grid-cols-3">
-                <div className="rounded-md border border-border bg-muted/25 p-3">
-                  <div className="text-xs uppercase text-muted-foreground">
-                    Name
-                  </div>
-                  <div className="mt-1 font-semibold">
-                    {organisationNameLabel}
-                  </div>
-                </div>
-                <div className="rounded-md border border-border bg-muted/25 p-3">
-                  <div className="text-xs uppercase text-muted-foreground">
-                    Timezone
-                  </div>
-                  <div className="mt-1 font-semibold">
-                    {organisationTimezoneLabel}
-                  </div>
-                </div>
-                <div className="rounded-md border border-border bg-muted/25 p-3">
-                  <div className="text-xs uppercase text-muted-foreground">
-                    Entities
-                  </div>
-                  <div className="mt-1 font-semibold">
-                    {organisationEntityCountLabel}
-                  </div>
-                </div>
-              </div>
-            </SectionPanel>
-
-            {selectedEntityId ? (
+            {activeOrganisationTab === "overview" ? (
               <>
-                <PaymentInstructionsPanel entityId={selectedEntityId} />
-                <TrustedSendersPanel entityId={selectedEntityId} />
+                <SettingsAppearancePanel />
+
+                <div className="flex justify-center">
+                  <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-leasium-teal-strong">
+                    <ShieldCheck size={16} />
+                    <span>
+                      Provider changes are review-first — nothing connects or
+                      sends without you.
+                    </span>
+                  </div>
+                </div>
+
+                <SectionPanel
+                  title="Organisation profile"
+                  description="The operator account, entities, and integration settings all sit under this organisation."
+                  icon={<Building2 size={17} className="text-primary" />}
+                  actions={
+                    securityQuery.data ? (
+                      <StatusBadge tone="primary">
+                        {securityQuery.data.organisation.country_code}
+                      </StatusBadge>
+                    ) : null
+                  }
+                >
+                  <div className="grid gap-3 p-4 md:grid-cols-3">
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Name
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {organisationNameLabel}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Timezone
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {organisationTimezoneLabel}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-border bg-muted/25 p-3">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Entities
+                      </div>
+                      <div className="mt-1 font-semibold">
+                        {organisationEntityCountLabel}
+                      </div>
+                    </div>
+                  </div>
+                </SectionPanel>
+
+                <SectionPanel
+                  title="Account type"
+                  description="Self-managed owners run their own portfolio. Managing-agent and hybrid accounts show owner-client, disbursement, and owner-portal surfaces."
+                  icon={<Building2 size={17} className="text-primary" />}
+                >
+                  <div className="grid gap-1 p-4">
+                    <span className="text-sm font-semibold text-foreground">
+                      {OPERATING_MODE_LABELS[
+                        securityQuery.data?.organisation.operating_mode ??
+                          "self_managed_owner"
+                      ] ?? "Self-managed owner"}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      Set by Leasium for your account. Contact Leasium if your
+                      operating model changes.
+                    </span>
+                  </div>
+                </SectionPanel>
               </>
             ) : null}
 
-            <SectionPanel
-              title="Account type"
-              description="Self-managed owners run their own portfolio. Managing-agent and hybrid accounts show owner-client, disbursement, and owner-portal surfaces."
-              icon={<Building2 size={17} className="text-primary" />}
-            >
-              <div className="grid gap-1 p-4">
-                <span className="text-sm font-semibold text-foreground">
-                  {OPERATING_MODE_LABELS[
-                    securityQuery.data?.organisation.operating_mode ??
-                      "self_managed_owner"
-                  ] ?? "Self-managed owner"}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  Set by Leasium for your account. Contact Leasium if your
-                  operating model changes.
-                </span>
-              </div>
-            </SectionPanel>
+            {activeOrganisationTab === "payments" ? (
+              selectedEntityId ? (
+                <PaymentInstructionsPanel entityId={selectedEntityId} />
+              ) : (
+                <SectionPanel>
+                  <EmptyState
+                    icon={<Building2 size={18} />}
+                    title="No entity selected"
+                    description="Choose an entity from the header to manage tenant payment instructions."
+                  />
+                </SectionPanel>
+              )
+            ) : null}
 
-            {(securityQuery.data?.organisation.operating_mode ??
+            {activeOrganisationTab === "entities" &&
+            (securityQuery.data?.organisation.operating_mode ??
               "self_managed_owner") === "self_managed_owner" ? (
               <section
                 className="grid gap-3"
@@ -5430,7 +5481,8 @@ function SettingsWorkspace() {
               </section>
             ) : null}
 
-            {ownershipSplitPlan &&
+            {activeOrganisationTab === "entities" &&
+            ownershipSplitPlan &&
             ownershipSplitPlan.proposed_entity_count >
               ownershipSplitPlan.source_entity_count ? (
               <SectionPanel
@@ -5571,19 +5623,35 @@ function SettingsWorkspace() {
               </SectionPanel>
             ) : null}
 
-            <SectionPanel
-              title="Communication templates"
-              description="Shared template keys, previews, versions, and receipt endpoints for tenant, operator, invoice, and contractor messages."
-              icon={<FileText size={17} className="text-primary" />}
-              actions={
-                <div className="flex flex-wrap gap-2">
-                  <StatusBadge tone="primary">
-                    {communicationTemplates.length} templates
-                  </StatusBadge>
-                  <StatusBadge tone="neutral">Review-first sends</StatusBadge>
-                </div>
-              }
-            >
+            {activeOrganisationTab === "comms" ? (
+              <>
+                {selectedEntityId ? (
+                  <TrustedSendersPanel entityId={selectedEntityId} />
+                ) : (
+                  <SectionPanel>
+                    <EmptyState
+                      icon={<Building2 size={18} />}
+                      title="No entity selected"
+                      description="Choose an entity from the header to manage mailbox aliases and trusted senders."
+                    />
+                  </SectionPanel>
+                )}
+
+                <SectionPanel
+                  title="Communication templates"
+                  description="Shared template keys, previews, versions, and receipt endpoints for tenant, operator, invoice, and contractor messages."
+                  icon={<FileText size={17} className="text-primary" />}
+                  actions={
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge tone="primary">
+                        {communicationTemplates.length} templates
+                      </StatusBadge>
+                      <StatusBadge tone="neutral">
+                        Review-first sends
+                      </StatusBadge>
+                    </div>
+                  }
+                >
               <div className="grid gap-3 p-4 xl:grid-cols-2">
                 {communicationTemplates.map((template) => (
                   <div
@@ -5829,22 +5897,25 @@ function SettingsWorkspace() {
                   />
                 )}
               </div>
-            </SectionPanel>
+                </SectionPanel>
+              </>
+            ) : null}
 
-            <SectionPanel
-              title="Ownership tags"
-              description="Property owner and billing identity labels shown beneath property rows."
-              icon={<Tags size={17} className="text-primary" />}
-              actions={
-                selectedEntityId ? (
-                  <StatusBadge
-                    tone={ownershipTags.length ? "primary" : "neutral"}
-                  >
-                    {ownershipTagLabel}
-                  </StatusBadge>
-                ) : null
-              }
-            >
+            {activeOrganisationTab === "entities" ? (
+              <SectionPanel
+                title="Ownership tags"
+                description="Property owner and billing identity labels shown beneath property rows."
+                icon={<Tags size={17} className="text-primary" />}
+                actions={
+                  selectedEntityId ? (
+                    <StatusBadge
+                      tone={ownershipTags.length ? "primary" : "neutral"}
+                    >
+                      {ownershipTagLabel}
+                    </StatusBadge>
+                  ) : null
+                }
+              >
               <div className="divide-y divide-border">
                 {propertiesQuery.isLoading ? (
                   <div className="px-4 py-4 text-sm text-muted-foreground">
@@ -5941,13 +6012,15 @@ function SettingsWorkspace() {
                   />
                 ) : null}
               </div>
-            </SectionPanel>
+              </SectionPanel>
+            ) : null}
 
-            <SectionPanel
-              title="Entity access map"
-              description="Each entity carries its own roles so operators only see the portfolio slices they should."
-              icon={<KeyRound size={17} className="text-primary" />}
-            >
+            {activeOrganisationTab === "entities" ? (
+              <SectionPanel
+                title="Entity access map"
+                description="Each entity carries its own roles so operators only see the portfolio slices they should."
+                icon={<KeyRound size={17} className="text-primary" />}
+              >
               <div className="divide-y divide-border">
                 {(entitiesQuery.data ?? []).map((entity) => {
                   const currentUserRole =
@@ -5991,7 +6064,8 @@ function SettingsWorkspace() {
                   />
                 ) : null}
               </div>
-            </SectionPanel>
+              </SectionPanel>
+            ) : null}
           </>
         ) : null}
 

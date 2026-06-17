@@ -67,11 +67,23 @@ test("settings render the Horizon operator controls without provider mutation on
   ]) {
     await expect(page.getByRole("tab", { name: section })).toBeVisible();
   }
+  for (const section of ["Overview", "Payments", "Comms", "Entities"]) {
+    await expect(
+      page.getByRole("tab", { name: new RegExp(`^${section}\\b`) }),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByText("Pick an area, then make the change on the page beside it."),
+  ).toHaveCount(0);
   await expect(page.getByText(/WORK NOTIFICATIONS/i)).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "OWNERSHIP TAGS" }).first(),
-  ).toBeVisible();
+    page.getByRole("heading", { name: "OWNERSHIP TAGS" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Organisation profile" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account type" })).toBeVisible();
   await expect(
     page.getByText(
       "Provider changes are review-first — nothing connects or sends without you.",
@@ -105,6 +117,7 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
 
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Organisation" }).click();
+  await page.getByRole("tab", { name: /^Comms\b/ }).click();
 
   const trustedSendersPanel = page.locator("section").filter({
     has: page.getByRole("heading", {
@@ -296,14 +309,17 @@ test("settings organisation loading states use contextual labels", async ({
 
   await expect(page.getByText("Checking organisation")).toBeVisible();
   await expect(page.getByText("Checking timezone")).toBeVisible();
+  await expect(page.getByText("Loading…")).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Comms\b/ }).click();
   await expect(
     page.getByText("Checking stored template overrides."),
   ).toBeVisible();
-  await expect(page.getByText("Checking ownership tags.")).toBeVisible();
-  await expect(page.getByText("Loading…")).toHaveCount(0);
   await expect(
     page.getByText("Loading stored template overrides."),
   ).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Entities\b/ }).click();
+  await expect(page.getByText("Checking ownership tags.")).toBeVisible();
+  await expect(page.getByText("Loading…")).toHaveCount(0);
   await expect(page.getByText("Loading ownership tags...")).toHaveCount(0);
 
   releaseSecurityWorkspace();
@@ -622,6 +638,7 @@ test("settings exports communication template override review CSV", async ({
   await page.goto("/settings");
 
   await page.getByRole("tab", { name: "Organisation" }).click();
+  await page.getByRole("tab", { name: /^Comms\b/ }).click();
   await expect(page.getByText("Communication templates")).toBeVisible();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
   await expect(
@@ -760,6 +777,7 @@ test("settings keeps account type read-only without orphaning self-managed owner
   await expect(
     page.getByRole("combobox", { name: "Account operating mode" }),
   ).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Entities\b/ }).click();
   await expect(
     page.getByRole("heading", { name: "Your entities & properties" }),
   ).toBeVisible();
