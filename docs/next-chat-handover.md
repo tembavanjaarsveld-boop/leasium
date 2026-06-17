@@ -1,15 +1,21 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
-## Continuation - 2026-06-17 (Settings IA simplification)
+## Continuation - 2026-06-18 (Settings two-pane workspace)
 
-Temba wanted Settings to feel clean and easy to pick from, closer to a grouped
-settings menu than a dense admin surface.
+Temba clarified the prior Settings pass was still not the intended structure:
+clicking Settings should open a middle Settings pane with subcategories, and
+clicking a subcategory should open that category's page on the right.
 
 What changed:
-- `/settings` now uses a grouped section picker: Workspace (Organisation,
-  People & access), Account (Notifications), Apps (Integrations).
+- `/settings` now behaves as a two-pane Settings module: primary app sidebar on
+  the far left, dedicated Settings category pane in the middle, selected
+  category page on the right.
+- Category buttons now update the `tab` query param so the selected page is
+  linkable/deep-linkable.
+- The grouped categories remain Workspace (Organisation, People & access),
+  Account (Notifications), Apps (Integrations).
 - Security/Connect labels are now People & access/Integrations.
 - Organisation no longer opens with Work notification controls; Work
   notifications live under Notifications.
@@ -23,15 +29,17 @@ Verification:
 - `cd apps/web && npx playwright test tests/smoke/settings.spec.ts --workers=1`
   (11/11)
 - `cd apps/web && npx playwright test tests/smoke/settings-xero-ux.spec.ts
-  tests/smoke/settings-basiq-ux.spec.ts tests/smoke/appearance.spec.ts
-  tests/smoke/nav-consolidation.spec.ts --workers=1` (28/28)
+  tests/smoke/settings-basiq-ux.spec.ts --workers=1` (9/9)
 - `cd apps/web && npx playwright test tests/smoke/app-flows.spec.ts --grep
   "settings" --workers=1` (12/12)
+- Desktop/mobile visual check:
+  `output/playwright/settings-two-pane-desktop.png`,
+  `output/playwright/settings-two-pane-mobile.png`
 
 Guardrails held: this is UI/navigation only. No Xero, SendGrid, Twilio, tenant
 email, payment, reconciliation, provider dispatch, or provider write path
 changed. Follow-up recorded in design governance: refresh canonical Figma
-Settings frame to match the shipped grouped picker.
+Settings frame to match the shipped two-pane workspace.
 
 ## Continuation - 2026-06-17 (Leasium AI home colour pass)
 

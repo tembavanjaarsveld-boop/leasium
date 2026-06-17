@@ -41,7 +41,6 @@ import {
   EmptyState,
   Field,
   Input,
-  PageHeader,
   SecondaryButton,
   SectionPanel,
   Select,
@@ -3571,6 +3570,20 @@ function SettingsWorkspace() {
   };
   const activeSettingsTab =
     settingsTabs.find((tab) => tab.id === activeTab) ?? settingsTabs[0];
+  const selectSettingsTab = (tabId: SettingsTab) => {
+    setActiveTab(tabId);
+    const url = new URL(window.location.href);
+    if (tabId === "organisation") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", tabId);
+    }
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  };
 
   return (
     <main className="min-h-screen">
@@ -3584,52 +3597,29 @@ function SettingsWorkspace() {
         />
       </AppHeader>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
-        <PageHeader
-          title="Settings"
-          description={
-            selectedEntity
-              ? `Access, organisation, notifications, and integrations for ${selectedEntity.name}.`
-              : "Choose an entity to review access, organisation, and integration controls."
-          }
-          actions={
-            <SecondaryButton
-              type="button"
-              onClick={() => xeroStatusQuery.refetch()}
-              disabled={
-                activeTab !== "connect" ||
-                !selectedEntityId ||
-                xeroStatusQuery.isFetching
-              }
-            >
-              <RefreshCw size={15} />
-              Refresh
-            </SecondaryButton>
-          }
-        />
-
-        <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
-          <aside className="overflow-hidden rounded-2xl border border-leasium-card-border bg-white shadow-leasiumCard lg:sticky lg:top-24">
-            <div className="border-b border-border px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="mx-auto max-w-7xl px-5 py-5">
+        <div className="grid min-h-[calc(100dvh-6rem)] overflow-hidden rounded-2xl border border-leasium-card-border bg-white shadow-leasiumCard lg:grid-cols-[292px_minmax(0,1fr)]">
+          <aside className="border-b border-border bg-muted/25 lg:border-b-0 lg:border-r">
+            <div className="px-5 py-5">
+              <h1 className="text-xs font-semibold uppercase text-muted-foreground">
                 Settings
-              </div>
+              </h1>
               <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                Pick the area you want to change.
+                Pick an area, then make the change on the page beside it.
               </p>
             </div>
             <nav
               aria-label="Settings sections"
-              className="grid gap-4 p-3"
+              className="grid gap-5 px-3 pb-5"
               role="tablist"
             >
               {settingsNavGroups.map((group) => (
-                <div key={group.label} className="grid gap-1.5">
-                  <div className="flex items-center justify-between px-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <div key={group.label} className="grid gap-2">
+                  <div className="grid gap-0.5 px-2">
+                    <span className="text-xs font-semibold uppercase text-muted-foreground">
                       {group.label}
                     </span>
-                    <span className="hidden text-[11px] text-muted-foreground sm:inline">
+                    <span className="text-xs text-muted-foreground">
                       {group.helper}
                     </span>
                   </div>
@@ -3643,20 +3633,20 @@ function SettingsWorkspace() {
                             key={tab.id}
                             aria-label={tab.label}
                             aria-selected={isActive}
-                            className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-shadow duration-200 ease-leasium ${
+                            className={`flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 ${
                               isActive
-                                ? "bg-primary text-white shadow-leasiumXs"
-                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                ? "bg-primary-soft text-primary ring-1 ring-primary/20"
+                                : "text-muted-foreground hover:bg-white hover:text-foreground"
                             }`}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => selectSettingsTab(tab.id)}
                             role="tab"
                             type="button"
                           >
                             <span
-                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                              className={`grid h-8 w-8 shrink-0 place-items-center rounded-md ${
                                 isActive
-                                  ? "bg-white/15 text-white"
-                                  : "bg-muted text-muted-foreground"
+                                  ? "bg-white text-primary"
+                                  : "bg-white text-muted-foreground"
                               }`}
                             >
                               {tab.icon}
@@ -3668,7 +3658,7 @@ function SettingsWorkspace() {
                               <span
                                 className={`block text-xs ${
                                   isActive
-                                    ? "text-white/85"
+                                    ? "text-primary/80"
                                     : "text-muted-foreground"
                                 }`}
                               >
@@ -3684,27 +3674,42 @@ function SettingsWorkspace() {
             </nav>
           </aside>
 
-          <div className="min-w-0 grid gap-5">
-            <section className="rounded-2xl border border-primary/15 bg-gradient-to-br from-white via-white to-primary-soft/25 p-4 shadow-leasiumCard">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-leasiumXs">
-                    {activeSettingsTab.icon}
-                  </span>
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold leading-6 text-foreground">
-                      {activeSettingsTab.label}
-                    </h2>
-                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                      {activeSettingsTab.description}
-                    </p>
+          <div className="min-w-0 grid gap-5 bg-background/60 px-5 py-5 lg:px-7 lg:py-6">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border bg-white text-primary shadow-leasiumXs">
+                  {activeSettingsTab.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                    {activeSettingsTab.group}
                   </div>
+                  <h2 className="mt-1 text-2xl font-semibold text-foreground">
+                    {activeSettingsTab.label}
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    {selectedEntity
+                      ? `${activeSettingsTab.description} for ${selectedEntity.name}.`
+                      : "Choose an entity to review its settings."}
+                  </p>
                 </div>
+              </div>
+              <div className="flex min-h-11 items-center gap-2">
+                {activeTab === "connect" ? (
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => xeroStatusQuery.refetch()}
+                    disabled={!selectedEntityId || xeroStatusQuery.isFetching}
+                  >
+                    <RefreshCw size={15} />
+                    Refresh
+                  </SecondaryButton>
+                ) : null}
                 <StatusBadge tone={activeTab === "connect" ? "warning" : "primary"}>
                   {activeSettingsTab.group}
                 </StatusBadge>
               </div>
-            </section>
+            </div>
 
         {entitiesQuery.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">

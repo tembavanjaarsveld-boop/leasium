@@ -1340,9 +1340,11 @@ Primary hub count is 7; Settings remains visible as the utility destination.
   snapshot and Work follow-up queues, not a new top-level Compliance nav item.
 - New human/relationship surfaces live under People, not as new top-level items (§10.5.1 cap).
 - Use global search / command palette with `Cmd+K` or `Ctrl+K`.
-- **Settings uses a grouped picker, not a flat dump.** Keep Settings simple for
-  non-technical operators: Workspace (Organisation, People & access), Account
-  (Notifications), Apps (Integrations). Organisation should open on
+- **Settings uses a two-pane workspace, not a flat dump.** Keep Settings simple
+  for non-technical operators: the primary app sidebar stays left, Settings
+  opens a middle category pane, and the selected category opens as the
+  right-hand page. Categories are Workspace (Organisation, People & access),
+  Account (Notifications), and Apps (Integrations). Organisation should open on
   organisation profile, ownership/appearance, payment instructions, trusted
   senders, and account type; Notifications owns per-operator message/digest
   controls; Integrations owns Xero, email/provider, and bank-feed readiness.

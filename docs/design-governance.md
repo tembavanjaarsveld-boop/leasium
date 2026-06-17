@@ -443,17 +443,20 @@ fixes · deferrals.
   removed from the assistant area per operator preference so the page stays
   focused on ask/upload and the document queue below · provider guardrails
   unchanged; no provider or Smart Intake apply path changed · deferred: none.
-- 2026-06-17 · Settings IA simplification · reused the approved Horizon
-  Settings surface and operator-approved grouped-settings direction from the
-  in-session review · screens checked at 1440/390 local preview plus mocked
-  smoke coverage · fixes: replaced the four equal tabs with a grouped picker
-  (Workspace, Account, Apps), renamed Security/Connect to People &
-  access/Integrations, moved Work notification controls behind the
-  Notifications section, and narrowed tab animation to shadow-only so colour
-  contrast stays stable · provider guardrails unchanged; no provider, payment,
-  reconciliation, email/SMS, or Xero write path changed · deferred: refresh the
-  canonical Figma Settings frame to match this shipped grouped picker before
-  the next Settings design slice.
+- 2026-06-18 · Settings two-pane workspace · reused the approved Horizon
+  Settings surface and operator-approved Sophie-style settings direction from
+  the in-session review · screens checked at 1440/390 local preview
+  (`output/playwright/settings-two-pane-desktop.png`,
+  `output/playwright/settings-two-pane-mobile.png`) plus mocked smoke coverage
+  · fixes: corrected the grouped-picker-only pass into a real Settings module
+  where the primary app sidebar stays left, a dedicated Settings category pane
+  sits in the middle, and the selected category opens as the right-hand page;
+  retained Workspace/Account/Apps grouping, People & access/Integrations
+  labels, Notifications ownership of Work notification controls, and
+  review-first provider copy · provider guardrails unchanged; no provider,
+  payment, reconciliation, email/SMS, or Xero write path changed · deferred:
+  refresh the canonical Figma Settings frame to match this shipped two-pane
+  workspace before the next Settings design slice.
 
 ## UX Debt Register
 
@@ -461,11 +464,12 @@ Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
 
-- **Settings Figma frame refresh (2026-06-17):** `/settings` shipped the
-  operator-approved grouped section picker (Workspace, Account, Apps) against
-  the existing Horizon Settings implementation. Refresh canonical Figma
-  `03 Screens / Settings 55:439` so future Settings slices pull the grouped
-  picker instead of the older equal-tab frame.
+- **Settings Figma frame refresh (2026-06-18):** `/settings` shipped the
+  operator-approved two-pane Settings workspace (primary app sidebar, middle
+  Settings category pane, right-hand selected category page) against the
+  existing Horizon Settings implementation. Refresh canonical Figma
+  `03 Screens / Settings 55:439` so future Settings slices pull the two-pane
+  workspace instead of the older equal-tab or grouped-picker-only frames.
 
 - **Leasium AI cross-page history surfacing** (2026-06-16) —
   shipped since the first slice: conversational review for both intake and the
