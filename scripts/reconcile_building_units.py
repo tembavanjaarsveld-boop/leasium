@@ -130,7 +130,12 @@ def reconcile(
     properties = list(session.scalars(statement))
     if match:
         needle = match.lower()
-        properties = [prop for prop in properties if needle in (prop.name or "").lower()]
+        properties = [
+            prop
+            for prop in properties
+            if needle in (prop.name or "").lower()
+            or needle in (prop.street_address or "").lower()
+        ]
 
     groups: dict[tuple[UUID, str], list[Property]] = defaultdict(list)
     for prop in properties:
@@ -158,7 +163,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Reconcile per-unit properties into building properties (units underneath)."
     )
-    parser.add_argument("--match", default=None, help="substring filter on property name")
+    parser.add_argument("--match", default=None, help="name/address substring filter")
     parser.add_argument("--entity", default=None, help="restrict to one entity id")
     parser.add_argument("--into", default=None, help="explicit canonical property id")
     parser.add_argument("--merge", default=None, help="comma-separated ids to merge into --into")

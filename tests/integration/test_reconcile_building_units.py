@@ -94,6 +94,40 @@ def test_reconcile_merges_building_units(session: Session) -> None:
     assert u4.unit_label == "U4"
 
 
+def test_reconcile_matches_by_address_when_name_lacks_site(session: Session) -> None:
+    """The real B6 case: names are 'Building 6, Unit N' with the site only in the
+    address, so --match must search the address as well as the name."""
+    entity = _entity(session)
+    p_u4 = _property(
+        session, entity, "Building 6, Unit 4", "205 Leitchs Road, Brendale QLD 4500",
+        datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    _unit(session, p_u4, "Unit 4")
+    p_u5 = _property(
+        session, entity, "Building 6, Unit 5", "205 Leitchs Road, Brendale QLD 4500",
+        datetime(2026, 6, 16, tzinfo=UTC),
+    )
+    _unit(session, p_u5, "Unit 5")
+
+    plans = reconcile(session, match="leitchs", entity_id=entity.id, apply=True)
+    assert len(plans) == 1
+    session.refresh(p_u4)
+    session.refresh(p_u5)
+    assert p_u4.deleted_at is None
+    assert p_u4.name == "Building 6"
+    assert p_u5.deleted_at is not None
+    labels = {
+        unit.unit_label
+        for unit in session.scalars(
+            select(TenancyUnit).where(
+                TenancyUnit.property_id == p_u4.id,
+                TenancyUnit.deleted_at.is_(None),
+            )
+        )
+    }
+    assert labels == {"Unit 4", "Unit 5"}
+
+
 def test_reconcile_dry_run_mutates_nothing(session: Session) -> None:
     entity = _entity(session)
     p_u4 = _property(
