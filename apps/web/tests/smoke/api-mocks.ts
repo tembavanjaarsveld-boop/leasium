@@ -11718,7 +11718,10 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/charge-rules") {
-      await fulfillJson(route, rentRoll[0].charge_rules);
+      await fulfillJson(
+        route,
+        rentRoll[0].charge_rules.map((rule) => ({ ...rule, lease_id: leaseId })),
+      );
       return;
     }
 
@@ -11734,6 +11737,43 @@ export async function mockLeasiumApi(
         xero_account_code: chargeAccountCode,
         xero_tax_type: chargeTaxType,
       });
+      return;
+    }
+
+    if (method === "POST" && path === "/charge-rules") {
+      const payload = request.postDataJSON() as {
+        lease_id?: string;
+        charge_type?: string;
+        amount_cents?: number;
+        frequency?: string;
+        gst_treatment?: string;
+        xero_account_code?: string | null;
+        xero_tax_type?: string | null;
+        next_due_date?: string | null;
+      };
+      await fulfillJson(
+        route,
+        {
+          id: `charge-created-${Date.now()}`,
+          lease_id: payload.lease_id ?? leaseId,
+          charge_type: payload.charge_type ?? "base_rent",
+          amount_cents: payload.amount_cents ?? 0,
+          frequency: payload.frequency ?? "monthly",
+          gst_treatment: payload.gst_treatment ?? "taxable",
+          xero_account_code: payload.xero_account_code ?? null,
+          xero_tax_type: payload.xero_tax_type ?? null,
+          start_date: null,
+          end_date: null,
+          next_due_date: payload.next_due_date ?? null,
+          arrears_or_advance: "advance",
+        },
+        201,
+      );
+      return;
+    }
+
+    if (method === "DELETE" && path.startsWith("/charge-rules/")) {
+      await route.fulfill({ status: 204, body: "" });
       return;
     }
 

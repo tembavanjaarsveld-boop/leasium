@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -457,6 +457,16 @@ fixes · deferrals.
   payment, reconciliation, email/SMS, or Xero write path changed · deferred:
   refresh the canonical Figma Settings frame to match this shipped two-pane
   workspace before the next Settings design slice.
+- 2026-06-18 · Properties → property Billing tab, Quick charge rule panel ·
+  screens checked at 1440/390 (mocked smoke capture) · fixes in-slice: the
+  Add charge form gave no success feedback, so the operator re-submitted and
+  created 3× duplicate base-rent rules — added a `role="status"` success
+  confirmation reusing the Operations toast pattern, an inline "Charges on
+  this lease" list with per-rule delete (deleteChargeRule was previously
+  wired to no UI, so duplicates were unrecoverable), a duplicate-charge-type
+  warning, and a Frequency selector replacing the hard-coded monthly create ·
+  provider guardrails unchanged: charge-rule create/delete are internal DB
+  writes, no Xero/email/SMS/payment path touched · none deferred.
 
 ## UX Debt Register
 

@@ -92,6 +92,7 @@ import {
   createTenantOnboarding,
   entityTypeLabel,
   type EntityType,
+  deleteChargeRule,
   deleteLease,
   deleteTenancyUnit,
   downloadDocumentBlob,
@@ -107,6 +108,7 @@ import {
   LeaseEventRecord,
   LeaseIntakeExtraction,
   LeaseIntakeRecord,
+  ChargeRuleRecord,
   listChargeRules,
   listObligations,
   listLeasesByProperty,
@@ -342,6 +344,7 @@ const chargeRuleSchema = z.object({
   lease_id: z.string().min(1, "Lease is required"),
   amount: optionalNumber,
   charge_type: z.string().min(1, "Charge type is required"),
+  frequency: z.enum(["annual", "monthly", "weekly"]),
   gst_treatment: z.enum(["taxable", "gst_free", "input_taxed", "out_of_scope"]),
   xero_account_code: z.string().optional(),
   xero_tax_type: z.string().optional(),
@@ -412,6 +415,7 @@ const defaultChargeRuleFormValues: ChargeRuleFormValues = {
   lease_id: "",
   amount: undefined,
   charge_type: "base_rent",
+  frequency: "monthly",
   gst_treatment: "taxable",
   xero_account_code: "",
   xero_tax_type: "",
@@ -486,6 +490,13 @@ const gstTreatments = [
   { value: "input_taxed", label: "Input taxed" },
   { value: "out_of_scope", label: "Out of scope" },
 ] as const;
+
+const chargeTypeLabel = (value: string) =>
+  chargeTypes.find((type) => type.value === value)?.label ??
+  value.replaceAll("_", " ");
+
+const frequencyLabel = (value: string) =>
+  rentFrequencies.find((frequency) => frequency.value === value)?.label ?? value;
 
 const ownershipStructures = [
   { value: "current_entity", label: "Current portfolio entity" },
@@ -3488,6 +3499,10 @@ function Workspace({
     },
   });
 
+  const [chargeRuleNotice, setChargeRuleNotice] = useState<{
+    message: string;
+  } | null>(null);
+
   const chargeRuleMutation = useMutation({
     mutationFn: (values: ChargeRuleFormValues) =>
       createChargeRule({
@@ -3495,7 +3510,7 @@ function Workspace({
         charge_type: values.charge_type,
         amount_cents:
           values.amount === undefined ? 0 : Math.round(values.amount * 100),
-        frequency: "monthly",
+        frequency: values.frequency,
         gst_treatment: values.gst_treatment,
         xero_account_code: cleanText(values.xero_account_code),
         xero_tax_type: cleanText(values.xero_tax_type),
@@ -3503,24 +3518,50 @@ function Workspace({
         arrears_or_advance: "advance",
         metadata: {},
       }),
+    onMutate: () => setChargeRuleNotice(null),
     onSuccess: (_rule, values) => {
-      queryClient.invalidateQueries({
-        queryKey: [
-          "rent-roll",
-          selectedEntityId,
-          selectedPropertyId,
-          rentRollAsOf,
-        ],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["charge-rules", selectedEntityId, selectedPropertyId],
+      queryClient.invalidateQueries({ queryKey: ["rent-roll"] });
+      queryClient.invalidateQueries({ queryKey: ["charge-rules"] });
+      const amountCents =
+        values.amount === undefined ? 0 : Math.round(values.amount * 100);
+      setChargeRuleNotice({
+        message: `Added ${chargeTypeLabel(values.charge_type)} — ${formatMoney(
+          amountCents,
+        )} ${frequencyLabel(values.frequency)}, next due ${formatDate(
+          values.next_due_date,
+        )}.`,
       });
       chargeRuleForm.reset({
         ...defaultChargeRuleFormValues,
         lease_id: values.lease_id,
+        charge_type: values.charge_type,
+        frequency: values.frequency,
       });
     },
   });
+
+  const deleteChargeRuleMutation = useMutation({
+    mutationFn: (rule: ChargeRuleRecord) => deleteChargeRule(rule.id),
+    onMutate: () => setChargeRuleNotice(null),
+    onSuccess: (_result, rule) => {
+      queryClient.invalidateQueries({ queryKey: ["rent-roll"] });
+      queryClient.invalidateQueries({ queryKey: ["charge-rules"] });
+      setChargeRuleNotice({
+        message: `Removed ${chargeTypeLabel(rule.charge_type)} — ${formatMoney(
+          rule.amount_cents,
+        )}.`,
+      });
+    },
+  });
+
+  const chargeRuleLeaseId = chargeRuleForm.watch("lease_id");
+  const chargeRuleType = chargeRuleForm.watch("charge_type");
+  const leaseChargeRules = (chargeRulesQuery.data ?? []).filter(
+    (rule) => rule.lease_id === chargeRuleLeaseId,
+  );
+  const duplicateChargeType =
+    Boolean(chargeRuleLeaseId) &&
+    leaseChargeRules.some((rule) => rule.charge_type === chargeRuleType);
 
   const obligationMutation = useMutation({
     mutationFn: (values: ObligationFormValues) => {
@@ -5897,6 +5938,25 @@ function Workspace({
                       Add the recurring charge that will feed invoices.
                     </p>
                   </div>
+                  {chargeRuleNotice ? (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-start justify-between gap-2 rounded-md bg-primary/10 px-2.5 py-2 text-xs"
+                    >
+                      <span className="flex items-start gap-1.5 font-medium text-primary">
+                        <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        {chargeRuleNotice.message}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setChargeRuleNotice(null)}
+                        className="shrink-0 font-semibold text-muted-foreground transition hover:text-foreground"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
                   <Field
                     label="Lease"
                     error={chargeRuleForm.formState.errors.lease_id?.message}
@@ -5941,7 +6001,24 @@ function Workspace({
                       />
                     </Field>
                   </div>
+                  {duplicateChargeType ? (
+                    <p className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2.5 py-2 text-xs text-warning">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      This lease already has a {chargeTypeLabel(chargeRuleType)}{" "}
+                      charge. Adding another stacks on top of it — check the list
+                      below first.
+                    </p>
+                  ) : null}
                   <div className="grid grid-cols-2 gap-3">
+                    <Field label="Frequency">
+                      <Select {...chargeRuleForm.register("frequency")}>
+                        {rentFrequencies.map((frequency) => (
+                          <option key={frequency.value} value={frequency.value}>
+                            {frequency.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
                     <Field label="GST">
                       <Select {...chargeRuleForm.register("gst_treatment")}>
                         {gstTreatments.map((treatment) => (
@@ -5951,18 +6028,18 @@ function Workspace({
                         ))}
                       </Select>
                     </Field>
-                    <Field
-                      label="Next due"
-                      error={
-                        chargeRuleForm.formState.errors.next_due_date?.message
-                      }
-                    >
-                      <Input
-                        type="date"
-                        {...chargeRuleForm.register("next_due_date")}
-                      />
-                    </Field>
                   </div>
+                  <Field
+                    label="Next due"
+                    error={
+                      chargeRuleForm.formState.errors.next_due_date?.message
+                    }
+                  >
+                    <Input
+                      type="date"
+                      {...chargeRuleForm.register("next_due_date")}
+                    />
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Xero account">
                       <Input
@@ -6004,6 +6081,58 @@ function Workspace({
                     <p className="text-sm text-danger">
                       {friendlyError(chargeRulesQuery.error)}
                     </p>
+                  ) : null}
+                  {chargeRuleLeaseId ? (
+                    <div className="grid gap-2 border-t border-border pt-3">
+                      <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                        Charges on this lease
+                      </h4>
+                      {leaseChargeRules.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          No charge rules yet. Add one above to start invoicing.
+                        </p>
+                      ) : (
+                        <ul className="grid gap-1.5">
+                          {leaseChargeRules.map((rule) => (
+                            <li
+                              key={rule.id}
+                              className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-medium">
+                                  {chargeTypeLabel(rule.charge_type)} ·{" "}
+                                  {formatMoney(rule.amount_cents)}
+                                  {rule.frequency
+                                    ? ` ${frequencyLabel(rule.frequency)}`
+                                    : ""}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  Next due {formatDate(rule.next_due_date)}
+                                </div>
+                              </div>
+                              <SecondaryButton
+                                type="button"
+                                aria-label={`Delete ${chargeTypeLabel(
+                                  rule.charge_type,
+                                )} charge`}
+                                onClick={() =>
+                                  deleteChargeRuleMutation.mutate(rule)
+                                }
+                                disabled={deleteChargeRuleMutation.isPending}
+                                className="h-8 w-8 shrink-0 px-0 text-danger"
+                              >
+                                <Trash2 size={15} />
+                              </SecondaryButton>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {deleteChargeRuleMutation.error ? (
+                        <p className="text-xs text-danger">
+                          {friendlyError(deleteChargeRuleMutation.error)}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : null}
                 </form>
               </div>

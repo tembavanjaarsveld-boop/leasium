@@ -205,6 +205,73 @@ test("desktop Properties cards keep portfolio metrics after billing filters", as
   await expect(page.getByText("$6,000 / mo")).toBeVisible();
 });
 
+test("desktop property billing confirms charge add and supports inline delete", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const mutationCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "Billing" }).click();
+
+  const chargeForm = page
+    .locator("form")
+    .filter({ hasText: "Quick charge rule" });
+  await expect(chargeForm).toBeVisible();
+
+  // Frequency selector replaces the old hard-coded monthly behaviour.
+  const frequencySelect = chargeForm.locator("select").filter({
+    has: page.getByRole("option", { name: "Weekly" }),
+  });
+  await expect(frequencySelect).toBeVisible();
+
+  // Selecting the lease reveals its existing rules and a duplicate warning.
+  const leaseSelect = chargeForm.locator("select").filter({
+    has: page.getByRole("option", { name: "Select lease" }),
+  });
+  await leaseSelect.selectOption({ index: 1 });
+
+  await expect(chargeForm.getByText("Charges on this lease")).toBeVisible();
+  await expect(chargeForm.getByText("$8,000")).toBeVisible();
+  await expect(
+    chargeForm.getByText(/already has a Base rent charge/),
+  ).toBeVisible();
+
+  // Adding a charge surfaces an explicit success confirmation (the bug fix).
+  await chargeForm.getByRole("spinbutton").fill("8000");
+  await chargeForm.getByRole("button", { name: "Add charge" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Added Base rent" }),
+  ).toBeVisible();
+
+  // The inline delete removes a rule and confirms it.
+  await chargeForm
+    .getByRole("button", { name: "Delete Base rent charge" })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Removed Base rent" }),
+  ).toBeVisible();
+
+  // Only internal charge-rule writes fire — no provider mutations.
+  expect(mutationCalls).toEqual([
+    "POST /api/v1/charge-rules",
+    "DELETE /api/v1/charge-rules/charge-1",
+  ]);
+});
+
 test("mobile properties calendar view keeps filters and review actions touch safe", async ({
   page,
 }) => {
