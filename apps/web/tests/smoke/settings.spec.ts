@@ -75,6 +75,7 @@ test("settings render the Horizon operator controls without provider mutation on
   await expect(
     page.getByText("Pick an area, then make the change on the page beside it."),
   ).toHaveCount(0);
+  await expect(page.getByText(/Entities, tags, profile for /)).toHaveCount(0);
   await expect(page.getByText(/WORK NOTIFICATIONS/i)).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "OWNERSHIP TAGS" }),
@@ -88,7 +89,7 @@ test("settings render the Horizon operator controls without provider mutation on
     page.getByText(
       "Provider changes are review-first — nothing connects or sends without you.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   expect(forbiddenCalls).toEqual([]);
 });
 

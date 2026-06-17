@@ -465,11 +465,12 @@ fixes · deferrals.
   entity access, and account/profile/appearance panels as one massive scroll;
   it now opens on a compact Overview with explicit Payments, Comms, and
   Entities sub-tabs. Removed the middle-pane helper sentence Temba marked as
-  unnecessary. Mobile uses compact one-row sub-tabs so the choices remain
-  visible above the bottom app navigation · provider guardrails unchanged; no
-  provider, payment, reconciliation, email/SMS, or Xero write path changed ·
-  deferred: fold this sub-tab variant into the canonical Figma Settings refresh
-  already logged below.
+  unnecessary, plus the repeated green provider-safety pill from Organisation
+  Overview. Mobile uses compact one-row sub-tabs so the choices remain visible
+  above the bottom app navigation · provider guardrails unchanged; no provider,
+  payment, reconciliation, email/SMS, or Xero write path changed · deferred:
+  fold this sub-tab variant into the canonical Figma Settings refresh already
+  logged below.
 - 2026-06-18 · Properties → property Billing tab, Quick charge rule panel ·
   screens checked at 1440/390 (mocked smoke capture) · fixes in-slice: the
   Add charge form gave no success feedback, so the operator re-submitted and

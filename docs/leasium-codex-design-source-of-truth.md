@@ -1347,9 +1347,11 @@ Primary hub count is 7; Settings remains visible as the utility destination.
   Account (Notifications), and Apps (Integrations). Organisation should open on
   a short Overview, then use clear in-page sub-tabs for Payments, Comms, and
   Entities instead of making operators scroll through every organisation panel
-  at once. Notifications owns per-operator message/digest controls;
-  Integrations owns Xero, email/provider, and bank-feed readiness. Account type
-  remains read-only for clients and is set by Leasium/platform admin.
+  at once. Keep that Overview free of redundant subtitles, helper sentences, or
+  repeated safety banners; guardrails belong in the actions that need them.
+  Notifications owns per-operator message/digest controls; Integrations owns
+  Xero, email/provider, and bank-feed readiness. Account type remains read-only
+  for clients and is set by Leasium/platform admin.
 
 ### Command palette actions
 

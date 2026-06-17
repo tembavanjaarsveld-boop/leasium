@@ -3718,11 +3718,13 @@ function SettingsWorkspace() {
                   <h2 className="mt-1 text-2xl font-semibold text-foreground">
                     {activeSettingsTab.label}
                   </h2>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    {selectedEntity
-                      ? `${activeSettingsTab.description} for ${selectedEntity.name}.`
-                      : "Choose an entity to review its settings."}
-                  </p>
+                  {activeTab !== "organisation" ? (
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                      {selectedEntity
+                        ? `${activeSettingsTab.description} for ${selectedEntity.name}.`
+                        : "Choose an entity to review its settings."}
+                    </p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex min-h-11 items-center gap-2">
@@ -5280,16 +5282,6 @@ function SettingsWorkspace() {
             {activeOrganisationTab === "overview" ? (
               <>
                 <SettingsAppearancePanel />
-
-                <div className="flex justify-center">
-                  <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-success-soft px-4 py-2 text-sm font-semibold text-leasium-teal-strong">
-                    <ShieldCheck size={16} />
-                    <span>
-                      Provider changes are review-first — nothing connects or
-                      sends without you.
-                    </span>
-                  </div>
-                </div>
 
                 <SectionPanel
                   title="Organisation profile"

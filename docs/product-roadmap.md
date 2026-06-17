@@ -25,9 +25,10 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   (Notifications), and Apps (Integrations). Organisation opens on a compact
   Overview and then offers sub-tabs for Payments, Comms, and Entities, so tenant
   payment instructions, mailbox/template settings, and ownership/entity panels
-  are deliberate choices rather than one long scroll. Work notification controls
-  live under Notifications; Xero/Basiq/provider readiness remains under
-  Integrations.
+  are deliberate choices rather than one long scroll. The Overview header stays
+  minimal and no longer repeats helper/provider-safety copy that slows the page
+  down. Work notification controls live under Notifications; Xero/Basiq/provider
+  readiness remains under Integrations.
   Account type stays read-only and Leasium-controlled. Provider guardrails
   unchanged: no Xero, email/SMS, payment, reconciliation, or provider write runs
   from Settings without explicit operator approval. Verified with eslint,

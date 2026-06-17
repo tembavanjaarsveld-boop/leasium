@@ -27,6 +27,9 @@ What changed:
   instead of one long scroll.
 - The middle Settings pane no longer shows the helper sentence "Pick an area,
   then make the change on the page beside it."
+- The Organisation Overview header no longer repeats "Entities, tags, profile
+  for [entity]" and the Overview body no longer shows the green provider-safety
+  pill; guardrails remain in the actual provider/action flows.
 - Integrations still owns Xero/Basiq/provider readiness and stays review-first.
 
 Verification:
