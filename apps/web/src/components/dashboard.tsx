@@ -1546,26 +1546,6 @@ function DashboardLeaseHorizon({
   );
 }
 
-function DashboardTrustRibbon({
-  variant = "desktop",
-}: {
-  variant?: "desktop" | "mobile";
-}) {
-  const mobile = variant === "mobile";
-  return (
-    <div className="flex items-center justify-center">
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-[var(--leasium-teal-soft)] px-3 py-2 text-[11px] font-semibold text-[var(--leasium-teal-strong)] sm:gap-2 sm:px-4 sm:text-xs">
-        <ShieldCheck size={mobile ? 12 : 14} aria-hidden="true" />
-        <span>
-          {mobile
-            ? "Nothing applies until you approve it."
-            : "Nothing is applied until you approve it."}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function Dashboard({
   mode = "dashboard",
 }: {
@@ -3074,10 +3054,6 @@ export function Dashboard({
                 className="col-span-2"
               />
 
-              <div className="col-span-2 md:hidden">
-                <DashboardTrustRibbon variant="mobile" />
-              </div>
-
               <div className="col-span-2 flex flex-wrap items-center justify-center gap-2 md:hidden">
                 {renderDashboardActions()}
               </div>
@@ -3140,9 +3116,6 @@ export function Dashboard({
               </DashboardBentoCard>
             </section>
 
-            <div className="hidden md:block">
-              <DashboardTrustRibbon variant="desktop" />
-            </div>
           </>
         ) : null}
 

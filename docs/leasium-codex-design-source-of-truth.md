@@ -24,8 +24,8 @@ Upload leases, extract key terms, track critical dates, onboard tenants, and cle
 **Core product promise:**  
 Leasium turns lease documents into controlled workflows.
 
-**Trust line:**  
-Nothing is applied until you approve it.
+**Approval guardrail:**
+Use explicit approval copy only inside Leasium AI / Smart Intake or immediately beside a real approval/provider action.
 
 **Brand personality:**  
 Calm, precise, modern, operational, trustworthy, automation-first, premium but not cold.
@@ -249,8 +249,11 @@ Card Shadow:         0 1px 3px rgba(16, 24, 40, 0.04)
 Horizon bento cards use equal-height rows, 14px gutters, 18px card
 radius, and 20px hero radius. A screen should have one primary CTA:
 the focus action. Other controls are secondary buttons or text links.
-The review-first trust ribbon appears once per screen after the primary
-content, centered in a teal pill.
+Review-first trust ribbons are no longer a global page pattern. Use them only
+inside Leasium AI / Smart Intake, or immediately beside a real approval or
+provider action where the operator is deciding whether something should change.
+Do not add decorative "nothing is applied until approval" pills to ordinary
+Dashboard, Properties, Settings, Work, Money, or Insights overview screens.
 
 Implementation tokens: `--leasium-card-border`,
 `--leasium-hero-wash-from`, `--leasium-hero-wash-to`, and
@@ -1406,8 +1409,6 @@ Smart intake queue
 
 - New lease: Acme Retail — 8 extracted terms
 - Insurance certificate: Northside Pharmacy — expiry date detected
-
-Nothing is applied until you approve it.
 ```
 
 Billing readiness card:
@@ -1515,9 +1516,9 @@ Actions: Approve | Edit | Ignore
 
 ### Trust language
 
-Use this line near review actions:
+Use approval copy only near review actions, AI intake, or provider actions:
 ```txt
-Nothing is applied until you approve it.
+Review first. Nothing sends or syncs without approval.
 ```
 
 ### Leasium AI review assistant
@@ -2053,7 +2054,7 @@ Apply this order:
     "heroHeadline": "Run every lease from one command centre.",
     "heroSubheadline": "Upload leases, extract key terms, track critical dates, onboard tenants, and clear billing blockers — with review-first automation.",
     "positioning": "A modern lease operations command centre that turns lease documents, tenant onboarding, billing readiness, attention items, and critical dates into review-first automated workflows.",
-    "trustLine": "Nothing is applied until you approve it."
+    "approvalGuardrail": "Use explicit approval copy only inside Leasium AI / Smart Intake or beside a real approval/provider action."
   },
   "logo": {
     "concept": "Corner Signal",

@@ -2,6 +2,25 @@
 
 Last updated: 2026-06-18
 
+## Continuation - 2026-06-18 (Global trust-pill cleanup)
+
+Temba called out that the green "Nothing is applied until you approve it"
+badge still appeared outside the Leasium AI / intake context, especially on the
+Dashboard.
+
+What changed:
+- Removed the Dashboard trust ribbon from normal `/` desktop and mobile views.
+- Removed the matching Properties card-grid badge under the Add property tile.
+- Reworded the Welcome trust section so it no longer repeats the same slogan.
+- Updated the design source of truth: trust ribbons now belong only inside
+  Leasium AI / Smart Intake or immediately beside real approval/provider
+  actions, not as decorative page-level reassurance.
+- Left the Leasium AI home guardrail in place because it is inside the
+  intake/AI workspace.
+
+Guardrails held: UI copy/presentation only. No provider, payment,
+reconciliation, email/SMS, Xero, or record mutation path changed.
+
 ## Continuation - 2026-06-18 (Settings two-pane workspace)
 
 Temba clarified the prior Settings pass was still not the intended structure:

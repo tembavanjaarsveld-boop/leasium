@@ -8936,12 +8936,6 @@ function PropertyCardsView({
           </button>
         </li>
       </ul>
-      <div className="flex justify-center">
-        <div className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-4 py-2 text-xs font-semibold text-leasium-teal-strong">
-          <ShieldCheck size={14} />
-          Nothing is applied until you approve it.
-        </div>
-      </div>
     </div>
   );
 }

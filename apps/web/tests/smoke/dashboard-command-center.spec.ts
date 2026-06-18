@@ -83,18 +83,15 @@ test("dashboard mobile matches the Horizon first viewport without provider write
   await expect(leaseHorizon).toContainText("Next on the horizon");
   await expect(leaseHorizon.getByRole("link").first()).toBeVisible();
   await expectTouchTarget(leaseHorizon.getByRole("link").first());
-  const mobileTrustPill = page
-    .getByText("Nothing applies until you approve it.")
-    .first();
-  await expect(mobileTrustPill).toBeVisible();
+  await expect(page.getByText("Nothing applies until you approve it.")).toHaveCount(0);
+  await expect(
+    page.getByText("Nothing is applied until you approve it."),
+  ).toHaveCount(0);
 
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
-  const trustBox = await mobileTrustPill.boundingBox();
   const navBox = await mobileNav.boundingBox();
-  expect(trustBox).not.toBeNull();
   expect(navBox).not.toBeNull();
-  expect(trustBox!.y + trustBox!.height).toBeLessThan(navBox!.y);
   await expectNoHorizontalOverflow(page);
   expect(forbiddenRequests).toEqual([]);
 });
@@ -188,7 +185,9 @@ test("dashboard renders Horizon bento frame without provider writes", async ({
     })
     .first();
   await expect(leaseHorizon).toContainText("Bright Cafe Pty Ltd rent review");
-  await expect(page.getByText("Nothing is applied until you approve it.")).toBeVisible();
+  await expect(
+    page.getByText("Nothing is applied until you approve it."),
+  ).toHaveCount(0);
   await expectTouchTarget(page.getByRole("link", { name: "Manage links" }));
   await expectTouchTarget(page.getByRole("link", { name: "Open Leasium AI" }));
   expect(forbiddenRequests).toEqual([]);

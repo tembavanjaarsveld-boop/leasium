@@ -127,7 +127,7 @@ test("desktop Properties opens on the Horizon cards frame", async ({ page }) => 
   await expect(cards.getByRole("button", { name: /Add property/ })).toBeVisible();
   await expect(
     page.getByText("Nothing is applied until you approve it."),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByRole("table").first()).toBeHidden();
 });
 
@@ -160,7 +160,7 @@ test("desktop selected property opens on the Horizon detail frame", async ({
   await expect(page.getByRole("tab", { name: "Activity" })).toBeVisible();
 
   await expect(page.getByText("Rent", { exact: true })).toBeVisible();
-  await expect(page.getByText("$8,000 / mo")).toBeVisible();
+  await expect(page.getByText("$8,000 / mo").last()).toBeVisible();
   await expect(page.getByText("Lease term")).toBeVisible();
   await expect(page.getByText("Year 1 of 3")).toBeVisible();
   await expect(page.getByText("Arrears", { exact: true })).toBeVisible();
@@ -201,8 +201,8 @@ test("desktop Properties cards keep portfolio metrics after billing filters", as
     page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
   ).toBeVisible();
   await expect(page.getByText("$14,000 / mo")).toBeVisible();
-  await expect(page.getByText("$8,000 / mo")).toBeVisible();
-  await expect(page.getByText("$6,000 / mo")).toBeVisible();
+  await expect(page.getByText("$8,000 / mo").last()).toBeVisible();
+  await expect(page.getByText("$6,000 / mo").last()).toBeVisible();
 });
 
 test("desktop property billing confirms charge add and supports inline delete", async ({
@@ -646,7 +646,7 @@ test("property filtered deep link keeps selection inside the filtered list", asy
   );
 
   await expect(
-    page.getByText("2 properties tagged Queen Street Property Trust"),
+    page.getByText("2 properties tagged Queen Street Property Trust").last(),
   ).toBeVisible({ timeout: 15_000 });
   await expect(page).not.toHaveURL(/property_id=property-3/);
   await expect(

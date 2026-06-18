@@ -300,12 +300,8 @@ export default function WelcomePage() {
       <section className="border-y border-border bg-leasium-navy-800 text-white">
         <div className="mx-auto grid max-w-6xl gap-8 px-6 py-12 md:grid-cols-[1fr_1.2fr] md:items-center">
           <div className="grid gap-3">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-leasium-teal">
-              <ShieldCheck size={14} aria-hidden="true" />
-              Trust by default
-            </span>
             <h2 className="text-2xl font-bold tracking-tight">
-              Nothing is applied until you approve it.
+              Review every change before it goes out.
             </h2>
             <p className="max-w-md text-sm leading-relaxed text-white/70">
               Provider sends, Xero writes, tenant emails, and payment

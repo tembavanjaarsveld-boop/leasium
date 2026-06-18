@@ -16,6 +16,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-18 Global trust-pill cleanup:** Decorative review-first trust
+  pills are no longer a global page pattern. Dashboard and Properties overview
+  surfaces no longer show "Nothing is applied until you approve it" badges, and
+  the Welcome trust section no longer repeats the same slogan. Leasium AI /
+  Smart Intake and real approval/provider action areas still keep explicit
+  guardrails. Provider behavior unchanged.
+
 - [x] **2026-06-18 Settings two-pane workspace:** `/settings` now opens as a
   dedicated Settings module: the app sidebar stays on the far left, a Settings
   category pane sits in the middle, and the selected category opens as the page

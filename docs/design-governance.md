@@ -471,6 +471,14 @@ fixes · deferrals.
   payment, reconciliation, email/SMS, or Xero write path changed · deferred:
   fold this sub-tab variant into the canonical Figma Settings refresh already
   logged below.
+- 2026-06-18 · Global trust-pill cleanup · screens checked at Dashboard,
+  Properties, Welcome, and Leasium AI boundaries via focused smoke/visual
+  review · fixes: removed decorative "Nothing is applied until you approve it"
+  badges from ordinary Dashboard and Properties overview surfaces and softened
+  the Welcome trust headline. The design source now limits trust ribbons to
+  Leasium AI / Smart Intake or direct approval/provider action areas · provider
+  guardrails unchanged; no provider, payment, reconciliation, email/SMS, or
+  Xero write path changed · deferred: none.
 - 2026-06-18 · Properties → property Billing tab, Quick charge rule panel ·
   screens checked at 1440/390 (mocked smoke capture) · fixes in-slice: the
   Add charge form gave no success feedback, so the operator re-submitted and
