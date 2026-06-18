@@ -4110,11 +4110,18 @@ export type ActivityFeedRecord = {
   next_cursor: string | null;
 };
 
-export function listActivityFeed(entityId: string, limit = 30) {
+export function listActivityFeed(
+  entityId: string,
+  limit = 30,
+  sinceDays?: number,
+) {
   const params = new URLSearchParams({
     entity_id: entityId,
     limit: String(limit),
   });
+  if (sinceDays) {
+    params.set("since_days", String(sinceDays));
+  }
   return request<ActivityFeedRecord>(`/activity-feed?${params.toString()}`);
 }
 

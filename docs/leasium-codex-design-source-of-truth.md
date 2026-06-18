@@ -1121,10 +1121,12 @@ walked away.
 Two container archetypes in `apps/web/src/components/ui.tsx`:
 
 - **`<SectionPanel>`** — white card with border, radius, and shadow.
-  Use for **aside content**: Ask Leasium, Recent activity, evidence/
-  source-trail disclosures, preview/receipt panels, anything that
-  supports the main workspace task. Card chrome signals "this is one
-  unit of supporting content distinct from the page."
+  Use for **supporting content**: Ask Leasium, Settings Activity Audit,
+  evidence/source-trail disclosures, preview/receipt panels, anything
+  that supports the main workspace task. Historical audit trails belong
+  in Settings → Activity Audit, not on the Dashboard. Card chrome
+  signals "this is one unit of supporting content distinct from the
+  page."
 
 - **`<Surface>`** — no card chrome. Heading + optional description +
   optional actions, divider rule, children render directly on the

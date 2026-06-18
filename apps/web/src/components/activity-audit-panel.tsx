@@ -14,16 +14,9 @@ import {
 import { friendlyError } from "@/lib/utils";
 
 /**
- * Recent activity feed — read-only audit-log projection on the operator
- * dashboard. Backend `/api/v1/activity-feed` (Tier 2 (f) v1) projects
- * the append-only `audit_action` rows for the entity into a
+ * Activity Audit — read-only audit-log projection for Settings. Backend
+ * `/api/v1/activity-feed` projects the append-only `audit_action` rows into a
  * presentation-friendly shape with deep-links into the source record.
- * Grouped by Today / Yesterday / Earlier this week / Older, refetched
- * every 60s in the background.
- *
- * Extracted from the monolithic dashboard.tsx per
- * `docs/external-design-review-2026-05-23.md` §1.2 (page-file size
- * policy).
  */
 
 const ACTIVITY_KIND_TONE: Record<ActivityActionKind, StatusTone> = {
@@ -74,10 +67,18 @@ function activityTimeBucket(iso: string): string {
   return "Older";
 }
 
-export function ActivityFeedPanel({ entityId }: { entityId: string }) {
+export function ActivityAuditPanel({
+  entityId,
+  limit = 60,
+  sinceDays = 60,
+}: {
+  entityId: string;
+  limit?: number;
+  sinceDays?: number;
+}) {
   const feedQuery = useQuery({
-    queryKey: ["dashboard-activity-feed", entityId],
-    queryFn: () => listActivityFeed(entityId, 30),
+    queryKey: ["activity-audit", entityId, limit, sinceDays],
+    queryFn: () => listActivityFeed(entityId, limit, sinceDays),
     enabled: Boolean(entityId),
     refetchInterval: 60000,
   });
@@ -124,19 +125,22 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
 
   return (
     <SectionPanel
-      title="Recent activity"
-      description="Everything that has changed across the portfolio — automatically built from the audit log. Read-only."
+      title="Activity Audit"
+      description="Read-only history of changes across this entity."
       icon={<Activity size={17} className="text-primary" />}
       actions={
-        feedQuery.isFetching ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Loader2 size={12} className="animate-spin" /> Refreshing
-          </span>
-        ) : feedQuery.data ? (
-          <StatusBadge tone={total ? "primary" : "neutral"}>
-            {total === 0 ? "No activity yet" : `${total} recent`}
-          </StatusBadge>
-        ) : null
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="neutral">Last {sinceDays} days</StatusBadge>
+          {feedQuery.isFetching ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 size={12} className="animate-spin" /> Refreshing
+            </span>
+          ) : feedQuery.data ? (
+            <StatusBadge tone={total ? "primary" : "neutral"}>
+              {total === 0 ? "No changes" : `${total} changes`}
+            </StatusBadge>
+          ) : null}
+        </div>
       }
     >
       <div className="grid gap-3 p-4">
@@ -154,8 +158,7 @@ export function ActivityFeedPanel({ entityId }: { entityId: string }) {
           </div>
         ) : total === 0 ? (
           <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
-            Nothing in the audit log yet. As soon as you or the system change a
-            record, it will appear here.
+            No changes in the last {sinceDays} days.
           </div>
         ) : (
           displayGrouped.map((bucket) => (

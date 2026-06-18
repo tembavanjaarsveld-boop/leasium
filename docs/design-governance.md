@@ -479,6 +479,14 @@ fixes · deferrals.
   Leasium AI / Smart Intake or direct approval/provider action areas · provider
   guardrails unchanged; no provider, payment, reconciliation, email/SMS, or
   Xero write path changed · deferred: none.
+- 2026-06-18 · Activity Audit relocation · screens checked at Dashboard and
+  Settings Account navigation via focused smoke coverage and local visual
+  review · fixes: removed the historical Recent activity feed from Dashboard
+  and added Settings → Activity Audit with a 60-day read-only audit window.
+  Dashboard now stays focused on current attention items, while audit lookup
+  sits with other account/settings utilities · provider guardrails unchanged;
+  no provider, payment, reconciliation, email/SMS, Xero, or record mutation
+  path changed · deferred: none.
 - 2026-06-18 · Properties → property Billing tab, Quick charge rule panel ·
   screens checked at 1440/390 (mocked smoke capture) · fixes in-slice: the
   Add charge form gave no success feedback, so the operator re-submitted and

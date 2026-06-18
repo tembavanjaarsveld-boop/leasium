@@ -440,7 +440,7 @@ test("dashboard keeps long upcoming event lists collapsed until requested", asyn
   await expect(eventsPanel.getByText("Lease event 6")).toHaveCount(0);
 });
 
-test("dashboard recent activity disclosure keeps its control touch-friendly", async ({
+test("dashboard leaves activity audit out of the attention surface", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -448,7 +448,9 @@ test("dashboard recent activity disclosure keeps its control touch-friendly", as
     window.localStorage.setItem("leasium.entity_id", "entity-1");
   });
   await mockLeasiumApi(page);
+  let activityFeedRequests = 0;
   await page.route("**/api/v1/activity-feed**", async (route) => {
+    activityFeedRequests += 1;
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -477,26 +479,13 @@ test("dashboard recent activity disclosure keeps its control touch-friendly", as
 
   await page.goto("/");
 
-  const activityPanel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Recent activity" }),
-    })
-    .first();
-
-  await expect(activityPanel.getByText("Activity item 1")).toBeVisible();
-  await expect(activityPanel.getByText("Activity item 8")).toBeVisible();
-  await expect(activityPanel.getByText("Activity item 9")).toHaveCount(0);
-
-  const showAll = activityPanel.getByRole("button", { name: "Show all 10" });
-  await expect(showAll).toBeVisible();
-  await expectTouchTarget(showAll);
-  await showAll.click();
-
-  await expect(activityPanel.getByText("Activity item 10")).toBeVisible();
-
-  const showFewer = activityPanel.getByRole("button", { name: "Show fewer" });
-  await expectTouchTarget(showFewer);
+  await expect(
+    page.getByRole("heading", { name: "Recent activity" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Activity Audit" }),
+  ).toHaveCount(0);
+  expect(activityFeedRequests).toBe(0);
 });
 
 test("dashboard compliance cue surfaces overdue and due-soon counts with links", async ({
@@ -580,7 +569,6 @@ test("dashboard overview clears first-paint loading before detailed fan-out sett
       "/tenant-onboarding",
       "/document-intakes",
       "/insights/overview",
-      "/activity-feed",
     ];
     if (slowPaths.includes(path)) {
       await detailedHeld;

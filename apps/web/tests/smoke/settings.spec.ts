@@ -63,6 +63,7 @@ test("settings render the Horizon operator controls without provider mutation on
     "Organisation",
     "People & access",
     "Notifications",
+    "Activity Audit",
     "Integrations",
   ]) {
     await expect(page.getByRole("tab", { name: section })).toBeVisible();
@@ -111,6 +112,61 @@ test("settings notifications tab opens the Horizon operator controls directly", 
       "Provider changes are review-first — nothing connects or sends without you.",
     ),
   ).toBeVisible();
+});
+
+test("settings activity audit shows sixty days of read-only history", async ({
+  page,
+}) => {
+  let activityFeedUrl: URL | null = null;
+  await page.route("**/api/v1/activity-feed**", async (route) => {
+    activityFeedUrl = new URL(route.request().url());
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        items: [
+          {
+            id: "activity-audit-1",
+            occurred_at: new Date(Date.now() - 4 * 60 * 60_000).toISOString(),
+            actor: "Temba van Jaarsveld",
+            actor_kind: "operator",
+            action: "update",
+            action_kind: "update",
+            action_label: "Updated",
+            summary: "Updated lease expiry.",
+            target_table: "lease",
+            target_id: "lease-1",
+            target_label: "Lease expiry",
+            target_href: "/properties?property_id=property-1",
+            tool_name: null,
+            outcome: "success",
+            error_message: null,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+  });
+
+  await page.goto("/settings?tab=activity");
+
+  const sections = page.getByRole("tablist", { name: "Settings sections" });
+  await expect(
+    sections.getByRole("tab", { name: "Activity Audit" }),
+  ).toHaveAttribute("aria-selected", "true");
+  const auditPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Activity Audit" }) })
+    .first();
+  await expect(auditPanel).toBeVisible();
+  await expect(auditPanel.getByText("Last 60 days")).toBeVisible();
+  const auditRow = auditPanel.getByRole("link", {
+    name: /Updated Lease expiry/,
+  });
+  await expect(auditRow).toBeVisible();
+  await expect(auditRow).toContainText("Updated lease expiry.");
+  expect(activityFeedUrl?.searchParams.get("since_days")).toBe("60");
+  expect(activityFeedUrl?.searchParams.get("limit")).toBe("60");
 });
 
 test("settings manages AI mailbox trusted senders locally", async ({ page }) => {
@@ -182,11 +238,12 @@ test("mobile settings keeps the clean section picker touch-safe", async ({ page 
   const settingsSections = page.getByRole("tablist", {
     name: "Settings sections",
   });
-  await expect(settingsSections.getByRole("tab")).toHaveCount(4);
+  await expect(settingsSections.getByRole("tab")).toHaveCount(5);
   for (const section of [
     "Organisation",
     "People & access",
     "Notifications",
+    "Activity Audit",
     "Integrations",
   ]) {
     const tab = settingsSections.getByRole("tab", { name: section });

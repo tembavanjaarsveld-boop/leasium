@@ -14,6 +14,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  History,
   KeyRound,
   Loader2,
   MailCheck,
@@ -34,6 +35,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { ActivityAuditPanel } from "@/components/activity-audit-panel";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
 import {
@@ -155,7 +157,12 @@ const OPERATING_MODE_LABELS: Record<string, string> = {
   hybrid: "Hybrid",
 };
 
-type SettingsTab = "organisation" | "security" | "notifications" | "connect";
+type SettingsTab =
+  | "organisation"
+  | "security"
+  | "notifications"
+  | "activity"
+  | "connect";
 type OrganisationSubTab = "overview" | "payments" | "comms" | "entities";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
@@ -237,6 +244,13 @@ const settingsTabs: Array<{
     label: "Notifications",
     description: "Channels and templates",
     icon: <Bell size={15} />,
+    group: "Account",
+  },
+  {
+    id: "activity",
+    label: "Activity Audit",
+    description: "60-day history",
+    icon: <History size={15} />,
     group: "Account",
   },
   {
@@ -2517,6 +2531,8 @@ function SettingsWorkspace() {
       setActiveTab("organisation");
     } else if (requestedTab === "notifications") {
       setActiveTab("notifications");
+    } else if (requestedTab === "activity") {
+      setActiveTab("activity");
     } else if (
       requestedTab === "connect" ||
       requestedTab === "xero" ||
@@ -5275,6 +5291,14 @@ function SettingsWorkspace() {
               </div>
             </SectionPanel>
           </>
+        ) : null}
+
+        {activeTab === "activity" ? (
+          <ActivityAuditPanel
+            entityId={selectedEntityId}
+            limit={60}
+            sinceDays={60}
+          />
         ) : null}
 
         {activeTab === "organisation" ? (

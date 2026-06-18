@@ -29,7 +29,6 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { EntityPicker } from "@/components/entity-picker";
-import { ActivityFeedPanel } from "@/components/dashboard/ActivityFeedPanel";
 import { AskLeasiumPanel } from "@/components/dashboard/AskLeasiumPanel";
 import { CompliancePanel } from "@/components/dashboard/CompliancePanel";
 import {
@@ -3735,15 +3734,11 @@ export function Dashboard({
           />
         ) : null}
 
-        {/* Ask Leasium + Activity feed are single-entity scoped surfaces. In
-            all-mode we pass the empty scoped id so they fall back to their
-            "select an entity" state rather than firing with the sentinel. */}
+        {/* Ask Leasium is a single-entity scoped surface. In all-mode we pass
+            the empty scoped id so it falls back to its "select an entity"
+            state rather than firing with the sentinel. */}
         {!isIntakeWorkspace ? (
           <AskLeasiumPanel entityId={scopedEntityId} />
-        ) : null}
-
-        {!isIntakeWorkspace ? (
-          <ActivityFeedPanel entityId={scopedEntityId} />
         ) : null}
       </div>
     </main>

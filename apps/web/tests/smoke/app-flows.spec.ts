@@ -2722,13 +2722,14 @@ test("keyboard shortcuts include owner statements for managing-agent accounts", 
   ).toBeVisible();
 });
 
-test("dashboard activity feed groups recent audit rows", async ({ page }) => {
-  await page.goto("/");
+test("settings Activity Audit groups recent audit rows", async ({ page }) => {
+  await page.goto("/settings?tab=activity");
 
   const activityPanel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Recent activity" }),
+    has: page.getByRole("heading", { name: "Activity Audit" }),
   });
   await expect(activityPanel).toBeVisible();
+  await expect(activityPanel.getByText("Last 60 days")).toBeVisible();
   await expect(
     activityPanel.getByText(
       "Approved invoice INV-1001 for May rent and outgoings.",

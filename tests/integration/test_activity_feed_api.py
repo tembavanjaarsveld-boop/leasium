@@ -8,10 +8,13 @@ kind, target label, and deep-link.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from stewart.core.models import Entity
+from stewart.core.models import AuditAction, AuditOutcome, Entity
 
 
 def _entity_id(session: Session) -> str:
@@ -100,6 +103,54 @@ def test_activity_feed_pagination_signals_has_more(
     # endpoint must signal there are more.
     assert body["has_more"] is True
     assert body["next_cursor"] is not None
+
+
+def test_activity_feed_filters_to_since_days(
+    client: TestClient, session: Session
+) -> None:
+    entity_id = _entity_id(session)
+    now = datetime.now(UTC)
+    recent = AuditAction(
+        request_id=uuid4(),
+        actor="test",
+        entity_id=UUID(entity_id),
+        target_table=None,
+        target_id=None,
+        action="update",
+        tool_name=None,
+        tool_input=None,
+        tool_output_summary="Recent audit row.",
+        duration_ms=None,
+        outcome=AuditOutcome.success,
+        error_message=None,
+        occurred_at=now - timedelta(days=10),
+    )
+    old = AuditAction(
+        request_id=uuid4(),
+        actor="test",
+        entity_id=UUID(entity_id),
+        target_table=None,
+        target_id=None,
+        action="update",
+        tool_name=None,
+        tool_input=None,
+        tool_output_summary="Older audit row.",
+        duration_ms=None,
+        outcome=AuditOutcome.success,
+        error_message=None,
+        occurred_at=now - timedelta(days=90),
+    )
+    session.add_all([recent, old])
+    session.commit()
+
+    response = client.get(
+        "/api/v1/activity-feed",
+        params={"entity_id": entity_id, "limit": 10, "since_days": 60},
+    )
+    assert response.status_code == 200
+    summaries = [item["summary"] for item in response.json()["items"]]
+    assert "Recent audit row." in summaries
+    assert "Older audit row." not in summaries
 
 
 def test_activity_feed_requires_entity_access(client: TestClient) -> None:

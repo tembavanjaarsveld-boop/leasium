@@ -13,12 +13,14 @@ reads the audit history the rest of the codebase already writes.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.db import utcnow
 from stewart.core.models import (
     AppUser,
     ArrearsCase,
@@ -203,18 +205,21 @@ def list_activity(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    since_days: Annotated[int | None, Query(ge=1, le=365)] = None,
 ) -> ActivityFeedRead:
     """Return the most recent audit rows for `entity_id`, newest first."""
 
     assert_entity_role(session, user, entity_id, READ_ROLES)
 
     fetch_limit = limit + 1
+    statement = select(AuditAction).where(AuditAction.entity_id == entity_id)
+    if since_days is not None:
+        statement = statement.where(
+            AuditAction.occurred_at >= utcnow() - timedelta(days=since_days)
+        )
     rows = list(
         session.scalars(
-            select(AuditAction)
-            .where(AuditAction.entity_id == entity_id)
-            .order_by(AuditAction.occurred_at.desc())
-            .limit(fetch_limit)
+            statement.order_by(AuditAction.occurred_at.desc()).limit(fetch_limit)
         ).all()
     )
 

@@ -2,6 +2,22 @@
 
 Last updated: 2026-06-18
 
+## Continuation - 2026-06-18 (Activity Audit in Settings)
+
+Temba pointed out the Dashboard still had a long Recent activity audit feed.
+Decision: Dashboard should stay focused on current attention/work, not history.
+
+What changed:
+- Removed the Dashboard Recent activity / activity-feed panel.
+- Added Settings → Account → Activity Audit (`/settings?tab=activity`).
+- Activity Audit uses the existing append-only audit endpoint with
+  `since_days=60&limit=60`, so the operator sees a 60-day read-only history.
+- Added backend filtering for `since_days` on `/api/v1/activity-feed`.
+- Updated smoke coverage for Dashboard absence and Settings Activity Audit.
+
+Guardrails held: read-only audit projection only. No provider, payment,
+reconciliation, email/SMS, Xero, or record mutation path changed.
+
 ## Continuation - 2026-06-18 (Global trust-pill cleanup)
 
 Temba called out that the green "Nothing is applied until you approve it"
