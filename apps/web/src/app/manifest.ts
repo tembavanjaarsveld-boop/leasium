@@ -54,7 +54,7 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: "Money",
         short_name: "Money",
-        description: "Open billing, statements, Xero, and Basiq.",
+        description: "Open billing, statements, and Xero.",
         url: "/money",
       },
     ],

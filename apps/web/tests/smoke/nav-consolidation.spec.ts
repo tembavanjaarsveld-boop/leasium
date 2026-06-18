@@ -274,7 +274,8 @@ test("money hub groups finance destinations and legacy links still resolve", asy
   ).toHaveAttribute("href", "/settings?tab=xero");
   await expect(
     page.getByRole("link", { name: "Open Basiq controls" }),
-  ).toHaveAttribute("href", "/settings?tab=xero");
+  ).toHaveCount(0);
+  await expect(page.getByText("Basiq")).toHaveCount(0);
 
   await page.goto("/billing-readiness");
   await expect(

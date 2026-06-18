@@ -1,197 +1,50 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
 
-function watchBasiqApplyRequests(page: Page) {
+function watchBasiqRequests(page: Page) {
   const requests: string[] = [];
   page.on("request", (request) => {
-    if (
-      request.method() === "POST" &&
-      request.url().includes("/api/v1/basiq/reconciliation-apply/")
-    ) {
-      requests.push(request.url());
+    const url = new URL(request.url());
+    if (url.pathname.includes("/api/v1/basiq")) {
+      requests.push(`${request.method()} ${url.pathname}`);
     }
   });
   return requests;
 }
 
-async function expectTouchTarget(locator: Locator, minSize = 44) {
-  await locator.scrollIntoViewIfNeeded();
-  const box = await locator.boundingBox();
-  expect(box).toBeTruthy();
-  expect(box!.width).toBeGreaterThanOrEqual(minSize);
-  expect(box!.height).toBeGreaterThanOrEqual(minSize);
-}
-
-test("Basiq apply only fires for approved transactions and is gated", async ({
+test("settings keeps parked Basiq bank-feed controls hidden", async ({
   page,
 }) => {
-  const applyRequests = watchBasiqApplyRequests(page);
-  await mockLeasiumApi(page);
-
-  await page.goto("/settings");
-  await page.getByRole("tab", { name: "Integrations" }).click();
-
-  const basiqPanel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Bank feed (Basiq)" }),
-    })
-    .first();
-  await expect(basiqPanel).toBeVisible();
-
-  // Build the imported transaction array via the mini-form.
-  await basiqPanel.getByLabel("Amount (AUD)").fill("8800.00");
-  await basiqPanel.getByLabel("Posted date").fill("2026-05-19");
-  await basiqPanel.getByLabel("Reference").fill("INV-1001");
-  await basiqPanel.getByRole("button", { name: "Add transaction" }).click();
-
-  // Preview renders the ready row before anything is applied.
-  await basiqPanel.getByRole("button", { name: "Preview" }).click();
-  await expect(basiqPanel.getByText("ready", { exact: true })).toBeVisible();
-  await expect(basiqPanel.getByText("high confidence")).toBeVisible();
-  await expect(
-    basiqPanel.getByText("Basiq not connected"),
-  ).toBeVisible();
-
-  // Apply is gated until at least one row is approved, and no request fires.
-  const applyButton = basiqPanel.getByRole("button", {
-    name: "Apply approved transactions",
-  });
-  await expect(applyButton).toBeDisabled();
-  expect(applyRequests).toHaveLength(0);
-
-  // The guardrail strip is visible in the review state.
-  await expect(
-    basiqPanel.getByText(
-      "Imported transactions not approved by an operator are skipped.",
-    ),
-  ).toBeVisible();
-
-  // Approve the ready row, then Apply.
-  await basiqPanel.getByRole("checkbox").check();
-  await expect(applyButton).toBeEnabled();
-  await applyButton.click();
-
-  await expect(basiqPanel.getByText("applied", { exact: true })).toBeVisible();
-  await expect(
-    basiqPanel.getByText("Payment status was reconciled locally."),
-  ).toBeVisible();
-  expect(applyRequests).toHaveLength(1);
-});
-
-test("Basiq connection block is inert and Connect is gated when unconfigured", async ({
-  page,
-}) => {
-  await mockLeasiumApi(page);
-
-  await page.goto("/settings");
-  await page.getByRole("tab", { name: "Integrations" }).click();
-
-  const basiqPanel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Bank feed (Basiq)" }),
-    })
-    .first();
-  await expect(basiqPanel).toBeVisible();
-
-  // The connection block renders with the not-configured state.
-  await expect(basiqPanel.getByText("Bank feed connection")).toBeVisible();
-  await expect(
-    basiqPanel.getByText("Not configured", { exact: true }),
-  ).toBeVisible();
-
-  // Connect is present but disabled, with the missing-config hint.
-  const connectButton = basiqPanel.getByRole("button", {
-    name: "Connect bank feed (Basiq)",
-  });
-  await expect(connectButton).toBeVisible();
-  await expect(connectButton).toBeDisabled();
-  await expect(
-    basiqPanel.getByText("Set BASIQ_ENABLED + BASIQ_API_KEY", {
-      exact: false,
-    }),
-  ).toBeVisible();
-
-  // No connected-feed fetch button when the feed is not connected.
-  await expect(
-    basiqPanel.getByRole("button", {
-      name: "Fetch from connected bank feed",
-    }),
-  ).toHaveCount(0);
-
-  // The imported flow still works end to end with the approval gate.
-  await basiqPanel.getByLabel("Amount (AUD)").fill("8800.00");
-  await basiqPanel.getByLabel("Posted date").fill("2026-05-19");
-  await basiqPanel.getByLabel("Reference").fill("INV-1001");
-  await basiqPanel.getByRole("button", { name: "Add transaction" }).click();
-
-  await basiqPanel.getByRole("button", { name: "Preview" }).click();
-  await expect(basiqPanel.getByText("ready", { exact: true })).toBeVisible();
-
-  const applyButton = basiqPanel.getByRole("button", {
-    name: "Apply approved transactions",
-  });
-  await expect(applyButton).toBeDisabled();
-  await basiqPanel.getByRole("checkbox").check();
-  await expect(applyButton).toBeEnabled();
-});
-
-test("Basiq imported transaction remove action stays touch-safe without applying", async ({
-  page,
-}) => {
-  const applyRequests = watchBasiqApplyRequests(page);
-  await mockLeasiumApi(page);
-
-  await page.goto("/settings");
-  await page.getByRole("tab", { name: "Integrations" }).click();
-
-  const basiqPanel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Bank feed (Basiq)" }),
-    })
-    .first();
-  await expect(basiqPanel).toBeVisible();
-
-  await basiqPanel.getByLabel("Amount (AUD)").fill("8800.00");
-  await basiqPanel.getByLabel("Posted date").fill("2026-05-19");
-  await basiqPanel.getByLabel("Reference").fill("INV-1001");
-  await basiqPanel.getByRole("button", { name: "Add transaction" }).click();
-
-  await expectTouchTarget(
-    basiqPanel.getByRole("button", { name: "Remove" }),
-  );
-  expect(applyRequests).toEqual([]);
-});
-
-test("Basiq consent handoff stays touch-safe without opening provider", async ({
-  page,
-}) => {
+  const basiqRequests = watchBasiqRequests(page);
   await mockLeasiumApi(page, { basiqConsentReady: true });
 
-  await page.goto("/settings");
-  await page.getByRole("tab", { name: "Integrations" }).click();
+  await page.goto("/settings?tab=xero");
 
-  const basiqPanel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Bank feed (Basiq)" }),
-    })
-    .first();
-  await expect(basiqPanel).toBeVisible();
-
-  await basiqPanel
-    .getByRole("button", { name: "Connect bank feed (Basiq)" })
-    .click();
-  const consentLink = basiqPanel.getByRole("link", {
-    name: "Open Basiq consent",
-  });
-  await expect(consentLink).toBeVisible();
-  await expect(consentLink).toHaveAttribute(
-    "href",
-    "https://consent.basiq.test/authorize",
+  await expect(page.getByRole("tab", { name: "Integrations" })).toHaveAttribute(
+    "aria-selected",
+    "true",
   );
-  await expectTouchTarget(consentLink);
+  await expect(
+    page.getByRole("heading", { name: "Bank feed (Basiq)" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Connect bank feed")).toHaveCount(0);
+  await expect(page.getByText("Open Basiq consent")).toHaveCount(0);
+  await expect(page.getByText("BASIQ_ENABLED")).toHaveCount(0);
+  expect(basiqRequests).toEqual([]);
+});
+
+test("money hub hides Basiq review routes", async ({ page }) => {
+  const basiqRequests = watchBasiqRequests(page);
+  await mockLeasiumApi(page, { basiqConsentReady: true });
+
+  await page.goto("/money");
+
+  await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
+  await expect(page.getByText("Basiq")).toHaveCount(0);
+  await expect(page.getByText("bank-feed")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Open Basiq controls" }),
+  ).toHaveCount(0);
+  expect(basiqRequests).toEqual([]);
 });

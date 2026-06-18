@@ -2,6 +2,43 @@
 
 Last updated: 2026-06-18
 
+## Continuation - 2026-06-18 (Basiq bank-feed UI parked)
+
+Temba said the Basiq bank-feed setup is in the way for now. Decision: keep the
+plumbing for later, but hide the operator-facing Basiq/bank-feed UI.
+
+What changed:
+- Added a frontend feature flag `SHOW_BASIQ_BANK_FEED = false`.
+- Settings → Integrations no longer renders the Bank feed (Basiq) panel, Basiq
+  connect/consent controls, or the "bank feed" picker copy.
+- Money no longer shows the Basiq controls card and no longer queries Basiq
+  status while the flag is off.
+- The app manifest Money shortcut now mentions billing, statements, and Xero
+  only.
+- Smoke coverage now asserts Settings/Money hide Basiq and make no Basiq API
+  requests from those screens.
+
+Verification:
+- Red first: `npm --prefix apps/web run test:smoke -- settings-basiq-ux.spec.ts
+  --project=chromium` failed because the old Basiq panel/card were still
+  visible.
+- Green: `npm --prefix apps/web run test:smoke -- settings-basiq-ux.spec.ts
+  nav-consolidation.spec.ts --project=chromium --grep "Basiq|money hub"` passed
+  6/6.
+- `npm --prefix apps/web run lint -- --quiet` passed.
+- `cd apps/web && npx tsc --noEmit --pretty false` passed.
+- `npm --prefix apps/web run build` passed after clearing the local Next cache;
+  the first parallel build/smoke attempt collided on `.next` and was rerun
+  serially.
+
+Known unrelated test note: the full `nav-consolidation.spec.ts` run still trips
+the existing Settings tab contrast-transition assertion
+(`operator shell muted text and urgent badges keep readable contrast`). The
+money/Basiq tests in that file pass.
+
+Guardrails held: UI/query gating only. No provider, payment, reconciliation,
+email/SMS, Xero, Basiq, or record mutation path changed.
+
 ## Continuation - 2026-06-18 (Activity Audit in Settings)
 
 Temba pointed out the Dashboard still had a long Recent activity audit feed.
@@ -65,7 +102,8 @@ What changed:
 - The Organisation Overview header no longer repeats "Entities, tags, profile
   for [entity]" and the Overview body no longer shows the green provider-safety
   pill; guardrails remain in the actual provider/action flows.
-- Integrations still owns Xero/Basiq/provider readiness and stays review-first.
+- Integrations still owns Xero/provider readiness and stays review-first; Basiq
+  bank-feed UI is now parked by the later 2026-06-18 cleanup.
 
 Verification:
 - `npm --prefix apps/web run lint -- --quiet`

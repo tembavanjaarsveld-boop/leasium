@@ -16,6 +16,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-18 Basiq bank-feed UI parked:** Basiq remains in the codebase
+  for later, but the operator-facing bank-feed surface is hidden for now.
+  Settings → Integrations no longer renders the Bank feed (Basiq) panel or
+  "bank feed" picker copy, and the Money hub no longer shows Basiq controls or
+  queries Basiq status. The web manifest Money shortcut now says billing,
+  statements, and Xero only. Provider/backend plumbing unchanged and inert.
+
 - [x] **2026-06-18 Activity Audit moved to Settings:** Dashboard no longer
   renders the historical activity feed; the audit trail now lives at
   `/settings?tab=activity` as **Activity Audit** under Account. The panel reads
@@ -41,8 +48,9 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   payment instructions, mailbox/template settings, and ownership/entity panels
   are deliberate choices rather than one long scroll. The Overview header stays
   minimal and no longer repeats helper/provider-safety copy that slows the page
-  down. Work notification controls live under Notifications; Xero/Basiq/provider
-  readiness remains under Integrations.
+  down. Work notification controls live under Notifications; Xero/provider
+  readiness remains under Integrations, with Basiq bank-feed UI parked by the
+  later 2026-06-18 cleanup.
   Account type stays read-only and Leasium-controlled. Provider guardrails
   unchanged: no Xero, email/SMS, payment, reconciliation, or provider write runs
   from Settings without explicit operator approval. Verified with eslint,

@@ -487,6 +487,14 @@ fixes · deferrals.
   sits with other account/settings utilities · provider guardrails unchanged;
   no provider, payment, reconciliation, email/SMS, Xero, or record mutation
   path changed · deferred: none.
+- 2026-06-18 · Basiq bank-feed UI parked · screens checked at Settings
+  Integrations and Money via focused smoke coverage · fixes: hid the Bank feed
+  (Basiq) panel, consent/connect controls, Money Basiq route card, and "bank
+  feed" Settings picker copy while leaving the underlying provider plumbing for
+  later reactivation · provider guardrails unchanged; no provider, payment,
+  reconciliation, email/SMS, Xero, Basiq, or record mutation path changed ·
+  deferred: Basiq remains future/hidden until the operator wants bank feeds back
+  in the product.
 - 2026-06-18 · Properties → property Billing tab, Quick charge rule panel ·
   screens checked at 1440/390 (mocked smoke capture) · fixes in-slice: the
   Add charge form gave no success feedback, so the operator re-submitted and

@@ -1077,9 +1077,10 @@ walked away.
   Smart Intake, Properties, People, Work, Money, Insights) with Settings
   separated as the utility destination. The 2026-05-31 DoorLoop-informed
   consolidation introduced a **People** hub (Tenants · Owners · Vendors ·
-  later Prospects) and a **Money** hub (Billing · Statements · Xero · Basiq)
-  — see §11 and the `product-roadmap.md` DoorLoop refocus. This supersedes
-  the earlier Properties+Tenants → Portfolio idea.
+  later Prospects) and a **Money** hub (Billing · Statements · Xero; Basiq
+  bank feeds are parked/hidden as of 2026-06-18) — see §11 and the
+  `product-roadmap.md` DoorLoop refocus. This supersedes the earlier
+  Properties+Tenants → Portfolio idea.
 - Anything beyond the ceiling lives in the Cmd-K command palette
   (`commandActions` in `apps/web/src/components/app-shell.tsx`).
 - Keyboard `G`-shortcuts (`SHORTCUT_NAV`) MAY exceed the sidebar list —
@@ -1328,7 +1329,7 @@ Smart Intake
 Properties
 People          (Tenants · Owners · Vendors · later Prospects)
 Work            (Maintenance · Arrears · Tasks · Comms)
-Money           (Billing · Invoices · Owner statements · Xero · Bank feeds)
+Money           (Billing · Invoices · Owner statements · Xero)
 Insights
 Settings
 ```
@@ -1339,7 +1340,9 @@ Primary hub count is 7; Settings remains visible as the utility destination.
 
 - **Smart Intake** stays a top-level item — it is the product wedge.
 - **People** is one hub for every human/relationship (Tenants · Owners · Vendors · later Prospects), each sharing one record-page shape. This is the headline DoorLoop-informed change.
-- **Money** groups the finance sprawl (Billing / Statements / Xero / Basiq); **Work** groups operations + comms.
+- **Money** groups the active finance surface (Billing / Statements / Xero);
+  Basiq bank feeds stay parked/hidden until the operator wants them back.
+  **Work** groups operations + comms.
 - **Insights** is the portfolio-risk layer. Compliance expiry, fire/safety risk,
   delegated owners, and evidence status belong in the Insights compliance
   snapshot and Work follow-up queues, not a new top-level Compliance nav item.

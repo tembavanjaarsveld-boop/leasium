@@ -37,6 +37,7 @@ import {
   type RentRollRow,
 } from "@/lib/api";
 import { ENTITY_STORAGE_KEY, isAllEntities } from "@/lib/entity-selection";
+import { SHOW_BASIQ_BANK_FEED } from "@/lib/feature-flags";
 import {
   isManagingAgentOperatingMode,
   useOperatingMode,
@@ -167,7 +168,7 @@ function routeCards(
   xeroStatus: string,
   basiqStatus: string,
 ): RouteCard[] {
-  return [
+  const cards: RouteCard[] = [
     {
       title: showOwnerDispatch ? "Owner statements" : "Entity statements",
       description: showOwnerDispatch
@@ -189,7 +190,10 @@ function routeCards(
       icon: <PlugZap size={17} />,
       status: xeroStatus,
     },
-    {
+  ];
+
+  if (SHOW_BASIQ_BANK_FEED) {
+    cards.push({
       title: "Basiq controls",
       description:
         "Read-only bank-feed connection status and reconciliation preview controls.",
@@ -197,8 +201,10 @@ function routeCards(
       action: "Open Basiq controls",
       icon: <Landmark size={17} />,
       status: basiqStatus,
-    },
-  ];
+    });
+  }
+
+  return cards;
 }
 
 function MoneyMetricCard({
@@ -295,7 +301,7 @@ function MoneyContent() {
   const basiqStatusQuery = useQuery({
     queryKey: ["money-basiq-status", selectedEntityId],
     queryFn: () => getBasiqConnectionStatus(selectedEntityId),
-    enabled: Boolean(selectedEntityId),
+    enabled: SHOW_BASIQ_BANK_FEED && Boolean(selectedEntityId),
   });
 
   useEffect(() => {
@@ -565,7 +571,9 @@ function MoneyContent() {
 
         <section
           aria-label="Finance review routes"
-          className="grid gap-3 lg:grid-cols-3"
+          className={`grid gap-3 ${
+            SHOW_BASIQ_BANK_FEED ? "lg:grid-cols-3" : "lg:grid-cols-2"
+          }`}
         >
           {lowerRoutes.map((route) => (
             <Link

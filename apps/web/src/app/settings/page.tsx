@@ -141,6 +141,7 @@ import {
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
+import { SHOW_BASIQ_BANK_FEED } from "@/lib/feature-flags";
 import {
   ownershipChipClassName,
   propertyOwnershipTagDirectory,
@@ -256,7 +257,7 @@ const settingsTabs: Array<{
   {
     id: "connect",
     label: "Integrations",
-    description: "Xero, email, bank feed",
+    description: "Xero and email",
     icon: <PlugZap size={15} />,
     group: "Apps",
   },
@@ -2658,7 +2659,10 @@ function SettingsWorkspace() {
   const basiqConnectionStatusQuery = useQuery({
     queryKey: ["basiq-connection-status", selectedEntityId],
     queryFn: () => getBasiqConnectionStatus(selectedEntityId),
-    enabled: Boolean(selectedEntityId) && activeTab === "connect",
+    enabled:
+      SHOW_BASIQ_BANK_FEED &&
+      Boolean(selectedEntityId) &&
+      activeTab === "connect",
   });
 
   const securityQuery = useQuery({
@@ -8854,8 +8858,9 @@ function SettingsWorkspace() {
               </div>
             ) : null}
 
-            <div ref={basiqReconciliationPanelRef}>
-              <SectionPanel
+            {SHOW_BASIQ_BANK_FEED ? (
+              <div ref={basiqReconciliationPanelRef}>
+                <SectionPanel
                 title="Bank feed (Basiq)"
                 description="Reconcile imported bank transactions against Leasium invoice metadata before applying any local payment update."
                 icon={<CircleDollarSign size={17} className="text-primary" />}
@@ -9445,8 +9450,9 @@ function SettingsWorkspace() {
                     </div>
                   </>
                 ) : null}
-              </SectionPanel>
-            </div>
+                </SectionPanel>
+              </div>
+            ) : null}
 
             <div ref={xeroChartMappingPanelRef}>
               <SectionPanel
