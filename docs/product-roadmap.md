@@ -16,6 +16,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-18 Leasium AI composer guardrail cleanup:** Removed the
+  repeated subtitle, full-width approval sentence, and `intake@leasium.ai`
+  email hint from the `/intake` home composer. The concise "Approval first"
+  chip remains, and detailed approval/provider guardrails stay where they
+  matter: document review/apply and provider action areas. UI copy only;
+  provider behavior unchanged.
+
 - [x] **2026-06-18 Basiq bank-feed UI parked:** Basiq remains in the codebase
   for later, but the operator-facing bank-feed surface is hidden for now.
   Settings → Integrations no longer renders the Bank feed (Basiq) panel or
@@ -95,8 +102,8 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   that AI intake worked but still felt clunky and too admin-like for older,
   technophobic property operators. `/intake` now leads with a centered
   assistant-style prompt: large Leasium AI identity, one ask/file box, source
-  chips, simple workflow suggestions, and an always-visible approval-first
-  guardrail inside the composer. Documents waiting and recently applied records
+  chips, simple workflow suggestions, and compact approval-first affordances
+  rather than a dense review panel. Documents waiting and recently applied records
   sit below the assistant instead of as the first mental model. Opening a
   document now hides the right queue rail and renders one chat shell
   (header/transcript/reply composer) where the document is the user message,

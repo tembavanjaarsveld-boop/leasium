@@ -423,7 +423,7 @@ fixes · deferrals.
   `output/playwright/leasium-ai-reading-invoice-1440.png`) · fixes: Home now has
   a centered assistant prompt (large Leasium AI identity, one ask/file box,
   source chips, workflow suggestions underneath), simpler Documents waiting
-  copy below the assistant, and the approval-first receipt inside the mobile
+  copy below the assistant, and compact approval-first affordances in the
   composer; opening a document hides the queue rail and renders one chat shell
   with header, transcript, and reply composer as the only main surface;
   zero-field invoices/admin documents ask one setup question; notices ask
@@ -443,6 +443,14 @@ fixes · deferrals.
   removed from the assistant area per operator preference so the page stays
   focused on ask/upload and the document queue below · provider guardrails
   unchanged; no provider or Smart Intake apply path changed · deferred: none.
+- 2026-06-18 · Leasium AI composer guardrail cleanup · screens checked at
+  `/intake` desktop/mobile via focused smoke coverage · fixes: removed the
+  repeated title subtitle, the full-width "Nothing is sent, synced, charged, or
+  changed until you approve it" strip, and the `intake@leasium.ai` email hint
+  from the home composer while keeping the compact Approval first chip and
+  review/apply/provider guardrails in context · provider guardrails unchanged;
+  no provider, payment, reconciliation, email/SMS, Xero, Basiq, Smart Intake
+  apply, or record mutation path changed · deferred: none.
 - 2026-06-18 · Settings two-pane workspace · reused the approved Horizon
   Settings surface and operator-approved Sophie-style settings direction from
   the in-session review · screens checked at 1440/390 local preview

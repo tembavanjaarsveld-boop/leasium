@@ -3184,10 +3184,6 @@ export function Dashboard({
                   <p className="text-2xl font-semibold leading-8 text-foreground sm:text-4xl sm:leading-[44px]">
                     Leasium AI
                   </p>
-                  <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                    Ask a question, drop in a lease or invoice, and I&apos;ll talk you
-                    through the next step before anything changes.
-                  </p>
                 </div>
 
                 <div className="overflow-hidden rounded-[20px] border border-primary/20 bg-white/95 shadow-leasiumCard">
@@ -3249,13 +3245,6 @@ export function Dashboard({
                         </>
                       )}
                     </Button>
-                    <div
-                      data-testid="leasium-ai-home-guardrail"
-                      className="flex min-h-9 w-full items-center gap-2 rounded-xl border border-accent/20 bg-accent-soft px-3 py-2 text-sm font-medium text-leasium-teal-strong"
-                    >
-                      <ShieldCheck size={15} className="shrink-0" />
-                      <span>Nothing is sent, synced, charged, or changed until you approve it.</span>
-                    </div>
                   </div>
                 </div>
 
@@ -3309,9 +3298,6 @@ export function Dashboard({
                       </button>
                     ),
                   )}
-                  <span className="hidden text-xs text-muted-foreground sm:inline">
-                    or email to intake@leasium.ai
-                  </span>
                 </div>
                 {documentIntakeMutation.isPending ? (
                   <div className="flex flex-col gap-3 border-t border-border pt-4">

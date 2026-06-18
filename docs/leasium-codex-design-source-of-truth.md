@@ -1476,7 +1476,7 @@ Approve/edit/apply source-backed changes separately
 Home:
 Centered Leasium AI identity
 One large ask/file composer
-Files / source chips / approval-first guardrail inside the composer
+Files / portfolio / approval-first chips inside the composer
 Simple workflow suggestions underneath
 Documents waiting and provenance below the assistant, never as the first mode
 

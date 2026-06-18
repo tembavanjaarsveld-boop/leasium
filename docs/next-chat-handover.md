@@ -2,6 +2,26 @@
 
 Last updated: 2026-06-18
 
+## Continuation - 2026-06-18 (Leasium AI composer guardrail cleanup)
+
+Temba circled the full-width "Nothing is sent, synced, charged, or changed
+until you approve it" line inside the Leasium AI home composer and asked to
+remove it. Follow-up in the same thread: remove the "or email to
+intake@leasium.ai" hint as well. Temba then circled the subtitle under
+"Leasium AI" as another double-up message and asked to remove that too.
+
+What changed:
+- Removed that repeated guardrail strip from the `/intake` home composer.
+- Removed the desktop email hint under the suggestion chips.
+- Removed the subtitle under the Leasium AI title.
+- Kept the compact "Approval first" chip in the composer.
+- Kept review/apply/provider guardrails in the actual document review and
+  provider-action contexts.
+- Updated desktop/mobile smoke coverage so the removed strip stays absent.
+
+Guardrails held: UI copy only. No provider, payment, reconciliation, email/SMS,
+Xero, Basiq, Smart Intake apply, or record mutation path changed.
+
 ## Continuation - 2026-06-18 (Basiq bank-feed UI parked)
 
 Temba said the Basiq bank-feed setup is in the way for now. Decision: keep the
@@ -163,7 +183,7 @@ panel for older, technophobic property operators.
 What changed:
 - `/intake` Home now leads with a centered assistant-style prompt: large
   Leasium AI identity, one ask/file box, source chips, simple workflow
-  suggestions, and an approval-first guardrail inside the composer.
+  suggestions, and compact approval-first affordances.
 - `Documents waiting` and recently applied provenance moved underneath the
   assistant so the first mental model is chat, not queue management.
 - Opening a document now hides the right queue rail and focuses the page on one

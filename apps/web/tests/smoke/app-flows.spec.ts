@@ -622,7 +622,7 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
     composer.getByText(
       "Ask a question, drop in a lease or invoice, and I'll talk you through the next step before anything changes.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByPlaceholder("Ask Leasium anything, or add a file..."),
   ).toBeVisible();
@@ -640,7 +640,8 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
     page.getByText(
       "Nothing is sent, synced, charged, or changed until you approve it.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByText("or email to intake@leasium.ai")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
@@ -682,17 +683,7 @@ test("mobile Leasium AI landing keeps the assistant prompt first", async ({
   expect(rowBox).not.toBeNull();
   expect(rowBox!.height).toBeLessThanOrEqual(150);
 
-  const guardrail = page.getByTestId("leasium-ai-home-guardrail");
-  await expect(guardrail).toBeVisible();
-  const guardrailBox = await guardrail.boundingBox();
-  const mobileNavBox = await page
-    .getByRole("navigation", { name: "Mobile primary" })
-    .boundingBox();
-  expect(guardrailBox).not.toBeNull();
-  expect(mobileNavBox).not.toBeNull();
-  expect(guardrailBox!.y + guardrailBox!.height).toBeLessThanOrEqual(
-    mobileNavBox!.y - 8,
-  );
+  await expect(page.getByTestId("leasium-ai-home-guardrail")).toHaveCount(0);
 
   await expect(
     page.getByRole("navigation", { name: "Mobile primary" }),
