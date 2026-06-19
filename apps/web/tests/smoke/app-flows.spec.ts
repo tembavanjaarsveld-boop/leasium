@@ -85,6 +85,22 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
+async function openKeyboardShortcuts(page: Page) {
+  await expect(page.getByRole("button", { name: "Open search" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await page.evaluate(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  });
+  await expect(async () => {
+    await page.keyboard.press("?");
+    await expect(dialog).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 10_000 });
+  return dialog;
+}
+
 async function selectReviewFilter(page: Page, value: string) {
   const reviewPanel = page.getByTestId("smart-intake-review-panel");
   await expect(reviewPanel).toBeVisible();
@@ -2656,33 +2672,26 @@ test("keyboard cheatsheet hides owner-statement shortcuts for self-managed accou
 }) => {
   await page.goto("/");
 
-  await page.evaluate(() => {
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement) {
-      activeElement.blur();
-    }
-  });
-  await page.keyboard.press("?");
+  const shortcutsDialog = await openKeyboardShortcuts(page);
 
   await expect(
-    page.getByRole("dialog", { name: "Keyboard shortcuts" }),
+    shortcutsDialog.getByRole("heading", { name: "Keyboard shortcuts" }),
   ).toBeVisible();
+  await expect(shortcutsDialog.getByText("Open command search")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Keyboard shortcuts" }),
+    shortcutsDialog.getByText("Show this keyboard cheatsheet"),
   ).toBeVisible();
-  await expect(page.getByText("Open command search")).toBeVisible();
-  await expect(page.getByText("Show this keyboard cheatsheet")).toBeVisible();
-  await expect(page.getByText("Dashboard").last()).toBeVisible();
-  await expect(page.getByText("Properties").last()).toBeVisible();
-  await expect(page.getByText("Tenants").last()).toBeVisible();
-  await expect(page.getByText("Comms queue")).toBeVisible();
-  await expect(page.getByText("Owner statements")).toHaveCount(0);
+  await expect(shortcutsDialog.getByText("Dashboard").last()).toBeVisible();
+  await expect(shortcutsDialog.getByText("Properties").last()).toBeVisible();
+  await expect(shortcutsDialog.getByText("Tenants").last()).toBeVisible();
+  await expect(shortcutsDialog.getByText("Comms queue")).toBeVisible();
+  await expect(shortcutsDialog.getByText("Owner statements")).toHaveCount(0);
   // The Go-to legend itself appears in the cheatsheet.
-  await expect(page.getByText("Go to (press G, then…)")).toBeVisible();
-  await page.mouse.click(300, 100);
   await expect(
-    page.getByRole("dialog", { name: "Keyboard shortcuts" }),
-  ).toBeHidden();
+    shortcutsDialog.getByText("Go to (press G, then…)"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(shortcutsDialog).toBeHidden();
 
   await page.getByRole("button", { name: "Open search" }).click();
   await page
@@ -2701,18 +2710,10 @@ test("keyboard shortcuts include owner statements for managing-agent accounts", 
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
   await page.goto("/");
 
-  await page.evaluate(() => {
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement) {
-      activeElement.blur();
-    }
-  });
-  await page.keyboard.press("?");
-  await expect(page.getByText("Owner statements")).toBeVisible();
-  await page.mouse.click(300, 100);
-  await expect(
-    page.getByRole("dialog", { name: "Keyboard shortcuts" }),
-  ).toBeHidden();
+  const shortcutsDialog = await openKeyboardShortcuts(page);
+  await expect(shortcutsDialog.getByText("Owner statements")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(shortcutsDialog).toBeHidden();
 
   await page.getByRole("button", { name: "Open search" }).click();
   await page

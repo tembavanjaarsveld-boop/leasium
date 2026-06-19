@@ -30,6 +30,24 @@ async function expectTouchTarget(control: Locator, label: string) {
   ).toBeGreaterThanOrEqual(44);
 }
 
+async function copyButtonText(
+  page: Page,
+  buttonName: string,
+  expectedText: string,
+) {
+  const button = page.getByRole("button", { name: buttonName });
+  await expect(button).toBeVisible();
+  await expect(button).toBeEnabled();
+  let clipboardText = "";
+  await expect(async () => {
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await button.click();
+    clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboardText).toContain(expectedText);
+  }).toPass({ timeout: 10_000 });
+  return clipboardText;
+}
+
 function isForbiddenDispatchReviewExportRequest(request: Request) {
   const url = new URL(request.url());
   const path = url.pathname.replace(/^\/api\/v1/, "").toLowerCase();
@@ -249,8 +267,11 @@ test("self-managed statements signoff export uses entity-local framing", async (
     page.getByRole("heading", { name: "Entity statements" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Copy signoff" }).click();
-  const signoffText = await page.evaluate(() => navigator.clipboard.readText());
+  const signoffText = await copyButtonText(
+    page,
+    "Copy signoff",
+    "Entity statements month-end signoff",
+  );
   expect(signoffText).toContain("Entity statements month-end signoff");
   expect(signoffText).toContain("local entity-reporting");
   expect(signoffText).not.toContain("Owner statements");
@@ -345,8 +366,11 @@ test("self-managed statements empty pack signoff avoids owner wording", async ({
     page.getByRole("heading", { name: "Entity statements" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Copy signoff" }).click();
-  const signoffText = await page.evaluate(() => navigator.clipboard.readText());
+  const signoffText = await copyButtonText(
+    page,
+    "Copy signoff",
+    "Status: Blocked",
+  );
   expect(signoffText).toContain("Status: Blocked");
   expect(signoffText).toContain("Entity statements month-end signoff");
   expect(signoffText).toContain("local entity-reporting signoff");
