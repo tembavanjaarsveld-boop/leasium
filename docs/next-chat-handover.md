@@ -25,9 +25,9 @@ What changed so far:
   routing, source maps, and hosted data-integrity dry-run/backup/apply
   discipline.
 - Frontend smoke stability is tightened for the heavier Sentry dev bundle:
-  Playwright now defaults to 4 workers locally/CI unless overridden, expect
-  timeout is 10s, and the command-search smoke waits for the workspace toolbar
-  before opening the hydrated command bar.
+  Playwright defaults to 4 workers locally, CI runs four one-worker smoke
+  shards, expect timeout is longer on CI, and the command-search smoke waits
+  for the workspace toolbar before opening the hydrated command bar.
 
 Verification:
 - Red first: new backend observability/integrity tests failed on missing modules.

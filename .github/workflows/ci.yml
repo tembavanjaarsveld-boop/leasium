@@ -65,12 +65,42 @@ jobs:
       - name: Build
         run: pnpm run build
 
+  frontend-smoke:
+    name: Frontend smoke (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Install Playwright
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Smoke tests
-        run: pnpm exec playwright test
-        timeout-minutes: 70
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+        timeout-minutes: 30
         env:
           NODE_ENV: development
           PLAYWRIGHT_WORKERS: "1"
@@ -79,7 +109,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-artifacts
+          name: playwright-artifacts-${{ matrix.shard }}
           path: |
             apps/web/playwright-report
             apps/web/test-results
