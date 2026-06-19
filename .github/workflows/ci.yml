@@ -70,10 +70,10 @@ jobs:
 
       - name: Smoke tests
         run: pnpm exec playwright test
-        timeout-minutes: 45
+        timeout-minutes: 70
         env:
           NODE_ENV: development
-          PLAYWRIGHT_WORKERS: "2"
+          PLAYWRIGHT_WORKERS: "1"
 
       - name: Upload Playwright artifacts
         if: failure()

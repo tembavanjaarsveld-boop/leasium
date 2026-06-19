@@ -12,7 +12,7 @@ export default defineConfig({
   workers: process.env.PLAYWRIGHT_WORKERS
     ? Number(process.env.PLAYWRIGHT_WORKERS)
     : process.env.CI
-      ? 2
+      ? 1
       : 4,
   retries: process.env.CI ? 2 : 0,
   expect: {
