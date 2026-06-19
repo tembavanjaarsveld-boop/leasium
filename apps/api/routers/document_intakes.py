@@ -15,7 +15,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.core.audit import audit_log
@@ -65,7 +65,12 @@ from apps.api.routers.conversation_threads import (
     append_conversation_turn,
     get_thread_for_write,
 )
-from apps.api.routers.lease_intakes import _apply_lease_records
+from apps.api.routers.lease_intakes import (
+    _apply_lease_records,
+    _building_key,
+    _building_level_name,
+    _match_property_by_building_key,
+)
 from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.document_intake import (
     DocumentIntakeAiOpportunitySessionRequest,
@@ -1303,6 +1308,43 @@ def _property_identity(row: dict[str, Any]) -> tuple[str | None, str | None]:
     return _str(row.get("name")), _str(row.get("street_address")) or _str(row.get("address"))
 
 
+class _DocumentApplyNeedsAttention(Exception):
+    def __init__(self, message: str, review_data: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.message = message
+        self.review_data = review_data
+
+
+PLACEHOLDER_PROPERTY_IDENTITIES = {
+    "address to confirm",
+    "lease property",
+    "property to confirm",
+    "purchase contract",
+}
+
+
+def _usable_property_identity(value: str | None) -> str | None:
+    if value is None:
+        return None
+    lowered = value.lower().strip()
+    if lowered in PLACEHOLDER_PROPERTY_IDENTITIES:
+        return None
+    if lowered.endswith((".doc", ".docx", ".pdf", ".txt")):
+        return None
+    return value
+
+
+def _property_match_candidate(prop: Property) -> dict[str, Any]:
+    return {
+        "id": str(prop.id),
+        "name": prop.name,
+        "street_address": prop.street_address,
+        "suburb": prop.suburb,
+        "state": prop.state,
+        "postcode": prop.postcode,
+    }
+
+
 def _find_matching_property(
     entity_id: UUID,
     row: dict[str, Any],
@@ -1311,6 +1353,13 @@ def _find_matching_property(
     name, street_address = _property_identity(row)
     if not name and not street_address:
         return None
+    unit_label = _str(row.get("unit_label"))
+    building_key = _building_key(name, street_address, unit_label, _str(row.get("suburb")))
+    if building_key is not None:
+        matched = _match_property_by_building_key(entity_id, building_key, session)
+        if matched is not None:
+            return matched
+
     statement = select(Property).where(
         Property.entity_id == entity_id,
         Property.deleted_at.is_(None),
@@ -1319,7 +1368,18 @@ def _find_matching_property(
         statement = statement.where(func.lower(Property.name) == name.lower())
     if street_address:
         statement = statement.where(func.lower(Property.street_address) == street_address.lower())
-    return session.scalar(statement)
+    candidates = list(session.scalars(statement).all())
+    if len(candidates) > 1:
+        raise _DocumentApplyNeedsAttention(
+            "Choose which existing property this document belongs to.",
+            {
+                "property_match_issue": "Choose which existing property this document belongs to.",
+                "property_match_candidates": [
+                    _property_match_candidate(candidate) for candidate in candidates
+                ],
+            },
+        )
+    return candidates[0] if candidates else None
 
 
 PROPERTY_APPLY_FIELDS = (
@@ -1502,10 +1562,16 @@ def _resolve_purchase_property(
         return prop, "linked_property_register_records", filled_fields, changes
 
     name, street_address = _property_identity(row)
-    if not name and not street_address:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Choose an existing property or confirm the property name/address.",
+    usable_name = _usable_property_identity(name)
+    usable_street_address = _usable_property_identity(street_address)
+    if not usable_name and not usable_street_address:
+        message = "Choose an existing property or confirm the property name/address."
+        raise _DocumentApplyNeedsAttention(
+            message,
+            {
+                "property_match_issue": message,
+                "property_match_candidates": [],
+            },
         )
 
     existing = _find_matching_property(intake.entity_id, row, session)
@@ -1519,10 +1585,12 @@ def _resolve_purchase_property(
             changes,
         )
 
+    unit_label = _str(row.get("unit_label"))
+    building_key = _building_key(name, street_address, unit_label, _str(row.get("suburb")))
     prop = Property(
         entity_id=intake.entity_id,
-        name=name or street_address or "Property to confirm",
-        street_address=street_address or "Address to confirm",
+        name=_building_level_name(name, building_key) or usable_name or usable_street_address,
+        street_address=usable_street_address or "Address to confirm",
         suburb=_str(row.get("suburb")),
         state=_str(row.get("state")),
         postcode=_str(row.get("postcode")),
@@ -1552,6 +1620,7 @@ def _resolve_purchase_property(
             "document_id": str(intake.document_id),
             "document_type": "purchase_contract",
             "source_hint": _str(row.get("source_hint")),
+            **({"building_key": building_key} if building_key is not None else {}),
         },
     )
     session.add(prop)
@@ -2956,6 +3025,39 @@ def _get_intake(
     return intake
 
 
+def _claim_intake_for_apply(
+    intake: DocumentIntake,
+    session: Session,
+) -> DocumentIntakeStatus | None:
+    prior_status = intake.status
+    result = session.execute(
+        update(DocumentIntake)
+        .where(
+            DocumentIntake.id == intake.id,
+            DocumentIntake.deleted_at.is_(None),
+            DocumentIntake.status.not_in(
+                [
+                    DocumentIntakeStatus.applying,
+                    DocumentIntakeStatus.applied,
+                ]
+            ),
+        )
+        .values(status=DocumentIntakeStatus.applying)
+    )
+    if result.rowcount != 1:
+        session.rollback()
+        session.refresh(intake)
+        if intake.status == DocumentIntakeStatus.applied:
+            return None
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document intake is already being applied.",
+        )
+    session.flush()
+    session.refresh(intake)
+    return prior_status
+
+
 @router.get("", response_model=list[DocumentIntakeRead])
 def list_document_intakes(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -3255,17 +3357,22 @@ def apply_document_intake(
             status_code=status.HTTP_409_CONFLICT,
             detail="Document intake is not ready to apply.",
         )
-
     reviewed = _reviewed_data(intake, payload.review_data)
     document_type = _str(reviewed.get("document_type")) or intake.document_type
     if document_type == "lease":
-        lease_intake, prop, unit, tenant, lease, obligations = _apply_lease_document_intake(
-            intake,
-            reviewed,
-            payload,
-            user,
-            session,
-        )
+        if _claim_intake_for_apply(intake, session) is None:
+            return _read_intake(intake)
+        try:
+            lease_intake, prop, unit, tenant, lease, obligations = _apply_lease_document_intake(
+                intake,
+                reviewed,
+                payload,
+                user,
+                session,
+            )
+        except Exception:
+            session.rollback()
+            raise
         obligation_ids = [str(obligation.id) for obligation in obligations]
         intake.review_data = {
             **reviewed,
@@ -3330,13 +3437,29 @@ def apply_document_intake(
         return _read_intake(intake)
 
     if document_type == "purchase_contract":
-        prop, units, obligations, applied = _apply_purchase_contract_intake(
-            intake,
-            reviewed,
-            payload,
-            user,
-            session,
-        )
+        if _claim_intake_for_apply(intake, session) is None:
+            return _read_intake(intake)
+        try:
+            prop, units, obligations, applied = _apply_purchase_contract_intake(
+                intake,
+                reviewed,
+                payload,
+                user,
+                session,
+            )
+        except _DocumentApplyNeedsAttention as exc:
+            intake.review_data = {
+                **reviewed,
+                **exc.review_data,
+            }
+            intake.status = DocumentIntakeStatus.needs_attention
+            intake.error_message = exc.message
+            session.commit()
+            session.refresh(intake)
+            return _read_intake(intake)
+        except Exception:
+            session.rollback()
+            raise
         intake.review_data = {
             **reviewed,
             "applied": applied,
@@ -3406,7 +3529,13 @@ def apply_document_intake(
         return _read_intake(intake)
 
     if document_type == "inspection_report":
-        work_orders = _apply_inspection_report_intake(intake, reviewed, payload, user, session)
+        if _claim_intake_for_apply(intake, session) is None:
+            return _read_intake(intake)
+        try:
+            work_orders = _apply_inspection_report_intake(intake, reviewed, payload, user, session)
+        except Exception:
+            session.rollback()
+            raise
         work_order_ids = [str(work_order.id) for work_order in work_orders]
         intake.review_data = {
             **reviewed,
@@ -3469,14 +3598,20 @@ def apply_document_intake(
             detail="Confirm the insurance expiry date before applying.",
         )
 
-    obligations = _apply_document_obligation_intake(intake, reviewed, payload, user, session)
-    billing_draft = (
-        _apply_billing_draft_intake(intake, reviewed, payload, user, session)
-        if document_type == "invoice_admin"
-        else None
-    )
-    if document_type == "insurance_certificate":
-        _apply_tenant_insurance_metadata(intake, reviewed, user, session)
+    if _claim_intake_for_apply(intake, session) is None:
+        return _read_intake(intake)
+    try:
+        obligations = _apply_document_obligation_intake(intake, reviewed, payload, user, session)
+        billing_draft = (
+            _apply_billing_draft_intake(intake, reviewed, payload, user, session)
+            if document_type == "invoice_admin"
+            else None
+        )
+        if document_type == "insurance_certificate":
+            _apply_tenant_insurance_metadata(intake, reviewed, user, session)
+    except Exception:
+        session.rollback()
+        raise
     obligation_ids = [str(obligation.id) for obligation in obligations]
     billing_draft_ids = [str(billing_draft.id)] if billing_draft is not None else []
     if billing_draft is not None:

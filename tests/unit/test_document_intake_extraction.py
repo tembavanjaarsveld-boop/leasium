@@ -2,8 +2,10 @@ import json
 from io import BytesIO
 from typing import Any
 
+import httpx
+import pytest
 from docx import Document
-from stewart.ai.document_intake import extract_document_file
+from stewart.ai.document_intake import DocumentExtractionError, extract_document_file
 from stewart.ai.lease_intake import _extract_document_text
 from stewart.core.settings import Settings
 
@@ -97,10 +99,29 @@ def _empty_invoice_extraction() -> dict[str, Any]:
 
 
 class _FakeOpenAIResponse:
+    def __init__(
+        self,
+        *,
+        body: dict[str, Any] | None = None,
+        output_text: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        self._body = body
+        self._output_text = (
+            json.dumps(_empty_invoice_extraction()) if output_text is None else output_text
+        )
+        self._status_code = status_code
+
     def raise_for_status(self) -> None:
+        if self._status_code is not None:
+            request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+            response = httpx.Response(self._status_code, request=request)
+            response.raise_for_status()
         return None
 
     def json(self) -> dict[str, Any]:
+        if self._body is not None:
+            return self._body
         return {
             "id": "resp_empty_invoice",
             "output": [
@@ -108,7 +129,7 @@ class _FakeOpenAIResponse:
                     "content": [
                         {
                             "type": "output_text",
-                            "text": json.dumps(_empty_invoice_extraction()),
+                            "text": self._output_text,
                         }
                     ]
                 }
@@ -117,8 +138,16 @@ class _FakeOpenAIResponse:
 
 
 class _FakeHTTPClient:
-    def __init__(self, *, timeout: float) -> None:
+    def __init__(
+        self,
+        *,
+        timeout: float,
+        response: _FakeOpenAIResponse | None = None,
+        post_exception: Exception | None = None,
+    ) -> None:
         self.timeout = timeout
+        self._response = response or _FakeOpenAIResponse()
+        self._post_exception = post_exception
 
     def __enter__(self) -> "_FakeHTTPClient":
         return self
@@ -127,7 +156,146 @@ class _FakeHTTPClient:
         return None
 
     def post(self, *args: object, **kwargs: object) -> _FakeOpenAIResponse:
-        return _FakeOpenAIResponse()
+        if self._post_exception is not None:
+            raise self._post_exception
+        return self._response
+
+
+def _patch_http_client(
+    monkeypatch: Any,
+    *,
+    response: _FakeOpenAIResponse | None = None,
+    post_exception: Exception | None = None,
+) -> None:
+    def fake_client(*, timeout: float) -> _FakeHTTPClient:
+        return _FakeHTTPClient(
+            timeout=timeout,
+            response=response,
+            post_exception=post_exception,
+        )
+
+    monkeypatch.setattr("stewart.ai.document_intake.httpx.Client", fake_client)
+
+
+def test_extract_document_file_requires_openai_api_key() -> None:
+    with pytest.raises(DocumentExtractionError, match="OpenAI API key is not configured"):
+        extract_document_file(
+            file_data=b"notice",
+            filename="notice.txt",
+            content_type="text/plain",
+            settings=Settings(openai_api_key=""),
+        )
+
+
+@pytest.mark.parametrize("status_code", [429, 503])
+def test_extract_document_file_reports_openai_status_errors(
+    monkeypatch: Any,
+    status_code: int,
+) -> None:
+    _patch_http_client(
+        monkeypatch,
+        response=_FakeOpenAIResponse(status_code=status_code),
+    )
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match=f"OpenAI extraction request failed with status {status_code}",
+    ):
+        extract_document_file(
+            file_data=b"notice",
+            filename="notice.txt",
+            content_type="text/plain",
+            settings=Settings(openai_api_key="sk-test"),
+        )
+
+
+def test_extract_document_file_reports_openai_timeouts(monkeypatch: Any) -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+    _patch_http_client(
+        monkeypatch,
+        post_exception=httpx.TimeoutException("timed out", request=request),
+    )
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match="OpenAI extraction request timed out",
+    ):
+        extract_document_file(
+            file_data=b"notice",
+            filename="notice.txt",
+            content_type="text/plain",
+            settings=Settings(openai_api_key="sk-test"),
+        )
+
+
+def test_extract_document_file_reports_malformed_openai_json(monkeypatch: Any) -> None:
+    _patch_http_client(
+        monkeypatch,
+        response=_FakeOpenAIResponse(output_text="{not-json"),
+    )
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match="OpenAI response was not valid JSON",
+    ):
+        extract_document_file(
+            file_data=b"notice",
+            filename="notice.txt",
+            content_type="text/plain",
+            settings=Settings(openai_api_key="sk-test"),
+        )
+
+
+def test_extract_document_file_rejects_missing_top_level_fields(
+    monkeypatch: Any,
+) -> None:
+    _patch_http_client(
+        monkeypatch,
+        response=_FakeOpenAIResponse(
+            output_text=json.dumps(
+                {
+                    "document_type": "notice",
+                    "summary": "A notice for operator review.",
+                    "confidence": 0.8,
+                    "suggested_links": {
+                        "property_name": None,
+                        "tenant_name": None,
+                        "lease_reference": None,
+                    },
+                }
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        DocumentExtractionError,
+        match="OpenAI extraction was missing required fields",
+    ):
+        extract_document_file(
+            file_data=b"notice",
+            filename="notice.txt",
+            content_type="text/plain",
+            settings=Settings(openai_api_key="sk-test"),
+        )
+
+
+def test_extract_document_file_preserves_inspection_report_type(monkeypatch: Any) -> None:
+    extraction = _empty_invoice_extraction()
+    extraction["document_type"] = "inspection_report"
+    extraction["summary"] = "Inspection report for reviewed maintenance findings."
+    _patch_http_client(
+        monkeypatch,
+        response=_FakeOpenAIResponse(output_text=json.dumps(extraction)),
+    )
+
+    extracted, _response_id = extract_document_file(
+        file_data=b"inspection",
+        filename="inspection.txt",
+        content_type="text/plain",
+        settings=Settings(openai_api_key="sk-test"),
+    )
+
+    assert extracted["document_type"] == "inspection_report"
 
 
 def test_extract_document_file_supplements_empty_invoice_from_source_text(

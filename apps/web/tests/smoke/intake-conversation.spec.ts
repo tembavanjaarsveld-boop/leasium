@@ -334,6 +334,72 @@ test("conversation-first intake panel reads the lease and creates records withou
   expect(forbiddenApiCalls).toEqual([]);
 });
 
+test("needs-attention apply response keeps the operator in review", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([leaseIntake]),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${leaseIntakeId}/apply`
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...leaseIntake,
+          status: "needs_attention",
+          error_message:
+            "Choose the correct property before applying this document.",
+          review_data: {
+            property_match_issue:
+              "Multiple properties match this document.",
+            property_match_candidates: [
+              { id: "property-1", name: "Queen Street Retail Centre" },
+              { id: "property-2", name: "Queen Street Retail Centre Annex" },
+            ],
+          },
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await page
+    .getByTestId(`review-intake-${leaseIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  await expect(page.getByTestId("intake-plan")).toBeVisible();
+  await page.getByTestId("intake-create-all").click();
+
+  const attention = page.getByTestId("intake-needs-attention");
+  await expect(attention).toBeVisible();
+  await expect(attention).toContainText(
+    "Multiple properties match this document.",
+  );
+  await expect(attention).toContainText(
+    "Choose or confirm the correct property before creating records.",
+  );
+  await expect(page.getByTestId("intake-plan")).toBeVisible();
+  await expect(page.getByTestId("intake-created")).toHaveCount(0);
+  await expect(page.getByText("Document workflow applied.")).toBeHidden();
+});
+
 test("links an existing property instead of creating a duplicate", async ({
   page,
 }) => {

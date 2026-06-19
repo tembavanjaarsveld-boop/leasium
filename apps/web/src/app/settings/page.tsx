@@ -3684,7 +3684,7 @@ function SettingsWorkspace() {
                             key={tab.id}
                             aria-label={tab.label}
                             aria-selected={isActive}
-                            className={`flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 ${
+                            className={`flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-shadow duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 ${
                               isActive
                                 ? "bg-primary-soft text-primary ring-1 ring-primary/20"
                                 : "text-muted-foreground hover:bg-white hover:text-foreground"

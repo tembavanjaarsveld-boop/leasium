@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . ruff pytest pytest-cov
+
+      - name: Ruff
+        run: ruff check apps stewart tests scripts
+
+      - name: Pytest
+        run: pytest -ra
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        run: pnpm exec eslint src
+
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Install Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke tests
+        run: pnpm exec playwright test
+        env:
+          NODE_ENV: development

@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -1276,6 +1276,17 @@ The 2026-05-22 UX review (`docs/ux-review-2026-05-22.md`) reframes the
 short-term backlog into three tiers benchmarked against Linear, Stripe,
 Notion, Vercel, Re-Leased Credia, and AppFolio. **Tier 1 is active**;
 Tier 2 follows after the highest-leverage Tier 1 items land.
+
+### Active stabilization (2026-06-19)
+
+- [ ] **Platform stabilization v1:** Local implementation is in place for
+  GitHub Actions CI, Smart Intake apply claiming, non-lease building-aware
+  property matching, ambiguity/placeholder routing to `needs_attention`,
+  extraction failure coverage, and standing provider-mutation guardrail tests.
+  Backend verification is green, frontend lint/type/build is green, and the
+  full frontend Playwright suite is green locally: 370 passed, 16 skipped on
+  2026-06-19. Remaining proof point before moving this to Built: commit/push so
+  GitHub Actions proves the new workflow on `main`.
 
 ### DoorLoop benchmark refocus (2026-05-31) — current top priority
 

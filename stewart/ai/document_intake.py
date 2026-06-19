@@ -391,6 +391,8 @@ def extract_document_file(
         raise DocumentExtractionError(
             f"OpenAI extraction request failed with status {exc.response.status_code}."
         ) from exc
+    except httpx.TimeoutException as exc:
+        raise DocumentExtractionError("OpenAI extraction request timed out.") from exc
     except httpx.HTTPError as exc:
         raise DocumentExtractionError("OpenAI extraction request failed.") from exc
 
@@ -404,6 +406,14 @@ def extract_document_file(
         raise DocumentExtractionError("OpenAI response was not valid JSON.") from exc
     if not isinstance(extracted, dict):
         raise DocumentExtractionError("OpenAI extraction returned an unexpected shape.")
+    missing_fields = [
+        field for field in DOCUMENT_INTAKE_SCHEMA["required"] if field not in extracted
+    ]
+    if missing_fields:
+        raise DocumentExtractionError(
+            "OpenAI extraction was missing required fields: "
+            f"{', '.join(missing_fields)}."
+        )
     return _normalise_extracted_document(
         extracted,
         filename,
@@ -425,6 +435,7 @@ def _normalise_extracted_document(
         "insurance_certificate",
         "bank_guarantee",
         "purchase_contract",
+        "inspection_report",
         "compliance",
         "notice",
         "unknown",

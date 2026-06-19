@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
-    AuditAction,
     ConversationThread,
     ConversationTurn,
     ConversationTurnKind,
@@ -19,51 +18,15 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
+from tests.support.provider_guardrail import (
+    provider_mutation_audit_rows as _provider_mutation_audit_rows,
+)
 
 
 def _entity(session: Session) -> Entity:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
     return entity
-
-
-def _provider_mutation_audit_rows(session: Session) -> list[AuditAction]:
-    provider_fragments = (
-        "xero",
-        "sendgrid",
-        "twilio",
-        "tenant_email",
-        "tenant email",
-        "payment",
-        "reconciliation",
-    )
-    mutation_fragments = (
-        "send",
-        "sent",
-        "sync",
-        "synced",
-        "dispatch",
-        "payment",
-        "reconciliation",
-        "reconcile",
-    )
-    rows: list[AuditAction] = []
-    for row in session.scalars(select(AuditAction)).all():
-        text = " ".join(
-            str(value or "")
-            for value in (
-                row.action,
-                row.target_table,
-                row.tool_name,
-                row.tool_output_summary,
-                row.error_message,
-            )
-        ).lower()
-        if any(fragment in text for fragment in provider_fragments) and any(
-            fragment in text for fragment in mutation_fragments
-        ):
-            rows.append(row)
-    return rows
 
 
 def _thread_payload(

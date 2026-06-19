@@ -374,6 +374,8 @@ function intakeStatusLabel(status: string | null | undefined) {
       return "Needs review";
     case "needs_attention":
       return "Needs match";
+    case "applying":
+      return "Applying";
     case "applied":
       return "Applied";
     case "failed":
@@ -386,6 +388,7 @@ function intakeStatusLabel(status: string | null | undefined) {
 function intakeStatusTone(status: string | null | undefined): StatusTone {
   switch (status) {
     case "ready_for_review":
+    case "applying":
       return "primary";
     case "needs_attention":
       return "warning";

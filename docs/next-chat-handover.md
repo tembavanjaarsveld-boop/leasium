@@ -1,6 +1,75 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-18
+Last updated: 2026-06-19
+
+## Continuation - 2026-06-19 (Platform stabilization v1)
+
+Temba chose the stabilization track: CI first, then Smart Intake / Leasium AI
+document-intake hardening. Workflows builder remains parked.
+
+What changed:
+- Added GitHub Actions CI at `.github/workflows/ci.yml` for pushes to `main`
+  and pull requests. Backend runs Python 3.12, editable install, `ruff check
+  apps stewart tests scripts`, and `pytest -ra`. Frontend runs Node 22,
+  `pnpm@9.12.0`, frozen install, `eslint src`, `tsc --noEmit`, production
+  build, Chromium install, and Playwright smokes with `NODE_ENV=development`.
+  CI is no-secrets/provider-inert.
+- Added `DocumentIntakeStatus.applying` plus migration `20260619_0046` and a
+  conditional apply claim so Smart Intake apply moves to `applying` before any
+  record creation. Sequential re-apply after `applied` remains idempotent.
+- Non-lease purchase matching now reuses the lease building-key helper, so
+  "Building 6, Unit 5, 205 Leitchs Road" links to an existing B6 building
+  property instead of creating a duplicate, while B3 at the same street stays
+  separate.
+- Ambiguous exact property matches now route the intake to `needs_attention`
+  with `property_match_candidates` instead of silently taking the first row.
+- Missing or placeholder purchase property identity now routes to
+  `needs_attention` and does not create placeholder properties/units.
+- Extraction hardening: OpenAI timeouts get a clear error, missing required
+  top-level extraction fields are rejected, and `inspection_report` remains a
+  supported document type after normalisation.
+- Provider guardrail coverage is now shared via `tests/support/provider_guardrail.py`
+  and has a standing test across lease, purchase, invoice, inspection, and
+  obligation apply branches.
+- The Leasium AI intake chat now treats an apply response with
+  `status=needs_attention` as still-in-review, shows the backend match issue,
+  and does not fire the applied success callback. The queue label also recognises
+  the transient `applying` status.
+- `docs/deployment.md` now documents the CI jobs, no-secrets rationale, and
+  local-equivalent commands.
+
+Verification:
+- Focused red/green batch: `tests/unit/test_document_intake_extraction.py`,
+  five new document-intake regression tests, extraction failure API tests, and
+  `test_provider_guardrail.py` — 23 passed.
+- Full Smart Intake integration: `test_document_intake_api.py` — 42 passed.
+- Lease/building-key side check: `test_lease_intake_api.py` +
+  `test_building_key.py` — 9 passed.
+- Provider/thread guardrail check: `test_provider_guardrail.py` +
+  `test_conversation_threads_api.py::test_document_intake_apply_appends_created_turn_without_provider_mutation`
+  — 3 passed.
+- Backend lint: `.venv/bin/python -m ruff check apps stewart tests scripts` —
+  passed after sorting pre-existing imports in `apps/api/main.py` and the edited
+  document-intake test.
+- Full backend suite: `.venv/bin/python -m pytest -ra` — 716 passed, 1 skipped
+  (`TEST_DATABASE_URL` not configured), 10 warnings.
+- Frontend: `./node_modules/.bin/eslint src` passed; `./node_modules/.bin/tsc
+  --noEmit` passed; production `next build` with local
+  `NEXT_TEST_WASM_DIR` passed.
+- Focused current intake smoke: `NODE_ENV=development ./node_modules/.bin/playwright
+  test tests/smoke/intake-conversation.spec.ts --workers=1` — 4 passed,
+  including the new `needs_attention` contract.
+- Follow-up smoke stabilization pass: updated stale conversation-first AI
+  Mailbox/Smart Intake app-flow expectations, fixed `task_or_reminder` mailbox
+  promotion to use its distinct backend branch, moved expiring tenant-onboarding
+  smoke fixtures beyond 2026-06-19, scoped responsive duplicate selectors, gave
+  the route-heavy dark-mode smoke a 60s budget, and removed Settings tab colour
+  transitions that the contrast test forbids.
+- Full frontend smoke is now green locally: `NODE_ENV=development
+  ./node_modules/.bin/playwright test` — 370 passed, 16 skipped.
+
+Remaining before calling the slice fully shipped: commit/push so GitHub Actions
+can prove the new CI workflow on `main`.
 
 ## Continuation - 2026-06-18 (Leasium AI composer guardrail cleanup)
 

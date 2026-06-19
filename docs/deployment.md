@@ -34,6 +34,42 @@ host. Production uses the Vercel rewrites in `apps/web/vercel.json` so browser
 API calls stay same-origin under `/api/v1` and `/health`; Vercel then proxies
 them to `https://api.leasium.ai`.
 
+## CI
+
+GitHub Actions runs `.github/workflows/ci.yml` on every push to `main` and on
+pull requests. It is provider-inert and needs no OpenAI, Xero, SendGrid,
+Twilio, Basiq, payment, reconciliation, or tenant-email secrets.
+
+Backend job:
+
+```bash
+python -m pip install -e . ruff pytest pytest-cov
+ruff check apps stewart tests scripts
+pytest -ra
+```
+
+The default integration database is SQLite in-memory, so CI does not need a
+Postgres service. `tests/integration/test_migrations.py` still self-skips
+unless `TEST_DATABASE_URL` is supplied.
+
+Frontend job:
+
+```bash
+cd apps/web
+corepack prepare pnpm@9.12.0 --activate
+pnpm install --frozen-lockfile
+pnpm exec eslint src
+pnpm exec tsc --noEmit
+pnpm run build
+pnpm exec playwright install --with-deps chromium
+NODE_ENV=development pnpm exec playwright test
+```
+
+The frontend job uses Node 22 and the checked-in pnpm lockfile. The existing
+Next build/dev scripts set `NEXT_TEST_WASM_DIR` to the bundled
+`@next/swc-wasm-nodejs` package, and Playwright smokes mock `/api/v1/**`, so no
+live API or provider credentials are required.
+
 Current production domains:
 
 - `leasium.ai` is the primary Vercel domain.

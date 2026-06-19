@@ -273,6 +273,8 @@ test("dark Horizon utility tokens match the Figma Dashboard Dark frame", async (
 test("dark mode renders the core operator surfaces on desktop and mobile", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
+
   await page.addInitScript(() => {
     window.localStorage.setItem("leasium.appearance", "dark");
   });

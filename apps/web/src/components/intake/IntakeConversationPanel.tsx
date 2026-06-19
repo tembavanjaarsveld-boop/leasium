@@ -628,6 +628,18 @@ function buildCreated(
   return rows;
 }
 
+function applyNeedsAttentionMessage(record: DocumentIntakeRecord): string {
+  const reviewData = isRecord(record.review_data) ? record.review_data : {};
+  const issue = text(reviewData.property_match_issue);
+  if (issue) {
+    return `${issue} Choose or confirm the correct property before creating records.`;
+  }
+  return (
+    text(record.error_message) ??
+    "I need one more review choice before I can create records."
+  );
+}
+
 const GUARDRAIL_PRE =
   "I can create the Leasium records after you approve this. I will not send anything to Xero, email anyone, charge anyone, or mark an invoice approved from here.";
 const GUARDRAIL_POST =
@@ -745,6 +757,7 @@ export function IntakeConversationPanel({
 
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [attentionMessage, setAttentionMessage] = useState<string | null>(null);
   const [appliedRecord, setAppliedRecord] = useState<DocumentIntakeRecord | null>(
     intake.status === "applied" ? intake : null,
   );
@@ -839,6 +852,7 @@ export function IntakeConversationPanel({
     if (applying) return;
     setApplying(true);
     setApplyError(null);
+    setAttentionMessage(null);
     const links = isRecord(data.suggested_links) ? data.suggested_links : {};
     // Always apply the current edits. `edits` is seeded from the extraction, so
     // this is equivalent to the raw extraction when nothing was changed, but it
@@ -864,6 +878,17 @@ export function IntakeConversationPanel({
         leaseId: linkProperty ? text(links.lease_id) : undefined,
         threadId: currentThread.id,
       });
+      if (result.status === "needs_attention") {
+        setAttentionMessage(applyNeedsAttentionMessage(result));
+        return;
+      }
+      if (result.status !== "applied") {
+        setApplyError(
+          result.error_message ??
+            "I couldn't create records from this document yet. Please review it again.",
+        );
+        return;
+      }
       setAppliedRecord(result);
       onApplied?.(result);
     } catch (error) {
@@ -941,7 +966,7 @@ export function IntakeConversationPanel({
     <StatusBadge tone="success" className="text-xs">
       Done
     </StatusBadge>
-  ) : nextQuestion ? (
+  ) : attentionMessage || nextQuestion ? (
     <StatusBadge tone="warning" className="text-xs">
       Needs your help
     </StatusBadge>
@@ -1377,6 +1402,14 @@ export function IntakeConversationPanel({
             <div className="mt-3">
               <GuardrailNote>{GUARDRAIL_PRE}</GuardrailNote>
             </div>
+            {attentionMessage ? (
+              <div
+                data-testid="intake-needs-attention"
+                className="mt-3 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-sm leading-6 text-warning-strong"
+              >
+                {attentionMessage}
+              </div>
+            ) : null}
             {applyError ? (
               <p className="mt-3 text-sm text-danger">{applyError}</p>
             ) : null}

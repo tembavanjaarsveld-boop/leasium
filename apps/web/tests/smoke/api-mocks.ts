@@ -509,7 +509,7 @@ const initialTenantOnboardings = [
     token: "tenant-token-1",
     status: "sent",
     due_date: "2026-05-29",
-    expires_at: "2026-06-12T00:00:00.000Z",
+    expires_at: "2026-07-01T00:00:00.000Z",
     last_sent_at: "2026-05-18T09:30:00.000Z",
     resent_at: null,
     cancel_reason: null,
@@ -2118,7 +2118,7 @@ const tenantPortalSession = (
     id: "onboarding-1",
     status: options.leaseReady || options.leaseSigned ? "applied" : "sent",
     due_date: "2026-05-29",
-    expires_at: "2026-06-12T00:00:00.000Z",
+    expires_at: "2026-07-01T00:00:00.000Z",
     submitted_at:
       options.leaseReady || options.leaseSigned
         ? "2026-05-21T01:00:00.000Z"

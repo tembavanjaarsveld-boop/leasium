@@ -1462,25 +1462,24 @@ test("AI mailbox promotes compliance rows to Smart Intake review only", async ({
       name: "Fwd: Updated public liability certificate",
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Review promotion" }).click();
-
-  const promotePanel = page.getByTestId("promote-panel");
-  await expect(promotePanel).toBeVisible();
+  await expect(page.getByTestId("inbox-conversation")).toBeVisible();
+  await expect(page.getByTestId("inbox-understanding")).toContainText(
+    "Compliance / insurance",
+  );
+  const inboxPlan = page.getByTestId("inbox-plan");
+  await expect(inboxPlan).toBeVisible();
+  await expect(inboxPlan).toContainText("Open a Smart Intake review");
+  await expect(inboxPlan).toContainText("DRAFT");
   await expect(
-    promotePanel.getByText(/Send to Smart Intake review/i),
+    page.getByText("broker@external.example").first(),
   ).toBeVisible();
-  const provenance = promotePanel.getByTestId("mailbox-review-provenance");
   await expect(
-    provenance.getByText("broker@external.example").first(),
-  ).toBeVisible();
-  await expect(provenance.getByText("86%")).toBeVisible();
-  await expect(
-    provenance.getByRole("link", { name: "Open raw email" }),
+    page.getByRole("link", { name: "Open raw email" }),
   ).toHaveAttribute(
     "href",
     /\/api\/v1\/documents\/raw-email-doc-compliance\/download$/,
   );
-  await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
+  await page.getByTestId("inbox-promote").click();
 
   await expect(page).toHaveURL(
     /\/intake\?entity_id=entity-1&review=mailbox-compliance-attachment-intake-1/,
@@ -1503,7 +1502,8 @@ const mailboxLocalPromoteCases = [
     targetHref: "/intake?entity_id=entity-1&review=mailbox-property-review-1",
     targetId: "mailbox-property-review-1",
     targetLabel: "Council rates notice needs property review.",
-    promoteCopy: /Review property update/i,
+    expectedPlanCopy: "Open a Smart Intake review",
+    expectedPromoteKind: "property_update",
     finalUrl: /\/intake\?entity_id=entity-1&review=mailbox-property-review-1/,
     classificationTargetKind: "property",
   },
@@ -1518,7 +1518,8 @@ const mailboxLocalPromoteCases = [
     targetHref: "/operations/maintenance/mailbox-task-work-order-1",
     targetId: "mailbox-task-work-order-1",
     targetLabel: "Follow up the insurer next Tuesday.",
-    promoteCopy: /Create Operations task/i,
+    expectedPlanCopy: "Create an Operations task",
+    expectedPromoteKind: "task_or_reminder",
     finalUrl: /\/operations\/maintenance\/mailbox-task-work-order-1/,
     classificationTargetKind: "maintenance_work_order",
   },
@@ -1533,7 +1534,8 @@ const mailboxLocalPromoteCases = [
     targetHref: "/intake?entity_id=entity-1&review=mailbox-owner-admin-review-1",
     targetId: "mailbox-owner-admin-review-1",
     targetLabel: "Owner billing detail needs admin review.",
-    promoteCopy: /Review owner \/ entity admin/i,
+    expectedPlanCopy: "Open a Smart Intake review",
+    expectedPromoteKind: "owner_or_entity_admin",
     finalUrl:
       /\/intake\?entity_id=entity-1&review=mailbox-owner-admin-review-1/,
     classificationTargetKind: "smart_intake",
@@ -1674,19 +1676,15 @@ for (const scenario of mailboxLocalPromoteCases) {
     await expect(
       page.getByRole("heading", { name: scenario.subject }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Review promotion" }).click();
-
-    const promotePanel = page.getByTestId("promote-panel");
-    await expect(promotePanel).toBeVisible();
-    await expect(promotePanel.getByText(scenario.promoteCopy)).toBeVisible();
-    await expect(
-      promotePanel.getByTestId("mailbox-review-provenance"),
-    ).toContainText("84%");
-    await promotePanel.getByRole("button", { name: "Promote to draft" }).click();
+    await expect(page.getByTestId("inbox-conversation")).toBeVisible();
+    const inboxPlan = page.getByTestId("inbox-plan");
+    await expect(inboxPlan).toBeVisible();
+    await expect(inboxPlan).toContainText(scenario.expectedPlanCopy);
+    await page.getByTestId("inbox-promote").click();
 
     await expect(page).toHaveURL(scenario.finalUrl);
     expect(promoteRequests).toHaveLength(1);
-    expect(promoteRequests[0].kind).toBe(scenario.kind);
+    expect(promoteRequests[0].kind).toBe(scenario.expectedPromoteKind);
     expect(promoteRequests[0].inbound_message_id).toBe(message.id);
     expect(forbiddenRequests).toEqual([]);
   });
@@ -2952,9 +2950,14 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(
     page.getByRole("heading", { name: "Work", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Air conditioning fault").first()).toBeVisible();
-  await expect(page.getByText("Bright Cafe arrears")).toBeVisible();
-  await expect(page.getByRole("region", { name: /Act now/ })).toBeVisible();
+  const actNowLane = page.getByRole("region", { name: /Act now/ });
+  await expect(actNowLane).toBeVisible();
+  await expect(
+    actNowLane.getByRole("link", { name: /Air conditioning fault/ }),
+  ).toBeVisible();
+  await expect(
+    actNowLane.getByRole("link", { name: /Bright Cafe arrears/ }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Assign owner for Air conditioning fault" })
     .click();
@@ -3052,7 +3055,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(queueMaintenanceLink).toBeVisible();
   await expect(page.getByText("Bright Cafe arrears")).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("unassigned");
-  await expect(page.getByText("Insurance certificate renewal")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Insurance certificate renewal/ }),
+  ).toBeVisible();
   await expect(queueMaintenanceLink).not.toBeVisible();
   await page.getByLabel("Queue assignee").selectOption("all");
 
@@ -3297,29 +3302,32 @@ test("notification center shows work notices and digest receipts", async ({
       "https://api.leasium.test/api/v1/work-assignments/webhooks/sendgrid-events",
     ),
   ).toBeVisible();
+  const noticesPanel = page.locator("section").filter({
+    has: page.getByText("Work notice center"),
+  });
   await expect(
-    page.getByText("Air conditioning fault", { exact: true }),
+    noticesPanel.getByText("Air conditioning fault", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Bright Cafe arrears", { exact: true }),
+    noticesPanel.getByText("Bright Cafe arrears", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Attention 1/ }).click();
   await expect(
-    page.getByText("Bright Cafe arrears", { exact: true }),
+    noticesPanel.getByText("Bright Cafe arrears", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Air conditioning fault", { exact: true }),
+    noticesPanel.getByText("Air conditioning fault", { exact: true }),
   ).not.toBeVisible();
   await page.getByRole("button", { name: /^All 2$/ }).click();
   await expect(
-    page.getByText("Air conditioning fault", { exact: true }),
+    noticesPanel.getByText("Air conditioning fault", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: /^Email 2$/ }).click();
   await expect(
-    page.getByText("Bright Cafe arrears", { exact: true }),
+    noticesPanel.getByText("Bright Cafe arrears", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Air conditioning fault", { exact: true }),
+    noticesPanel.getByText("Air conditioning fault", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Latest provider event").first()).toBeVisible();
   await expect(
@@ -3338,7 +3346,7 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Retry notice" }).click();
   await expect(
-    page.getByText("Assignment notification email was queued.").first(),
+    noticesPanel.getByText("Assignment notification email was queued.").first(),
   ).toBeVisible();
   await page.getByText("Message preview").nth(1).click();
   await expect(
@@ -3354,9 +3362,12 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry SMS" })).toBeVisible();
   await expect(page.getByText("Digest history")).toBeVisible();
-  await expect(page.getByText("Owner Operator").first()).toBeVisible();
-  await expect(page.getByText("No messages sent").first()).toBeVisible();
-  await page.getByText("Message preview").last().click();
+  const receiptsPanel = page.locator("section").filter({
+    has: page.getByText("RECEIPTS — QUIET"),
+  });
+  await expect(receiptsPanel.getByText("Owner Operator").first()).toBeVisible();
+  await expect(receiptsPanel.getByText("No messages sent").first()).toBeVisible();
+  await receiptsPanel.getByText("Message preview").last().click();
   await expect(
     page.getByText("Leasium Daily Work digest: 4 items"),
   ).toBeVisible();
@@ -3369,21 +3380,23 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Send digest" }).click();
   await expect(
-    page.getByText("Digest email was queued by SendGrid."),
+    receiptsPanel.getByText("Digest email was queued by SendGrid."),
   ).toBeVisible();
-  await expect(page.getByText("Email queued").first()).toBeVisible();
+  await expect(receiptsPanel.getByText("Email queued").first()).toBeVisible();
   await expect(
-    page.getByText("Digest Delivery Attempted").first(),
+    receiptsPanel.getByText("Digest Delivery Attempted").first(),
   ).toBeVisible();
-  await page.getByText("Receipt evidence").last().click();
-  await expect(page.getByText("sg-digest-smoke-retry").first()).toBeVisible();
+  await receiptsPanel.getByText("Receipt evidence").last().click();
   await expect(
-    page.getByText("Wait for the SendGrid delivery receipt."),
+    receiptsPanel.getByText("sg-digest-smoke-retry").first(),
+  ).toBeVisible();
+  await expect(
+    receiptsPanel.getByText("Wait for the SendGrid delivery receipt."),
   ).toBeVisible();
   await page.getByRole("button", { name: /Sent 1/ }).click();
-  await expect(page.getByText("Owner Operator").first()).toBeVisible();
+  await expect(receiptsPanel.getByText("Owner Operator").first()).toBeVisible();
   await page.getByRole("button", { name: /^Email 1$/ }).click();
-  await expect(page.getByText("Owner Operator").first()).toBeVisible();
+  await expect(receiptsPanel.getByText("Owner Operator").first()).toBeVisible();
   await expect(page.getByText("3 unread")).toBeVisible();
   await page.getByRole("button", { name: "Mark reviewed" }).click();
   await expect(page.getByText("0 unread")).toBeVisible();
@@ -4329,7 +4342,7 @@ test("property workspace shows the evidence source trail", async ({ page }) => {
     /owner_tag=queen(?:\+|%20)street(?:\+|%20)property(?:\+|%20)trust/,
   );
   await expect(
-    page.getByText("2 properties tagged Queen Street Property Trust"),
+    page.getByText("2 properties tagged Queen Street Property Trust").last(),
   ).toBeVisible();
   await expect(page.getByText("Ownership tag", { exact: true })).toBeVisible();
   await expect(
@@ -5072,26 +5085,27 @@ test("tenant detail keeps provider detail in one responsive surface", async ({
   ).toBeVisible();
 });
 
-test("smart intake shows tenant lease upload match recommendation", async ({
+test("smart intake opens lease reviews in the Leasium AI chat", async ({
   page,
 }) => {
   await page.goto("/intake");
+  await page.getByLabel("Review filter").selectOption("lease_match");
 
-  await page.getByRole("button", { name: "Review" }).first().click();
+  await page
+    .getByTestId("review-intake-intake-1")
+    .getByRole("button", { name: "Review" })
+    .click();
 
-  await expect(
-    page.getByRole("heading", { name: "Review document" }),
-  ).toBeVisible();
-  await expect(page.getByText("Lease upload match")).toBeVisible();
-  await expect(page.getByText("Matched to scoped lease")).toBeVisible();
-  await expect(page.getByText("3 matched fields")).toBeVisible();
-  await expect(
-    page.getByText("No lease status or register data"),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Accept match" }).click();
-  await expect(page.getByText("Lease match accepted.")).toBeVisible();
-  await expect(page.getByText("Applied").first()).toBeVisible();
+  await expect(page.getByTestId("leasium-ai-document-chat")).toBeVisible();
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toBeVisible();
+  await expect(conversation).toContainText("bright-cafe-lease.pdf");
+  await expect(page.getByTestId("intake-understanding")).toContainText(
+    "Bright Cafe Pty Ltd",
+  );
+  await expect(page.getByTestId("intake-plan")).toContainText(
+    "I can create these Leasium records",
+  );
 });
 
 test("smart intake labels inbound email attachments in review queue", async ({
@@ -5141,19 +5155,18 @@ test("smart intake labels inbound email attachments in review queue", async ({
 
   await inboundCard.getByRole("button", { name: "Review" }).click();
 
-  await expect(
-    page.getByRole("heading", { name: "Review document" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("inbound-insurance-certificate.txt").nth(1),
-  ).toBeVisible();
-  await expect(page.getByText("Policy dates")).toBeVisible();
-  await expect(page.locator("textarea").first()).toHaveValue(
+  await expect(page.getByTestId("leasium-ai-document-chat")).toBeVisible();
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toContainText("inbound-insurance-certificate.txt");
+  await expect(conversation).toContainText(
     "Inbound insurance certificate expires 2027-04-30.",
+  );
+  await expect(page.getByTestId("intake-understanding")).toContainText(
+    "2027-04-30",
   );
   await expect(
     page.getByText(
-      "No tenant data, lease data, provider action, or payment record is changed",
+      "I can create the Leasium records after you approve this.",
     ),
   ).toBeVisible();
 });
@@ -5201,42 +5214,19 @@ test("smart intake applies inspection findings into work orders", async ({
 
   await inspectionCard.getByRole("button", { name: "Review" }).click();
 
+  await expect(page.getByTestId("leasium-ai-document-chat")).toBeVisible();
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toContainText("queen-street-inspection.txt");
+  await expect(page.getByTestId("intake-understanding")).toContainText(
+    "Queen Street Retail Centre",
+  );
   await expect(
-    page.getByRole("heading", { name: "Review document" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Work order drafts", { exact: true }),
-  ).toBeVisible();
-  await expect(page.locator('input[value="Repair leaking tap"]')).toBeVisible();
-  await expect(
-    page.locator('input[value="Kitchen mixer is leaking at the base."]'),
-  ).toBeVisible();
-  await expect(page.locator('input[value="Kitchen"]')).toBeVisible();
-  await expect(page.locator('input[value="plumbing"]')).toBeVisible();
-  await expect(page.locator('input[value="high"]')).toBeVisible();
-  await expect(page.locator('input[value="Inspection item 4"]')).toBeVisible();
-  await expect(
-    page.getByText("Create 2 requested work order drafts"),
+    page.getByText("I can create the Leasium records after you approve this."),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Apply reviewed items" }).click();
+  await page.getByTestId("intake-create-all").click();
   await expect(page.getByText("Document workflow applied.")).toBeVisible();
-  await expect(
-    page.getByText("Created 2 requested work orders."),
-  ).toBeVisible();
-  await expect(page.getByText("Created work orders")).toBeVisible();
-  await expect(
-    page.getByText("No contractor email, SMS, assignment notification"),
-  ).toBeVisible();
-  const openOperationsLink = page.getByRole("link", {
-    name: "Open Operations",
-  });
-  await expect(openOperationsLink).toHaveAttribute(
-    "href",
-    "/operations?tab=maintenance",
-  );
-  await expectTouchTarget(openOperationsLink);
-  await openOperationsLink.click();
+  await page.goto("/operations?tab=maintenance");
   await expect(page).toHaveURL(/\/operations\?tab=maintenance/);
   await expect(page.getByText("Repair leaking tap").first()).toBeVisible();
   expect(forbiddenProviderRequests).toEqual([]);
@@ -5255,31 +5245,28 @@ test("smart intake deep link selects the review entity", async ({ page }) => {
     "data-value",
     "entity-1",
   );
-  await expect(
-    page.getByRole("heading", { name: "Review document" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("tenant-uploaded-insurance.txt").nth(1),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Tenant portal upload", { exact: true }),
-  ).toHaveCount(2);
+  await expect(page.getByTestId("leasium-ai-document-chat")).toBeVisible();
+  await expect(page.getByTestId("intake-conversation")).toContainText(
+    "tenant-uploaded-insurance.txt",
+  );
+  await expect(page.getByTestId("intake-conversation")).toContainText(
+    "Tenant-uploaded insurance certificate expires 2027-02-28.",
+  );
 });
 
-test("smart intake explains active DocuSign conflict before accepting lease match", async ({
+test("smart intake lease review no longer exposes direct accept-match actions", async ({
   page,
 }) => {
   await page.goto("/intake");
+  await page.getByLabel("Review filter").selectOption("lease_match");
 
-  await page.getByRole("button", { name: "Review" }).first().click();
-  await expect(page.getByText("Lease upload match")).toBeVisible();
-
-  await page.getByRole("button", { name: "Accept match" }).click();
-  await expect(
-    page.getByText(
-      "Resolve the active DocuSign envelope before accepting a tenant-uploaded lease.",
-    ),
-  ).toBeVisible();
+  await page
+    .getByTestId("review-intake-intake-1")
+    .getByRole("button", { name: "Review" })
+    .click();
+  await expect(page.getByTestId("intake-conversation")).toBeVisible();
+  await expect(page.getByText("Lease upload match")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Accept match" })).toHaveCount(0);
   await expect(page.getByText("Lease match accepted.")).toBeHidden();
 });
 

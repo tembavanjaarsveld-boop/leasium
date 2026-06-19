@@ -3,10 +3,13 @@
 from typing import Any
 from uuid import UUID
 
+import pytest
 from apps.api.routers import charge_rules as charge_rules_router
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from stewart.ai.document_intake import DocumentExtractionError
+from stewart.core.db import utcnow
 from stewart.core.models import (
     AuditAction,
     BillingDraft,
@@ -25,9 +28,11 @@ from stewart.core.models import (
     TenancyUnit,
     Tenant,
 )
-from stewart.core.db import utcnow
 from stewart.core.settings import Settings
 from stewart.integrations.communications import DeliveryResult
+from tests.support.provider_guardrail import (
+    provider_mutation_audit_rows as _provider_mutation_audit_rows,
+)
 
 
 def _entity_id(session: Session) -> str:
@@ -46,45 +51,6 @@ def _organisation_id(session: Session) -> str:
 
 def _row_count(session: Session, model: Any) -> int:
     return session.scalar(select(func.count()).select_from(model)) or 0
-
-
-def _provider_mutation_audit_rows(session: Session) -> list[AuditAction]:
-    provider_fragments = (
-        "xero",
-        "sendgrid",
-        "twilio",
-        "tenant_email",
-        "tenant email",
-        "payment",
-        "reconciliation",
-    )
-    mutation_fragments = (
-        "send",
-        "sent",
-        "sync",
-        "synced",
-        "dispatch",
-        "payment",
-        "reconciliation",
-        "reconcile",
-    )
-    rows: list[AuditAction] = []
-    for row in session.scalars(select(AuditAction)).all():
-        text = " ".join(
-            str(value or "")
-            for value in (
-                row.action,
-                row.target_table,
-                row.tool_name,
-                row.tool_output_summary,
-                row.error_message,
-            )
-        ).lower()
-        if any(fragment in text for fragment in provider_fragments) and any(
-            fragment in text for fragment in mutation_fragments
-        ):
-            rows.append(row)
-    return rows
 
 
 def _lease_scope(client: TestClient, session: Session) -> dict[str, str]:
@@ -690,6 +656,86 @@ def test_document_intake_can_upload_then_extract_later(
     assert extract_response.json()["openai_response_id"] == "resp_document_later"
 
 
+def test_document_intake_missing_openai_key_fails_without_creating_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    from apps.api.routers import document_intakes as document_intakes_router
+
+    settings = document_intakes_router.get_settings()
+    monkeypatch.setattr(
+        document_intakes_router,
+        "get_settings",
+        lambda: settings.model_copy(update={"openai_api_key": ""}),
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("missing-key.txt", b"lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    get_response = client.get(f"/api/v1/document-intakes/{create_response.json()['id']}")
+    assert get_response.status_code == 200
+    body = get_response.json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == "OpenAI API key is not configured."
+    assert session.scalars(select(Property)).all() == []
+    assert session.scalars(select(Tenant)).all() == []
+    assert session.scalars(select(Lease)).all() == []
+
+
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "OpenAI extraction request failed with status 503.",
+        "OpenAI extraction request failed with status 429.",
+        "OpenAI extraction request timed out.",
+        "OpenAI response was not valid JSON.",
+        "OpenAI extraction was missing required fields: parties.",
+    ],
+)
+def test_document_intake_extraction_failures_mark_failed_without_creating_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+    error_message: str,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        raise DocumentExtractionError(error_message)
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("failed-extraction.txt", b"lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    get_response = client.get(f"/api/v1/document-intakes/{create_response.json()['id']}")
+    assert get_response.status_code == 200
+    body = get_response.json()
+    assert body["status"] == "failed"
+    assert body["error_message"] == error_message
+    assert session.scalars(select(Property)).all() == []
+    assert session.scalars(select(Tenant)).all() == []
+    assert session.scalars(select(Lease)).all() == []
+
+
 def test_document_intake_rejects_unsupported_files(
     client: TestClient,
     session: Session,
@@ -939,6 +985,66 @@ def test_document_intake_review_and_apply_insurance_obligation(
     assert apply_again_response.status_code == 200
     obligations = session.scalars(select(Obligation)).all()
     assert len(obligations) == 1
+
+
+def test_document_intake_apply_marks_intake_applying_before_creating_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    from apps.api.routers import document_intakes as document_intakes_router
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_insurance_extraction(), "resp_document_applying_guard"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    original_apply_obligation = document_intakes_router._apply_document_obligation_intake
+
+    def assert_applying_before_apply(*args: Any, **kwargs: Any) -> list[Obligation]:
+        intake = args[0]
+        assert intake.status == DocumentIntakeStatus.applying
+        persisted = session.get(DocumentIntake, intake.id)
+        assert persisted is not None
+        assert persisted.status == DocumentIntakeStatus.applying
+        return original_apply_obligation(*args, **kwargs)
+
+    monkeypatch.setattr(
+        document_intakes_router,
+        "_apply_document_obligation_intake",
+        assert_applying_before_apply,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("insurance-applying.txt", b"insurance certificate", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": _fake_insurance_extraction()},
+    )
+    assert apply_response.status_code == 200
+    assert apply_response.json()["status"] == "applied"
+
+    apply_again_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": _fake_insurance_extraction()},
+    )
+    assert apply_again_response.status_code == 200
+    assert apply_again_response.json()["status"] == "applied"
+    assert len(session.scalars(select(Obligation)).all()) == 1
 
 
 def test_document_intake_apply_insurance_uses_existing_document_scope(
@@ -2614,6 +2720,148 @@ def test_document_intake_apply_purchase_contract_reuses_selected_property(
     assert created_prop is None
 
 
+def test_document_intake_apply_purchase_contract_matches_existing_building_key(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    from apps.api.routers.lease_intakes import _building_key
+
+    extraction_holder: dict[str, dict[str, Any]] = {}
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction_holder["data"], "resp_purchase_building_match"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = UUID(_entity_id(session))
+    b6_key = _building_key("Leitchs B6", "205 Leitchs Road, Brendale")
+    assert b6_key is not None
+    existing_b6 = Property(
+        entity_id=entity_id,
+        name="Leitchs B6",
+        street_address="205 Leitchs Road, Brendale",
+        country_code="AU",
+        property_type="other",
+        has_solar_pv=False,
+        property_metadata={"building_key": b6_key},
+    )
+    session.add(existing_b6)
+    session.commit()
+
+    def apply_purchase(name: str, unit_label: str) -> dict[str, Any]:
+        extraction = _fake_purchase_contract_extraction()
+        extraction["properties"] = [
+            {
+                **extraction["properties"][0],
+                "name": name,
+                "address": "205 Leitchs Road, Brendale",
+                "unit_label": unit_label,
+            }
+        ]
+        extraction_holder["data"] = extraction
+        create_response = client.post(
+            "/api/v1/document-intakes",
+            data={"entity_id": str(entity_id)},
+            files={"file": ("purchase-building.txt", b"contract", "text/plain")},
+        )
+        assert create_response.status_code == 201
+        apply_response = client.post(
+            f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+            json={"review_data": extraction},
+        )
+        assert apply_response.status_code == 200
+        return apply_response.json()
+
+    body_b6 = apply_purchase(
+        "Building 6, Unit 5, 205 Leitchs Road, Brendale",
+        "Unit 5",
+    )
+    assert body_b6["review_data"]["applied"]["action"] == "linked_property_register_records"
+    assert body_b6["review_data"]["applied"]["property_id"] == str(existing_b6.id)
+
+    body_b3 = apply_purchase(
+        "Building 3, Unit 1, 205 Leitchs Road, Brendale",
+        "Unit 1",
+    )
+    assert body_b3["review_data"]["applied"]["action"] == "created_property_register_records"
+    assert body_b3["review_data"]["applied"]["property_id"] != str(existing_b6.id)
+
+
+def test_document_intake_apply_purchase_contract_routes_ambiguous_property_match_to_review(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    extraction = _fake_purchase_contract_extraction()
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_purchase_ambiguous_match"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = UUID(_entity_id(session))
+    session.add_all(
+        [
+            Property(
+                entity_id=entity_id,
+                name="Docklands Trade Centre",
+                street_address="18 Harbour Road",
+                country_code="AU",
+                property_type="other",
+                has_solar_pv=False,
+                property_metadata={"source": "manual"},
+            ),
+            Property(
+                entity_id=entity_id,
+                name="Docklands Trade Centre",
+                street_address="18 Harbour Road",
+                country_code="AU",
+                property_type="other",
+                has_solar_pv=False,
+                property_metadata={"source": "manual"},
+            ),
+        ]
+    )
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(entity_id)},
+        files={"file": ("ambiguous-purchase.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": extraction},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "needs_attention"
+    assert "applied" not in body["review_data"]
+    candidates = body["review_data"]["property_match_candidates"]
+    assert len(candidates) == 2
+    assert {candidate["name"] for candidate in candidates} == {"Docklands Trade Centre"}
+    assert session.scalar(select(func.count()).select_from(TenancyUnit)) == 0
+
+
 def test_document_intake_apply_purchase_contract_rejects_missing_property_context(
     client: TestClient,
     session: Session,
@@ -2648,7 +2896,64 @@ def test_document_intake_apply_purchase_contract_rejects_missing_property_contex
         f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
         json={"review_data": extraction},
     )
-    assert apply_response.status_code == 422
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "needs_attention"
+    assert body["review_data"]["property_match_issue"] == (
+        "Choose an existing property or confirm the property name/address."
+    )
+    assert session.scalars(select(Property)).all() == []
+
+
+def test_document_intake_apply_purchase_contract_routes_placeholder_property_to_review(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    extraction = _fake_purchase_contract_extraction()
+    extraction["properties"] = [
+        {
+            **extraction["properties"][0],
+            "name": "Lease property",
+            "address": None,
+            "unit_label": "Warehouse 1",
+        }
+    ]
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_purchase_contract_placeholder_property"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("lease-property.txt", b"contract", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": extraction},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "needs_attention"
+    assert body["review_data"]["property_match_issue"] == (
+        "Choose an existing property or confirm the property name/address."
+    )
+    assert session.scalars(select(Property)).all() == []
+    assert session.scalars(select(TenancyUnit)).all() == []
 
 
 def test_document_intake_apply_lease_creates_register_records(

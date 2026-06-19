@@ -140,11 +140,18 @@ type Plan = {
 function planForKind(kind: InboxTriageKind): Plan {
   switch (kind) {
     case "maintenance_request":
-    case "task_or_reminder":
       return {
         action: "Create a maintenance work order",
         icon: <Wrench size={16} />,
         promoteKind: "maintenance_request",
+        needsTenant: false,
+        note: null,
+      };
+    case "task_or_reminder":
+      return {
+        action: "Create an Operations task",
+        icon: <Wrench size={16} />,
+        promoteKind: "task_or_reminder",
         needsTenant: false,
         note: null,
       };

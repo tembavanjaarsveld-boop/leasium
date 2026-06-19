@@ -236,6 +236,7 @@ class DocumentIntakeStatus(enum.StrEnum):
     reading = "reading"
     ready_for_review = "ready_for_review"
     needs_attention = "needs_attention"
+    applying = "applying"
     applied = "applied"
     failed = "failed"
 
