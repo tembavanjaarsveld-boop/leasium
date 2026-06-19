@@ -85,6 +85,18 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(horizontalOverflow).toBeLessThanOrEqual(1);
 }
 
+async function selectReviewFilter(page: Page, value: string) {
+  const reviewPanel = page.getByTestId("smart-intake-review-panel");
+  await expect(reviewPanel).toBeVisible();
+  const filter = reviewPanel.getByLabel("Review filter");
+  await expect(filter).toBeVisible();
+  await expect(
+    reviewPanel.getByRole("button", { name: "Download queue CSV" }),
+  ).toBeEnabled();
+  await filter.selectOption(value);
+  await expect(filter).toHaveValue(value);
+}
+
 function watchForbiddenDocumentReviewRequests(page: Page) {
   const forbiddenRequests: string[] = [];
   page.on("request", (request) => {
@@ -5089,7 +5101,7 @@ test("smart intake opens lease reviews in the Leasium AI chat", async ({
   page,
 }) => {
   await page.goto("/intake");
-  await page.getByLabel("Review filter").selectOption("lease_match");
+  await selectReviewFilter(page, "lease_match");
 
   await page
     .getByTestId("review-intake-intake-1")
@@ -5113,7 +5125,7 @@ test("smart intake labels inbound email attachments in review queue", async ({
 }) => {
   await page.goto("/intake");
 
-  await page.getByLabel("Review filter").selectOption("tenant_portal");
+  await selectReviewFilter(page, "tenant_portal");
   const tenantInsuranceCard = page.getByTestId(
     "review-intake-intake-tenant-upload-insurance-1",
   );
@@ -5141,9 +5153,7 @@ test("smart intake labels inbound email attachments in review queue", async ({
   );
   await expect(inboundCard).toBeHidden();
 
-  await page
-    .getByLabel("Review filter")
-    .selectOption("inbound_email_attachment");
+  await selectReviewFilter(page, "inbound_email_attachment");
   await expect(tenantInsuranceCard).toBeHidden();
   await expect(inboundCard.getByText("Inbound email attachment")).toBeVisible();
   await expect(
@@ -5189,7 +5199,7 @@ test("smart intake applies inspection findings into work orders", async ({
 
   await page.goto("/intake");
 
-  await page.getByLabel("Review filter").selectOption("inspection_report");
+  await selectReviewFilter(page, "inspection_report");
   const inspectionCard = page.getByTestId("review-intake-intake-inspection-1");
   await expect(
     inspectionCard.getByText("inspection report", { exact: true }),
@@ -5258,7 +5268,7 @@ test("smart intake lease review no longer exposes direct accept-match actions", 
   page,
 }) => {
   await page.goto("/intake");
-  await page.getByLabel("Review filter").selectOption("lease_match");
+  await selectReviewFilter(page, "lease_match");
 
   await page
     .getByTestId("review-intake-intake-1")
