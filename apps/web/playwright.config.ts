@@ -8,7 +8,13 @@ export default defineConfig({
   testMatch: "**/*.spec.ts",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
+  workers: process.env.PLAYWRIGHT_WORKERS
+    ? Number(process.env.PLAYWRIGHT_WORKERS)
+    : 4,
   retries: process.env.CI ? 2 : 0,
+  expect: {
+    timeout: 10_000,
+  },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,

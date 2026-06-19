@@ -1287,6 +1287,15 @@ Tier 2 follows after the highest-leverage Tier 1 items land.
   full frontend Playwright suite is green locally: 370 passed, 16 skipped on
   2026-06-19. Remaining proof point before moving this to Built: commit/push so
   GitHub Actions proves the new workflow on `main`.
+- [ ] **Platform stabilization v2 / MVP hosted readiness:** Repo-side work is
+  locally verified for PII-scrubbed backend/frontend Sentry wiring, a read-only
+  live-register integrity report, smoke stability under the Sentry bundle, and
+  the operator evidence ledger at
+  `docs/mvp-readiness-punchlist-2026-06-19.md`. Remaining proof before moving
+  to Built is hosted/operator-run: Render backend Sentry event + alert, Vercel
+  frontend Sentry event + source maps, hosted Neon dry-run/review/backup/apply
+  discipline, and the six production golden paths with Blockers reproduced as
+  tests before fixes.
 
 ### DoorLoop benchmark refocus (2026-05-31) — current top priority
 

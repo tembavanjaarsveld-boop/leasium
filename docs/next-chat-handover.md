@@ -2,6 +2,56 @@
 
 Last updated: 2026-06-19
 
+## Continuation - 2026-06-19 (Stabilization v2 repo-side prep)
+
+Temba asked to continue with the Stabilization v2 plan using agents. Repo-side
+work is complete locally; hosted proof remains operator-run.
+
+What changed so far:
+- Backend Sentry now uses a `before_send` scrubber and `send_default_pii=False`
+  so tenant names/emails, owner ABNs, provider tokens, cookies, and contact
+  payloads are filtered before upload.
+- Frontend Sentry is wired through `@sentry/nextjs`, App Router instrumentation,
+  server/edge config, and `src/app/global-error.tsx`. The config is DSN-gated,
+  keeps `sendDefaultPii: false`, uses a small traces sample rate, and leaves
+  Session Replay off.
+- Added `scripts.integrity_report`, a read-only, provider-inert report for
+  orphan units, leases tied to deleted units/properties, duplicate tenants by
+  ABN/name, and obligations/documents/rent charge rules pointing at deleted
+  parents.
+- Added `docs/mvp-readiness-punchlist-2026-06-19.md` as the operator evidence
+  ledger for Render/Vercel/Sentry/Neon and the six production golden paths.
+- `docs/deployment.md` now documents frontend/backend Sentry env vars, alert
+  routing, source maps, and hosted data-integrity dry-run/backup/apply
+  discipline.
+- Frontend smoke stability is tightened for the heavier Sentry dev bundle:
+  Playwright now defaults to 4 workers locally/CI unless overridden, expect
+  timeout is 10s, and the command-search smoke waits for the workspace toolbar
+  before opening the hydrated command bar.
+
+Verification:
+- Red first: new backend observability/integrity tests failed on missing modules.
+- Red first: new frontend Sentry smoke failed because `@sentry/nextjs` and
+  App Router wiring were absent.
+- Focused checks:
+  `.venv/bin/python -m pytest tests/unit/test_observability.py tests/integration/test_integrity_report.py -q`
+  — 2 passed; `NODE_ENV=development ./node_modules/.bin/playwright test
+  tests/smoke/sentry-wiring.spec.ts --workers=1` — 1 passed; `NODE_ENV=development
+  ./node_modules/.bin/playwright test tests/smoke/ai-global-ask.spec.ts --workers=1`
+  — 2 passed.
+- Backend: `.venv/bin/python -m ruff check apps stewart tests scripts` passed;
+  `.venv/bin/python -m pytest -ra` — 718 passed, 1 skipped, 10 warnings.
+- Frontend: targeted eslint on touched Sentry/test files passed;
+  `./node_modules/.bin/tsc --noEmit` passed; production `next build` with local
+  `NEXT_TEST_WASM_DIR` passed.
+- Full frontend smoke: `NODE_ENV=development ./node_modules/.bin/playwright
+  test` — 371 passed, 16 skipped.
+
+Remaining after repo-side commit/push:
+- Hosted proof remains pending and must be run by the operator: Sentry events
+  and alerts, source-map confirmation, hosted Neon dry-runs/backups/applies, and
+  the six real-data golden paths.
+
 ## Continuation - 2026-06-19 (Platform stabilization v1)
 
 Temba chose the stabilization track: CI first, then Smart Intake / Leasium AI

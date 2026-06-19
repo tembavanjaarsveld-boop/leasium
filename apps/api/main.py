@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 from stewart.core.settings import get_settings
 
+from apps.api.observability import scrub_sentry_event
 from apps.api.routers import (
     activity_feed,
     ai,
@@ -64,6 +65,8 @@ if settings.sentry_dsn:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             environment=settings.sentry_environment or settings.app_env,
+            before_send=scrub_sentry_event,
+            send_default_pii=False,
             traces_sample_rate=0.1,
         )
     except Exception:  # never let observability break startup

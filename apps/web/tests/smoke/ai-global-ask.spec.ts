@@ -1,10 +1,32 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { mockLeasiumApi } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
+
+async function openCommandSearch(page: Page) {
+  const toolbar = page.getByRole("toolbar", { name: "Workspace utilities" });
+  await expect(toolbar).toBeVisible();
+  const searchButton = toolbar.getByRole("button", { name: "Open search" });
+  await expect(searchButton).toBeVisible();
+
+  const dialog = page.getByRole("dialog", { name: "Command search" });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await searchButton.click();
+    const opened = await dialog
+      .waitFor({ state: "visible", timeout: 3_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    if (opened) return;
+    await page.waitForTimeout(250);
+  }
+
+  await expect(dialog).toBeVisible();
+}
 
 // The ⌘K command bar becomes a Leasium AI launcher from any page: typing a
 // question surfaces an "Ask Leasium AI" action that carries the text to
@@ -13,7 +35,7 @@ test("command bar surfaces an Ask Leasium AI action from any page", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open search" }).click();
+  await openCommandSearch(page);
 
   const input = page.getByRole("textbox", { name: "Command search" });
   await expect(input).toBeVisible();

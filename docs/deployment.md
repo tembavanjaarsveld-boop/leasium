@@ -195,7 +195,7 @@ reserved org exists.
 ## Observability
 
 Error/performance reporting via Sentry is optional and **disabled by default**.
-Set these on the API service to enable it:
+Set these on the API service to enable backend error reporting:
 
 ```bash
 SENTRY_DSN=
@@ -208,8 +208,11 @@ SENTRY_ENVIRONMENT=
   `APP_ENV` when unset.
 
 Sentry init is guarded so a missing package or bad DSN can never break API
-startup. Regardless of Sentry, the API already emits a `server-timing` response
-header and an `x-request-id` per request for tracing slow live pages from logs.
+startup. Events pass through a `before_send` scrubber and `send_default_pii`
+stays disabled so tenant names/emails, owner ABNs, provider tokens, cookies,
+and contact payloads are filtered before upload. Regardless of Sentry, the API
+already emits a `server-timing` response header and an `x-request-id` per
+request for tracing slow live pages from logs.
 
 Frontend observability uses Vercel Speed Insights. The web app mounts
 `<SpeedInsights />` from `@vercel/speed-insights/next` in the root layout, so
@@ -217,6 +220,41 @@ Core Web Vitals start flowing after a Vercel deployment with Speed Insights
 enabled for the project. The default configuration is enough for Leasium's
 current single frontend; no tenant, document, provider payload, or business
 event data is sent through this client-side web-vitals path.
+
+Frontend error reporting uses `@sentry/nextjs` and is also disabled unless a
+DSN is configured. Set these on Vercel when enabling it:
+
+```bash
+NEXT_PUBLIC_SENTRY_DSN=
+NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
+SENTRY_AUTH_TOKEN=
+SENTRY_ORG=
+SENTRY_PROJECT=
+```
+
+- `NEXT_PUBLIC_SENTRY_DSN` enables browser/App Router error capture.
+- `NEXT_PUBLIC_SENTRY_ENVIRONMENT` labels frontend events; use `production` for
+  `https://leasium.ai`.
+- `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and `SENTRY_PROJECT` enable source-map
+  upload during Vercel builds. Keep the token secret.
+
+The frontend Sentry config keeps `sendDefaultPii: false`, runs the same style
+of PII scrubber, and does not enable Session Replay. App Router render errors
+are captured by `src/app/global-error.tsx`; server and edge errors are
+registered through `instrumentation.ts`.
+
+Production verification is operator-run:
+
+1. Confirm the Render API service has `SENTRY_DSN` and
+   `SENTRY_ENVIRONMENT=production`, then redeploy.
+2. Trigger one controlled backend error and confirm a Sentry event with the
+   production environment, request context, and no tenant/provider payload.
+3. Confirm the Vercel frontend has the Sentry env vars, then redeploy.
+4. Trigger one controlled frontend error and confirm the event plus readable
+   source maps in Sentry.
+5. Configure Sentry alert rules for new issues and error spikes on production,
+   routed to email and/or the connected Slack. Keep frontend and backend alerts
+   distinguishable by project or environment/tag.
 
 ## Bank Feed (Basiq)
 
@@ -521,6 +559,29 @@ uv sync --frozen && uv cache prune --ci
 Use the virtualenv executables in the start command because the build command
 already creates `.venv`; this avoids re-resolving or recompiling dependencies
 during instance startup.
+
+### Hosted Data-Integrity Discipline
+
+Anything touching hosted Neon data stays review-first:
+
+1. Confirm the Render shell, Neon SQL console, or local command is pointed at
+   the intended production database.
+2. Run dry-run/read-only tooling first and save the output for review.
+3. Take a Neon backup branch before any approved `--apply`.
+4. Apply once, then rerun the dry-run/report to prove the plan is empty or the
+   targeted defect class is cleared.
+5. Spot-check audit rows for any approved hosted mutation.
+
+The read-only integrity report is:
+
+```bash
+DATABASE_URL=<neon-url> .venv/bin/python -m scripts.integrity_report --entity <entity-id>
+```
+
+It reports orphan units, leases tied to deleted units/properties, duplicate
+tenants by ABN/name, and obligations/documents/rent charge rules pointing at
+soft-deleted parent records. It never mutates data and never calls Xero, Basiq,
+SendGrid, Twilio, tenant email/SMS, or payment providers.
 
 The API deploy artifact must include `alembic.ini` and the full `migrations/`
 tree. The Python wheel build is configured to force-include both so Alembic can
