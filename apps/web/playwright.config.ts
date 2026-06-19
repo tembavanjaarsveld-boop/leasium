@@ -6,14 +6,17 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: "./tests/smoke",
   testMatch: "**/*.spec.ts",
+  timeout: process.env.CI ? 90_000 : 30_000,
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   workers: process.env.PLAYWRIGHT_WORKERS
     ? Number(process.env.PLAYWRIGHT_WORKERS)
-    : 4,
+    : process.env.CI
+      ? 2
+      : 4,
   retries: process.env.CI ? 2 : 0,
   expect: {
-    timeout: 10_000,
+    timeout: process.env.CI ? 20_000 : 10_000,
   },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
