@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -559,6 +559,18 @@ fixes · deferrals.
   opening detail and exporting packets do not send email/SMS, dispatch
   providers, call Xero/Basiq, mutate obligations, create payments, or reconcile
   anything · none deferred.
+- 2026-06-21 · Work Approvals inbox v1 · reused the shipped Horizon Work tab
+  and queue-card patterns without new tokens or a new route · screens checked
+  at 1440/390 (`output/playwright/work-approvals-inbox-1440.png`,
+  `output/playwright/work-approvals-inbox-390.png`) · fixes in-slice: added a
+  read-only Approvals tab with candidate summary chips, grouped Ready / Needs
+  evidence/setup / Provider-adjacent lanes, source-record links, and local
+  approvals CSV copy/download while keeping direct approval and provider actions
+  out of the inbox · mobile rows stack cleanly with 44px source/export controls
+  and no horizontal overflow · provider guardrails unchanged: the inbox does
+  not approve, apply, complete, send email/SMS, dispatch providers, post to
+  Xero/Basiq, create payments, reconcile, or mutate provider history · none
+  deferred.
 
 ## UX Debt Register
 

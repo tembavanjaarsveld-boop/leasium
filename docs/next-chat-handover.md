@@ -1,6 +1,47 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
+
+## Continuation - 2026-06-21 (Work approvals inbox v1)
+
+Temba approved the read-only Work approvals inbox as the next operations slice.
+
+What changed:
+- Added `/operations?tab=approvals` as a first-class Work tab.
+- The inbox derives approval candidates from the Work page's existing data:
+  Smart Intake reviews, maintenance owner-approval requests, invoice drafts
+  ready for approval, compliance checks with linked evidence, tenant onboarding
+  review/follow-up rows, and assignment notices ready for review.
+- Grouped rows into Ready, Needs evidence/setup, and Provider-adjacent lanes
+  with status chips, reason/context, source-record links, and a visible
+  review-only guardrail.
+- Added local approvals CSV copy/download. Export is local-only and does not
+  approve, apply, complete, send, dispatch, post to Xero/Basiq, create
+  payments, reconcile, update provider history, or mutate source records.
+- Added focused smoke coverage for candidate mix, source links, local export,
+  touch targets, and forbidden provider/comms/payment/reconciliation mutations.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-inbox-1440.png` and
+  `output/playwright/work-approvals-inbox-390.png`.
+
+Verification:
+- Red first: the new approvals smoke failed waiting for the missing Approvals
+  tab.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 1 passed after implementation.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+- Temporary mocked screenshot harness passed and was removed after producing
+  the UX evidence images.
+
+Guardrails held: the Approvals inbox is read-only. It adds no Xero/Basiq,
+SendGrid/Twilio, tenant/owner/provider email, SMS, provider dispatch, Smart
+Intake apply, maintenance approval, compliance completion, invoice approval or
+delivery, payment, reconciliation, or provider-history mutation path.
 
 ## Continuation - 2026-06-20 (Compliance evidence detail v1.1)
 

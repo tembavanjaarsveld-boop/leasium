@@ -143,6 +143,8 @@ const ARREARS_REVIEW_PACKET_GUARDRAIL =
   "Review-only arrears packet: downloading or copying this file does not send email, SMS, tenant messages, owner messages, provider dispatch, Xero/Basiq writes, payment reconciliation, invoice updates, arrears status changes, reminder updates, escalation updates, or assignment updates.";
 const COMPLIANCE_REVIEW_PACKET_GUARDRAIL =
   "Review-only compliance packet: copying or downloading this file does not complete checks, upload evidence, create or update obligations, apply Smart Intake, create or update work orders, send email/SMS, dispatch providers, create billing drafts, call Xero/Basiq, or reconcile payments.";
+const APPROVALS_REVIEW_PACKET_GUARDRAIL =
+  "Review-only approvals packet: copying or downloading this file does not approve, complete, apply, dispatch, send email/SMS, post to Xero/Basiq, reconcile payments, update provider history, create billing drafts, or mutate Smart Intake, compliance, maintenance, onboarding, invoice, obligation, arrears, assignment, provider, comms, payment, or reconciliation records.";
 const COMPLIANCE_CATEGORIES = new Set([
   "insurance",
   "bank_guarantee",
@@ -156,6 +158,11 @@ const COMPLIANCE_DOCUMENT_TYPES = new Set([
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
+  {
+    id: "approvals",
+    label: "Approvals",
+    description: "Review-only decision queue",
+  },
   {
     id: "calendar",
     label: "Calendar",
@@ -173,6 +180,38 @@ const tabs = [
   },
   { id: "arrears", label: "Arrears", description: "Balances and escalation" },
 ] as const;
+
+const approvalGroups = [
+  {
+    id: "ready",
+    label: "Ready",
+    description: "Reviewable now",
+    tone: "primary",
+  },
+  {
+    id: "blocked",
+    label: "Needs evidence/setup",
+    description: "Needs context first",
+    tone: "warning",
+  },
+  {
+    id: "provider_adjacent",
+    label: "Provider-adjacent",
+    description: "Could lead to send, dispatch, Xero, or payment work",
+    tone: "danger",
+  },
+  {
+    id: "watching",
+    label: "Recently safe/no action",
+    description: "Tracked but not urgent",
+    tone: "neutral",
+  },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  label: string;
+  description: string;
+  tone: StatusTone;
+}>;
 
 const maintenanceStatuses: MaintenanceWorkOrderStatus[] = [
   "requested",
@@ -362,6 +401,31 @@ type AssignableQueueItem = Extract<
   QueueItem,
   { kind: "obligation" | "maintenance" | "arrears" }
 >;
+
+type ApprovalGroupId = (typeof approvalGroups)[number]["id"];
+
+type ApprovalCandidateKind =
+  | "smart_intake"
+  | "maintenance"
+  | "invoice_draft"
+  | "compliance"
+  | "onboarding"
+  | "assignment_notice";
+
+type ApprovalCandidate = {
+  id: string;
+  kind: ApprovalCandidateKind;
+  group: ApprovalGroupId;
+  tone: StatusTone;
+  title: string;
+  sourceLabel: string;
+  statusLabel: string;
+  context: string;
+  reason: string;
+  dueDate: string | null;
+  href: string;
+  guardrail: string;
+};
 
 type WorkAssignmentHistoryEntry = {
   event: string;
@@ -1180,6 +1244,272 @@ function operationsQueueReviewCsv(items: QueueItem[]) {
       "",
       "",
       OPERATIONS_QUEUE_EXPORT_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+function approvalContext(
+  scope: {
+    property_id?: string | null;
+    tenant_id?: string | null;
+  },
+  properties: PropertyRecord[],
+  tenants: TenantRecord[],
+) {
+  return [
+    propertyName(properties, scope.property_id),
+    scope.tenant_id ? tenantName(tenants, scope.tenant_id) : null,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function approvalKindLabel(kind: ApprovalCandidateKind) {
+  const labels: Record<ApprovalCandidateKind, string> = {
+    smart_intake: "Smart Intake",
+    maintenance: "Maintenance",
+    invoice_draft: "Invoice draft",
+    compliance: "Compliance",
+    onboarding: "Tenant onboarding",
+    assignment_notice: "Assignment notice",
+  };
+  return labels[kind];
+}
+
+function buildApprovalCandidates({
+  intakes,
+  maintenance,
+  invoiceDrafts,
+  complianceChecks,
+  onboardings,
+  readyNotificationItems,
+  properties,
+  tenants,
+}: {
+  intakes: DocumentIntakeRecord[];
+  maintenance: MaintenanceWorkOrderRecord[];
+  invoiceDrafts: InvoiceDraftRecord[];
+  complianceChecks: ComplianceCheckRecord[];
+  onboardings: TenantOnboardingRecord[];
+  readyNotificationItems: AssignableQueueItem[];
+  properties: PropertyRecord[];
+  tenants: TenantRecord[];
+}) {
+  const candidates: ApprovalCandidate[] = [];
+
+  for (const intake of intakes.filter((item) =>
+    ["ready_for_review", "needs_attention", "failed"].includes(item.status),
+  )) {
+    const needsSetup = intake.status !== "ready_for_review";
+    candidates.push({
+      id: `smart-intake-${intake.id}`,
+      kind: "smart_intake",
+      group: needsSetup ? "blocked" : "ready",
+      tone: intakeTone(intake),
+      title: intakeTitle(intake),
+      sourceLabel: "Smart Intake",
+      statusLabel: intakeChip(intake),
+      context: [documentTypeLabel(intake.document_type), intake.filename]
+        .filter(Boolean)
+        .join(" - "),
+      reason:
+        intake.summary ??
+        "Review extracted document fields before applying anything.",
+      dueDate: intake.created_at,
+      href: intakeReviewHref(intake),
+      guardrail:
+        "Open the Smart Intake review to approve, edit, ignore, or apply extracted fields.",
+    });
+  }
+
+  for (const workOrder of maintenance.filter(
+    (item) =>
+      item.approval_status === "pending" ||
+      item.status === "awaiting_approval",
+  )) {
+    candidates.push({
+      id: `maintenance-${workOrder.id}`,
+      kind: "maintenance",
+      group: "provider_adjacent",
+      tone: maintenanceTone(workOrder),
+      title: workOrder.title,
+      sourceLabel: "Maintenance",
+      statusLabel: "Needs approval",
+      context: approvalContext(workOrder, properties, tenants),
+      reason: [
+        workOrder.quote_amount_cents
+          ? `Quote ${formatMoney(workOrder.quote_amount_cents)}`
+          : null,
+        workOrder.approval_limit_cents
+          ? `Limit ${formatMoney(workOrder.approval_limit_cents)}`
+          : null,
+        workOrder.notes,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      dueDate: workOrder.due_date,
+      href: `/operations/maintenance/${encodeURIComponent(workOrder.id)}`,
+      guardrail:
+        "Review the maintenance record before any owner approval, contractor dispatch, or invoice work.",
+    });
+  }
+
+  for (const draft of invoiceDrafts.filter(
+    (item) => item.status === "ready_for_approval",
+  )) {
+    candidates.push({
+      id: `invoice-draft-${draft.id}`,
+      kind: "invoice_draft",
+      group: "provider_adjacent",
+      tone: "primary",
+      title: draft.title,
+      sourceLabel: "Billing",
+      statusLabel: "Ready for approval",
+      context: [
+        approvalContext(draft, properties, tenants),
+        draft.recipient_name,
+        formatMoney(draft.total_cents, draft.currency),
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      reason:
+        draft.notes ??
+        "Review the invoice draft before tenant delivery or Xero posting.",
+      dueDate: draft.due_date,
+      href: `/billing-readiness?entity_id=${encodeURIComponent(
+        draft.entity_id,
+      )}&invoice_id=${encodeURIComponent(draft.id)}`,
+      guardrail:
+        "Open Billing Readiness to approve the draft, send tenant email, or post to Xero.",
+    });
+  }
+
+  for (const check of complianceChecks.filter(canCompleteComplianceCheck)) {
+    candidates.push({
+      id: `compliance-${check.id}`,
+      kind: "compliance",
+      group: "ready",
+      tone: complianceCheckTone(check),
+      title: check.title,
+      sourceLabel: "Compliance",
+      statusLabel: "Evidence linked",
+      context: complianceScopeContext(check, properties, tenants),
+      reason: complianceCheckNextAction(check),
+      dueDate: check.next_due_date,
+      href: `/operations?tab=compliance#compliance-check-${encodeURIComponent(
+        check.id,
+      )}`,
+      guardrail:
+        "Open the Compliance tab to inspect evidence before completing and rolling the check forward.",
+    });
+  }
+
+  for (const onboarding of onboardings.filter(
+    (item) => item.status === "submitted" || dueRank(item.due_date) < 0,
+  )) {
+    const submitted = onboarding.status === "submitted";
+    candidates.push({
+      id: `onboarding-${onboarding.id}`,
+      kind: "onboarding",
+      group: submitted ? "ready" : "blocked",
+      tone: onboardingTone(onboarding),
+      title: submitted
+        ? "Tenant onboarding ready for review"
+        : "Tenant onboarding follow-up",
+      sourceLabel: "Tenant onboarding",
+      statusLabel: submitted ? "Submitted" : sentenceLabel(onboarding.status),
+      context: tenantName(tenants, onboarding.tenant_id),
+      reason: submitted
+        ? "Tenant submitted onboarding details for operator review."
+        : "Onboarding is overdue and needs follow-up before approval.",
+      dueDate: onboarding.due_date,
+      href: "/tenants",
+      guardrail:
+        "Open Tenants to review onboarding details before applying or sending any portal follow-up.",
+    });
+  }
+
+  for (const item of readyNotificationItems) {
+    const assignment = workAssignment(item.record.metadata);
+    candidates.push({
+      id: `assignment-notice-${item.id}`,
+      kind: "assignment_notice",
+      group: "provider_adjacent",
+      tone: "primary",
+      title: "Assignment notice ready",
+      sourceLabel: queueKindLabel(item),
+      statusLabel: "Ready",
+      context: [
+        item.title,
+        assignment?.assignedName,
+        assignment?.assignedEmail,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      reason:
+        assignment?.notificationDetail ??
+        "Assignment email preview is ready for operator review.",
+      dueDate: item.dueDate,
+      href: item.href,
+      guardrail:
+        "Use the Queue controls to review and send the assignment notice.",
+    });
+  }
+
+  const groupRank: Record<ApprovalGroupId, number> = {
+    ready: 0,
+    blocked: 1,
+    provider_adjacent: 2,
+    watching: 3,
+  };
+  return candidates.sort((a, b) => {
+    const groupDelta = groupRank[a.group] - groupRank[b.group];
+    if (groupDelta !== 0) {
+      return groupDelta;
+    }
+    const dueDelta = dueRank(a.dueDate) - dueRank(b.dueDate);
+    if (dueDelta !== 0) {
+      return dueDelta;
+    }
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function operationsApprovalsReviewCsv(candidates: ApprovalCandidate[]) {
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Kind",
+      "Title",
+      "Source",
+      "Status",
+      "Context",
+      "Due",
+      "Reason",
+      "Guardrail",
+    ],
+    ...candidates.map((candidate) => [
+      approvalKindLabel(candidate.kind),
+      candidate.title,
+      candidate.sourceLabel,
+      candidate.statusLabel,
+      candidate.context,
+      candidate.kind === "smart_intake"
+        ? formatDateTime(candidate.dueDate)
+        : formatDate(candidate.dueDate),
+      candidate.reason,
+      APPROVALS_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "",
+      "",
+      "Review-only",
+      "",
+      "",
+      "No approval or provider action ran.",
+      APPROVALS_REVIEW_PACKET_GUARDRAIL,
     ],
   ];
 
@@ -3523,6 +3853,44 @@ function OperationsWorkspace() {
       done: 0,
     } satisfies Record<AssignmentNoticeGroup, number>,
   );
+  const approvalCandidates = useMemo(
+    () =>
+      buildApprovalCandidates({
+        intakes,
+        maintenance,
+        invoiceDrafts,
+        complianceChecks,
+        onboardings,
+        readyNotificationItems,
+        properties,
+        tenants,
+      }),
+    [
+      complianceChecks,
+      intakes,
+      invoiceDrafts,
+      maintenance,
+      onboardings,
+      properties,
+      readyNotificationItems,
+      tenants,
+    ],
+  );
+  const approvalCandidateGroups = approvalGroups.map((group) => ({
+    ...group,
+    items: approvalCandidates.filter(
+      (candidate) => candidate.group === group.id,
+    ),
+  }));
+  const approvalReadyCount = approvalCandidates.filter(
+    (candidate) => candidate.group === "ready",
+  ).length;
+  const approvalBlockedCount = approvalCandidates.filter(
+    (candidate) => candidate.group === "blocked",
+  ).length;
+  const approvalProviderAdjacentCount = approvalCandidates.filter(
+    (candidate) => candidate.group === "provider_adjacent",
+  ).length;
   const queueReviewCsv = () =>
     operationsQueueReviewCsv(visibleWorkItems);
   const copyQueueCsv = async () => {
@@ -3534,6 +3902,19 @@ function OperationsWorkspace() {
         type: "text/csv;charset=utf-8",
       }),
       "operations-work-queue-review.csv",
+    );
+  };
+  const approvalsCsvText = () =>
+    operationsApprovalsReviewCsv(approvalCandidates);
+  const copyApprovalsCsv = async () => {
+    await copyTextToClipboard(approvalsCsvText());
+  };
+  const downloadApprovalsCsv = () => {
+    saveBlob(
+      new Blob([approvalsCsvText()], {
+        type: "text/csv;charset=utf-8",
+      }),
+      "operations-approvals-review.csv",
     );
   };
   const unassignedWorkCount = assignableOpenQueueItems.filter(
@@ -4491,9 +4872,12 @@ function OperationsWorkspace() {
             actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
-            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-5">
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-6">
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Queue
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Approvals
               </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Calendar
@@ -4604,7 +4988,7 @@ function OperationsWorkspace() {
             ) : null}
 
             <div
-              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-5 md:gap-2 md:rounded-[12px]"
+              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-6 md:gap-2 md:rounded-[12px]"
               role="tablist"
               aria-label="Operations sections"
             >
@@ -5217,6 +5601,163 @@ function OperationsWorkspace() {
                   </div>
                 </aside>
               </section>
+            ) : null}
+
+            {activeTab === "approvals" ? (
+              <SectionPanel
+                title="Approvals inbox"
+                description="Read-only lens over work that needs an operator decision."
+                icon={<ClipboardList size={17} className="text-primary" />}
+                actions={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-11 px-3"
+                      disabled={
+                        !selectedEntityId ||
+                        operationsLoading ||
+                        approvalCandidates.length === 0
+                      }
+                      onClick={downloadApprovalsCsv}
+                    >
+                      <Download size={15} />
+                      Download approvals CSV
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="min-h-11 px-3"
+                      disabled={
+                        !selectedEntityId ||
+                        operationsLoading ||
+                        approvalCandidates.length === 0
+                      }
+                      onClick={copyApprovalsCsv}
+                    >
+                      <Copy size={15} />
+                      Copy approvals CSV
+                    </SecondaryButton>
+                  </div>
+                }
+              >
+                <div className="border-b border-border bg-muted/30 px-4 py-3">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 text-sm lg:flex-wrap lg:overflow-visible lg:pb-0">
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                      <ShieldCheck size={14} className="text-primary" />
+                      Review-only
+                    </span>
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Candidates
+                      <span className="text-foreground">
+                        {approvalCandidates.length}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Ready
+                      <span className="text-primary-hover">
+                        {approvalReadyCount}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Needs evidence/setup
+                      <span className="text-warning-strong">
+                        {approvalBlockedCount}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Provider-adjacent
+                      <span className="text-danger-strong">
+                        {approvalProviderAdjacentCount}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 p-4">
+                  <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-accent/30 bg-accent-soft px-3 text-xs font-semibold text-leasium-teal-strong">
+                    <ShieldCheck size={14} />
+                    No provider, comms, payment, or reconciliation action runs
+                    from this inbox.
+                  </div>
+
+                  {approvalCandidates.length === 0 ? (
+                    <EmptyState
+                      icon={<ClipboardList size={18} />}
+                      title="No approval candidates"
+                      description="Smart Intake reviews, maintenance approval requests, invoice drafts, compliance evidence, onboarding submissions, and assignment notices will appear here when ready."
+                    />
+                  ) : (
+                    <div className="grid gap-3">
+                      {approvalCandidateGroups
+                        .filter((group) => group.items.length > 0)
+                        .map((group) => (
+                          <section
+                            key={group.id}
+                            className="grid gap-2 rounded-[12px] bg-muted p-2.5"
+                          >
+                            <header className="flex min-h-9 items-center justify-between gap-3 px-1">
+                              <div className="min-w-0">
+                                <h2 className="text-[13px] font-semibold leading-5 text-foreground">
+                                  {group.label}
+                                </h2>
+                                <p className="text-xs text-muted-foreground">
+                                  {group.description}
+                                </p>
+                              </div>
+                              <StatusBadge tone={group.tone}>
+                                {group.items.length}
+                              </StatusBadge>
+                            </header>
+                            <div className="grid gap-2">
+                              {group.items.map((candidate) => (
+                                <article
+                                  key={candidate.id}
+                                  className="grid gap-3 rounded-[12px] border border-leasium-card-border bg-white p-3 shadow-leasiumXs md:grid-cols-[minmax(0,1fr)_auto]"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <StatusBadge tone={candidate.tone}>
+                                        {candidate.statusLabel}
+                                      </StatusBadge>
+                                      <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                        {candidate.sourceLabel}
+                                      </span>
+                                    </div>
+                                    <h3 className="mt-2 text-sm font-semibold leading-5 text-foreground">
+                                      {candidate.title}
+                                    </h3>
+                                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                                      {candidate.reason}
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                      <span className="rounded-full bg-muted px-2 py-1">
+                                        {candidate.context || "No context"}
+                                      </span>
+                                      <span className="rounded-full bg-muted px-2 py-1">
+                                        Due {formatDate(candidate.dueDate)}
+                                      </span>
+                                      <span className="rounded-full bg-muted px-2 py-1">
+                                        {candidate.guardrail}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-start md:justify-end">
+                                    <Link
+                                      href={candidate.href}
+                                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                                    >
+                                      <Link2 size={15} />
+                                      Review source
+                                    </Link>
+                                  </div>
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </SectionPanel>
             ) : null}
 
             {activeTab === "calendar" ? (

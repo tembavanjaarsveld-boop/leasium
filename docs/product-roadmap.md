@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals inbox v1:** `/operations?tab=approvals`
+  now gives the Work hub a read-only approvals inbox over existing operations
+  data. It groups Smart Intake reviews, maintenance owner-approval requests,
+  invoice drafts ready for approval, compliance checks with linked evidence,
+  tenant onboarding review/follow-up rows, and assignment notices ready for
+  review into Ready, Needs evidence/setup, and Provider-adjacent lanes. Rows
+  link back to their source records and local copy/download CSV packets carry
+  the review-only guardrail; the inbox itself has no approve, apply, complete,
+  send, dispatch, Xero/Basiq, payment, reconciliation, or provider-history
+  mutation controls. Smoke coverage locks the candidate mix, source links,
+  local export, and forbidden provider/comms/payment mutations.
 - [x] **2026-06-20 Compliance evidence detail v1.1:** The Work compliance tab
   now has a per-check `Review evidence detail` disclosure that brings linked
   source document state, current obligation id, latest completion, approval
