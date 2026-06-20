@@ -412,6 +412,22 @@ type ApprovalCandidateKind =
   | "onboarding"
   | "assignment_notice";
 
+type ApprovalGroupFilter = "all" | ApprovalGroupId;
+type ApprovalKindFilter = "all" | ApprovalCandidateKind;
+
+const approvalKindFilters: ReadonlyArray<{
+  id: ApprovalKindFilter;
+  label: string;
+}> = [
+  { id: "all", label: "All sources" },
+  { id: "smart_intake", label: "Smart Intake" },
+  { id: "maintenance", label: "Maintenance" },
+  { id: "invoice_draft", label: "Invoice drafts" },
+  { id: "compliance", label: "Compliance" },
+  { id: "onboarding", label: "Tenant onboarding" },
+  { id: "assignment_notice", label: "Assignment notices" },
+];
+
 type ApprovalCandidate = {
   id: string;
   kind: ApprovalCandidateKind;
@@ -1278,6 +1294,22 @@ function approvalKindLabel(kind: ApprovalCandidateKind) {
   return labels[kind];
 }
 
+function onboardingApprovalHref(onboarding: TenantOnboardingRecord) {
+  return onboarding.tenant_id
+    ? `/tenants/${encodeURIComponent(onboarding.tenant_id)}`
+    : "/tenants";
+}
+
+function assignmentNoticeApprovalHref(item: AssignableQueueItem) {
+  if (item.kind === "maintenance") {
+    return `/operations/maintenance/${encodeURIComponent(item.record.id)}`;
+  }
+  if (item.kind === "arrears") {
+    return "/operations?tab=arrears";
+  }
+  return item.href;
+}
+
 function buildApprovalCandidates({
   intakes,
   maintenance,
@@ -1425,7 +1457,7 @@ function buildApprovalCandidates({
         ? "Tenant submitted onboarding details for operator review."
         : "Onboarding is overdue and needs follow-up before approval.",
       dueDate: onboarding.due_date,
-      href: "/tenants",
+      href: onboardingApprovalHref(onboarding),
       guardrail:
         "Open Tenants to review onboarding details before applying or sending any portal follow-up.",
     });
@@ -1452,7 +1484,7 @@ function buildApprovalCandidates({
         assignment?.notificationDetail ??
         "Assignment email preview is ready for operator review.",
       dueDate: item.dueDate,
-      href: item.href,
+      href: assignmentNoticeApprovalHref(item),
       guardrail:
         "Use the Queue controls to review and send the assignment notice.",
     });
@@ -2901,6 +2933,10 @@ function OperationsWorkspace() {
     useState<CalendarSourceFilter>("all");
   const [calendarDateFilter, setCalendarDateFilter] =
     useState<CalendarDateFilter>("all");
+  const [approvalGroupFilter, setApprovalGroupFilter] =
+    useState<ApprovalGroupFilter>("all");
+  const [approvalKindFilter, setApprovalKindFilter] =
+    useState<ApprovalKindFilter>("all");
   const [previewCalendarEventId, setPreviewCalendarEventId] = useState<
     string | null
   >(null);
@@ -3876,12 +3912,38 @@ function OperationsWorkspace() {
       tenants,
     ],
   );
+  const visibleApprovalCandidates = approvalCandidates.filter(
+    (candidate) =>
+      (approvalGroupFilter === "all" ||
+        candidate.group === approvalGroupFilter) &&
+      (approvalKindFilter === "all" || candidate.kind === approvalKindFilter),
+  );
   const approvalCandidateGroups = approvalGroups.map((group) => ({
     ...group,
-    items: approvalCandidates.filter(
+    items: visibleApprovalCandidates.filter(
       (candidate) => candidate.group === group.id,
     ),
   }));
+  const approvalGroupFilterRows: Array<{
+    id: ApprovalGroupFilter;
+    label: string;
+    count: number;
+  }> = [
+    {
+      id: "all",
+      label: "All",
+      count: approvalCandidates.length,
+    },
+    ...approvalGroups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      count: approvalCandidates.filter(
+        (candidate) => candidate.group === group.id,
+      ).length,
+    })),
+  ];
+  const approvalFilterActive =
+    approvalGroupFilter !== "all" || approvalKindFilter !== "all";
   const approvalReadyCount = approvalCandidates.filter(
     (candidate) => candidate.group === "ready",
   ).length;
@@ -3905,7 +3967,7 @@ function OperationsWorkspace() {
     );
   };
   const approvalsCsvText = () =>
-    operationsApprovalsReviewCsv(approvalCandidates);
+    operationsApprovalsReviewCsv(visibleApprovalCandidates);
   const copyApprovalsCsv = async () => {
     await copyTextToClipboard(approvalsCsvText());
   };
@@ -5612,29 +5674,31 @@ function OperationsWorkspace() {
                   <div className="flex flex-wrap items-center gap-2">
                     <SecondaryButton
                       type="button"
+                      aria-label="Download approvals CSV"
                       className="min-h-11 px-3"
                       disabled={
                         !selectedEntityId ||
                         operationsLoading ||
-                        approvalCandidates.length === 0
+                        visibleApprovalCandidates.length === 0
                       }
                       onClick={downloadApprovalsCsv}
                     >
                       <Download size={15} />
-                      Download approvals CSV
+                      Download CSV
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
+                      aria-label="Copy approvals CSV"
                       className="min-h-11 px-3"
                       disabled={
                         !selectedEntityId ||
                         operationsLoading ||
-                        approvalCandidates.length === 0
+                        visibleApprovalCandidates.length === 0
                       }
                       onClick={copyApprovalsCsv}
                     >
                       <Copy size={15} />
-                      Copy approvals CSV
+                      Copy CSV
                     </SecondaryButton>
                   </div>
                 }
@@ -5648,7 +5712,9 @@ function OperationsWorkspace() {
                     <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Candidates
                       <span className="text-foreground">
-                        {approvalCandidates.length}
+                        {approvalFilterActive
+                          ? `${visibleApprovalCandidates.length}/${approvalCandidates.length}`
+                          : approvalCandidates.length}
                       </span>
                     </span>
                     <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
@@ -5672,6 +5738,68 @@ function OperationsWorkspace() {
                   </div>
                 </div>
 
+                <div className="grid gap-3 border-b border-border px-4 pb-20 pt-3 md:py-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+                  <div
+                    role="group"
+                    aria-label="Approval state filters"
+                    className="flex min-w-0 gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible lg:pb-0"
+                  >
+                    {approvalGroupFilterRows.map((filter) => {
+                      const active = approvalGroupFilter === filter.id;
+                      return (
+                        <button
+                          key={filter.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => setApprovalGroupFilter(filter.id)}
+                          className={cn(
+                            "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition",
+                            active
+                              ? "border-primary/30 bg-primary-soft text-primary-hover"
+                              : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <span>{filter.label}</span>
+                          <span className="text-foreground">
+                            {filter.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
+                    <Select
+                      aria-label="Approval source"
+                      value={approvalKindFilter}
+                      onChange={(event) =>
+                        setApprovalKindFilter(
+                          event.target.value as ApprovalKindFilter,
+                        )
+                      }
+                      className="min-h-11 w-full min-w-[210px] sm:w-auto"
+                    >
+                      {approvalKindFilters.map((filter) => (
+                        <option key={filter.id} value={filter.id}>
+                          {filter.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {approvalFilterActive ? (
+                      <SecondaryButton
+                        type="button"
+                        className="min-h-11 px-3"
+                        onClick={() => {
+                          setApprovalGroupFilter("all");
+                          setApprovalKindFilter("all");
+                        }}
+                      >
+                        <X size={15} />
+                        Clear approval filters
+                      </SecondaryButton>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div className="grid gap-4 p-4">
                   <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-accent/30 bg-accent-soft px-3 text-xs font-semibold text-leasium-teal-strong">
                     <ShieldCheck size={14} />
@@ -5685,7 +5813,18 @@ function OperationsWorkspace() {
                       title="No approval candidates"
                       description="Smart Intake reviews, maintenance approval requests, invoice drafts, compliance evidence, onboarding submissions, and assignment notices will appear here when ready."
                     />
-                  ) : (
+                  ) : null}
+
+                  {approvalCandidates.length > 0 &&
+                  visibleApprovalCandidates.length === 0 ? (
+                    <EmptyState
+                      icon={<ClipboardList size={18} />}
+                      title="No approval candidates match these filters"
+                      description="Clear filters or choose another state or source to return to the full approvals inbox."
+                    />
+                  ) : null}
+
+                  {visibleApprovalCandidates.length > 0 ? (
                     <div className="grid gap-3">
                       {approvalCandidateGroups
                         .filter((group) => group.items.length > 0)
@@ -5755,7 +5894,7 @@ function OperationsWorkspace() {
                           </section>
                         ))}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </SectionPanel>
             ) : null}

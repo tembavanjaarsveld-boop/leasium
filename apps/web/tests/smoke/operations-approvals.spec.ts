@@ -1,4 +1,4 @@
-import { expect, type Locator, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
@@ -138,10 +138,7 @@ function submittedTenantOnboarding() {
   };
 }
 
-test("operations approvals tab collects read-only approval candidates and exports without mutations", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+async function installApprovalsClipboard(page: Page) {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -154,6 +151,9 @@ test("operations approvals tab collects read-only approval candidates and export
       },
     });
   });
+}
+
+async function mockApprovalsApi(page: Page) {
   await mockLeasiumApi(page, { operationsComplianceDemo: true });
   await page.route("**/api/v1/obligations**", async (route) => {
     if (route.request().method() !== "GET") {
@@ -188,7 +188,9 @@ test("operations approvals tab collects read-only approval candidates and export
       body: JSON.stringify([readyInvoiceDraft()]),
     });
   });
+}
 
+async function trapForbiddenApprovalCalls(page: Page) {
   const forbiddenCalls: string[] = [];
   const forbiddenPathPatterns = [
     "/providers",
@@ -219,6 +221,40 @@ test("operations approvals tab collects read-only approval candidates and export
     }
     await route.fallback();
   });
+  return forbiddenCalls;
+}
+
+function approvalsPanel(page: Page) {
+  return page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Approvals inbox" }) })
+    .first();
+}
+
+async function copiedApprovalsCsv(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __copiedApprovalsCsv?: string })
+            .__copiedApprovalsCsv,
+      ),
+    )
+    .toBeTruthy();
+  return page.evaluate(
+    () =>
+      (window as Window & { __copiedApprovalsCsv?: string })
+        .__copiedApprovalsCsv,
+  );
+}
+
+test("operations approvals tab collects read-only approval candidates and exports without mutations", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installApprovalsClipboard(page);
+  await mockApprovalsApi(page);
+  const forbiddenCalls = await trapForbiddenApprovalCalls(page);
 
   await page.goto("/operations?tab=approvals");
 
@@ -227,10 +263,7 @@ test("operations approvals tab collects read-only approval candidates and export
   await expect(approvalsTab).toHaveAttribute("aria-selected", "true");
   await expectTouchTarget(approvalsTab);
 
-  const panel = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Approvals inbox" }) })
-    .first();
+  const panel = approvalsPanel(page);
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("Review-only");
   await expect(panel).toContainText("Air conditioning fault");
@@ -278,20 +311,7 @@ test("operations approvals tab collects read-only approval candidates and export
 
   forbiddenCalls.length = 0;
   await copyButton.click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as Window & { __copiedApprovalsCsv?: string })
-            .__copiedApprovalsCsv,
-      ),
-    )
-    .toBeTruthy();
-  const copiedCsv = await page.evaluate(
-    () =>
-      (window as Window & { __copiedApprovalsCsv?: string })
-        .__copiedApprovalsCsv,
-  );
+  const copiedCsv = await copiedApprovalsCsv(page);
 
   const downloadPromise = page.waitForEvent("download");
   await downloadButton.click();
@@ -308,4 +328,60 @@ test("operations approvals tab collects read-only approval candidates and export
   expect(csv).toContain("Air conditioning fault");
   expect(csv).toContain("Annual fire safety statement");
   expect(forbiddenCalls).toEqual([]);
+});
+
+test("operations approvals tab filters candidates and scopes review exports", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await installApprovalsClipboard(page);
+  await mockApprovalsApi(page);
+  const forbiddenCalls = await trapForbiddenApprovalCalls(page);
+
+  await page.goto("/operations?tab=approvals");
+
+  const panel = approvalsPanel(page);
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Air conditioning fault");
+  await expect(panel).toContainText("Owner recharge invoice");
+  await expect(panel).toContainText("Annual fire safety statement");
+  await expect(
+    panel.locator('a[href="/tenants/tenant-1"]'),
+  ).toBeVisible();
+
+  const providerFilter = panel.getByRole("button", {
+    name: /Provider-adjacent/,
+  });
+  await providerFilter.click();
+  await expect(providerFilter).toHaveAttribute("aria-pressed", "true");
+  await expect(panel).toContainText("Air conditioning fault");
+  await expect(panel).toContainText("Owner recharge invoice");
+  await expect(panel).toContainText("Assignment notice ready");
+  await expect(panel).not.toContainText("Annual fire safety statement");
+  await expect(panel).not.toContainText("Tenant onboarding ready for review");
+
+  await panel.getByLabel("Approval source").selectOption("invoice_draft");
+  await expect(panel).toContainText("Owner recharge invoice");
+  await expect(panel).not.toContainText("Air conditioning fault");
+  await expect(panel).not.toContainText("Annual fire safety statement");
+
+  forbiddenCalls.length = 0;
+  await panel.getByRole("button", { name: "Copy approvals CSV" }).click();
+  const copiedCsv = await copiedApprovalsCsv(page);
+  expect(copiedCsv).toContain("Owner recharge invoice");
+  expect(copiedCsv).not.toContain("Air conditioning fault");
+  expect(copiedCsv).not.toContain("Annual fire safety statement");
+
+  const downloadPromise = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Download approvals CSV" }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const csv = await readFile(downloadPath!, "utf8");
+  expect(csv).toBe(copiedCsv);
+
+  await panel.getByRole("button", { name: "Clear approval filters" }).click();
+  await expect(panel.getByLabel("Approval source")).toHaveValue("all");
+  await expect(panel).toContainText("Annual fire safety statement");
+  await expect(forbiddenCalls).toEqual([]);
 });

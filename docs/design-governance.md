@@ -571,6 +571,18 @@ fixes · deferrals.
   not approve, apply, complete, send email/SMS, dispatch providers, post to
   Xero/Basiq, create payments, reconcile, or mutate provider history · none
   deferred.
+- 2026-06-21 · Work Approvals inbox v1.1 filters + handoffs · reused the
+  shipped Horizon Work tab and approvals lane pattern without new tokens or a
+  new route · screens checked at 1440/390
+  (`output/playwright/work-approvals-v11-1440.png`,
+  `output/playwright/work-approvals-v11-390.png`) · fixes in-slice: added
+  decision-state filters, a source selector, filtered copy/download packets,
+  direct tenant onboarding handoffs, maintenance assignment source handoffs,
+  shorter mobile export labels, and mobile-only bottom-nav buffer so the fixed
+  nav no longer covers filter content · provider guardrails unchanged:
+  filtering/exporting does not approve, apply, complete, send email/SMS,
+  dispatch providers, post to Xero/Basiq, create payments, reconcile, or mutate
+  provider history · none deferred.
 
 ## UX Debt Register
 

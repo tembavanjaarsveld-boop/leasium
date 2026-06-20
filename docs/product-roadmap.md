@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals inbox v1.1:** The Work approvals inbox now
+  has read-only decision-state filters, a source selector, filtered candidate
+  counts, and copy/download CSV packets scoped to the visible filtered set.
+  Tenant onboarding handoffs now open the tenant detail route when a tenant id
+  is present, and maintenance assignment notices open the maintenance detail
+  route. Mobile export labels were tightened while keeping accessible CSV
+  names, and the filter area has bottom-nav-safe spacing. Smoke coverage locks
+  state/source filtering, filtered exports, direct onboarding handoff, and the
+  no provider/comms/payment/reconciliation mutation guardrail.
 - [x] **2026-06-21 Work approvals inbox v1:** `/operations?tab=approvals`
   now gives the Work hub a read-only approvals inbox over existing operations
   data. It groups Smart Intake reviews, maintenance owner-approval requests,

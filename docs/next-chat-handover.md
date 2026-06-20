@@ -2,6 +2,49 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals inbox v1.1)
+
+Temba approved the small v1.1 follow-up after the read-only approvals inbox
+shipped: filters plus tighter source handoffs.
+
+What changed:
+- Added decision-state filters and a source selector to
+  `/operations?tab=approvals`.
+- Candidate groups now render from the filtered visible list, and the summary
+  shows filtered count versus total when filters are active.
+- Copy/download approvals CSV now exports only the visible filtered candidates.
+- Added a filtered-empty state and `Clear approval filters`.
+- Tenant onboarding `Review source` now opens `/tenants/:tenantId` when the
+  candidate has a tenant id; maintenance assignment notices open the
+  maintenance detail route.
+- Tightened mobile export labels to `Download CSV` / `Copy CSV` while keeping
+  accessible names as `Download approvals CSV` / `Copy approvals CSV`.
+- Added mobile-only spacing after the filter controls so the fixed bottom nav
+  overlays blank buffer rather than approvals content.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-v11-1440.png` and
+  `output/playwright/work-approvals-v11-390.png`.
+
+Verification:
+- Red first: the new approvals smoke failed on the missing direct onboarding
+  tenant handoff before implementation.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 2 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+- Temporary mocked screenshot harness passed and was removed after producing
+  the UX evidence images.
+
+Guardrails held: filtering, handoff navigation, and local CSV export are
+read-only. This slice adds no Xero/Basiq, SendGrid/Twilio, tenant/owner/provider
+email, SMS, provider dispatch, Smart Intake apply, maintenance approval,
+compliance completion, invoice approval or delivery, payment, reconciliation,
+or provider-history mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals inbox v1)
 
 Temba approved the read-only Work approvals inbox as the next operations slice.
