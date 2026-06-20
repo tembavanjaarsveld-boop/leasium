@@ -25,6 +25,7 @@ import {
   Sparkles,
   UserRound,
   Wrench,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -222,6 +223,15 @@ const workRanges = [
 
 type WorkRange = (typeof workRanges)[number]["id"];
 type CalendarLayout = "agenda" | "month";
+type CalendarSourceFilter =
+  | "all"
+  | "leases"
+  | "work"
+  | "compliance"
+  | "billing"
+  | "arrears"
+  | "onboarding";
+type CalendarDateFilter = "all" | "overdue" | "week" | "next30";
 
 const CALENDAR_EVENT_LABELS: Record<CalendarEventRecord["type"], string> = {
   lease_expiry: "Lease expiry",
@@ -236,6 +246,29 @@ const CALENDAR_EVENT_LABELS: Record<CalendarEventRecord["type"], string> = {
   promise_to_pay: "Promise to pay",
   tenant_onboarding: "Onboarding",
 };
+
+const CALENDAR_SOURCE_FILTERS: Array<{
+  id: CalendarSourceFilter;
+  label: string;
+}> = [
+  { id: "all", label: "All sources" },
+  { id: "leases", label: "Leases" },
+  { id: "work", label: "Work" },
+  { id: "compliance", label: "Compliance" },
+  { id: "billing", label: "Billing" },
+  { id: "arrears", label: "Arrears" },
+  { id: "onboarding", label: "Onboarding" },
+];
+
+const CALENDAR_DATE_FILTERS: Array<{
+  id: CalendarDateFilter;
+  label: string;
+}> = [
+  { id: "all", label: "All dates" },
+  { id: "overdue", label: "Overdue" },
+  { id: "week", label: "This week" },
+  { id: "next30", label: "Next 30" },
+];
 
 const horizonWorkLanes = [
   {
@@ -760,6 +793,48 @@ function calendarEventLabel(event: CalendarEventRecord) {
 
 function calendarEventSourceLabel(event: CalendarEventRecord) {
   return event.source.table.replaceAll("_", " ");
+}
+
+function calendarEventSourceFilter(
+  event: CalendarEventRecord,
+): Exclude<CalendarSourceFilter, "all"> {
+  if (event.type === "lease_expiry" || event.type === "rent_review") {
+    return "leases";
+  }
+  if (event.type === "maintenance_due") {
+    return "work";
+  }
+  if (event.type === "compliance_due" || event.type === "obligation") {
+    return "compliance";
+  }
+  if (
+    event.type === "charge_due" ||
+    event.type === "billing_due" ||
+    event.type === "invoice_due"
+  ) {
+    return "billing";
+  }
+  if (event.type === "arrears_reminder" || event.type === "promise_to_pay") {
+    return "arrears";
+  }
+  return "onboarding";
+}
+
+function calendarDateFilterMatches(
+  event: CalendarEventRecord,
+  filter: CalendarDateFilter,
+) {
+  const rank = dueRank(event.date);
+  if (filter === "overdue") {
+    return rank < 0;
+  }
+  if (filter === "week") {
+    return rank >= 0 && rank <= 7;
+  }
+  if (filter === "next30") {
+    return rank >= 0 && rank <= 30;
+  }
+  return true;
 }
 
 function sortCalendarEvents(events: CalendarEventRecord[]) {
@@ -2480,6 +2555,13 @@ function OperationsWorkspace() {
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
   const [calendarLayout, setCalendarLayout] =
     useState<CalendarLayout>("agenda");
+  const [calendarSourceFilter, setCalendarSourceFilter] =
+    useState<CalendarSourceFilter>("all");
+  const [calendarDateFilter, setCalendarDateFilter] =
+    useState<CalendarDateFilter>("all");
+  const [previewCalendarEventId, setPreviewCalendarEventId] = useState<
+    string | null
+  >(null);
   const [workRange, setWorkRange] = useState<WorkRange>("today");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [maintenanceStatus, setMaintenanceStatus] = useState<
@@ -3265,13 +3347,29 @@ function OperationsWorkspace() {
     () => sortCalendarEvents(calendarQuery.data ?? EMPTY_CALENDAR_EVENTS),
     [calendarQuery.data],
   );
+  const sourceFilteredCalendarEvents = useMemo(
+    () =>
+      calendarEvents.filter(
+        (event) =>
+          calendarSourceFilter === "all" ||
+          calendarEventSourceFilter(event) === calendarSourceFilter,
+      ),
+    [calendarEvents, calendarSourceFilter],
+  );
+  const filteredCalendarEvents = useMemo(
+    () =>
+      sourceFilteredCalendarEvents.filter((event) =>
+        calendarDateFilterMatches(event, calendarDateFilter),
+      ),
+    [calendarDateFilter, sourceFilteredCalendarEvents],
+  );
   const calendarAgendaGroups = useMemo(
-    () => groupCalendarEvents(calendarEvents),
-    [calendarEvents],
+    () => groupCalendarEvents(filteredCalendarEvents),
+    [filteredCalendarEvents],
   );
   const calendarMonthEvents = useMemo<CalendarMonthGridEvent[]>(
     () =>
-      calendarEvents
+      filteredCalendarEvents
         .filter((event) => dueRank(event.date) >= 0)
         .map((event) => ({
           id: event.id,
@@ -3280,28 +3378,56 @@ function OperationsWorkspace() {
           href: event.link,
           tone: event.severity,
         })),
-    [calendarEvents],
+    [filteredCalendarEvents],
   );
   const allCalendarMonthEvents = useMemo<CalendarMonthGridEvent[]>(
     () =>
-      calendarEvents.map((event) => ({
+      filteredCalendarEvents.map((event) => ({
         id: event.id,
         title: event.title,
         date: event.date,
         href: event.link,
         tone: event.severity,
       })),
-    [calendarEvents],
+    [filteredCalendarEvents],
   );
   const visibleCalendarMonthEvents =
     calendarMonthEvents.length > 0 ? calendarMonthEvents : allCalendarMonthEvents;
-  const overdueCalendarEventCount = calendarEvents.filter(
+  const overdueCalendarEventCount = filteredCalendarEvents.filter(
     (event) => dueRank(event.date) < 0,
   ).length;
-  const upcomingCalendarEventCount = calendarEvents.filter((event) => {
+  const upcomingCalendarEventCount = filteredCalendarEvents.filter((event) => {
     const rank = dueRank(event.date);
     return rank >= 0 && rank <= 30;
   }).length;
+  const calendarSourceFilterRows = CALENDAR_SOURCE_FILTERS.map((filter) => ({
+    ...filter,
+    count:
+      filter.id === "all"
+        ? calendarEvents.length
+        : calendarEvents.filter(
+            (event) => calendarEventSourceFilter(event) === filter.id,
+          ).length,
+  }));
+  const calendarDateFilterRows = CALENDAR_DATE_FILTERS.map((filter) => ({
+    ...filter,
+    count: sourceFilteredCalendarEvents.filter((event) =>
+      calendarDateFilterMatches(event, filter.id),
+    ).length,
+  }));
+  const previewCalendarEvent =
+    filteredCalendarEvents.find((event) => event.id === previewCalendarEventId) ??
+    null;
+
+  useEffect(() => {
+    if (
+      previewCalendarEventId &&
+      !filteredCalendarEvents.some((event) => event.id === previewCalendarEventId)
+    ) {
+      setPreviewCalendarEventId(null);
+    }
+  }, [filteredCalendarEvents, previewCalendarEventId]);
+
   const securityMembers = securityWorkspaceQuery.data?.members ?? EMPTY_MEMBERS;
   const assignableMembers = useMemo(
     () =>
@@ -5113,35 +5239,100 @@ function OperationsWorkspace() {
                 }
               >
                 <div className="border-b border-border bg-muted/30 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 text-sm lg:flex-wrap lg:overflow-visible lg:pb-0">
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
                       <CalendarDays size={14} className="text-primary" />
                       {allMode
                         ? "All entities"
                         : selectedEntity?.name ?? "Selected entity"}
                     </span>
-                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Events
                       <span className="text-foreground">
-                        {calendarEvents.length}
+                        {filteredCalendarEvents.length}
                       </span>
                     </span>
-                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Overdue
                       <span className="text-danger-strong">
                         {overdueCalendarEventCount}
                       </span>
                     </span>
-                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       Next 30
                       <span className="text-primary-hover">
                         {upcomingCalendarEventCount}
                       </span>
                     </span>
-                    <span className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
                       {formatDate(operationsCalendarWindow.from)} to{" "}
                       {formatDate(operationsCalendarWindow.to)}
                     </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 border-b border-border px-4 py-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+                  <div
+                    role="group"
+                    aria-label="Calendar source filters"
+                    className="flex min-w-0 gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible lg:pb-0"
+                  >
+                    {calendarSourceFilterRows.map((filter) => {
+                      const active = calendarSourceFilter === filter.id;
+                      return (
+                        <button
+                          key={filter.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            setCalendarSourceFilter(filter.id);
+                            setPreviewCalendarEventId(null);
+                          }}
+                          className={cn(
+                            "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition",
+                            active
+                              ? "border-primary/30 bg-primary-soft text-primary-hover"
+                              : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <span>{filter.label}</span>
+                          <span className="text-foreground">
+                            {filter.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Calendar date filters"
+                    className="flex min-w-0 gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible lg:pb-0 xl:justify-end"
+                  >
+                    {calendarDateFilterRows.map((filter) => {
+                      const active = calendarDateFilter === filter.id;
+                      return (
+                        <button
+                          key={filter.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            setCalendarDateFilter(filter.id);
+                            setPreviewCalendarEventId(null);
+                          }}
+                          className={cn(
+                            "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition",
+                            active
+                              ? "border-primary/30 bg-primary-soft text-primary-hover"
+                              : "border-border bg-white text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <span>{filter.label}</span>
+                          <span className="text-foreground">
+                            {filter.count}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -5153,7 +5344,90 @@ function OperationsWorkspace() {
                   />
                 ) : null}
 
-                {calendarEvents.length > 0 && calendarLayout === "month" ? (
+                {calendarEvents.length > 0 &&
+                filteredCalendarEvents.length === 0 &&
+                !calendarQuery.isLoading ? (
+                  <EmptyState
+                    icon={<CalendarDays size={18} />}
+                    title="No calendar events match these filters."
+                    description="Try all sources or all dates to return to the full operations calendar."
+                  />
+                ) : null}
+
+                {previewCalendarEvent ? (
+                  <aside className="m-4 grid gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-semibold text-foreground">
+                            {previewCalendarEvent.title}
+                          </h3>
+                          <StatusBadge tone={previewCalendarEvent.severity}>
+                            {calendarEventLabel(previewCalendarEvent)}
+                          </StatusBadge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {[
+                            previewCalendarEvent.description,
+                            propertyName(
+                              properties,
+                              previewCalendarEvent.property_id,
+                            ),
+                            tenantName(tenants, previewCalendarEvent.tenant_id),
+                          ]
+                            .filter(Boolean)
+                            .join(" - ")}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Close calendar preview"
+                        onClick={() => setPreviewCalendarEventId(null)}
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-border bg-white text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <dl className="grid gap-2 text-sm sm:grid-cols-3">
+                      <div>
+                        <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                          Due
+                        </dt>
+                        <dd className="font-semibold text-foreground">
+                          {formatDate(previewCalendarEvent.date)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                          Source
+                        </dt>
+                        <dd className="font-semibold text-foreground">
+                          {CALENDAR_EVENT_LABELS[previewCalendarEvent.type]}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-semibold uppercase text-muted-foreground">
+                          Record
+                        </dt>
+                        <dd className="font-semibold text-foreground">
+                          {calendarEventSourceLabel(previewCalendarEvent)}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        href={previewCalendarEvent.link}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      >
+                        <Link2 size={15} />
+                        Open source
+                      </Link>
+                    </div>
+                  </aside>
+                ) : null}
+
+                {filteredCalendarEvents.length > 0 &&
+                calendarLayout === "month" ? (
                   <div className="p-4">
                     <PropertyCalendarMonthGrid
                       events={visibleCalendarMonthEvents}
@@ -5161,7 +5435,8 @@ function OperationsWorkspace() {
                   </div>
                 ) : null}
 
-                {calendarEvents.length > 0 && calendarLayout === "agenda" ? (
+                {filteredCalendarEvents.length > 0 &&
+                calendarLayout === "agenda" ? (
                   <div className="divide-y divide-border">
                     {calendarAgendaGroups.map((group) => (
                       <section
@@ -5187,10 +5462,9 @@ function OperationsWorkspace() {
                         </div>
                         <div className="grid gap-2">
                           {group.items.map((event) => (
-                            <Link
+                            <article
                               key={event.id}
-                              href={event.link}
-                              className="grid min-h-11 gap-2 rounded-xl border border-border bg-white px-3 py-3 transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                              className="grid min-h-11 gap-2 rounded-xl border border-border bg-white px-3 py-3"
                             >
                               <div className="flex min-w-0 flex-wrap items-center gap-2">
                                 <span className="font-semibold text-foreground">
@@ -5215,12 +5489,32 @@ function OperationsWorkspace() {
                                   .filter(Boolean)
                                   .join(" - ")}
                               </p>
-                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span>{dueLabel(event.date)}</span>
                                 <span>{CALENDAR_EVENT_LABELS[event.type]}</span>
                                 <span>{calendarEventSourceLabel(event)}</span>
                               </div>
-                            </Link>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  aria-label={`Preview ${event.title}`}
+                                  onClick={() =>
+                                    setPreviewCalendarEventId(event.id)
+                                  }
+                                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                >
+                                  <CalendarDays size={15} />
+                                  Preview
+                                </button>
+                                <Link
+                                  href={event.link}
+                                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                >
+                                  <Link2 size={15} />
+                                  Open source
+                                </Link>
+                              </div>
+                            </article>
                           ))}
                         </div>
                       </section>

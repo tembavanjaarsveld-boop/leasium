@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-20
 
+## Continuation - 2026-06-20 (Calendar v1.1 filters + preview)
+
+Temba approved the Calendar v1.1 follow-up after Calendar v1 shipped.
+
+What changed:
+- Added frontend-only Calendar source filters for All sources, Leases, Work,
+  Compliance, Billing, Arrears, and Onboarding.
+- Added date quick filters for All dates, Overdue, This week, and Next 30.
+- Converted agenda rows from full-card links into read-only cards with separate
+  `Preview` and `Open source` actions.
+- Added a read-only preview panel showing title, severity, context, due date,
+  source kind, source record, close, and source link.
+- Kept the month grid as direct source links.
+- Tightened the 390px layout by making Calendar stats and filter groups
+  horizontal rails on mobile while preserving wrapped desktop controls.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/operations-calendar-v11-desktop-1440.png` and
+  `output/playwright/operations-calendar-v11-mobile-390.png`.
+
+Verification:
+- Red first: the new Calendar smoke failed before the Work source filter and
+  preview controls existed.
+- `cd apps/web && npx playwright test tests/smoke/calendar.spec.ts` — 3 passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `cd apps/web && npm run lint -- --quiet` — passed.
+- Temporary screenshot capture spec passed and was removed after producing the
+  UX evidence images.
+
+Guardrails held: Calendar v1.1 is frontend-only over the read-only Calendar
+endpoint. It does not send email/SMS, dispatch providers, call Xero/Basiq,
+reconcile payments, or mutate source records.
+
 ## Continuation - 2026-06-20 (Calendar surface v1)
 
 Temba picked the unified Calendar lens as the next product build.

@@ -94,6 +94,49 @@ test("operations calendar renders a read-only all-entity agenda and month", asyn
   expect(forbiddenCalls).toEqual([]);
 });
 
+test("operations calendar filters events and opens a read-only preview", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await mockLeasiumApi(page);
+  await page.goto("/operations?tab=calendar");
+
+  const panel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Operations calendar" }),
+    })
+    .first();
+  await panel
+    .getByRole("button", { name: "Agenda", exact: true })
+    .click();
+
+  await panel.getByRole("button", { name: /^Work\b/ }).click();
+  await expect(panel).toContainText("Air conditioning fault");
+  await expect(panel).not.toContainText("Queen Street lease expiry");
+
+  await panel
+    .getByRole("button", { name: "Preview Air conditioning fault" })
+    .click();
+  const preview = panel
+    .locator("aside")
+    .filter({ has: page.getByRole("heading", { name: "Air conditioning fault" }) })
+    .first();
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("Maintenance");
+  await expect(preview).toContainText("20 May 2026");
+  await expect(preview).toContainText("Queen Street Retail Centre");
+  await expect(
+    preview.getByRole("link", { name: "Open source" }),
+  ).toHaveAttribute("href", "/operations/maintenance/work-order-1");
+
+  await panel.getByRole("button", { name: "All sources" }).click();
+  await panel.getByRole("button", { name: /^Next 30\b/ }).click();
+  await expect(panel).toContainText("Queen Street rent review");
+  await expect(panel).toContainText("July rent invoice due");
+  await expect(panel).not.toContainText("Air conditioning fault");
+});
+
 test("mobile operations calendar is agenda-first and handles an empty window", async ({
   page,
 }) => {

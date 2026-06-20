@@ -523,6 +523,16 @@ fixes · deferrals.
   provider guardrails unchanged: the surface is a read-only lens and does not
   send email/SMS, dispatch providers, call Xero/Basiq, reconcile payments, or
   mutate source records · none deferred.
+- 2026-06-20 · Work Calendar tab v1.1 filters + preview · reused the shipped
+  Horizon Work Calendar pattern without new tokens · screens checked at
+  1440/390 (`output/playwright/operations-calendar-v11-desktop-1440.png`,
+  `output/playwright/operations-calendar-v11-mobile-390.png`) · fixes
+  in-slice: added source/date filter chips, split agenda rows into `Preview`
+  and `Open source`, added a read-only preview panel, and changed mobile stats
+  plus filters into horizontal rails so controls do not wrap into the fixed
+  bottom nav area · provider guardrails unchanged: preview/open-source actions
+  do not send email/SMS, dispatch providers, call Xero/Basiq, reconcile
+  payments, or mutate source records · none deferred.
 
 ## UX Debt Register
 

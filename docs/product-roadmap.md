@@ -25,6 +25,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   All-entities support, source deep-links, empty/loading coverage, and no
   create/edit/provider actions. Smoke coverage verifies the tab, month/agenda
   switch, source links, empty state, and no provider/comms/payment writes.
+- [x] **2026-06-20 Calendar surface v1.1:** The Work Calendar now has
+  operator-side source filters, date quick filters, and a read-only agenda
+  preview panel so one lease/work/compliance/billing/arrears/onboarding event
+  can be inspected before opening its source record. Agenda rows separate
+  `Preview` from `Open source`; mobile stats and filters use horizontal rails
+  to preserve the 390px first viewport. Frontend smoke coverage verifies the
+  filters, preview, source link, and continued provider/comms/payment inertness.
 - [x] **2026-06-18 Leasium AI composer guardrail cleanup:** Removed the
   repeated subtitle, full-width approval sentence, and `intake@leasium.ai`
   email hint from the `/intake` home composer. The concise "Approval first"
