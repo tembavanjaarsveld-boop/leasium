@@ -533,6 +533,18 @@ fixes · deferrals.
   bottom nav area · provider guardrails unchanged: preview/open-source actions
   do not send email/SMS, dispatch providers, call Xero/Basiq, reconcile
   payments, or mutate source records · none deferred.
+- 2026-06-20 · AI Mailbox property/task/owner-admin promotion guardrails ·
+  reused the shipped AI Mailbox conversation plan card without new tokens ·
+  screens checked at 1440/390
+  (`output/playwright/ai-mailbox-promotion-guardrails-1440.png`,
+  `output/playwright/ai-mailbox-promotion-guardrails-390.png`) · fixes
+  in-slice: the plan card now uses per-kind copy for property updates,
+  task/reminders, and owner/entity admin so the operator sees exactly which
+  local review target is created and what cannot happen from email alone ·
+  no horizontal overflow at 1440 or 390 · provider guardrails unchanged: no
+  SendGrid/Twilio send, Xero/Basiq/provider call, Smart Intake apply, property,
+  owner/entity, payment, or reconciliation mutation is introduced · none
+  deferred for the three local target variants.
 
 ## UX Debt Register
 

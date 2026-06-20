@@ -2,6 +2,39 @@
 
 Last updated: 2026-06-20
 
+## Continuation - 2026-06-20 (AI Mailbox promotion clarity v1)
+
+Temba approved the AI Mailbox property/task/owner-admin promotion clarity
+slice after the backend local target variants were already in place.
+
+What changed:
+- Added variant-specific guardrail copy to the AI Mailbox conversation plan
+  card for `property_update`, `task_or_reminder`, and
+  `owner_or_entity_admin`.
+- The plan now tells operators whether promotion creates a Smart Intake review
+  or a local Operations task, and explicitly states the blocked side effects:
+  no property/owner/entity mutation, no email/SMS, no contractor dispatch, no
+  provider action, and no payment/reconciliation action from mailbox promote.
+- Extended the existing AI Mailbox smoke table so all three local target
+  variants assert the visible guardrail copy before promoting.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/ai-mailbox-promotion-guardrails-1440.png` and
+  `output/playwright/ai-mailbox-promotion-guardrails-390.png`.
+
+Verification:
+- Red first: the focused mailbox smoke failed on the old generic guardrail
+  text.
+- `cd apps/web && npm run test:smoke -- --grep "AI mailbox promotes (property update|task reminder|owner admin) rows"` — 3 passed.
+- `cd apps/web && npm run test:smoke -- --grep "AI mailbox"` — 8 passed.
+- `cd apps/web && npm run lint` — passed.
+- `cd apps/web && npm run build` — passed.
+- Mocked browser screenshot pass showed no horizontal overflow at 1440 or 390.
+
+Guardrails held: frontend copy/tests only. The existing promote call remains
+the only mutation in the reviewed flow; this slice does not add SendGrid,
+Twilio, Xero, Basiq, provider dispatch, Smart Intake apply, property/owner/
+entity mutation, payment, or reconciliation behavior.
+
 ## Continuation - 2026-06-20 (Calendar v1.1 filters + preview)
 
 Temba approved the Calendar v1.1 follow-up after Calendar v1 shipped.

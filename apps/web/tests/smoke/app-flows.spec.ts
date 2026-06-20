@@ -1548,6 +1548,8 @@ const mailboxLocalPromoteCases = [
     targetLabel: "Council rates notice needs property review.",
     expectedPlanCopy: "Open a Smart Intake review",
     expectedPromoteKind: "property_update",
+    expectedPromoteGuardrail:
+      "Creates a Smart Intake review only. No property record, email, SMS, or provider action changes from this mailbox promotion.",
     finalUrl: /\/intake\?entity_id=entity-1&review=mailbox-property-review-1/,
     classificationTargetKind: "property",
   },
@@ -1564,6 +1566,8 @@ const mailboxLocalPromoteCases = [
     targetLabel: "Follow up the insurer next Tuesday.",
     expectedPlanCopy: "Create an Operations task",
     expectedPromoteKind: "task_or_reminder",
+    expectedPromoteGuardrail:
+      "Creates a local Operations task only. No email, SMS, contractor dispatch, or provider action is sent.",
     finalUrl: /\/operations\/maintenance\/mailbox-task-work-order-1/,
     classificationTargetKind: "maintenance_work_order",
   },
@@ -1580,6 +1584,8 @@ const mailboxLocalPromoteCases = [
     targetLabel: "Owner billing detail needs admin review.",
     expectedPlanCopy: "Open a Smart Intake review",
     expectedPromoteKind: "owner_or_entity_admin",
+    expectedPromoteGuardrail:
+      "Creates a Smart Intake admin review only. No owner statement, portal invite, email, SMS, or entity record changes from this mailbox promotion.",
     finalUrl:
       /\/intake\?entity_id=entity-1&review=mailbox-owner-admin-review-1/,
     classificationTargetKind: "smart_intake",
@@ -1724,6 +1730,7 @@ for (const scenario of mailboxLocalPromoteCases) {
     const inboxPlan = page.getByTestId("inbox-plan");
     await expect(inboxPlan).toBeVisible();
     await expect(inboxPlan).toContainText(scenario.expectedPlanCopy);
+    await expect(inboxPlan).toContainText(scenario.expectedPromoteGuardrail);
     await page.getByTestId("inbox-promote").click();
 
     await expect(page).toHaveURL(scenario.finalUrl);

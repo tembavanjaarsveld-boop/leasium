@@ -94,8 +94,17 @@ function GuardrailNote({ children }: { children: ReactNode }) {
   );
 }
 
-const GUARDRAIL =
+const DEFAULT_GUARDRAIL =
   "This creates a local draft only — I won't send an email or SMS reply, or post to Xero, unless you ask.";
+
+const PROMOTE_GUARDRAIL: Partial<Record<InboxPromoteKind, string>> = {
+  property_update:
+    "Creates a Smart Intake review only. No property record, email, SMS, or provider action changes from this mailbox promotion.",
+  task_or_reminder:
+    "Creates a local Operations task only. No email, SMS, contractor dispatch, or provider action is sent.",
+  owner_or_entity_admin:
+    "Creates a Smart Intake admin review only. No owner statement, portal invite, email, SMS, or entity record changes from this mailbox promotion.",
+};
 
 function promotedHref(promoted: InboxPromoteRecord) {
   if (promoted.target_kind === "tenant" && promoted.target_id) {
@@ -219,6 +228,10 @@ export function InboxConversationPanel({
     ? message.classification_kind
     : null;
   const plan = useMemo(() => (kind ? planForKind(kind) : null), [kind]);
+  const planGuardrail =
+    plan?.promoteKind
+      ? PROMOTE_GUARDRAIL[plan.promoteKind] ?? DEFAULT_GUARDRAIL
+      : DEFAULT_GUARDRAIL;
 
   // Resolve the attributed tenant to a friendly label for the understanding +
   // plan rows. Mirrors IntakeConversationPanel's match-query pattern.
@@ -496,7 +509,7 @@ export function InboxConversationPanel({
               </div>
             ) : null}
             <div className="mt-3">
-              <GuardrailNote>{GUARDRAIL}</GuardrailNote>
+              <GuardrailNote>{planGuardrail}</GuardrailNote>
             </div>
             {promoteError ? (
               <p className="mt-3 text-sm text-danger">{promoteError}</p>
@@ -545,7 +558,7 @@ export function InboxConversationPanel({
               </Link>
             </div>
             <div className="mt-3">
-              <GuardrailNote>{GUARDRAIL}</GuardrailNote>
+              <GuardrailNote>{DEFAULT_GUARDRAIL}</GuardrailNote>
             </div>
           </div>
         </AiTurn>
