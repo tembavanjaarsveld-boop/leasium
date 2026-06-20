@@ -68,8 +68,24 @@ function watchForbiddenCommsReadOnlyRequests(page: Page) {
 }
 
 async function expectTouchTarget(locator: Locator, minSize = 44) {
-  await locator.scrollIntoViewIfNeeded();
-  const box = await locator.boundingBox();
+  let box: Awaited<ReturnType<Locator["boundingBox"]>> = null;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await expect(locator).toBeVisible({ timeout: 1000 });
+      await locator.scrollIntoViewIfNeeded({ timeout: 1000 });
+      box = await locator.boundingBox({ timeout: 1000 });
+      if (box) break;
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 3) {
+      await locator.page().waitForTimeout(100);
+    }
+  }
+  if (!box && lastError) {
+    throw lastError;
+  }
   expect(box).not.toBeNull();
   if (!box) return;
   expect(box.width).toBeGreaterThanOrEqual(minSize);
