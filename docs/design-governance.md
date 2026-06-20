@@ -545,6 +545,20 @@ fixes · deferrals.
   SendGrid/Twilio send, Xero/Basiq/provider call, Smart Intake apply, property,
   owner/entity, payment, or reconciliation mutation is introduced · none
   deferred for the three local target variants.
+- 2026-06-20 · Work Compliance evidence detail v1.1 · reused the shipped
+  Horizon Work compliance row pattern without new tokens or a new route ·
+  screens checked at 1440/390
+  (`output/playwright/operations-compliance-evidence-detail-1440.png`,
+  `output/playwright/operations-compliance-evidence-detail-390.png`) · fixes
+  in-slice: added a per-check `Review evidence detail` disclosure that groups
+  document handoff, current obligation, latest completion, approval, notes,
+  certificate expiry, owner, recurrence, scope, and next due state while
+  leaving the existing evidence link, approved completion, history, and packet
+  export flows unchanged · mobile detail stacks in one column with full-width
+  action buttons and no horizontal overflow · provider guardrails unchanged:
+  opening detail and exporting packets do not send email/SMS, dispatch
+  providers, call Xero/Basiq, mutate obligations, create payments, or reconcile
+  anything · none deferred.
 
 ## UX Debt Register
 

@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-20 Compliance evidence detail v1.1:** The Work compliance tab
+  now has a per-check `Review evidence detail` disclosure that brings linked
+  source document state, current obligation id, latest completion, approval
+  status, notes, certificate expiry, owner, recurrence, scope, and next due
+  date into one compact review block. It reuses the existing Add evidence,
+  Complete with linked evidence, completion history, and local packet export
+  flows; opening the detail is read-only and does not call providers, send
+  comms, mutate obligations, touch Xero/Basiq, create payments, or reconcile
+  anything. Smoke coverage locks the detail disclosure and no-mutation guard.
 - [x] **2026-06-20 Calendar surface v1:** `/api/v1/calendar/events` now
   exposes a read-only, entity-scoped union of dated operational records:
   lease expiries/rent reviews, maintenance due dates, recurring compliance

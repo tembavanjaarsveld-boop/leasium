@@ -2,6 +2,41 @@
 
 Last updated: 2026-06-20
 
+## Continuation - 2026-06-20 (Compliance evidence detail v1.1)
+
+Temba approved the next compliance refinement after the completion/evidence
+actions were already shipped: make each recurring compliance check easier to
+review on screen before exporting a packet.
+
+What changed:
+- Added a per-check `Review evidence detail` disclosure inside
+  `/operations?tab=compliance`.
+- The detail groups the linked source document state, current obligation id,
+  latest completion, approval/approver state, notes, certificate expiry, owner,
+  recurrence, scope, and next due state in one read-only block.
+- Kept existing flows unchanged: `Add evidence`, `Complete with linked
+  evidence`, completion history, and copy/download evidence packet.
+- Added smoke coverage to the existing compliance spec for the disclosure,
+  richer approval/evidence details, and no forbidden provider/comms/payment
+  mutations.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/operations-compliance-evidence-detail-1440.png` and
+  `output/playwright/operations-compliance-evidence-detail-390.png`.
+
+Verification:
+- Red first: the focused compliance smoke failed waiting for the missing
+  `Review evidence detail` button.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts -g "per-check evidence detail"` — 1 passed after implementation.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-compliance.spec.ts` — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts` — 6 passed.
+- Temporary mocked screenshot harness passed 2/2 and was removed after writing
+  the UX evidence images.
+
+Guardrails held: opening the evidence detail is read-only. This slice does not
+add SendGrid/Twilio sends, Xero/Basiq/provider calls, Smart Intake apply,
+obligation mutation, payment creation, reconciliation, or source-record writes.
+
 ## Continuation - 2026-06-20 (AI Mailbox promotion clarity v1)
 
 Temba approved the AI Mailbox property/task/owner-admin promotion clarity

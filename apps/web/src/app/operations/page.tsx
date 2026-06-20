@@ -1545,6 +1545,18 @@ function complianceCompletionEntries(
     .reverse();
 }
 
+function latestComplianceCompletionEntry(check: ComplianceCheckRecord) {
+  return complianceCompletionEntries(check)[0] ?? null;
+}
+
+function complianceEvidenceNotes(check: ComplianceCheckRecord) {
+  return (
+    latestComplianceCompletionEntry(check)?.notes ??
+    check.notes ??
+    "No notes recorded"
+  );
+}
+
 function complianceHasEvidence(check: ComplianceCheckRecord) {
   return complianceEvidenceCount(check) > 0;
 }
@@ -2697,6 +2709,8 @@ function OperationsWorkspace() {
   // Read-only disclosure toggle for a check's completion history. Local
   // UI state only — never mutates the check or calls a provider.
   const [expandedCompletionHistoryId, setExpandedCompletionHistoryId] =
+    useState<string | null>(null);
+  const [expandedComplianceDetailId, setExpandedComplianceDetailId] =
     useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -5617,6 +5631,17 @@ function OperationsWorkspace() {
                             latestComplianceCompletion(check);
                           const sourceDocumentId =
                             complianceEvidenceDocumentId(check);
+                          const latestCompletionDetail =
+                            latestComplianceCompletionEntry(check);
+                          const detailExpanded =
+                            expandedComplianceDetailId === check.id;
+                          const certificateDetail =
+                            complianceCertificateExpiryLabel(check) ??
+                            (check.certificate_expires_on
+                              ? `Certificate expires ${formatDate(
+                                  check.certificate_expires_on,
+                                )}`
+                              : "No certificate expiry recorded");
                           const hasEvidencePacket = Boolean(
                             sourceDocumentId || latestCompletion,
                           );
@@ -5749,6 +5774,29 @@ function OperationsWorkspace() {
                                     Add evidence
                                   </SecondaryButton>
                                 ) : null}
+                                <SecondaryButton
+                                  type="button"
+                                  className="min-h-11 w-full px-3 sm:w-auto"
+                                  aria-expanded={detailExpanded}
+                                  aria-controls={`compliance-evidence-detail-${check.id}`}
+                                  onClick={() =>
+                                    setExpandedComplianceDetailId((current) =>
+                                      current === check.id ? null : check.id,
+                                    )
+                                  }
+                                >
+                                  <ChevronDown
+                                    size={15}
+                                    className={
+                                      detailExpanded
+                                        ? "rotate-180 transition-transform"
+                                        : "transition-transform"
+                                    }
+                                  />
+                                  {detailExpanded
+                                    ? "Hide evidence detail"
+                                    : "Review evidence detail"}
+                                </SecondaryButton>
                                 {completeComplianceCheckMutation.isError &&
                                 completeComplianceCheckMutation.variables?.id ===
                                   check.id ? (
@@ -5889,6 +5937,120 @@ function OperationsWorkspace() {
                                       </span>
                                     ) : null}
                                   </div>
+                                </div>
+                              ) : null}
+                              {detailExpanded ? (
+                                <div
+                                  id={`compliance-evidence-detail-${check.id}`}
+                                  className="grid gap-3 border-l-2 border-primary/30 bg-muted/30 py-2 pl-3 pr-2"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                                        Evidence detail
+                                      </h4>
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {sourceDocumentId
+                                          ? "Source document on file"
+                                          : "No source document linked"}
+                                      </p>
+                                    </div>
+                                    <StatusBadge
+                                      tone={complianceEvidenceTone(check)}
+                                    >
+                                      {complianceEvidenceStatusLabel(check)}
+                                    </StatusBadge>
+                                  </div>
+                                  <dl className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Source document
+                                      </dt>
+                                      <dd>{sourceDocumentId ?? "Not linked"}</dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Current obligation
+                                      </dt>
+                                      <dd>
+                                        {check.current_obligation_id ??
+                                          "No current obligation"}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Latest completion
+                                      </dt>
+                                      <dd>
+                                        {complianceCompletionDateLabel(check)}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Approval
+                                      </dt>
+                                      <dd>
+                                        {latestCompletionDetail?.operatorApproved
+                                          ? "Operator approved"
+                                          : "Approval not recorded"}
+                                        {latestCompletionDetail?.approvedBy
+                                          ? ` by ${latestCompletionDetail.approvedBy}`
+                                          : ""}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Certificate
+                                      </dt>
+                                      <dd>{certificateDetail}</dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Next due
+                                      </dt>
+                                      <dd>
+                                        {complianceCompletionNextDueLabel(check)}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Owner
+                                      </dt>
+                                      <dd>
+                                        {complianceOwnerLabel(
+                                          check,
+                                          securityMembers,
+                                        )}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Recurrence
+                                      </dt>
+                                      <dd>{recurrenceLabel(check)}</dd>
+                                    </div>
+                                    <div>
+                                      <dt className="font-semibold text-foreground">
+                                        Scope
+                                      </dt>
+                                      <dd>
+                                        {complianceScopeContext(
+                                          check,
+                                          properties,
+                                          tenants,
+                                        ) || "Portfolio-wide"}
+                                      </dd>
+                                    </div>
+                                    <div className="sm:col-span-2 xl:col-span-3">
+                                      <dt className="font-semibold text-foreground">
+                                        Notes
+                                      </dt>
+                                      <dd>{complianceEvidenceNotes(check)}</dd>
+                                    </div>
+                                  </dl>
+                                  <p className="text-xs text-muted-foreground">
+                                    {COMPLIANCE_REVIEW_PACKET_GUARDRAIL}
+                                  </p>
                                 </div>
                               ) : null}
                               {hasEvidencePacket ? (

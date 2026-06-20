@@ -572,7 +572,7 @@ test("operations compliance tab exports a per-check evidence packet without muta
   expect(forbiddenPacketCalls).toEqual([]);
 });
 
-test("operations compliance tab surfaces operator-approved completion history and evidence state", async ({
+test("operations compliance tab surfaces operator-approved completion history, evidence state, and per-check evidence detail", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -722,6 +722,30 @@ test("operations compliance tab surfaces operator-approved completion history an
   // Evidence + completed/due state badges read from the existing record.
   await expect(checkRow.getByText("Evidence on file")).toBeVisible();
   await expect(checkRow.getByText(/\d+d overdue/)).toBeVisible();
+
+  const detailButton = checkRow.getByRole("button", {
+    name: "Review evidence detail",
+  });
+  await expectTouchTarget(detailButton);
+  await detailButton.click();
+  await expect(
+    checkRow.getByRole("heading", { name: "Evidence detail" }),
+  ).toBeVisible();
+  await expect(checkRow).toContainText("Source document on file");
+  await expect(checkRow).toContainText("document-compliance-fire-1");
+  await expect(checkRow).toContainText("Current obligation");
+  await expect(checkRow).toContainText("obligation-compliance-1");
+  await expect(checkRow).toContainText("Latest completion");
+  await expect(checkRow).toContainText("10 May 2025");
+  await expect(checkRow).toContainText("Operator approved");
+  await expect(checkRow).toContainText("jordan.reviewer@example.test");
+  await expect(checkRow).toContainText(
+    "Renewal certificate reviewed and approved.",
+  );
+  await expect(checkRow).toContainText("Certificate due in 21 days");
+  await expect(checkRow).toContainText("Every 1 year");
+  await expect(checkRow).toContainText("Temba van Jaarsveld");
+  await expect(checkRow).toContainText("Review-only compliance packet");
 
   // Completion history disclosure: most-recent first, approver + approval date.
   await expect(checkRow.getByText("Completion history")).toBeVisible();
