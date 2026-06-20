@@ -2548,6 +2548,48 @@ export type LeaseEventSnapshotRecord = {
   next_events: LeaseEventRecord[];
 };
 
+export type CalendarEventType =
+  | "lease_expiry"
+  | "rent_review"
+  | "maintenance_due"
+  | "compliance_due"
+  | "obligation"
+  | "charge_due"
+  | "billing_due"
+  | "invoice_due"
+  | "arrears_reminder"
+  | "promise_to_pay"
+  | "tenant_onboarding";
+
+export type CalendarEventSeverity =
+  | "danger"
+  | "warning"
+  | "primary"
+  | "neutral"
+  | "success";
+
+export type CalendarEventSourceRecord = {
+  table: string;
+  id: string;
+};
+
+export type CalendarEventRecord = {
+  id: string;
+  type: CalendarEventType;
+  title: string;
+  date: string;
+  severity: CalendarEventSeverity;
+  entity_id: string;
+  property_id: string | null;
+  tenancy_unit_id: string | null;
+  tenant_id: string | null;
+  lease_id: string | null;
+  source: CalendarEventSourceRecord;
+  link: string;
+  chip: string | null;
+  description: string | null;
+};
+
 export type ComplianceRiskItemRecord = {
   id: string;
   title: string;
@@ -4803,6 +4845,20 @@ export function listComplianceChecks(filters: {
   return request<ComplianceCheckRecord[]>(
     `/compliance/checks?${params.toString()}`,
   );
+}
+
+export function listCalendarEvents(filters: {
+  from: string;
+  to: string;
+  entity_id?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("from", filters.from);
+  params.set("to", filters.to);
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
+  return request<CalendarEventRecord[]>(`/calendar/events?${params.toString()}`);
 }
 
 export function completeComplianceCheck(

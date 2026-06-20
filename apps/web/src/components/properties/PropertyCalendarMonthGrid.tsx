@@ -2,25 +2,35 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { StatusBadge } from "@/components/ui";
+import { StatusBadge, type StatusTone } from "@/components/ui";
 import type { LeaseEventRecord } from "@/lib/api";
 
+export type CalendarMonthGridEvent = {
+  id: string;
+  title: string;
+  date: string | null;
+  href: string;
+  tone?: StatusTone;
+  kind?: LeaseEventRecord["kind"];
+};
+
 type PropertyCalendarMonthGridProps = {
-  events: LeaseEventRecord[];
+  events: CalendarMonthGridEvent[];
 };
 
 // The month grid uses its own tone scale (per the v2 spec): rent reviews read
 // as warning, lease expiries as danger. Other lease event kinds fall back to
 // neutral.
-function monthGridTone(
-  kind: LeaseEventRecord["kind"],
-): "warning" | "danger" | "neutral" {
-  if (kind === "rent_review") {
+function monthGridTone(event: CalendarMonthGridEvent): StatusTone {
+  if (event.tone) {
+    return event.tone;
+  }
+  if (event.kind === "rent_review") {
     return "warning";
   }
-  if (kind === "lease_expiry") {
+  if (event.kind === "lease_expiry") {
     return "danger";
   }
   return "neutral";
@@ -29,7 +39,7 @@ function monthGridTone(
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_CHIPS_PER_CELL = 2;
 
-function eventDateKey(event: LeaseEventRecord): string | null {
+function eventDateKey(event: CalendarMonthGridEvent): string | null {
   return event.date ? event.date.slice(0, 10) : null;
 }
 
@@ -73,8 +83,12 @@ export function PropertyCalendarMonthGrid({
 
   const [visibleMonth, setVisibleMonth] = useState<Date>(initialMonth);
 
+  useEffect(() => {
+    setVisibleMonth(initialMonth);
+  }, [initialMonth]);
+
   const eventsByDate = useMemo(() => {
-    const map = new Map<string, LeaseEventRecord[]>();
+    const map = new Map<string, CalendarMonthGridEvent[]>();
     for (const event of events) {
       const key = eventDateKey(event);
       if (!key) {
@@ -185,8 +199,8 @@ export function PropertyCalendarMonthGrid({
                   className="block"
                 >
                   <StatusBadge
-                    tone={monthGridTone(event.kind)}
-                    className="w-full justify-start truncate text-leasium-micro"
+                    tone={monthGridTone(event)}
+                    className="w-full min-w-0 justify-start whitespace-normal break-words text-left text-leasium-micro leading-4"
                   >
                     {event.title}
                   </StatusBadge>

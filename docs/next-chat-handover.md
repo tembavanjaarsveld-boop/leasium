@@ -1,6 +1,43 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
+
+## Continuation - 2026-06-20 (Calendar surface v1)
+
+Temba picked the unified Calendar lens as the next product build.
+
+What changed:
+- Added read-only `GET /api/v1/calendar/events`, returning dated events across
+  leases, maintenance, compliance checks, obligations, charge/billing/invoice
+  due dates, arrears reminders/promises, and tenant onboarding. The endpoint is
+  entity-scoped, supports org-wide readable entity reads when `entity_id` is
+  omitted, and returns source ids plus source deep-links.
+- Added `/operations?tab=calendar` inside the Work hub. Desktop defaults to
+  Month using the shared `PropertyCalendarMonthGrid`; mobile defaults to
+  Agenda. The tab supports All entities, selected entity, empty state, source
+  links, severity chips, and no create/edit actions.
+- Generalised the Properties month-grid event type and fixed long chip labels
+  to wrap inside day cells.
+- Added Calendar smoke coverage plus mock API fixtures for all-entity,
+  selected-entity/empty, month/agenda, source link, and forbidden provider/comms
+  mutation checks.
+- UX pass screenshots were captured at
+  `output/playwright/operations-calendar-desktop-1440.png` and
+  `output/playwright/operations-calendar-mobile-390.png`; UX log updated.
+
+Verification:
+- Backend red/green: `tests/integration/test_calendar_api.py` initially failed
+  with 404s, then passed after the router/schema landed.
+- `.venv/bin/python -m pytest tests/integration/test_calendar_api.py` — 3 passed.
+- `.venv/bin/python -m ruff check apps/api/routers/calendar.py apps/api/schemas/calendar.py tests/integration/test_calendar_api.py apps/api/main.py` — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `cd apps/web && npm run lint -- --quiet` — passed.
+- `cd apps/web && npx playwright test tests/smoke/calendar.spec.ts` — 2 passed.
+- `cd apps/web && npx playwright test tests/smoke/properties-map-calendar.spec.ts --grep "calendar"` — 10 passed after rerunning serially; the first parallel attempt collided on port 3000 while another Playwright web server was starting.
+
+Guardrails held: Calendar is read-only. No Xero, SendGrid, Twilio, tenant/owner
+email, provider dispatch, payment, reconciliation, or source-record mutation
+path was added.
 
 ## Continuation - 2026-06-19 (Stabilization v2 repo-side prep)
 

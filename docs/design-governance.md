@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-18
+Last updated: 2026-06-20
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -513,6 +513,16 @@ fixes · deferrals.
   warning, and a Frequency selector replacing the hard-coded monthly create ·
   provider guardrails unchanged: charge-rule create/delete are internal DB
   writes, no Xero/email/SMS/payment path touched · none deferred.
+- 2026-06-20 · Work Calendar tab v1 · reused the approved Horizon Work tab
+  pattern and shipped `build-to-spec` from the Calendar brief rather than a
+  new Figma frame · screens checked at 1440/390
+  (`output/playwright/operations-calendar-desktop-1440.png`,
+  `output/playwright/operations-calendar-mobile-390.png`) · fixes in-slice:
+  desktop month chips now wrap long event titles inside each day cell; mobile
+  stays agenda-first with 44px layout controls and no horizontal overflow ·
+  provider guardrails unchanged: the surface is a read-only lens and does not
+  send email/SMS, dispatch providers, call Xero/Basiq, reconcile payments, or
+  mutate source records · none deferred.
 
 ## UX Debt Register
 

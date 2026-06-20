@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-20 Calendar surface v1:** `/api/v1/calendar/events` now
+  exposes a read-only, entity-scoped union of dated operational records:
+  lease expiries/rent reviews, maintenance due dates, recurring compliance
+  checks, open obligations, charge/billing/invoice due dates, arrears reminder
+  and promise dates, and tenant onboarding dates. `/operations?tab=calendar`
+  adds the Work-hub Calendar tab with desktop Month and mobile Agenda views,
+  All-entities support, source deep-links, empty/loading coverage, and no
+  create/edit/provider actions. Smoke coverage verifies the tab, month/agenda
+  switch, source links, empty state, and no provider/comms/payment writes.
 - [x] **2026-06-18 Leasium AI composer guardrail cleanup:** Removed the
   repeated subtitle, full-width approval sentence, and `intake@leasium.ai`
   email hint from the `/intake` home composer. The concise "Approval first"
@@ -1487,7 +1496,7 @@ Equifax/illion; RTBA/state RTAs).
   create/edit/deactivate/reactivate/delete-safe template management. Remaining:
   optional template preview/variable substitution and reviewed send-time
   consumption. Pending Remba/prototype review.
-- [ ] Customisable reporting, a Calendar surface, and a Workflows builder.
+- [ ] Customisable reporting and a Workflows builder.
 
 **P3 — product-for-the-AU-market bets (low value while SKJ-internal/commercial):**
 

@@ -18,6 +18,7 @@ from apps.api.routers import (
     arrears,
     basiq,
     branded_templates,
+    calendar,
     charge_rules,
     comms,
     compliance,
@@ -159,6 +160,7 @@ app.include_router(work_assignment_notifications.router, prefix="/api/v1")
 app.include_router(lease_intakes.router, prefix="/api/v1")
 app.include_router(tenant_onboarding.router, prefix="/api/v1")
 app.include_router(tenant_portal.router, prefix="/api/v1")
+app.include_router(calendar.router, prefix="/api/v1")
 app.include_router(charge_rules.router, prefix="/api/v1")
 app.include_router(compliance.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")

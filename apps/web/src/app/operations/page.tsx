@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Ban,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
@@ -38,6 +39,10 @@ import {
 import { AppHeader } from "@/components/app-shell";
 import { EntityPicker } from "@/components/entity-picker";
 import { InlineEditCell } from "@/components/inline-edit-cell";
+import {
+  PropertyCalendarMonthGrid,
+  type CalendarMonthGridEvent,
+} from "@/components/properties/PropertyCalendarMonthGrid";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import {
@@ -57,6 +62,7 @@ import {
   type ArrearsCaseStatus,
   type ArrearsDisputeStatus,
   type ArrearsEscalationStatus,
+  type CalendarEventRecord,
   type ComplianceCheckRecord,
   completeComplianceCheck,
   createArrearsCase,
@@ -66,6 +72,7 @@ import {
   type InvoiceDraftRecord,
   linkComplianceCheckEvidence,
   listArrearsCases,
+  listCalendarEvents,
   listComplianceChecks,
   listDocumentIntakes,
   listDocuments,
@@ -122,6 +129,7 @@ const EMPTY_INTAKES: DocumentIntakeRecord[] = [];
 const EMPTY_MAINTENANCE: MaintenanceWorkOrderRecord[] = [];
 const EMPTY_ARREARS: ArrearsCaseRecord[] = [];
 const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
+const EMPTY_CALENDAR_EVENTS: CalendarEventRecord[] = [];
 const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
 const WORK_MOBILE_TOAST_CLASS =
   "fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:bottom-5 md:left-auto md:w-[420px]";
@@ -147,6 +155,11 @@ const COMPLIANCE_DOCUMENT_TYPES = new Set([
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
+  {
+    id: "calendar",
+    label: "Calendar",
+    description: "Dates and deadlines",
+  },
   {
     id: "maintenance",
     label: "Maintenance",
@@ -208,6 +221,21 @@ const workRanges = [
 ] as const;
 
 type WorkRange = (typeof workRanges)[number]["id"];
+type CalendarLayout = "agenda" | "month";
+
+const CALENDAR_EVENT_LABELS: Record<CalendarEventRecord["type"], string> = {
+  lease_expiry: "Lease expiry",
+  rent_review: "Rent review",
+  maintenance_due: "Maintenance",
+  compliance_due: "Compliance",
+  obligation: "Obligation",
+  charge_due: "Charge due",
+  billing_due: "Billing",
+  invoice_due: "Invoice",
+  arrears_reminder: "Arrears reminder",
+  promise_to_pay: "Promise to pay",
+  tenant_onboarding: "Onboarding",
+};
 
 const horizonWorkLanes = [
   {
@@ -707,6 +735,14 @@ function dueLabel(value: string | null | undefined) {
   }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
 }
 
+function calendarWindow() {
+  const today = new Date();
+  return {
+    from: dateOnly(addDays(today, -90)),
+    to: dateOnly(addDays(today, 180)),
+  };
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) {
     return "No date";
@@ -716,6 +752,45 @@ function formatDate(value: string | null | undefined) {
     month: "short",
     year: "numeric",
   }).format(new Date(`${value.slice(0, 10)}T00:00:00`));
+}
+
+function calendarEventLabel(event: CalendarEventRecord) {
+  return event.chip || CALENDAR_EVENT_LABELS[event.type];
+}
+
+function calendarEventSourceLabel(event: CalendarEventRecord) {
+  return event.source.table.replaceAll("_", " ");
+}
+
+function sortCalendarEvents(events: CalendarEventRecord[]) {
+  const severityRank: Record<StatusTone, number> = {
+    danger: 0,
+    warning: 1,
+    primary: 2,
+    neutral: 3,
+    success: 4,
+  };
+  return [...events].sort((a, b) => {
+    const dateDelta = a.date.localeCompare(b.date);
+    if (dateDelta !== 0) {
+      return dateDelta;
+    }
+    const severityDelta = severityRank[a.severity] - severityRank[b.severity];
+    if (severityDelta !== 0) {
+      return severityDelta;
+    }
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function groupCalendarEvents(events: CalendarEventRecord[]) {
+  const groups = new Map<string, CalendarEventRecord[]>();
+  for (const event of sortCalendarEvents(events)) {
+    const bucket = groups.get(event.date) ?? [];
+    bucket.push(event);
+    groups.set(event.date, bucket);
+  }
+  return Array.from(groups, ([date, items]) => ({ date, items }));
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -2403,6 +2478,8 @@ function buildQueueItems(
 function OperationsWorkspace() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
+  const [calendarLayout, setCalendarLayout] =
+    useState<CalendarLayout>("agenda");
   const [workRange, setWorkRange] = useState<WorkRange>("today");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [maintenanceStatus, setMaintenanceStatus] = useState<
@@ -2480,6 +2557,16 @@ function OperationsWorkspace() {
     maintenancePriority,
     arrearsStatus,
   ]);
+
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 768px)").matches
+    ) {
+      setCalendarLayout("month");
+    }
+  }, []);
+
   const [maintenanceFormOpen, setMaintenanceFormOpen] = useState(false);
   const [arrearsFormOpen, setArrearsFormOpen] = useState(false);
   const [expandedMaintenanceId, setExpandedMaintenanceId] = useState<
@@ -2609,6 +2696,7 @@ function OperationsWorkspace() {
       ),
     [entitiesQuery.data],
   );
+  const operationsCalendarWindow = useMemo(calendarWindow, []);
 
   const propertiesQuery = useQuery({
     queryKey: ["operations-properties", scopedEntityId],
@@ -2669,6 +2757,22 @@ function OperationsWorkspace() {
     queryKey: ["operations-arrears", scopedEntityId],
     queryFn: () => listArrearsCases({ entity_id: scopedEntityId }),
     enabled: Boolean(scopedEntityId),
+  });
+
+  const calendarQuery = useQuery({
+    queryKey: [
+      "operations-calendar",
+      selectedEntityId,
+      operationsCalendarWindow.from,
+      operationsCalendarWindow.to,
+    ],
+    queryFn: () =>
+      listCalendarEvents({
+        from: operationsCalendarWindow.from,
+        to: operationsCalendarWindow.to,
+        entity_id: scopedEntityId || undefined,
+      }),
+    enabled: Boolean(selectedEntityId),
   });
 
   // Fan-out copies of the primary list queries for all-entities mode. Each
@@ -3079,6 +3183,7 @@ function OperationsWorkspace() {
 
   const operationsLoading =
     entitiesQuery.isLoading ||
+    calendarQuery.isLoading ||
     (allMode
       ? propertiesFanOut.isLoading ||
         tenantsFanOut.isLoading ||
@@ -3156,6 +3261,47 @@ function OperationsWorkspace() {
         : (invoiceDraftsQuery.data ?? EMPTY_INVOICE_DRAFTS),
     [allMode, invoiceDraftsFanOut.data, invoiceDraftsQuery.data],
   );
+  const calendarEvents = useMemo(
+    () => sortCalendarEvents(calendarQuery.data ?? EMPTY_CALENDAR_EVENTS),
+    [calendarQuery.data],
+  );
+  const calendarAgendaGroups = useMemo(
+    () => groupCalendarEvents(calendarEvents),
+    [calendarEvents],
+  );
+  const calendarMonthEvents = useMemo<CalendarMonthGridEvent[]>(
+    () =>
+      calendarEvents
+        .filter((event) => dueRank(event.date) >= 0)
+        .map((event) => ({
+          id: event.id,
+          title: event.title,
+          date: event.date,
+          href: event.link,
+          tone: event.severity,
+        })),
+    [calendarEvents],
+  );
+  const allCalendarMonthEvents = useMemo<CalendarMonthGridEvent[]>(
+    () =>
+      calendarEvents.map((event) => ({
+        id: event.id,
+        title: event.title,
+        date: event.date,
+        href: event.link,
+        tone: event.severity,
+      })),
+    [calendarEvents],
+  );
+  const visibleCalendarMonthEvents =
+    calendarMonthEvents.length > 0 ? calendarMonthEvents : allCalendarMonthEvents;
+  const overdueCalendarEventCount = calendarEvents.filter(
+    (event) => dueRank(event.date) < 0,
+  ).length;
+  const upcomingCalendarEventCount = calendarEvents.filter((event) => {
+    const rank = dueRank(event.date);
+    return rank >= 0 && rank <= 30;
+  }).length;
   const securityMembers = securityWorkspaceQuery.data?.members ?? EMPTY_MEMBERS;
   const assignableMembers = useMemo(
     () =>
@@ -3407,6 +3553,7 @@ function OperationsWorkspace() {
 
   const error =
     entitiesQuery.error ||
+    calendarQuery.error ||
     (allMode
       ? propertiesFanOut.error ||
         tenantsFanOut.error ||
@@ -3451,6 +3598,7 @@ function OperationsWorkspace() {
 
   function refresh() {
     securityWorkspaceQuery.refetch();
+    calendarQuery.refetch();
     if (allMode) {
       propertiesFanOut.refetch();
       tenantsFanOut.refetch();
@@ -4203,9 +4351,12 @@ function OperationsWorkspace() {
             actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
-            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-4">
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-5">
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Queue
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Calendar
               </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Maintenance
@@ -4313,7 +4464,7 @@ function OperationsWorkspace() {
             ) : null}
 
             <div
-              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-4 md:gap-2 md:rounded-[12px]"
+              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-5 md:gap-2 md:rounded-[12px]"
               role="tablist"
               aria-label="Operations sections"
             >
@@ -4928,6 +5079,157 @@ function OperationsWorkspace() {
               </section>
             ) : null}
 
+            {activeTab === "calendar" ? (
+              <SectionPanel
+                title="Operations calendar"
+                description="Dates from leases, work, compliance, billing, arrears, and onboarding."
+                icon={<CalendarDays size={17} className="text-primary" />}
+                actions={
+                  <div
+                    role="group"
+                    aria-label="Calendar layout"
+                    className="inline-flex rounded-full border border-border bg-white p-1 shadow-leasiumXs"
+                  >
+                    {(["agenda", "month"] as const).map((layout) => {
+                      const active = calendarLayout === layout;
+                      return (
+                        <button
+                          key={layout}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => setCalendarLayout(layout)}
+                          className={cn(
+                            "min-h-11 rounded-full px-4 text-sm font-semibold transition",
+                            active
+                              ? "bg-primary text-white"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          {layout === "agenda" ? "Agenda" : "Month"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                }
+              >
+                <div className="border-b border-border bg-muted/30 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate shadow-leasiumXs">
+                      <CalendarDays size={14} className="text-primary" />
+                      {allMode
+                        ? "All entities"
+                        : selectedEntity?.name ?? "Selected entity"}
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Events
+                      <span className="text-foreground">
+                        {calendarEvents.length}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Overdue
+                      <span className="text-danger-strong">
+                        {overdueCalendarEventCount}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      Next 30
+                      <span className="text-primary-hover">
+                        {upcomingCalendarEventCount}
+                      </span>
+                    </span>
+                    <span className="inline-flex min-h-11 items-center rounded-full border border-border bg-white px-3 text-xs font-semibold text-muted-foreground">
+                      {formatDate(operationsCalendarWindow.from)} to{" "}
+                      {formatDate(operationsCalendarWindow.to)}
+                    </span>
+                  </div>
+                </div>
+
+                {calendarEvents.length === 0 && !calendarQuery.isLoading ? (
+                  <EmptyState
+                    icon={<CalendarDays size={18} />}
+                    title="No calendar events in this window."
+                    description="Lease, work, compliance, billing, arrears, and onboarding dates will appear here."
+                  />
+                ) : null}
+
+                {calendarEvents.length > 0 && calendarLayout === "month" ? (
+                  <div className="p-4">
+                    <PropertyCalendarMonthGrid
+                      events={visibleCalendarMonthEvents}
+                    />
+                  </div>
+                ) : null}
+
+                {calendarEvents.length > 0 && calendarLayout === "agenda" ? (
+                  <div className="divide-y divide-border">
+                    {calendarAgendaGroups.map((group) => (
+                      <section
+                        key={group.date}
+                        className="grid gap-3 px-4 py-4 lg:grid-cols-[10rem_minmax(0,1fr)]"
+                      >
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-foreground">
+                            {formatDate(group.date)}
+                          </h3>
+                          <StatusBadge
+                            tone={
+                              dueRank(group.date) < 0
+                                ? "danger"
+                                : dueRank(group.date) <= 30
+                                  ? "primary"
+                                  : "neutral"
+                            }
+                            className="mt-2"
+                          >
+                            {dueLabel(group.date)}
+                          </StatusBadge>
+                        </div>
+                        <div className="grid gap-2">
+                          {group.items.map((event) => (
+                            <Link
+                              key={event.id}
+                              href={event.link}
+                              className="grid min-h-11 gap-2 rounded-xl border border-border bg-white px-3 py-3 transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            >
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {event.title}
+                                </span>
+                                <StatusBadge tone={event.severity}>
+                                  {calendarEventLabel(event)}
+                                </StatusBadge>
+                                {allMode ? (
+                                  <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                    {entityNameById.get(event.entity_id) ??
+                                      "Unknown entity"}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {[
+                                  event.description,
+                                  propertyName(properties, event.property_id),
+                                  tenantName(tenants, event.tenant_id),
+                                ]
+                                  .filter(Boolean)
+                                  .join(" - ")}
+                              </p>
+                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <span>{dueLabel(event.date)}</span>
+                                <span>{CALENDAR_EVENT_LABELS[event.type]}</span>
+                                <span>{calendarEventSourceLabel(event)}</span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : null}
+              </SectionPanel>
+            ) : null}
+
             {activeTab === "compliance" ? (
               <SectionPanel
                 title="Compliance & inspections"
@@ -5034,8 +5336,9 @@ function OperationsWorkspace() {
                           return (
                             <div
                               key={check.id}
+                              id={`compliance-check-${encodeURIComponent(check.id)}`}
                               data-testid={`compliance-check-${check.id}`}
-                              className="grid gap-2 p-3"
+                              className="grid scroll-mt-24 gap-2 p-3"
                             >
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-semibold text-foreground">
