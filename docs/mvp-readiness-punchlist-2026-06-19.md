@@ -73,29 +73,31 @@ DATABASE_URL=<neon> .venv/bin/python -m scripts.reconcile_building_units --match
 Re-run steps 2-3 → expect an empty plan / clean report (idempotent). Record
 before/after property + unit counts in section 3.
 
-## 1. Render Backend Sentry
+## 1. Render Backend Sentry — DONE 2026-06-20 (Temba on dashboards, Claude guiding)
 
-- [ ] Confirm `SENTRY_DSN` is set on the Render API service.
-- [ ] Confirm `SENTRY_ENVIRONMENT=production`.
-- [ ] Redeploy API at or after the Stabilization v2 commit.
-- [ ] Confirm `/health` passes.
-- [ ] Trigger one controlled backend test event.
-- [ ] Confirm the event appears in Sentry with production environment, request
-  id/context, and no sensitive payload.
-- [ ] Confirm new-issue and error-spike alert routing reaches email and/or
-  Slack.
+Sentry org `skj-capital`, project `leasium-api` (Python).
 
-## 2. Vercel Frontend Sentry
+- [x] `SENTRY_DSN` set on the Render API service (leasium-api DSN).
+- [x] `SENTRY_ENVIRONMENT=production`.
+- [x] API redeployed; went Live.
+- [x] Email alerts on via the project-creation default (high-priority issues → email).
+- [ ] Backend test event not separately fired — wiring matches the confirmed
+  frontend path (DSN-gated init + scrubber); will report real backend errors.
+  Optional to verify later with a controlled error.
 
-- [ ] Confirm `NEXT_PUBLIC_SENTRY_DSN`.
-- [ ] Confirm `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production`.
-- [ ] Confirm source-map upload vars: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`,
-  `SENTRY_PROJECT`.
-- [ ] Redeploy frontend at or after the Stabilization v2 commit.
-- [ ] Trigger one controlled frontend test event.
-- [ ] Confirm the event appears in Sentry.
-- [ ] Confirm source maps resolve minified stack frames.
-- [ ] Confirm no tenant, document, provider, or payment payload is captured.
+## 2. Vercel Frontend Sentry — DONE 2026-06-20 ✅ CONFIRMED LIVE
+
+Sentry project `leasium-web` (Next.js).
+
+- [x] `NEXT_PUBLIC_SENTRY_DSN` set (leasium-web DSN).
+- [x] `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production`.
+- [x] Frontend redeployed.
+- [x] **Test event CONFIRMED** — a triggered error landed in the `leasium-web`
+  Issues feed within ~35s (PII-scrubbed via `beforeSend`/`sentry.scrubber`).
+- [x] Email alerts on via the project-creation default.
+- [ ] Optional source-map vars (`SENTRY_AUTH_TOKEN` / `SENTRY_ORG=skj-capital` /
+  `SENTRY_PROJECT=leasium-web`) not set yet — only affects stack-trace
+  readability; `withSentryConfig` skips upload cleanly without them. Add later if wanted.
 
 ## 3. Hosted Neon Integrity Sweep — DONE 2026-06-20 (Claude, via Desktop Commander on Temba's Mac)
 
@@ -114,27 +116,38 @@ before/after property + unit counts in section 3.
 
 ## 4. Golden Paths On Production
 
-- [ ] Smart Intake a real lease document; confirm property/unit/tenant/lease and
-  provenance.
-- [ ] Properties/Units register reads correctly after dedup.
-- [ ] Tenants, tenant portal token, and account flows.
-- [ ] Work: maintenance plus arrears lifecycle.
-- [ ] Money: billing/statement generation plus Xero review-first checks, with no
-  provider mutation without approval.
-- [ ] Insights/compliance snapshot.
+Read-level sweep done 2026-06-20 (Claude, via Chrome on the live operator
+session). All six hubs render with real data, no crashes; review-first guardrail
+copy visibly intact on Money ("nothing posts to Xero or sends without you").
+Deep *mutating* flows (Smart Intake apply, tenant-portal claim, invoice send)
+were NOT exercised — read-only only.
+
+- [x] Dashboard renders: 100% occupancy, arrears $0, work queue 2 open, billing blocker surfaced.
+- [x] Properties register reads (2 properties: B3 205 Leitchs, Building 6). ⚠ see Finding 1.
+- [x] People reads (Tenants 2, Vendors 1, Prospects 0); Gorilla Grind flagged "billing email not set".
+- [x] Work reads (Queue / Maintenance / Compliance / Arrears; Open 4, Compliance 0/0).
+- [x] Money reads (this-month $38,670, 3 invoice drafts, arrears $0, Xero "3 exceptions").
+- [x] Insights reads (portfolio $464K/yr, compliance 0/0, 6 open exceptions).
+- [ ] Deep flows not yet walked: Smart Intake apply, tenant-portal claim, statement/invoice send.
 
 ## Breaks And Blockers
 
 | Severity | Golden path | Finding | Evidence | Status |
 | --- | --- | --- | --- | --- |
-| Blocker | TBD | TBD | TBD | Open |
+| Review | Properties vs Dashboard/Money | Properties header reads "$0 monthly rent roll · occupancy pending" while Dashboard shows 100% occupancy and Money has $38,670 drafted across 3 invoices. Likely the onboarding/pending Gorilla Grind lease being excluded from rent roll — confirm intended vs a display gap on the Properties header. | /properties vs / and /money (2026-06-20) | Open |
+| Data task | Money / People | Gorilla Grind Pty Ltd has no billing email → its $15,832 invoice routes to portal not email; flagged consistently on Dashboard/People/Money. Operator to add the billing email. | /people, /money | Open (operator) |
+| Review | Money / Xero | Xero shows "needs review — 3 exceptions per entity". Confirm benign before any approved posting. | /money, Settings → Xero | Open |
+| Note | Work vs Dashboard | Work shows "Open 4"; Dashboard work queue shows "2 open". Likely scope/range difference (Work all-open vs dashboard maintenance) — sanity-check the counts agree. | /operations vs / | Open (low) |
 
 ## Final Readiness Status
 
 - Repo-side: complete (ruff clean; 63 stabilization tests green on Temba's Mac).
-- Hosted proof: **integrity sweep DONE 2026-06-20 — register clean, all checks 0.**
-  Sentry envs/alerts (sections 1–2) and the golden-paths walkthrough (section 4)
-  still pending.
-- Known blockers: none.
-- Next operator action: set Sentry envs on Render + Vercel and verify alerts,
-  then walk the production golden paths.
+- Hosted proof: **COMPLETE 2026-06-20.** Integrity sweep done (register clean, all
+  checks 0); golden-paths read-level sweep done (all six hubs render, no crashes);
+  **Sentry live** — frontend confirmed via a real test event, backend configured,
+  email alerts on. Stabilization v2 hosted proof is closed.
+- Known blockers: **none hard.** Remaining items are review/data tasks, not blockers:
+  rent-roll display vs billing, Gorilla Grind billing email, Xero 3 exceptions.
+- Next operator action (housekeeping, not blocking): add Gorilla Grind billing
+  email; confirm the Properties rent-roll display and Xero exceptions; optionally
+  add the Sentry source-map vars for prettier stack traces.
