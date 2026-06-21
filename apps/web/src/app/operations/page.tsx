@@ -417,6 +417,7 @@ type ApprovalCandidateKind =
 
 type ApprovalGroupFilter = "all" | ApprovalGroupId;
 type ApprovalKindFilter = "all" | ApprovalCandidateKind;
+type ApprovalSortMode = "grouped" | "due_soon" | "source";
 
 const approvalKindFilters: ReadonlyArray<{
   id: ApprovalKindFilter;
@@ -429,6 +430,15 @@ const approvalKindFilters: ReadonlyArray<{
   { id: "compliance", label: "Compliance" },
   { id: "onboarding", label: "Tenant onboarding" },
   { id: "assignment_notice", label: "Assignment notices" },
+];
+
+const approvalSortOptions: ReadonlyArray<{
+  id: ApprovalSortMode;
+  label: string;
+}> = [
+  { id: "grouped", label: "Grouped" },
+  { id: "due_soon", label: "Due soon" },
+  { id: "source", label: "Source" },
 ];
 
 type ApprovalCandidate = {
@@ -1559,23 +1569,7 @@ function buildApprovalCandidates({
     });
   }
 
-  const groupRank: Record<ApprovalGroupId, number> = {
-    ready: 0,
-    blocked: 1,
-    provider_adjacent: 2,
-    watching: 3,
-  };
-  return candidates.sort((a, b) => {
-    const groupDelta = groupRank[a.group] - groupRank[b.group];
-    if (groupDelta !== 0) {
-      return groupDelta;
-    }
-    const dueDelta = dueRank(a.dueDate) - dueRank(b.dueDate);
-    if (dueDelta !== 0) {
-      return dueDelta;
-    }
-    return a.title.localeCompare(b.title);
-  });
+  return sortApprovalCandidates(candidates, "grouped");
 }
 
 function operationsApprovalsReviewCsv(candidates: ApprovalCandidate[]) {
@@ -1690,6 +1684,64 @@ function approvalCandidateMatchesSearch(
     .join(" ")
     .toLowerCase()
     .includes(normalizedQuery);
+}
+
+function compareApprovalCandidatesByGroupedPriority(
+  a: ApprovalCandidate,
+  b: ApprovalCandidate,
+) {
+  const groupRank: Record<ApprovalGroupId, number> = {
+    ready: 0,
+    blocked: 1,
+    provider_adjacent: 2,
+    watching: 3,
+  };
+  const groupDelta = groupRank[a.group] - groupRank[b.group];
+  if (groupDelta !== 0) {
+    return groupDelta;
+  }
+  const dueDelta = dueRank(a.dueDate) - dueRank(b.dueDate);
+  if (dueDelta !== 0) {
+    return dueDelta;
+  }
+  return a.title.localeCompare(b.title);
+}
+
+function compareApprovalCandidatesByDueSoon(
+  a: ApprovalCandidate,
+  b: ApprovalCandidate,
+) {
+  const dueDelta = dueRank(a.dueDate) - dueRank(b.dueDate);
+  if (dueDelta !== 0) {
+    return dueDelta;
+  }
+  return a.title.localeCompare(b.title);
+}
+
+function compareApprovalCandidatesBySource(
+  a: ApprovalCandidate,
+  b: ApprovalCandidate,
+) {
+  const sourceDelta = a.sourceLabel.localeCompare(b.sourceLabel);
+  if (sourceDelta !== 0) {
+    return sourceDelta;
+  }
+  return compareApprovalCandidatesByDueSoon(a, b);
+}
+
+function sortApprovalCandidates(
+  candidates: ApprovalCandidate[],
+  sortMode: ApprovalSortMode,
+) {
+  const comparators: Record<
+    ApprovalSortMode,
+    (a: ApprovalCandidate, b: ApprovalCandidate) => number
+  > = {
+    grouped: compareApprovalCandidatesByGroupedPriority,
+    due_soon: compareApprovalCandidatesByDueSoon,
+    source: compareApprovalCandidatesBySource,
+  };
+  return [...candidates].sort(comparators[sortMode]);
 }
 
 function complianceCheckTone(check: ComplianceCheckRecord): StatusTone {
@@ -3082,6 +3134,8 @@ function OperationsWorkspace() {
   const [approvalKindFilter, setApprovalKindFilter] =
     useState<ApprovalKindFilter>("all");
   const [approvalSearchQuery, setApprovalSearchQuery] = useState("");
+  const [approvalSortMode, setApprovalSortMode] =
+    useState<ApprovalSortMode>("grouped");
   const [selectedApprovalCandidateId, setSelectedApprovalCandidateId] =
     useState<string | null>(null);
   const [previewCalendarEventId, setPreviewCalendarEventId] = useState<
@@ -4059,13 +4113,16 @@ function OperationsWorkspace() {
       tenants,
     ],
   );
-  const visibleApprovalCandidates = approvalCandidates.filter(
-    (candidate) =>
-      (approvalGroupFilter === "all" ||
-        candidate.group === approvalGroupFilter) &&
-      (approvalKindFilter === "all" ||
-        candidate.kind === approvalKindFilter) &&
-      approvalCandidateMatchesSearch(candidate, approvalSearchQuery),
+  const visibleApprovalCandidates = sortApprovalCandidates(
+    approvalCandidates.filter(
+      (candidate) =>
+        (approvalGroupFilter === "all" ||
+          candidate.group === approvalGroupFilter) &&
+        (approvalKindFilter === "all" ||
+          candidate.kind === approvalKindFilter) &&
+        approvalCandidateMatchesSearch(candidate, approvalSearchQuery),
+    ),
+    approvalSortMode,
   );
   const selectedApprovalCandidate =
     visibleApprovalCandidates.find(
@@ -4103,6 +4160,20 @@ function OperationsWorkspace() {
       (candidate) => candidate.group === group.id,
     ),
   }));
+  const approvalSortedFlatGroup = {
+    id: "sorted",
+    label: "Sorted approvals",
+    description:
+      approvalSortMode === "due_soon"
+        ? "Earliest due candidates first."
+        : "Grouped by approval source.",
+    tone: "primary" as StatusTone,
+    items: visibleApprovalCandidates,
+  };
+  const renderedApprovalCandidateGroups =
+    approvalSortMode === "grouped"
+      ? approvalCandidateGroups
+      : [approvalSortedFlatGroup];
   const approvalGroupFilterRows: Array<{
     id: ApprovalGroupFilter;
     label: string;
@@ -4124,7 +4195,8 @@ function OperationsWorkspace() {
   const approvalFilterActive =
     approvalGroupFilter !== "all" ||
     approvalKindFilter !== "all" ||
-    approvalSearchQuery.trim().length > 0;
+    approvalSearchQuery.trim().length > 0 ||
+    approvalSortMode !== "grouped";
   useEffect(() => {
     if (!selectedApprovalCandidateId) return;
     if (
@@ -6009,6 +6081,22 @@ function OperationsWorkspace() {
                         </option>
                       ))}
                     </Select>
+                    <Select
+                      aria-label="Approval sort"
+                      value={approvalSortMode}
+                      onChange={(event) =>
+                        setApprovalSortMode(
+                          event.target.value as ApprovalSortMode,
+                        )
+                      }
+                      className="min-h-11 w-full min-w-[150px] sm:w-auto"
+                    >
+                      {approvalSortOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          Sort: {option.label}
+                        </option>
+                      ))}
+                    </Select>
                     {approvalFilterActive ? (
                       <SecondaryButton
                         type="button"
@@ -6017,6 +6105,7 @@ function OperationsWorkspace() {
                           setApprovalGroupFilter("all");
                           setApprovalKindFilter("all");
                           setApprovalSearchQuery("");
+                          setApprovalSortMode("grouped");
                         }}
                       >
                         <X size={15} />
@@ -6200,7 +6289,7 @@ function OperationsWorkspace() {
 
                       {visibleApprovalCandidates.length > 0 ? (
                         <div className="grid gap-3">
-                          {approvalCandidateGroups
+                          {renderedApprovalCandidateGroups
                             .filter((group) => group.items.length > 0)
                             .map((group) => (
                               <section

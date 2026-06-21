@@ -2,6 +2,47 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals sort v1.6)
+
+Temba continued the Work approvals lane after local search shipped. This slice
+adds a read-only sort control so the approvals inbox can be scanned by due date
+or source without changing the source records.
+
+What changed:
+- Added a local `Approval sort` control to `/operations?tab=approvals`.
+- Sort modes are Grouped, Due soon, and Source.
+- Grouped remains the default and preserves the existing Ready / Needs evidence
+  / Provider-adjacent lane layout.
+- Due soon and Source render one `Sorted approvals` section so screen order,
+  preview previous/next, and visible-list CSV copy/download order match.
+- `Clear approval filters` now resets sort to Grouped along with state, source,
+  and search.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-sort-v16-1440.png` and
+  `output/playwright/work-approvals-sort-v16-390.png`.
+
+Verification:
+- Red first: the focused approvals filter smoke failed waiting for the missing
+  `Approval sort` field.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts -g "filters candidates"`
+  — 1 passed after implementation.
+- Temporary mocked screenshot harness passed 1/1 and was removed after
+  producing the UX evidence images.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+
+Guardrails held: approvals sort is local and read-only. It adds no backend sort
+endpoint, Xero/Basiq, SendGrid/Twilio, tenant/owner/provider email, SMS,
+provider dispatch, Smart Intake apply, maintenance approval, compliance
+completion, invoice approval or delivery, payment, reconciliation,
+source-record mutation, or provider-history mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals search v1.5)
 
 Temba continued the Work approvals lane after preview navigation shipped. This

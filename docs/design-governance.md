@@ -635,6 +635,20 @@ fixes · deferrals.
   guardrails unchanged: searching/exporting does not approve, apply, complete,
   send email/SMS, dispatch providers, post to Xero/Basiq, create payments,
   reconcile, mutate source records, or mutate provider history · none deferred.
+- 2026-06-21 · Work Approvals sort v1.6 · reused the shipped approvals filter
+  band and native select pattern without new tokens, route, or backend endpoint
+  · screens checked at 1440/390
+  (`output/playwright/work-approvals-sort-v16-1440.png`,
+  `output/playwright/work-approvals-sort-v16-390.png`) · fixes in-slice: added
+  a local `Approval sort` control with Grouped, Due soon, and Source modes;
+  Grouped keeps the existing approval lanes, while sorted modes render one
+  `Sorted approvals` list so visible order, preview previous/next, and CSV
+  export order stay aligned · desktop keeps the search/source/sort controls in
+  a compact row; mobile stacks them with full-width touch-safe controls and no
+  horizontal overflow · provider guardrails unchanged: sorting/exporting does
+  not approve, apply, complete, send email/SMS, dispatch providers, post to
+  Xero/Basiq, create payments, reconcile, mutate source records, or mutate
+  provider history · none deferred.
 
 ## UX Debt Register
 

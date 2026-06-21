@@ -349,6 +349,61 @@ test("operations approvals tab filters candidates and scopes review exports", as
     panel.locator('a[href="/tenants/tenant-1"]'),
   ).toBeVisible();
 
+  const sortSelect = panel.getByLabel("Approval sort");
+  await expectTouchTarget(sortSelect);
+  await sortSelect.selectOption("due_soon");
+  await expect(sortSelect).toHaveValue("due_soon");
+
+  const dueSortedTitles = await panel.locator("article h3").allTextContents();
+  const annualFireIndex = dueSortedTitles.indexOf(
+    "Annual fire safety statement",
+  );
+  const airConditioningIndex = dueSortedTitles.indexOf(
+    "Air conditioning fault",
+  );
+  const assignmentIndex = dueSortedTitles.indexOf(
+    "Assignment notice ready",
+  );
+  const invoiceIndex = dueSortedTitles.indexOf("Owner recharge invoice");
+  const onboardingIndex = dueSortedTitles.indexOf(
+    "Tenant onboarding ready for review",
+  );
+  expect(annualFireIndex).toBe(0);
+  expect(airConditioningIndex).toBeGreaterThan(annualFireIndex);
+  expect(assignmentIndex).toBeGreaterThan(airConditioningIndex);
+  expect(onboardingIndex).toBeGreaterThan(assignmentIndex);
+  expect(invoiceIndex).toBeGreaterThan(onboardingIndex);
+
+  forbiddenCalls.length = 0;
+  await panel.getByRole("button", { name: "Copy approvals CSV" }).click();
+  const dueSortedCsv = await copiedApprovalsCsv(page);
+  expect(dueSortedCsv).toContain("Annual fire safety statement");
+  expect(dueSortedCsv).toContain("Air conditioning fault");
+  expect(dueSortedCsv).toContain("Owner recharge invoice");
+  expect(dueSortedCsv.indexOf("Annual fire safety statement")).toBeLessThan(
+    dueSortedCsv.indexOf("Air conditioning fault"),
+  );
+  expect(dueSortedCsv.indexOf("Tenant onboarding ready for review")).toBeLessThan(
+    dueSortedCsv.indexOf("Owner recharge invoice"),
+  );
+
+  const firstDueSortedRow = panel
+    .locator("article")
+    .filter({ hasText: "Annual fire safety statement" })
+    .first();
+  await firstDueSortedRow.getByRole("button", { name: "Preview" }).click();
+  const previewPanel = panel
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Approval preview" }) })
+    .first();
+  await expect(previewPanel).toContainText("Candidate 1 of");
+  await expect(previewPanel).toContainText("Annual fire safety statement");
+  await previewPanel
+    .getByRole("button", { name: "Next approval candidate" })
+    .click();
+  await expect(previewPanel).toContainText("Document waiting for review");
+  await previewPanel.getByRole("button", { name: "Close preview" }).click();
+
   const searchInput = panel.getByLabel("Search approvals");
   await expectTouchTarget(searchInput);
   await searchInput.fill("INV-2001");
@@ -389,6 +444,7 @@ test("operations approvals tab filters candidates and scopes review exports", as
 
   await panel.getByRole("button", { name: "Clear approval filters" }).click();
   await expect(searchInput).toHaveValue("");
+  await expect(sortSelect).toHaveValue("grouped");
 
   const providerFilter = panel.getByRole("button", {
     name: /Provider-adjacent/,

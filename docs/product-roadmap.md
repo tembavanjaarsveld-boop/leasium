@@ -16,6 +16,16 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals sort v1.6:** The Work approvals inbox now has
+  a local read-only `Approval sort` control with Grouped, Due soon, and Source
+  modes. Grouped preserves the existing Ready / Needs evidence / Provider-
+  adjacent lanes; Due soon and Source render one sorted review list so screen
+  order, preview previous/next, and copy/download CSV order all match the
+  selected sort. The existing state/source filters, search, selected-preview
+  clearing, source handoffs, and packet actions stay unchanged, and smoke
+  coverage locks due-sort ordering, CSV ordering, preview navigation, clear-
+  filter reset, and continued silence for provider/comms/payment/
+  reconciliation/source-record mutations.
 - [x] **2026-06-21 Work approvals search v1.5:** The Work approvals inbox now
   has a local read-only search field that narrows the currently loaded approval
   candidates by title, kind, source, status, context, reason, guardrail, due
