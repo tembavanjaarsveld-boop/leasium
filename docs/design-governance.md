@@ -609,6 +609,19 @@ fixes · deferrals.
   complete, send email/SMS, dispatch providers, post to Xero/Basiq, create
   payments, reconcile, mutate source records, or mutate provider history · none
   deferred.
+- 2026-06-21 · Work Approvals preview navigation v1.4 · reused the shipped
+  approvals preview panel and compact button patterns without new tokens, route,
+  or backend endpoint · screens checked at 1440/390
+  (`output/playwright/work-approvals-preview-nav-v14-1440.png`,
+  `output/playwright/work-approvals-preview-nav-v14-390.png`) · fixes in-slice:
+  added a visible candidate-position chip plus previous/next icon controls,
+  kept the controls at 44px touch targets, disabled them at visible-list
+  boundaries, and changed only the selected preview while preserving source and
+  packet actions · mobile wraps the controls without horizontal overflow and
+  keeps the longer preview scrollable above the fixed bottom nav · provider
+  guardrails unchanged: preview navigation does not approve, apply, complete,
+  send email/SMS, dispatch providers, post to Xero/Basiq, create payments,
+  reconcile, mutate source records, or mutate provider history · none deferred.
 
 ## UX Debt Register
 

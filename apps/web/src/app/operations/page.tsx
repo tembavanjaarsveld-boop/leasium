@@ -8,6 +8,8 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Clock3,
   Copy,
@@ -4043,6 +4045,29 @@ function OperationsWorkspace() {
   const selectedApprovalGroup = selectedApprovalCandidate
     ? approvalGroups.find((group) => group.id === selectedApprovalCandidate.group)
     : null;
+  const selectedApprovalCandidateIndex = selectedApprovalCandidate
+    ? visibleApprovalCandidates.findIndex(
+        (candidate) => candidate.id === selectedApprovalCandidate.id,
+      )
+    : -1;
+  const selectedApprovalPosition =
+    selectedApprovalCandidateIndex >= 0 ? selectedApprovalCandidateIndex + 1 : 0;
+  const canPreviewPreviousApproval = selectedApprovalCandidateIndex > 0;
+  const canPreviewNextApproval =
+    selectedApprovalCandidateIndex >= 0 &&
+    selectedApprovalCandidateIndex < visibleApprovalCandidates.length - 1;
+  const previewPreviousApprovalCandidate = () => {
+    if (!canPreviewPreviousApproval) return;
+    setSelectedApprovalCandidateId(
+      visibleApprovalCandidates[selectedApprovalCandidateIndex - 1].id,
+    );
+  };
+  const previewNextApprovalCandidate = () => {
+    if (!canPreviewNextApproval) return;
+    setSelectedApprovalCandidateId(
+      visibleApprovalCandidates[selectedApprovalCandidateIndex + 1].id,
+    );
+  };
   const approvalCandidateGroups = approvalGroups.map((group) => ({
     ...group,
     items: visibleApprovalCandidates.filter(
@@ -6006,6 +6031,33 @@ function OperationsWorkspace() {
                           Close preview
                         </SecondaryButton>
                       </header>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex min-h-11 items-center rounded-full border border-primary/20 bg-white px-3 text-xs font-semibold text-muted-foreground shadow-leasiumXs">
+                          Candidate {selectedApprovalPosition} of{" "}
+                          {visibleApprovalCandidates.length} visible
+                        </span>
+                        <SecondaryButton
+                          type="button"
+                          aria-label="Previous approval candidate"
+                          title="Previous candidate"
+                          className="h-11 w-11 shrink-0 p-0"
+                          disabled={!canPreviewPreviousApproval}
+                          onClick={previewPreviousApprovalCandidate}
+                        >
+                          <ChevronLeft size={15} />
+                        </SecondaryButton>
+                        <SecondaryButton
+                          type="button"
+                          aria-label="Next approval candidate"
+                          title="Next candidate"
+                          className="h-11 w-11 shrink-0 p-0"
+                          disabled={!canPreviewNextApproval}
+                          onClick={previewNextApprovalCandidate}
+                        >
+                          <ChevronRight size={15} />
+                        </SecondaryButton>
+                      </div>
 
                       <div className="grid gap-3 rounded-[12px] border border-leasium-card-border bg-white p-3 shadow-leasiumXs">
                         <div className="flex flex-wrap items-center gap-2">

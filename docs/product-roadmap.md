@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals preview navigation v1.4:** The selected
+  approvals preview now shows its position in the visible filtered candidate
+  list and adds previous/next arrow controls so an operator can step through
+  candidates without closing the panel. Navigation only changes the selected
+  preview id, respects the current state/source filters, disables at the list
+  boundaries, and keeps the existing source handoff plus single-candidate
+  packet actions unchanged. Smoke coverage locks the invoice-to-prior-candidate
+  and back-again path while continuing to trap provider/comms/payment/
+  reconciliation/source-record mutations.
 - [x] **2026-06-21 Work approvals candidate packet v1.3:** The selected
   approvals preview now has local `Copy packet` and `Download packet` actions
   for a single candidate. The packet includes the candidate title, source,

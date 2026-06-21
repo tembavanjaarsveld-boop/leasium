@@ -2,6 +2,46 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals preview navigation v1.4)
+
+Temba continued the Work approvals lane after the candidate packet shipped.
+This slice makes the selected preview easier to work through without closing
+the panel.
+
+What changed:
+- Added a visible candidate-position chip to the approvals preview panel, e.g.
+  `Candidate 10 of 10 visible`.
+- Added previous/next icon controls that move through the currently visible
+  filtered candidate list and disable at the list boundaries.
+- Navigation only updates the selected approval candidate id; source handoff,
+  close preview, copy packet, download packet, filters, and CSV exports stay
+  unchanged.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-preview-nav-v14-1440.png` and
+  `output/playwright/work-approvals-preview-nav-v14-390.png`.
+
+Verification:
+- Red first: the focused approvals preview smoke failed waiting for the missing
+  `Previous approval candidate` button.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts -g "previews a candidate"`
+  — 1 passed after implementation.
+- Temporary mocked screenshot harness passed 2/2 and was removed after
+  producing the UX evidence images.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+
+Guardrails held: preview navigation is read-only. It adds no Xero/Basiq,
+SendGrid/Twilio, tenant/owner/provider email, SMS, provider dispatch, Smart
+Intake apply, maintenance approval, compliance completion, invoice approval or
+delivery, payment, reconciliation, source-record mutation, or provider-history
+mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals candidate packet v1.3)
 
 Temba continued the Work approvals lane after the preview drawer shipped. This

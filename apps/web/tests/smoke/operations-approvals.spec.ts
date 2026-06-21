@@ -436,6 +436,27 @@ test("operations approvals tab previews a candidate without mutations", async ({
   await expectTouchTarget(copyPacketButton);
   await expectTouchTarget(downloadPacketButton);
 
+  const previousCandidateButton = previewPanel.getByRole("button", {
+    name: "Previous approval candidate",
+  });
+  const nextCandidateButton = previewPanel.getByRole("button", {
+    name: "Next approval candidate",
+  });
+  await expectTouchTarget(previousCandidateButton);
+  await expectTouchTarget(nextCandidateButton);
+  await expect(previewPanel).toContainText("Candidate");
+  await expect(previewPanel).toContainText("of");
+
+  await previousCandidateButton.click();
+  await expect(previewPanel).toContainText("Insurance certificate renewal");
+  await expect(previewPanel).toContainText("Assignment notice ready");
+  await expect(previewPanel).toContainText("Property manager");
+  await expect(previewPanel).not.toContainText("Owner recharge invoice");
+
+  await nextCandidateButton.click();
+  await expect(previewPanel).toContainText("Owner recharge invoice");
+  await expect(previewPanel).toContainText("Billing");
+
   await copyPacketButton.click();
   const copiedPacket = await copiedApprovalsCsv(page);
   expect(copiedPacket).toContain("Single approval candidate packet");
