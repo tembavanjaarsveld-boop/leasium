@@ -338,10 +338,40 @@ test("operations approvals tab filters candidates and scopes review exports", as
   await mockApprovalsApi(page);
   const forbiddenCalls = await trapForbiddenApprovalCalls(page);
 
-  await page.goto("/operations?tab=approvals");
+  await page.goto(
+    "/operations?tab=approvals&approval_state=provider_adjacent&approval_source=invoice_draft&approval_search=INV-2001&approval_sort=source",
+  );
 
   const panel = approvalsPanel(page);
   await expect(panel).toBeVisible();
+  const searchInput = panel.getByLabel("Search approvals");
+  const sourceSelect = panel.getByLabel("Approval source");
+  const sortSelect = panel.getByLabel("Approval sort");
+  const providerFilter = panel.getByRole("button", {
+    name: /Provider-adjacent/,
+  });
+
+  await expect(providerFilter).toHaveAttribute("aria-pressed", "true");
+  await expect(sourceSelect).toHaveValue("invoice_draft");
+  await expect(searchInput).toHaveValue("INV-2001");
+  await expect(sortSelect).toHaveValue("source");
+  await expect(panel).toContainText("Owner recharge invoice");
+  await expect(panel).not.toContainText("Air conditioning fault");
+  await expect(panel).not.toContainText("Annual fire safety statement");
+  await expect(page).toHaveURL(/approval_state=provider_adjacent/);
+  await expect(page).toHaveURL(/approval_source=invoice_draft/);
+  await expect(page).toHaveURL(/approval_search=INV-2001/);
+  await expect(page).toHaveURL(/approval_sort=source/);
+
+  await panel.getByRole("button", { name: "Clear approval filters" }).click();
+  await expect(searchInput).toHaveValue("");
+  await expect(sourceSelect).toHaveValue("all");
+  await expect(sortSelect).toHaveValue("grouped");
+  expect(new URL(page.url()).searchParams.has("approval_state")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("approval_source")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("approval_search")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("approval_sort")).toBe(false);
+
   await expect(panel).toContainText("Air conditioning fault");
   await expect(panel).toContainText("Owner recharge invoice");
   await expect(panel).toContainText("Annual fire safety statement");
@@ -349,7 +379,6 @@ test("operations approvals tab filters candidates and scopes review exports", as
     panel.locator('a[href="/tenants/tenant-1"]'),
   ).toBeVisible();
 
-  const sortSelect = panel.getByLabel("Approval sort");
   await expectTouchTarget(sortSelect);
   await sortSelect.selectOption("due_soon");
   await expect(sortSelect).toHaveValue("due_soon");
@@ -404,7 +433,6 @@ test("operations approvals tab filters candidates and scopes review exports", as
   await expect(previewPanel).toContainText("Document waiting for review");
   await previewPanel.getByRole("button", { name: "Close preview" }).click();
 
-  const searchInput = panel.getByLabel("Search approvals");
   await expectTouchTarget(searchInput);
   await searchInput.fill("INV-2001");
   await expect(panel).toContainText("Owner recharge invoice");
@@ -446,9 +474,6 @@ test("operations approvals tab filters candidates and scopes review exports", as
   await expect(searchInput).toHaveValue("");
   await expect(sortSelect).toHaveValue("grouped");
 
-  const providerFilter = panel.getByRole("button", {
-    name: /Provider-adjacent/,
-  });
   await providerFilter.click();
   await expect(providerFilter).toHaveAttribute("aria-pressed", "true");
   await expect(panel).toContainText("Air conditioning fault");
@@ -457,7 +482,7 @@ test("operations approvals tab filters candidates and scopes review exports", as
   await expect(panel).not.toContainText("Annual fire safety statement");
   await expect(panel).not.toContainText("Tenant onboarding ready for review");
 
-  await panel.getByLabel("Approval source").selectOption("invoice_draft");
+  await sourceSelect.selectOption("invoice_draft");
   await expect(panel).toContainText("Owner recharge invoice");
   await expect(panel).not.toContainText("Air conditioning fault");
   await expect(panel).not.toContainText("Annual fire safety statement");
@@ -478,7 +503,7 @@ test("operations approvals tab filters candidates and scopes review exports", as
   expect(csv).toBe(copiedCsv);
 
   await panel.getByRole("button", { name: "Clear approval filters" }).click();
-  await expect(panel.getByLabel("Approval source")).toHaveValue("all");
+  await expect(sourceSelect).toHaveValue("all");
   await expect(panel).toContainText("Annual fire safety statement");
   await expect(forbiddenCalls).toEqual([]);
 });

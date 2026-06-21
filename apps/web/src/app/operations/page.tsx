@@ -149,6 +149,10 @@ const COMPLIANCE_REVIEW_PACKET_GUARDRAIL =
 const APPROVALS_REVIEW_PACKET_GUARDRAIL =
   "Review-only approvals packet: copying or downloading this file does not approve, complete, apply, dispatch, send email/SMS, post to Xero/Basiq, reconcile payments, update provider history, create billing drafts, or mutate Smart Intake, compliance, maintenance, onboarding, invoice, obligation, arrears, assignment, provider, comms, payment, or reconciliation records.";
 const APPROVAL_PREVIEW_SEARCH_PARAM = "approval";
+const APPROVAL_STATE_SEARCH_PARAM = "approval_state";
+const APPROVAL_SOURCE_SEARCH_PARAM = "approval_source";
+const APPROVAL_SEARCH_SEARCH_PARAM = "approval_search";
+const APPROVAL_SORT_SEARCH_PARAM = "approval_sort";
 const COMPLIANCE_CATEGORIES = new Set([
   "insurance",
   "bank_guarantee",
@@ -3205,6 +3209,34 @@ function OperationsWorkspace() {
     ) {
       setArrearsStatus(arrears as ArrearsCaseStatus | "all");
     }
+    const approvalState = params.get(APPROVAL_STATE_SEARCH_PARAM);
+    if (
+      approvalState === "all" ||
+      (approvalState &&
+        approvalGroups.some((entry) => entry.id === approvalState))
+    ) {
+      setApprovalGroupFilter(approvalState as ApprovalGroupFilter);
+    }
+    const approvalSource = params.get(APPROVAL_SOURCE_SEARCH_PARAM);
+    if (
+      approvalSource === "all" ||
+      (approvalSource &&
+        approvalKindFilters.some((entry) => entry.id === approvalSource))
+    ) {
+      setApprovalKindFilter(approvalSource as ApprovalKindFilter);
+    }
+    const approvalSearch = params.get(APPROVAL_SEARCH_SEARCH_PARAM);
+    if (approvalSearch) {
+      setApprovalSearchQuery(approvalSearch);
+    }
+    const approvalSort = params.get(APPROVAL_SORT_SEARCH_PARAM);
+    if (
+      approvalSort === "grouped" ||
+      (approvalSort &&
+        approvalSortOptions.some((entry) => entry.id === approvalSort))
+    ) {
+      setApprovalSortMode(approvalSort as ApprovalSortMode);
+    }
   }, []);
 
   useEffect(() => {
@@ -3222,6 +3254,21 @@ function OperationsWorkspace() {
     setOrDelete("maintenance_status", maintenanceStatus);
     setOrDelete("maintenance_priority", maintenancePriority);
     setOrDelete("arrears_status", arrearsStatus);
+    setOrDelete(APPROVAL_STATE_SEARCH_PARAM, approvalGroupFilter);
+    setOrDelete(APPROVAL_SOURCE_SEARCH_PARAM, approvalKindFilter);
+    if (approvalSearchQuery.trim().length > 0) {
+      url.searchParams.set(
+        APPROVAL_SEARCH_SEARCH_PARAM,
+        approvalSearchQuery.trim(),
+      );
+    } else {
+      url.searchParams.delete(APPROVAL_SEARCH_SEARCH_PARAM);
+    }
+    if (approvalSortMode === "grouped") {
+      url.searchParams.delete(APPROVAL_SORT_SEARCH_PARAM);
+    } else {
+      url.searchParams.set(APPROVAL_SORT_SEARCH_PARAM, approvalSortMode);
+    }
     window.history.replaceState(null, "", url);
   }, [
     activeTab,
@@ -3229,6 +3276,10 @@ function OperationsWorkspace() {
     maintenanceStatus,
     maintenancePriority,
     arrearsStatus,
+    approvalGroupFilter,
+    approvalKindFilter,
+    approvalSearchQuery,
+    approvalSortMode,
   ]);
 
   useEffect(() => {
@@ -6086,7 +6137,7 @@ function OperationsWorkspace() {
                     })}
                   </div>
                   <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-                    <label className="relative min-w-0 flex-1 sm:min-w-[240px] xl:max-w-[320px]">
+                    <label className="relative order-1 min-w-[180px] flex-1 sm:order-none sm:min-w-[240px] xl:max-w-[320px]">
                       <span className="sr-only">Search approvals</span>
                       <Search
                         size={15}
@@ -6110,7 +6161,7 @@ function OperationsWorkspace() {
                           event.target.value as ApprovalKindFilter,
                         )
                       }
-                      className="min-h-11 w-full min-w-[210px] sm:w-auto"
+                      className="order-3 min-h-11 min-w-[150px] flex-1 sm:order-none sm:w-auto sm:flex-none"
                     >
                       {approvalKindFilters.map((filter) => (
                         <option key={filter.id} value={filter.id}>
@@ -6126,7 +6177,7 @@ function OperationsWorkspace() {
                           event.target.value as ApprovalSortMode,
                         )
                       }
-                      className="min-h-11 w-full min-w-[150px] sm:w-auto"
+                      className="order-4 min-h-11 min-w-[150px] flex-1 sm:order-none sm:w-auto"
                     >
                       {approvalSortOptions.map((option) => (
                         <option key={option.id} value={option.id}>
@@ -6137,7 +6188,8 @@ function OperationsWorkspace() {
                     {approvalFilterActive ? (
                       <SecondaryButton
                         type="button"
-                        className="min-h-11 px-3"
+                        aria-label="Clear approval filters"
+                        className="order-2 min-h-11 px-3 sm:order-none"
                         onClick={() => {
                           setApprovalGroupFilter("all");
                           setApprovalKindFilter("all");
@@ -6146,7 +6198,10 @@ function OperationsWorkspace() {
                         }}
                       >
                         <X size={15} />
-                        Clear approval filters
+                        <span className="sm:hidden">Clear</span>
+                        <span className="hidden sm:inline">
+                          Clear approval filters
+                        </span>
                       </SecondaryButton>
                     ) : null}
                   </div>

@@ -2,6 +2,48 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals URL state v1.8)
+
+Temba continued the Work approvals lane after preview deep-links shipped. This
+slice makes the approvals inbox shareable at the exact state/source/search/sort
+view without changing source records or adding any provider path.
+
+What changed:
+- Added URL restore/persist support for approval decision state, source,
+  search, and sort on `/operations?tab=approvals` using `approval_state`,
+  `approval_source`, `approval_search`, and `approval_sort`.
+- Kept the existing `approval=<candidate-id>` preview deep-link independent
+  from the filter/search/sort URL state.
+- `Clear approval filters` now removes the approval filter/search/sort params
+  and resets the local controls while preserving normal tab routing.
+- Visible-list CSV copy/download remains scoped to the restored filtered list.
+- Tightened mobile wrapping for search/clear/source/sort controls at 390px.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-url-state-v18-1440.png` and
+  `output/playwright/work-approvals-url-state-v18-390.png`.
+
+Verification:
+- Red first: the focused approvals filter smoke failed waiting for the missing
+  restored Provider-adjacent filter state from the URL.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts -g "filters candidates"`
+  — 1 passed after implementation.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- Temporary mocked screenshot harness passed 1/1 and was removed after
+  producing the UX evidence images.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+
+Guardrails held: approval URL state is browser-state only. It adds no backend
+endpoint, Xero/Basiq, SendGrid/Twilio, tenant/owner/provider email, SMS,
+provider dispatch, Smart Intake apply, maintenance approval, compliance
+completion, invoice approval or delivery, payment, reconciliation,
+source-record mutation, or provider-history mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals preview deep-link v1.7)
 
 Temba continued the Work approvals lane after sort shipped. This slice makes a

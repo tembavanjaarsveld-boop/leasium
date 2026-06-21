@@ -663,6 +663,21 @@ fixes · deferrals.
   unchanged: deep-linking/previewing does not approve, apply, complete, send
   email/SMS, dispatch providers, post to Xero/Basiq, create payments, reconcile,
   mutate source records, or mutate provider history · none deferred.
+- 2026-06-21 · Work Approvals URL state v1.8 · reused the shipped approvals
+  filters, search, sort, and native browser URL pattern without new tokens,
+  route, or backend endpoint · screens checked at 1440/390
+  (`output/playwright/work-approvals-url-state-v18-1440.png`,
+  `output/playwright/work-approvals-url-state-v18-390.png`) · fixes in-slice:
+  added URL restore/persist support for `approval_state`, `approval_source`,
+  `approval_search`, and `approval_sort`, kept `approval=<candidate-id>`
+  preview state independent, and made `Clear approval filters` remove only the
+  approval filter/search/sort state · desktop keeps the restored controls in a
+  single compact row; mobile wraps search/clear and source/sort into
+  touch-safe rows with no horizontal overflow · provider guardrails unchanged:
+  restoring, clearing, searching, sorting, and exporting approvals does not
+  approve, apply, complete, send email/SMS, dispatch providers, post to
+  Xero/Basiq, create payments, reconcile, mutate source records, or mutate
+  provider history · none deferred.
 
 ## UX Debt Register
 

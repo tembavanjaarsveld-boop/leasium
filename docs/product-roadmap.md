@@ -16,6 +16,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals URL state v1.8:** The Work approvals inbox
+  now restores and persists decision-state, source, search, and sort controls
+  through `/operations?tab=approvals` URL parameters:
+  `approval_state`, `approval_source`, `approval_search`, and `approval_sort`.
+  Direct links reopen the same narrowed review list, visible-list CSV exports
+  stay scoped to the restored state, and `Clear approval filters` removes the
+  approval filter/search/sort parameters while leaving the existing preview
+  deep-link behavior independent. Mobile control wrapping was tightened so the
+  restored search/source/sort row stays touch-safe at 390px. The slice remains
+  browser-state only and adds no backend, provider, comms, payment,
+  reconciliation, or source-record mutation path.
 - [x] **2026-06-21 Work approvals preview deep-link v1.7:** The Work
   approvals inbox now supports reopening a selected preview with
   `approval=<candidate-id>` on `/operations?tab=approvals`. Direct links open
