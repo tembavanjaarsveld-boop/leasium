@@ -2,6 +2,44 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals preview drawer v1.2)
+
+Temba approved the next small Work approvals refinement: inspect one candidate
+inline before opening the source record.
+
+What changed:
+- Added a `Preview` action beside every approvals candidate `Review source`
+  link.
+- Selecting a row opens a read-only approval preview with source, status, due
+  date, context, reason, source-specific details, guardrail copy, close control,
+  and the same source handoff.
+- Desktop uses a right-side review panel so the grouped approval lanes remain
+  scannable; mobile stacks the preview above the list.
+- The selected preview clears automatically when filters hide the candidate.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-preview-v12-1440.png` and
+  `output/playwright/work-approvals-preview-v12-390.png`.
+
+Verification:
+- Red first: the new approvals smoke failed waiting for the missing `Preview`
+  button before implementation.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+- Temporary mocked screenshot harness passed and was removed after producing
+  the UX evidence images.
+
+Guardrails held: the preview is read-only. It adds no Xero/Basiq,
+SendGrid/Twilio, tenant/owner/provider email, SMS, provider dispatch, Smart
+Intake apply, maintenance approval, compliance completion, invoice approval or
+delivery, payment, reconciliation, source-record mutation, or provider-history
+mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals inbox v1.1)
 
 Temba approved the small v1.1 follow-up after the read-only approvals inbox

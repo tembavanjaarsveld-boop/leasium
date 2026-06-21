@@ -441,6 +441,7 @@ type ApprovalCandidate = {
   dueDate: string | null;
   href: string;
   guardrail: string;
+  previewDetails: string[];
 };
 
 type WorkAssignmentHistoryEntry = {
@@ -1294,6 +1295,12 @@ function approvalKindLabel(kind: ApprovalCandidateKind) {
   return labels[kind];
 }
 
+function approvalPreviewDetails(
+  ...details: Array<string | null | undefined>
+) {
+  return details.filter(Boolean) as string[];
+}
+
 function onboardingApprovalHref(onboarding: TenantOnboardingRecord) {
   return onboarding.tenant_id
     ? `/tenants/${encodeURIComponent(onboarding.tenant_id)}`
@@ -1353,6 +1360,11 @@ function buildApprovalCandidates({
       href: intakeReviewHref(intake),
       guardrail:
         "Open the Smart Intake review to approve, edit, ignore, or apply extracted fields.",
+      previewDetails: approvalPreviewDetails(
+        `Document type: ${documentTypeLabel(intake.document_type)}`,
+        intake.filename ? `File: ${intake.filename}` : null,
+        `Created ${formatDate(intake.created_at)}`,
+      ),
     });
   }
 
@@ -1385,6 +1397,20 @@ function buildApprovalCandidates({
       href: `/operations/maintenance/${encodeURIComponent(workOrder.id)}`,
       guardrail:
         "Review the maintenance record before any owner approval, contractor dispatch, or invoice work.",
+      previewDetails: approvalPreviewDetails(
+        workOrder.quote_amount_cents
+          ? `Quote: ${formatMoney(workOrder.quote_amount_cents)}`
+          : null,
+        workOrder.approval_limit_cents
+          ? `Approval limit: ${formatMoney(workOrder.approval_limit_cents)}`
+          : null,
+        workOrder.contractor_name
+          ? `Contractor: ${workOrder.contractor_name}`
+          : null,
+        workOrder.status
+          ? `Work status: ${sentenceLabel(workOrder.status)}`
+          : null,
+      ),
     });
   }
 
@@ -1415,6 +1441,12 @@ function buildApprovalCandidates({
       )}&invoice_id=${encodeURIComponent(draft.id)}`,
       guardrail:
         "Open Billing Readiness to approve the draft, send tenant email, or post to Xero.",
+      previewDetails: approvalPreviewDetails(
+        draft.recipient_name ? `Recipient: ${draft.recipient_name}` : null,
+        `Amount: ${formatMoney(draft.total_cents, draft.currency)}`,
+        draft.invoice_number ? `Invoice: ${draft.invoice_number}` : null,
+        draft.issue_date ? `Issue date: ${formatDate(draft.issue_date)}` : null,
+      ),
     });
   }
 
@@ -1435,6 +1467,18 @@ function buildApprovalCandidates({
       )}`,
       guardrail:
         "Open the Compliance tab to inspect evidence before completing and rolling the check forward.",
+      previewDetails: approvalPreviewDetails(
+        `Scope: ${complianceScopeContext(check, properties, tenants) || "No scope"}`,
+        check.current_obligation_id
+          ? `Current obligation: ${check.current_obligation_id}`
+          : null,
+        check.source_document_id
+          ? `Evidence document: ${check.source_document_id}`
+          : null,
+        check.owner_role
+          ? `Owner role: ${sentenceLabel(check.owner_role)}`
+          : null,
+      ),
     });
   }
 
@@ -1460,6 +1504,16 @@ function buildApprovalCandidates({
       href: onboardingApprovalHref(onboarding),
       guardrail:
         "Open Tenants to review onboarding details before applying or sending any portal follow-up.",
+      previewDetails: approvalPreviewDetails(
+        `Tenant: ${tenantName(tenants, onboarding.tenant_id)}`,
+        onboarding.submitted_at
+          ? `Submitted ${formatDate(onboarding.submitted_at)}`
+          : null,
+        onboarding.expires_at
+          ? `Expires ${formatDate(onboarding.expires_at)}`
+          : null,
+        onboarding.portal_url ? "Portal link exists" : null,
+      ),
     });
   }
 
@@ -1487,6 +1541,18 @@ function buildApprovalCandidates({
       href: assignmentNoticeApprovalHref(item),
       guardrail:
         "Use the Queue controls to review and send the assignment notice.",
+      previewDetails: approvalPreviewDetails(
+        `Source item: ${item.title}`,
+        assignment?.assignedName
+          ? `Assignee: ${assignment.assignedName}`
+          : null,
+        assignment?.assignedEmail
+          ? `Email: ${assignment.assignedEmail}`
+          : null,
+        assignment?.assignedRole
+          ? `Role: ${sentenceLabel(assignment.assignedRole)}`
+          : null,
+      ),
     });
   }
 
@@ -2937,6 +3003,8 @@ function OperationsWorkspace() {
     useState<ApprovalGroupFilter>("all");
   const [approvalKindFilter, setApprovalKindFilter] =
     useState<ApprovalKindFilter>("all");
+  const [selectedApprovalCandidateId, setSelectedApprovalCandidateId] =
+    useState<string | null>(null);
   const [previewCalendarEventId, setPreviewCalendarEventId] = useState<
     string | null
   >(null);
@@ -3918,6 +3986,13 @@ function OperationsWorkspace() {
         candidate.group === approvalGroupFilter) &&
       (approvalKindFilter === "all" || candidate.kind === approvalKindFilter),
   );
+  const selectedApprovalCandidate =
+    visibleApprovalCandidates.find(
+      (candidate) => candidate.id === selectedApprovalCandidateId,
+    ) ?? null;
+  const selectedApprovalGroup = selectedApprovalCandidate
+    ? approvalGroups.find((group) => group.id === selectedApprovalCandidate.group)
+    : null;
   const approvalCandidateGroups = approvalGroups.map((group) => ({
     ...group,
     items: visibleApprovalCandidates.filter(
@@ -3944,6 +4019,17 @@ function OperationsWorkspace() {
   ];
   const approvalFilterActive =
     approvalGroupFilter !== "all" || approvalKindFilter !== "all";
+  useEffect(() => {
+    if (!selectedApprovalCandidateId) return;
+    if (
+      visibleApprovalCandidates.some(
+        (candidate) => candidate.id === selectedApprovalCandidateId,
+      )
+    ) {
+      return;
+    }
+    setSelectedApprovalCandidateId(null);
+  }, [selectedApprovalCandidateId, visibleApprovalCandidates]);
   const approvalReadyCount = approvalCandidates.filter(
     (candidate) => candidate.group === "ready",
   ).length;
@@ -5807,32 +5893,135 @@ function OperationsWorkspace() {
                     from this inbox.
                   </div>
 
-                  {approvalCandidates.length === 0 ? (
-                    <EmptyState
-                      icon={<ClipboardList size={18} />}
-                      title="No approval candidates"
-                      description="Smart Intake reviews, maintenance approval requests, invoice drafts, compliance evidence, onboarding submissions, and assignment notices will appear here when ready."
-                    />
-                  ) : null}
+                  <div
+                    className={cn(
+                      "grid gap-4",
+                      selectedApprovalCandidate &&
+                        visibleApprovalCandidates.length > 0
+                        ? "xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start"
+                        : null,
+                    )}
+                  >
+                    {selectedApprovalCandidate ? (
+                      <section
+                        aria-labelledby="approval-preview-heading"
+                        className="grid gap-4 rounded-[12px] border border-primary/20 bg-primary/5 p-4 xl:order-last xl:sticky xl:top-24"
+                      >
+                      <header className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <ClipboardList
+                              size={16}
+                              className="text-primary"
+                            />
+                            <h2
+                              id="approval-preview-heading"
+                              className="text-sm font-semibold text-foreground"
+                            >
+                              Approval preview
+                            </h2>
+                            {selectedApprovalGroup ? (
+                              <StatusBadge tone={selectedApprovalGroup.tone}>
+                                {selectedApprovalGroup.label}
+                              </StatusBadge>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Read-only source context before opening the record.
+                          </p>
+                        </div>
+                        <SecondaryButton
+                          type="button"
+                          className="min-h-11 px-3"
+                          onClick={() => setSelectedApprovalCandidateId(null)}
+                        >
+                          <X size={15} />
+                          Close preview
+                        </SecondaryButton>
+                      </header>
 
-                  {approvalCandidates.length > 0 &&
-                  visibleApprovalCandidates.length === 0 ? (
-                    <EmptyState
-                      icon={<ClipboardList size={18} />}
-                      title="No approval candidates match these filters"
-                      description="Clear filters or choose another state or source to return to the full approvals inbox."
-                    />
-                  ) : null}
-
-                  {visibleApprovalCandidates.length > 0 ? (
-                    <div className="grid gap-3">
-                      {approvalCandidateGroups
-                        .filter((group) => group.items.length > 0)
-                        .map((group) => (
-                          <section
-                            key={group.id}
-                            className="grid gap-2 rounded-[12px] bg-muted p-2.5"
+                      <div className="grid gap-3 rounded-[12px] border border-leasium-card-border bg-white p-3 shadow-leasiumXs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge tone={selectedApprovalCandidate.tone}>
+                            {selectedApprovalCandidate.statusLabel}
+                          </StatusBadge>
+                          <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                            {selectedApprovalCandidate.sourceLabel}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-semibold leading-6 text-foreground">
+                            {selectedApprovalCandidate.title}
+                          </h3>
+                          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                            {selectedApprovalCandidate.reason}
+                          </p>
+                        </div>
+                        <div className="grid gap-2">
+                          <span className="rounded-xl bg-muted px-3 py-2 text-xs font-semibold text-slate">
+                            {selectedApprovalCandidate.context || "No context"}
+                          </span>
+                          <span className="rounded-xl bg-muted px-3 py-2 text-xs font-semibold text-slate">
+                            Due {formatDate(selectedApprovalCandidate.dueDate)}
+                          </span>
+                          {selectedApprovalCandidate.previewDetails.map(
+                            (detail) => (
+                              <span
+                                key={detail}
+                                className="rounded-xl bg-muted px-3 py-2 text-xs font-semibold text-slate"
+                              >
+                                {detail}
+                              </span>
+                            ),
+                          )}
+                        </div>
+                        <div className="rounded-xl border border-accent/30 bg-accent-soft px-3 py-2 text-xs font-semibold leading-5 text-leasium-teal-strong">
+                          <ShieldCheck
+                            size={14}
+                            className="mr-1 inline align-[-2px]"
+                          />
+                          {selectedApprovalCandidate.guardrail}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={selectedApprovalCandidate.href}
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                           >
+                            <Link2 size={15} />
+                            Review source
+                          </Link>
+                        </div>
+                      </div>
+                      </section>
+                    ) : null}
+
+                    <div className="grid gap-4 xl:order-first">
+                      {approvalCandidates.length === 0 ? (
+                        <EmptyState
+                          icon={<ClipboardList size={18} />}
+                          title="No approval candidates"
+                          description="Smart Intake reviews, maintenance approval requests, invoice drafts, compliance evidence, onboarding submissions, and assignment notices will appear here when ready."
+                        />
+                      ) : null}
+
+                      {approvalCandidates.length > 0 &&
+                      visibleApprovalCandidates.length === 0 ? (
+                        <EmptyState
+                          icon={<ClipboardList size={18} />}
+                          title="No approval candidates match these filters"
+                          description="Clear filters or choose another state or source to return to the full approvals inbox."
+                        />
+                      ) : null}
+
+                      {visibleApprovalCandidates.length > 0 ? (
+                        <div className="grid gap-3">
+                          {approvalCandidateGroups
+                            .filter((group) => group.items.length > 0)
+                            .map((group) => (
+                              <section
+                                key={group.id}
+                                className="grid gap-2 rounded-[12px] bg-muted p-2.5"
+                              >
                             <header className="flex min-h-9 items-center justify-between gap-3 px-1">
                               <div className="min-w-0">
                                 <h2 className="text-[13px] font-semibold leading-5 text-foreground">
@@ -5847,11 +6036,19 @@ function OperationsWorkspace() {
                               </StatusBadge>
                             </header>
                             <div className="grid gap-2">
-                              {group.items.map((candidate) => (
-                                <article
-                                  key={candidate.id}
-                                  className="grid gap-3 rounded-[12px] border border-leasium-card-border bg-white p-3 shadow-leasiumXs md:grid-cols-[minmax(0,1fr)_auto]"
-                                >
+                              {group.items.map((candidate) => {
+                                const selected =
+                                  selectedApprovalCandidateId === candidate.id;
+                                return (
+                                  <article
+                                    key={candidate.id}
+                                    className={cn(
+                                      "grid gap-3 rounded-[12px] border p-3 shadow-leasiumXs md:grid-cols-[minmax(0,1fr)_auto]",
+                                      selected
+                                        ? "border-primary/35 bg-primary/5"
+                                        : "border-leasium-card-border bg-white",
+                                    )}
+                                  >
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <StatusBadge tone={candidate.tone}>
@@ -5879,7 +6076,25 @@ function OperationsWorkspace() {
                                       </span>
                                     </div>
                                   </div>
-                                  <div className="flex items-center justify-start md:justify-end">
+                                  <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+                                    <SecondaryButton
+                                      type="button"
+                                      aria-pressed={selected}
+                                      className={cn(
+                                        "min-h-11 px-3",
+                                        selected
+                                          ? "border-primary/30 bg-primary-soft text-primary-hover"
+                                          : null,
+                                      )}
+                                      onClick={() =>
+                                        setSelectedApprovalCandidateId(
+                                          selected ? null : candidate.id,
+                                        )
+                                      }
+                                    >
+                                      <ClipboardList size={15} />
+                                      Preview
+                                    </SecondaryButton>
                                     <Link
                                       href={candidate.href}
                                       className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
@@ -5888,13 +6103,16 @@ function OperationsWorkspace() {
                                       Review source
                                     </Link>
                                   </div>
-                                </article>
-                              ))}
+                                  </article>
+                                );
+                              })}
                             </div>
-                          </section>
-                        ))}
+                              </section>
+                            ))}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               </SectionPanel>
             ) : null}

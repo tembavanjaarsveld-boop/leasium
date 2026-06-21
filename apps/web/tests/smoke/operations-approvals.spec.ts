@@ -385,3 +385,64 @@ test("operations approvals tab filters candidates and scopes review exports", as
   await expect(panel).toContainText("Annual fire safety statement");
   await expect(forbiddenCalls).toEqual([]);
 });
+
+test("operations approvals tab previews a candidate without mutations", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await installApprovalsClipboard(page);
+  await mockApprovalsApi(page);
+  const forbiddenCalls = await trapForbiddenApprovalCalls(page);
+
+  await page.goto("/operations?tab=approvals");
+
+  const panel = approvalsPanel(page);
+  await expect(panel).toBeVisible();
+
+  const invoiceRow = panel
+    .locator("article")
+    .filter({ hasText: "Owner recharge invoice" })
+    .first();
+  await expect(invoiceRow).toBeVisible();
+
+  forbiddenCalls.length = 0;
+  await invoiceRow.getByRole("button", { name: "Preview" }).click();
+
+  const previewPanel = panel
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Approval preview" }) })
+    .first();
+  await expect(previewPanel).toBeVisible();
+  await expect(previewPanel).toContainText("Owner recharge invoice");
+  await expect(previewPanel).toContainText("Billing");
+  await expect(previewPanel).toContainText("Ready for approval");
+  await expect(previewPanel).toContainText("$1,320");
+  await expect(previewPanel).toContainText("Bright Cafe Pty Ltd");
+  await expect(previewPanel).toContainText(
+    "Open Billing Readiness to approve the draft, send tenant email, or post to Xero.",
+  );
+  await expect(
+    previewPanel.locator(
+      'a[href="/billing-readiness?entity_id=entity-1&invoice_id=invoice-draft-ready-approval-1"]',
+    ),
+  ).toBeVisible();
+
+  await expect(
+    previewPanel.getByRole("button", { name: "Approve" }),
+  ).toHaveCount(0);
+  await expect(previewPanel.getByRole("button", { name: "Send" })).toHaveCount(
+    0,
+  );
+  await expect(
+    previewPanel.getByRole("button", { name: "Post to Xero" }),
+  ).toHaveCount(0);
+  await expect(
+    previewPanel.getByRole("button", { name: "Complete" }),
+  ).toHaveCount(0);
+
+  await panel.getByRole("button", { name: /^Ready/ }).click();
+  await expect(
+    panel.getByRole("heading", { name: "Approval preview" }),
+  ).toHaveCount(0);
+  await expect(forbiddenCalls).toEqual([]);
+});

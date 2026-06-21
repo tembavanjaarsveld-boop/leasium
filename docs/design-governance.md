@@ -583,6 +583,19 @@ fixes · deferrals.
   filtering/exporting does not approve, apply, complete, send email/SMS,
   dispatch providers, post to Xero/Basiq, create payments, reconcile, or mutate
   provider history · none deferred.
+- 2026-06-21 · Work Approvals preview drawer v1.2 · reused the shipped Horizon
+  Work tab, approvals lane, and compact review-panel patterns without new
+  tokens or a new route · screens checked at 1440/390
+  (`output/playwright/work-approvals-preview-v12-1440.png`,
+  `output/playwright/work-approvals-preview-v12-390.png`) · fixes in-slice:
+  added a read-only `Preview` action, selected-row state, desktop right-side
+  preview, mobile stacked preview, close/source handoff controls, and filter
+  selection clearing; after the first screenshot pass, detail chips were changed
+  from cramped desktop columns to readable stacked rows inside the drawer ·
+  provider guardrails unchanged: previewing/filtering does not approve, apply,
+  complete, send email/SMS, dispatch providers, post to Xero/Basiq, create
+  payments, reconcile, mutate source records, or mutate provider history · none
+  deferred.
 
 ## UX Debt Register
 

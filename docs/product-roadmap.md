@@ -16,6 +16,16 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals preview drawer v1.2:** The Work approvals
+  inbox now has a read-only `Preview` action on every candidate row. Selecting
+  a row opens an inline approval preview with source, status, due date, context,
+  reason, source-specific details, the existing guardrail, close control, and
+  the same `Review source` handoff. Desktop keeps the selected preview as a
+  right-side review panel while the grouped lanes remain scannable; mobile
+  stacks the preview above the list. The selection clears when filters hide the
+  candidate, and smoke coverage verifies the preview cannot approve, send, post
+  to Xero, complete, mutate source records, or trigger provider/comms/payment/
+  reconciliation calls.
 - [x] **2026-06-21 Work approvals inbox v1.1:** The Work approvals inbox now
   has read-only decision-state filters, a source selector, filtered candidate
   counts, and copy/download CSV packets scoped to the visible filtered set.
