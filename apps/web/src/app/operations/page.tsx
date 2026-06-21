@@ -23,6 +23,7 @@ import {
   RefreshCw,
   ReceiptText,
   Send,
+  Search,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -1666,6 +1667,31 @@ function approvalCandidatePacketCsv(candidate: ApprovalCandidate) {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function approvalCandidateMatchesSearch(
+  candidate: ApprovalCandidate,
+  searchQuery: string,
+) {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  return [
+    approvalKindLabel(candidate.kind),
+    candidate.title,
+    candidate.sourceLabel,
+    candidate.statusLabel,
+    candidate.context,
+    candidate.reason,
+    candidate.guardrail,
+    formatDate(candidate.dueDate),
+    ...candidate.previewDetails,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
 function complianceCheckTone(check: ComplianceCheckRecord): StatusTone {
   if (check.status === "completed") {
     return "success";
@@ -3055,6 +3081,7 @@ function OperationsWorkspace() {
     useState<ApprovalGroupFilter>("all");
   const [approvalKindFilter, setApprovalKindFilter] =
     useState<ApprovalKindFilter>("all");
+  const [approvalSearchQuery, setApprovalSearchQuery] = useState("");
   const [selectedApprovalCandidateId, setSelectedApprovalCandidateId] =
     useState<string | null>(null);
   const [previewCalendarEventId, setPreviewCalendarEventId] = useState<
@@ -4036,7 +4063,9 @@ function OperationsWorkspace() {
     (candidate) =>
       (approvalGroupFilter === "all" ||
         candidate.group === approvalGroupFilter) &&
-      (approvalKindFilter === "all" || candidate.kind === approvalKindFilter),
+      (approvalKindFilter === "all" ||
+        candidate.kind === approvalKindFilter) &&
+      approvalCandidateMatchesSearch(candidate, approvalSearchQuery),
   );
   const selectedApprovalCandidate =
     visibleApprovalCandidates.find(
@@ -4093,7 +4122,9 @@ function OperationsWorkspace() {
     })),
   ];
   const approvalFilterActive =
-    approvalGroupFilter !== "all" || approvalKindFilter !== "all";
+    approvalGroupFilter !== "all" ||
+    approvalKindFilter !== "all" ||
+    approvalSearchQuery.trim().length > 0;
   useEffect(() => {
     if (!selectedApprovalCandidateId) return;
     if (
@@ -5946,6 +5977,22 @@ function OperationsWorkspace() {
                     })}
                   </div>
                   <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
+                    <label className="relative min-w-0 flex-1 sm:min-w-[240px] xl:max-w-[320px]">
+                      <span className="sr-only">Search approvals</span>
+                      <Search
+                        size={15}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <Input
+                        aria-label="Search approvals"
+                        value={approvalSearchQuery}
+                        onChange={(event) =>
+                          setApprovalSearchQuery(event.target.value)
+                        }
+                        placeholder="Search approvals"
+                        className="min-h-11 pl-9"
+                      />
+                    </label>
                     <Select
                       aria-label="Approval source"
                       value={approvalKindFilter}
@@ -5969,6 +6016,7 @@ function OperationsWorkspace() {
                         onClick={() => {
                           setApprovalGroupFilter("all");
                           setApprovalKindFilter("all");
+                          setApprovalSearchQuery("");
                         }}
                       >
                         <X size={15} />
@@ -6146,7 +6194,7 @@ function OperationsWorkspace() {
                         <EmptyState
                           icon={<ClipboardList size={18} />}
                           title="No approval candidates match these filters"
-                          description="Clear filters or choose another state or source to return to the full approvals inbox."
+                          description="Clear filters or search, or choose another state or source to return to the full approvals inbox."
                         />
                       ) : null}
 

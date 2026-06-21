@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals search v1.5:** The Work approvals inbox now
+  has a local read-only search field that narrows the currently loaded approval
+  candidates by title, kind, source, status, context, reason, guardrail, due
+  date, and preview details. Search composes with the existing decision-state
+  and source filters, drives the same visible-list CSV copy/download exports,
+  and closes the selected preview when the searched result set hides it. Smoke
+  coverage locks invoice-number search, searched CSV parity, preview clearing,
+  clear-filter reset, and continued silence for provider/comms/payment/
+  reconciliation/source-record mutations.
 - [x] **2026-06-21 Work approvals preview navigation v1.4:** The selected
   approvals preview now shows its position in the visible filtered candidate
   list and adds previous/next arrow controls so an operator can step through

@@ -622,6 +622,19 @@ fixes · deferrals.
   guardrails unchanged: preview navigation does not approve, apply, complete,
   send email/SMS, dispatch providers, post to Xero/Basiq, create payments,
   reconcile, mutate source records, or mutate provider history · none deferred.
+- 2026-06-21 · Work Approvals search v1.5 · reused the shipped approvals filter
+  band, input, and compact clear/source controls without new tokens, route, or
+  backend endpoint · screens checked at 1440/390
+  (`output/playwright/work-approvals-search-v15-1440.png`,
+  `output/playwright/work-approvals-search-v15-390.png`) · fixes in-slice:
+  added a local `Search approvals` field that composes with state/source
+  filters, keeps searched counts and CSV exports scoped to the visible list,
+  and closes the preview when search hides the selected candidate · desktop
+  keeps the filter band in a compact row; mobile stacks search, source, and
+  clear controls without horizontal overflow or bottom-nav collision · provider
+  guardrails unchanged: searching/exporting does not approve, apply, complete,
+  send email/SMS, dispatch providers, post to Xero/Basiq, create payments,
+  reconcile, mutate source records, or mutate provider history · none deferred.
 
 ## UX Debt Register
 

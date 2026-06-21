@@ -2,6 +2,46 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals search v1.5)
+
+Temba continued the Work approvals lane after preview navigation shipped. This
+slice makes the approvals inbox faster to narrow before previewing or exporting.
+
+What changed:
+- Added a local `Search approvals` field to `/operations?tab=approvals`.
+- Search matches title, kind, source label, status, context, reason, guardrail,
+  due date, and preview details from the already-loaded candidates.
+- Search composes with the existing state and source filters, and the visible
+  count plus copy/download approvals CSV use the searched visible list.
+- If search hides the selected preview, the existing visible-list guard closes
+  the preview.
+- `Clear approval filters` now clears state, source, and search.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-search-v15-1440.png` and
+  `output/playwright/work-approvals-search-v15-390.png`.
+
+Verification:
+- Red first: the focused approvals filter smoke failed waiting for the missing
+  `Search approvals` field.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts -g "filters candidates"`
+  — 1 passed after implementation.
+- Temporary mocked screenshot harness passed 2/2 and was removed after
+  producing the UX evidence images.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+
+Guardrails held: approvals search is local and read-only. It adds no backend
+search endpoint, Xero/Basiq, SendGrid/Twilio, tenant/owner/provider email, SMS,
+provider dispatch, Smart Intake apply, maintenance approval, compliance
+completion, invoice approval or delivery, payment, reconciliation,
+source-record mutation, or provider-history mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals preview navigation v1.4)
 
 Temba continued the Work approvals lane after the candidate packet shipped.

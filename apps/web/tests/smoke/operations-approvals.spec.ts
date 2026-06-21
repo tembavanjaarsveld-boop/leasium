@@ -349,6 +349,47 @@ test("operations approvals tab filters candidates and scopes review exports", as
     panel.locator('a[href="/tenants/tenant-1"]'),
   ).toBeVisible();
 
+  const searchInput = panel.getByLabel("Search approvals");
+  await expectTouchTarget(searchInput);
+  await searchInput.fill("INV-2001");
+  await expect(panel).toContainText("Owner recharge invoice");
+  await expect(panel).not.toContainText("Air conditioning fault");
+  await expect(panel).not.toContainText("Annual fire safety statement");
+
+  forbiddenCalls.length = 0;
+  await panel.getByRole("button", { name: "Copy approvals CSV" }).click();
+  const searchedCsv = await copiedApprovalsCsv(page);
+  expect(searchedCsv).toContain("Owner recharge invoice");
+  expect(searchedCsv).not.toContain("Air conditioning fault");
+  expect(searchedCsv).not.toContain("Annual fire safety statement");
+
+  const searchedDownloadPromise = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Download approvals CSV" }).click();
+  const searchedDownload = await searchedDownloadPromise;
+  const searchedDownloadPath = await searchedDownload.path();
+  expect(searchedDownloadPath).not.toBeNull();
+  const searchedDownloadedCsv = await readFile(searchedDownloadPath!, "utf8");
+  expect(searchedDownloadedCsv).toBe(searchedCsv);
+
+  const searchedInvoiceRow = panel
+    .locator("article")
+    .filter({ hasText: "Owner recharge invoice" })
+    .first();
+  await searchedInvoiceRow.getByRole("button", { name: "Preview" }).click();
+  await expect(
+    panel.getByRole("heading", { name: "Approval preview" }),
+  ).toBeVisible();
+
+  await searchInput.fill("Insurance certificate renewal");
+  await expect(
+    panel.getByRole("heading", { name: "Approval preview" }),
+  ).toHaveCount(0);
+  await expect(panel).toContainText("Insurance certificate renewal");
+  await expect(panel).not.toContainText("Owner recharge invoice");
+
+  await panel.getByRole("button", { name: "Clear approval filters" }).click();
+  await expect(searchInput).toHaveValue("");
+
   const providerFilter = panel.getByRole("button", {
     name: /Provider-adjacent/,
   });
