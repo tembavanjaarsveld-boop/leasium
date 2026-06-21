@@ -16,6 +16,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals preview deep-link v1.7:** The Work
+  approvals inbox now supports reopening a selected preview with
+  `approval=<candidate-id>` on `/operations?tab=approvals`. Direct links open
+  the matching read-only preview once candidates load, while Preview,
+  Previous, Next, Close, and filter-hidden selections keep the URL and selected
+  candidate in sync. Existing filters, search, sort, CSV exports, source
+  handoffs, packet actions, and provider/comms/payment/reconciliation/source-
+  record mutation traps stay unchanged.
 - [x] **2026-06-21 Work approvals sort v1.6:** The Work approvals inbox now has
   a local read-only `Approval sort` control with Grouped, Due soon, and Source
   modes. Grouped preserves the existing Ready / Needs evidence / Provider-

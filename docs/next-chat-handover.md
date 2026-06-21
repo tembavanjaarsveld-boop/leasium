@@ -2,6 +2,48 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals preview deep-link v1.7)
+
+Temba continued the Work approvals lane after sort shipped. This slice makes a
+selected approval preview reopenable from the page URL without changing source
+records or adding any provider path.
+
+What changed:
+- Added `approval=<candidate-id>` support to `/operations?tab=approvals`.
+- Direct links open the matching read-only preview once the already-loaded
+  approval candidates are available.
+- Preview, Previous, Next, and Close now keep the selected preview and browser
+  URL in sync.
+- If filters or search hide the selected candidate, the preview closes and the
+  `approval` parameter is removed.
+- Existing filters, search, sort, visible-list CSV exports, source handoffs, and
+  single-candidate packet actions stay unchanged.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-preview-deeplink-v17-1440.png` and
+  `output/playwright/work-approvals-preview-deeplink-v17-390.png`.
+
+Verification:
+- Red first: the focused approvals preview smoke failed waiting for the missing
+  deep-linked `Approval preview` panel.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts -g "previews a candidate"`
+  — 1 passed after implementation.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- Temporary mocked screenshot harness passed 1/1 and was removed after
+  producing the UX evidence images.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+
+Guardrails held: approval preview deep-linking is browser-state only. It adds no
+backend endpoint, Xero/Basiq, SendGrid/Twilio, tenant/owner/provider email, SMS,
+provider dispatch, Smart Intake apply, maintenance approval, compliance
+completion, invoice approval or delivery, payment, reconciliation,
+source-record mutation, or provider-history mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals sort v1.6)
 
 Temba continued the Work approvals lane after local search shipped. This slice

@@ -649,6 +649,20 @@ fixes · deferrals.
   not approve, apply, complete, send email/SMS, dispatch providers, post to
   Xero/Basiq, create payments, reconcile, mutate source records, or mutate
   provider history · none deferred.
+- 2026-06-21 · Work Approvals preview deep-link v1.7 · reused the shipped
+  approvals preview panel, row highlight, and native browser URL pattern
+  without new tokens, route, or backend endpoint · screens checked at 1440/390
+  (`output/playwright/work-approvals-preview-deeplink-v17-1440.png`,
+  `output/playwright/work-approvals-preview-deeplink-v17-390.png`) · fixes
+  in-slice: added an `approval=<candidate-id>` URL parameter that opens the
+  selected read-only preview after candidates load, keeps Preview/Previous/Next/
+  Close in sync with the URL, and clears the parameter when filters hide the
+  selected candidate · desktop keeps the preview in the right rail and the
+  selected row highlighted; mobile stacks the preview above the list with
+  touch-safe controls and no horizontal overflow · provider guardrails
+  unchanged: deep-linking/previewing does not approve, apply, complete, send
+  email/SMS, dispatch providers, post to Xero/Basiq, create payments, reconcile,
+  mutate source records, or mutate provider history · none deferred.
 
 ## UX Debt Register
 

@@ -491,7 +491,9 @@ test("operations approvals tab previews a candidate without mutations", async ({
   await mockApprovalsApi(page);
   const forbiddenCalls = await trapForbiddenApprovalCalls(page);
 
-  await page.goto("/operations?tab=approvals");
+  await page.goto(
+    "/operations?tab=approvals&approval=invoice-draft-invoice-draft-ready-approval-1",
+  );
 
   const panel = approvalsPanel(page);
   await expect(panel).toBeVisible();
@@ -502,15 +504,17 @@ test("operations approvals tab previews a candidate without mutations", async ({
     .first();
   await expect(invoiceRow).toBeVisible();
 
-  forbiddenCalls.length = 0;
-  await invoiceRow.getByRole("button", { name: "Preview" }).click();
-
   const previewPanel = panel
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Approval preview" }) })
     .first();
   await expect(previewPanel).toBeVisible();
   await expect(previewPanel).toContainText("Owner recharge invoice");
+  await expect(page).toHaveURL(
+    /approval=invoice-draft-invoice-draft-ready-approval-1/,
+  );
+
+  forbiddenCalls.length = 0;
   await expect(previewPanel).toContainText("Billing");
   await expect(previewPanel).toContainText("Ready for approval");
   await expect(previewPanel).toContainText("$1,320");
@@ -549,10 +553,16 @@ test("operations approvals tab previews a candidate without mutations", async ({
   await expect(previewPanel).toContainText("Assignment notice ready");
   await expect(previewPanel).toContainText("Property manager");
   await expect(previewPanel).not.toContainText("Owner recharge invoice");
+  await expect(page).toHaveURL(
+    /approval=assignment-notice-obligation-obligation-ready-assignment-1/,
+  );
 
   await nextCandidateButton.click();
   await expect(previewPanel).toContainText("Owner recharge invoice");
   await expect(previewPanel).toContainText("Billing");
+  await expect(page).toHaveURL(
+    /approval=invoice-draft-invoice-draft-ready-approval-1/,
+  );
 
   await copyPacketButton.click();
   const copiedPacket = await copiedApprovalsCsv(page);
@@ -577,6 +587,18 @@ test("operations approvals tab previews a candidate without mutations", async ({
   const downloadedPacket = await readFile(packetDownloadPath!, "utf8");
   expect(downloadedPacket).toBe(copiedPacket);
 
+  await previewPanel.getByRole("button", { name: "Close preview" }).click();
+  await expect(
+    panel.getByRole("heading", { name: "Approval preview" }),
+  ).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.has("approval")).toBe(false);
+
+  await invoiceRow.getByRole("button", { name: "Preview" }).click();
+  await expect(previewPanel).toContainText("Owner recharge invoice");
+  await expect(page).toHaveURL(
+    /approval=invoice-draft-invoice-draft-ready-approval-1/,
+  );
+
   await expect(
     previewPanel.getByRole("button", { name: "Approve" }),
   ).toHaveCount(0);
@@ -594,5 +616,6 @@ test("operations approvals tab previews a candidate without mutations", async ({
   await expect(
     panel.getByRole("heading", { name: "Approval preview" }),
   ).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.has("approval")).toBe(false);
   await expect(forbiddenCalls).toEqual([]);
 });

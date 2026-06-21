@@ -148,6 +148,7 @@ const COMPLIANCE_REVIEW_PACKET_GUARDRAIL =
   "Review-only compliance packet: copying or downloading this file does not complete checks, upload evidence, create or update obligations, apply Smart Intake, create or update work orders, send email/SMS, dispatch providers, create billing drafts, call Xero/Basiq, or reconcile payments.";
 const APPROVALS_REVIEW_PACKET_GUARDRAIL =
   "Review-only approvals packet: copying or downloading this file does not approve, complete, apply, dispatch, send email/SMS, post to Xero/Basiq, reconcile payments, update provider history, create billing drafts, or mutate Smart Intake, compliance, maintenance, onboarding, invoice, obligation, arrears, assignment, provider, comms, payment, or reconciliation records.";
+const APPROVAL_PREVIEW_SEARCH_PARAM = "approval";
 const COMPLIANCE_CATEGORIES = new Set([
   "insurance",
   "bank_guarantee",
@@ -158,6 +159,17 @@ const COMPLIANCE_DOCUMENT_TYPES = new Set([
   "insurance_certificate",
   "inspection_report",
 ]);
+
+function replaceApprovalPreviewSearchParam(candidateId: string | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (candidateId) {
+    url.searchParams.set(APPROVAL_PREVIEW_SEARCH_PARAM, candidateId);
+  } else {
+    url.searchParams.delete(APPROVAL_PREVIEW_SEARCH_PARAM);
+  }
+  window.history.replaceState(null, "", url);
+}
 
 const tabs = [
   { id: "queue", label: "Queue", description: "All operational work" },
@@ -4142,15 +4154,19 @@ function OperationsWorkspace() {
   const canPreviewNextApproval =
     selectedApprovalCandidateIndex >= 0 &&
     selectedApprovalCandidateIndex < visibleApprovalCandidates.length - 1;
+  const selectApprovalCandidatePreview = (candidateId: string | null) => {
+    setSelectedApprovalCandidateId(candidateId);
+    replaceApprovalPreviewSearchParam(candidateId);
+  };
   const previewPreviousApprovalCandidate = () => {
     if (!canPreviewPreviousApproval) return;
-    setSelectedApprovalCandidateId(
+    selectApprovalCandidatePreview(
       visibleApprovalCandidates[selectedApprovalCandidateIndex - 1].id,
     );
   };
   const previewNextApprovalCandidate = () => {
     if (!canPreviewNextApproval) return;
-    setSelectedApprovalCandidateId(
+    selectApprovalCandidatePreview(
       visibleApprovalCandidates[selectedApprovalCandidateIndex + 1].id,
     );
   };
@@ -4198,6 +4214,26 @@ function OperationsWorkspace() {
     approvalSearchQuery.trim().length > 0 ||
     approvalSortMode !== "grouped";
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const candidateId = new URLSearchParams(window.location.search).get(
+      APPROVAL_PREVIEW_SEARCH_PARAM,
+    );
+    if (!candidateId || candidateId === selectedApprovalCandidateId) return;
+    if (
+      visibleApprovalCandidates.some((candidate) => candidate.id === candidateId)
+    ) {
+      setSelectedApprovalCandidateId(candidateId);
+      return;
+    }
+    if (approvalCandidates.length > 0) {
+      replaceApprovalPreviewSearchParam(null);
+    }
+  }, [
+    approvalCandidates.length,
+    selectedApprovalCandidateId,
+    visibleApprovalCandidates,
+  ]);
+  useEffect(() => {
     if (!selectedApprovalCandidateId) return;
     if (
       visibleApprovalCandidates.some(
@@ -4207,6 +4243,7 @@ function OperationsWorkspace() {
       return;
     }
     setSelectedApprovalCandidateId(null);
+    replaceApprovalPreviewSearchParam(null);
   }, [selectedApprovalCandidateId, visibleApprovalCandidates]);
   const approvalReadyCount = approvalCandidates.filter(
     (candidate) => candidate.group === "ready",
@@ -6162,7 +6199,7 @@ function OperationsWorkspace() {
                         <SecondaryButton
                           type="button"
                           className="min-h-11 px-3"
-                          onClick={() => setSelectedApprovalCandidateId(null)}
+                          onClick={() => selectApprovalCandidatePreview(null)}
                         >
                           <X size={15} />
                           Close preview
@@ -6361,7 +6398,7 @@ function OperationsWorkspace() {
                                           : null,
                                       )}
                                       onClick={() =>
-                                        setSelectedApprovalCandidateId(
+                                        selectApprovalCandidatePreview(
                                           selected ? null : candidate.id,
                                         )
                                       }
