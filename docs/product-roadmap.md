@@ -16,6 +16,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-21 Work approvals candidate packet v1.3:** The selected
+  approvals preview now has local `Copy packet` and `Download packet` actions
+  for a single candidate. The packet includes the candidate title, source,
+  status, decision state, context, due date, reason, source link, preview
+  details, and the existing no-mutation guardrail, while the all-visible
+  approvals CSV export stays unchanged. Smoke coverage locks the invoice packet
+  contents, filename, copied/downloaded parity, source handoff, and continued
+  silence for provider/comms/payment/reconciliation/source-record mutations.
 - [x] **2026-06-21 Work approvals preview drawer v1.2:** The Work approvals
   inbox now has a read-only `Preview` action on every candidate row. Selecting
   a row opens an inline approval preview with source, status, due date, context,

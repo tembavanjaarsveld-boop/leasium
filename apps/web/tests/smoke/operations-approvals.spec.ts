@@ -427,6 +427,38 @@ test("operations approvals tab previews a candidate without mutations", async ({
     ),
   ).toBeVisible();
 
+  const copyPacketButton = previewPanel.getByRole("button", {
+    name: "Copy approval packet",
+  });
+  const downloadPacketButton = previewPanel.getByRole("button", {
+    name: "Download approval packet",
+  });
+  await expectTouchTarget(copyPacketButton);
+  await expectTouchTarget(downloadPacketButton);
+
+  await copyPacketButton.click();
+  const copiedPacket = await copiedApprovalsCsv(page);
+  expect(copiedPacket).toContain("Single approval candidate packet");
+  expect(copiedPacket).toContain("Owner recharge invoice");
+  expect(copiedPacket).toContain("Billing");
+  expect(copiedPacket).toContain("$1,320");
+  expect(copiedPacket).toContain("Bright Cafe Pty Ltd");
+  expect(copiedPacket).toContain(
+    "/billing-readiness?entity_id=entity-1&invoice_id=invoice-draft-ready-approval-1",
+  );
+  expect(copiedPacket).toContain("does not approve");
+
+  const packetDownloadPromise = page.waitForEvent("download");
+  await downloadPacketButton.click();
+  const packetDownload = await packetDownloadPromise;
+  expect(packetDownload.suggestedFilename()).toBe(
+    "approval-candidate-invoice-draft-ready-approval-1.csv",
+  );
+  const packetDownloadPath = await packetDownload.path();
+  expect(packetDownloadPath).not.toBeNull();
+  const downloadedPacket = await readFile(packetDownloadPath!, "utf8");
+  expect(downloadedPacket).toBe(copiedPacket);
+
   await expect(
     previewPanel.getByRole("button", { name: "Approve" }),
   ).toHaveCount(0);

@@ -596,6 +596,19 @@ fixes · deferrals.
   complete, send email/SMS, dispatch providers, post to Xero/Basiq, create
   payments, reconcile, mutate source records, or mutate provider history · none
   deferred.
+- 2026-06-21 · Work Approvals candidate packet v1.3 · reused the shipped
+  approvals preview panel and CSV handoff patterns without new tokens, route, or
+  backend endpoint · screens checked at 1440/390
+  (`output/playwright/work-approvals-packet-v13-1440.png`,
+  `output/playwright/work-approvals-packet-v13-390.png`) · fixes in-slice:
+  added preview-scoped `Copy packet` and `Download packet` actions for the
+  selected candidate, kept the all-visible approvals CSV unchanged, and ensured
+  the desktop side panel and mobile stacked panel wrap the three handoff buttons
+  without overlap or bottom-nav collision · provider guardrails unchanged:
+  copying/downloading the single-candidate packet does not approve, apply,
+  complete, send email/SMS, dispatch providers, post to Xero/Basiq, create
+  payments, reconcile, mutate source records, or mutate provider history · none
+  deferred.
 
 ## UX Debt Register
 

@@ -2,6 +2,46 @@
 
 Last updated: 2026-06-21
 
+## Continuation - 2026-06-21 (Work approvals candidate packet v1.3)
+
+Temba continued the Work approvals lane after the preview drawer shipped. This
+slice adds a local packet for the one candidate currently selected in the
+preview panel.
+
+What changed:
+- Added preview-scoped `Copy packet` and `Download packet` actions.
+- The single-candidate CSV includes candidate kind, title, source, status,
+  decision state, context, due date, reason, source link, preview details, and
+  the existing approvals no-mutation guardrail.
+- The existing all-visible approvals CSV copy/download remains unchanged.
+- The generated filename avoids duplicated source prefixes, e.g.
+  `approval-candidate-invoice-draft-ready-approval-1.csv`.
+- Updated roadmap and UX log. UX screenshots captured at
+  `output/playwright/work-approvals-packet-v13-1440.png` and
+  `output/playwright/work-approvals-packet-v13-390.png`.
+
+Verification:
+- Red first: the focused approvals preview smoke failed waiting for the missing
+  `Copy approval packet` button.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts -g "previews a candidate"`
+  — 1 passed after implementation.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-approvals.spec.ts`
+  — 3 passed.
+- `cd apps/web && npm run test:smoke -- tests/smoke/operations-compliance.spec.ts`
+  — 6 passed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx tests/smoke/operations-approvals.spec.ts`
+  — passed.
+- `cd apps/web && npx tsc --noEmit` — passed.
+- `git diff --check` — passed.
+- Temporary mocked screenshot harness passed and was removed after producing
+  the UX evidence images.
+
+Guardrails held: the candidate packet is local and read-only. It adds no
+Xero/Basiq, SendGrid/Twilio, tenant/owner/provider email, SMS, provider
+dispatch, Smart Intake apply, maintenance approval, compliance completion,
+invoice approval or delivery, payment, reconciliation, source-record mutation,
+or provider-history mutation path.
+
 ## Continuation - 2026-06-21 (Work approvals preview drawer v1.2)
 
 Temba approved the next small Work approvals refinement: inspect one candidate

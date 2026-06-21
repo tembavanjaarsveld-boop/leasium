@@ -1614,6 +1614,56 @@ function operationsApprovalsReviewCsv(candidates: ApprovalCandidate[]) {
   return rows.map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function approvalCandidatePacketFilename(candidate: ApprovalCandidate) {
+  const sourcePrefix = `${candidate.kind.replace(/_/g, "-")}-`;
+  const rawId = candidate.id.startsWith(`${sourcePrefix}${sourcePrefix}`)
+    ? candidate.id.slice(sourcePrefix.length)
+    : candidate.id;
+  const slug =
+    rawId
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "candidate";
+  return `approval-candidate-${slug}.csv`;
+}
+
+function approvalCandidatePacketCsv(candidate: ApprovalCandidate) {
+  const due =
+    candidate.kind === "smart_intake"
+      ? formatDateTime(candidate.dueDate)
+      : formatDate(candidate.dueDate);
+  const rows: Array<Array<string | number | null | undefined>> = [
+    ["Single approval candidate packet", candidate.title, ""],
+    ["Field", "Value", "Guardrail"],
+    ["Kind", approvalKindLabel(candidate.kind), APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ["Title", candidate.title, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ["Source", candidate.sourceLabel, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ["Status", candidate.statusLabel, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    [
+      "Decision state",
+      approvalGroups.find((group) => group.id === candidate.group)?.label ??
+        candidate.group,
+      APPROVALS_REVIEW_PACKET_GUARDRAIL,
+    ],
+    ["Context", candidate.context, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ["Due", due, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ["Reason", candidate.reason, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ["Source link", candidate.href, APPROVALS_REVIEW_PACKET_GUARDRAIL],
+    ...candidate.previewDetails.map((detail) => [
+      "Detail",
+      detail,
+      APPROVALS_REVIEW_PACKET_GUARDRAIL,
+    ]),
+    [
+      "Export guardrail",
+      "Review-only",
+      APPROVALS_REVIEW_PACKET_GUARDRAIL,
+    ],
+  ];
+
+  return rows.map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
 function complianceCheckTone(check: ComplianceCheckRecord): StatusTone {
   if (check.status === "completed") {
     return "success";
@@ -4065,6 +4115,23 @@ function OperationsWorkspace() {
       "operations-approvals-review.csv",
     );
   };
+  const selectedApprovalPacketText = () =>
+    selectedApprovalCandidate
+      ? approvalCandidatePacketCsv(selectedApprovalCandidate)
+      : "";
+  const copySelectedApprovalPacket = async () => {
+    if (!selectedApprovalCandidate) return;
+    await copyTextToClipboard(selectedApprovalPacketText());
+  };
+  const downloadSelectedApprovalPacket = () => {
+    if (!selectedApprovalCandidate) return;
+    saveBlob(
+      new Blob([selectedApprovalPacketText()], {
+        type: "text/csv;charset=utf-8",
+      }),
+      approvalCandidatePacketFilename(selectedApprovalCandidate),
+    );
+  };
   const unassignedWorkCount = assignableOpenQueueItems.filter(
     (item) => !assignedUserId(item) && !assignedUserName(item),
   ).length;
@@ -5990,6 +6057,24 @@ function OperationsWorkspace() {
                             <Link2 size={15} />
                             Review source
                           </Link>
+                          <SecondaryButton
+                            type="button"
+                            aria-label="Copy approval packet"
+                            className="min-h-11 px-3"
+                            onClick={copySelectedApprovalPacket}
+                          >
+                            <Copy size={15} />
+                            Copy packet
+                          </SecondaryButton>
+                          <SecondaryButton
+                            type="button"
+                            aria-label="Download approval packet"
+                            className="min-h-11 px-3"
+                            onClick={downloadSelectedApprovalPacket}
+                          >
+                            <Download size={15} />
+                            Download packet
+                          </SecondaryButton>
                         </div>
                       </div>
                       </section>
