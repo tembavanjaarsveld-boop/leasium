@@ -35,6 +35,7 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  createBillingDraftsFromChargeRules,
   createInvoiceDraftFromBillingDraft,
   dispatchXeroInvoiceProviders,
   documentDownloadUrl,
@@ -142,11 +143,17 @@ type MonthEndHandoff = {
 
 type InvoiceRunGuideStepState = "done" | "current" | "pending" | "blocked";
 
-type InvoiceRunGuideAction = {
-  label: string;
-  tab: BillingWorkspaceTab;
-  deliveryFilter?: DeliveryFilter;
-};
+type InvoiceRunGuideAction =
+  | {
+      kind: "tab";
+      label: string;
+      tab: BillingWorkspaceTab;
+      deliveryFilter?: DeliveryFilter;
+    }
+  | {
+      kind: "create_billing_drafts";
+      label: string;
+    };
 
 type InvoiceRunGuide = {
   statusLabel: string;
@@ -156,6 +163,11 @@ type InvoiceRunGuide = {
   currentStep: number | null;
   blockedStep?: number;
   action?: InvoiceRunGuideAction;
+};
+
+type CreateBillingDraftsVariables = {
+  entityId: string;
+  leaseIds: string[];
 };
 
 type BillingWorkspaceTab =
@@ -1620,6 +1632,7 @@ function buildInvoiceRunGuide({
   selectedEntityId,
   blockerCount,
   readyRentRows,
+  draftableRentRows,
   billingDrafts,
   invoiceDrafts,
   invoiceDraftByBillingDraftId,
@@ -1629,6 +1642,7 @@ function buildInvoiceRunGuide({
   selectedEntityId: string;
   blockerCount: number;
   readyRentRows: number;
+  draftableRentRows: number;
   billingDrafts: BillingDraftRecord[];
   invoiceDrafts: InvoiceDraftRecord[];
   invoiceDraftByBillingDraftId: Map<string, InvoiceDraftRecord>;
@@ -1701,7 +1715,7 @@ function buildInvoiceRunGuide({
       tone: "danger",
       currentStep: 0,
       blockedStep: 0,
-      action: { label: "Fix blockers", tab: "readiness" },
+      action: { kind: "tab", label: "Fix blockers", tab: "readiness" },
     };
   }
 
@@ -1712,7 +1726,7 @@ function buildInvoiceRunGuide({
       detail: "Approve or void the source-linked billing work before Leasium creates an internal invoice draft.",
       tone: "primary",
       currentStep: 1,
-      action: { label: "Review drafts", tab: "billing-drafts" },
+      action: { kind: "tab", label: "Review drafts", tab: "billing-drafts" },
     };
   }
 
@@ -1723,7 +1737,21 @@ function buildInvoiceRunGuide({
       detail: "Create the internal invoice draft from the approved billing draft. This stays inside Leasium.",
       tone: "primary",
       currentStep: 1,
-      action: { label: "Review drafts", tab: "billing-drafts" },
+      action: { kind: "tab", label: "Review drafts", tab: "billing-drafts" },
+    };
+  }
+
+  if (!hasDraftSource && draftableRentRows > 0) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: create billing drafts",
+      detail: `${countLabel(draftableRentRows, "ready rent row")} can become local billing drafts for review. This stays inside Leasium.`,
+      tone: "primary",
+      currentStep: 1,
+      action: {
+        kind: "create_billing_drafts",
+        label: "Create billing drafts",
+      },
     };
   }
 
@@ -1734,7 +1762,7 @@ function buildInvoiceRunGuide({
       detail: "The rent roll is ready, but there is no billing draft yet. Start with source-linked draft review.",
       tone: "primary",
       currentStep: 1,
-      action: { label: "Review drafts", tab: "billing-drafts" },
+      action: { kind: "tab", label: "Review drafts", tab: "billing-drafts" },
     };
   }
 
@@ -1755,7 +1783,7 @@ function buildInvoiceRunGuide({
       detail: "The invoice preview and email draft are ready. Approve the internal invoice before dispatch.",
       tone: "primary",
       currentStep: 2,
-      action: { label: "Approve invoices", tab: "invoice-prep" },
+      action: { kind: "tab", label: "Approve invoices", tab: "invoice-prep" },
     };
   }
 
@@ -1766,7 +1794,7 @@ function buildInvoiceRunGuide({
       detail: "Prepare the PDF and tenant email preview, then approve the internal invoice.",
       tone: "primary",
       currentStep: 2,
-      action: { label: "Approve invoices", tab: "invoice-prep" },
+      action: { kind: "tab", label: "Approve invoices", tab: "invoice-prep" },
     };
   }
 
@@ -1780,6 +1808,7 @@ function buildInvoiceRunGuide({
       tone: "warning",
       currentStep: 3,
       action: {
+        kind: "tab",
         label: "Open delivery",
         tab: "delivery",
         deliveryFilter: "needs_action",
@@ -1797,6 +1826,7 @@ function buildInvoiceRunGuide({
       tone: "warning",
       currentStep: 3,
       action: {
+        kind: "tab",
         label: "Open delivery",
         tab: "delivery",
         deliveryFilter: "needs_action",
@@ -1814,6 +1844,7 @@ function buildInvoiceRunGuide({
       tone: "primary",
       currentStep: 3,
       action: {
+        kind: "tab",
         label: "Open delivery",
         tab: "delivery",
         deliveryFilter: "ready_dispatch",
@@ -1831,6 +1862,7 @@ function buildInvoiceRunGuide({
       tone: "warning",
       currentStep: 3,
       action: {
+        kind: "tab",
         label: "Review payments",
         tab: "delivery",
         deliveryFilter: "unpaid",
@@ -2059,9 +2091,11 @@ function KpiCard({
 
 function InvoiceRunGuidePanel({
   guide,
+  actionPending = false,
   onAction,
 }: {
   guide: InvoiceRunGuide;
+  actionPending?: boolean;
   onAction: (action: InvoiceRunGuideAction) => void;
 }) {
   const action = guide.action;
@@ -2088,9 +2122,14 @@ function InvoiceRunGuidePanel({
           <SecondaryButton
             type="button"
             onClick={() => onAction(action)}
+            disabled={actionPending}
             className="min-h-11 shrink-0"
           >
-            <ArrowUpRight size={15} />
+            {actionPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <ArrowUpRight size={15} />
+            )}
             {action.label}
           </SecondaryButton>
         ) : null}
@@ -2312,6 +2351,33 @@ function BillingReadinessWorkspace() {
     },
   });
 
+  const createBillingDraftsMutation = useMutation({
+    mutationFn: ({ entityId, leaseIds }: CreateBillingDraftsVariables) =>
+      createBillingDraftsFromChargeRules({
+        entity_id: entityId,
+        lease_ids: leaseIds,
+        as_of: asOf,
+      }),
+    onSuccess: (batch, variables) => {
+      queryClient.setQueryData<BillingDraftRecord[]>(
+        ["billing-readiness-drafts", variables.entityId],
+        (current = []) => {
+          const byId = new Map(current.map((draft) => [draft.id, draft]));
+          for (const draft of batch.drafts) {
+            byId.set(draft.id, draft);
+          }
+          return Array.from(byId.values());
+        },
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-drafts"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-rent-roll"],
+      });
+    },
+  });
+
   const createInvoiceDraftMutation = useMutation({
     mutationFn: (draftId: string) =>
       createInvoiceDraftFromBillingDraft(draftId),
@@ -2476,6 +2542,28 @@ function BillingReadinessWorkspace() {
       ready: Math.max(rentRows.length - rowsWithBlockers.length, 0),
     };
   }, [rentRows, rowsWithBlockers.length]);
+  const draftableBillingRows = useMemo(
+    () =>
+      rentRows.filter(
+        (row) =>
+          row.lease_id &&
+          (row.charge_rules_total_cents ?? 0) > 0 &&
+          blockerItems(row).length === 0,
+      ),
+    [rentRows],
+  );
+  const draftableBillingLeaseIds = useMemo(() => {
+    const leaseIds: string[] = [];
+    const seen = new Set<string>();
+    for (const row of draftableBillingRows) {
+      if (!row.lease_id || seen.has(row.lease_id)) {
+        continue;
+      }
+      seen.add(row.lease_id);
+      leaseIds.push(row.lease_id);
+    }
+    return leaseIds;
+  }, [draftableBillingRows]);
   const invoiceDrafts = useMemo(
     () =>
       allMode
@@ -2615,6 +2703,7 @@ function BillingReadinessWorkspace() {
         selectedEntityId,
         blockerCount: blockerRows.length,
         readyRentRows: counts.ready,
+        draftableRentRows: scopedEntityId ? draftableBillingRows.length : 0,
         billingDrafts,
         invoiceDrafts,
         invoiceDraftByBillingDraftId,
@@ -2626,17 +2715,56 @@ function BillingReadinessWorkspace() {
       billingReadinessLoading,
       blockerRows.length,
       counts.ready,
+      draftableBillingRows.length,
       invoiceDraftByBillingDraftId,
       invoiceDrafts,
+      scopedEntityId,
       selectedEntityId,
     ],
   );
   const handleInvoiceRunGuideAction = (action: InvoiceRunGuideAction) => {
+    if (action.kind === "create_billing_drafts") {
+      setActiveBillingTab("billing-drafts");
+      if (
+        scopedEntityId &&
+        draftableBillingLeaseIds.length > 0 &&
+        !createBillingDraftsMutation.isPending
+      ) {
+        createBillingDraftsMutation.mutate({
+          entityId: scopedEntityId,
+          leaseIds: draftableBillingLeaseIds,
+        });
+      }
+      return;
+    }
     setActiveBillingTab(action.tab);
     if (action.deliveryFilter) {
       setDeliveryFilter(action.deliveryFilter);
     }
   };
+  const renderCreateBillingDraftsAction = () =>
+    scopedEntityId && draftableBillingLeaseIds.length > 0 ? (
+      <SecondaryButton
+        type="button"
+        onClick={() =>
+          createBillingDraftsMutation.mutate({
+            entityId: scopedEntityId,
+            leaseIds: draftableBillingLeaseIds,
+          })
+        }
+        disabled={createBillingDraftsMutation.isPending}
+      >
+        {createBillingDraftsMutation.isPending ? (
+          <Loader2 size={15} className="animate-spin" />
+        ) : (
+          <FileCheck2 size={15} />
+        )}
+        Create billing drafts
+      </SecondaryButton>
+    ) : null;
+  const billingDraftEmptyDescription = draftableBillingLeaseIds.length
+    ? "Create local billing drafts from the ready charge rules, then review and approve them here before invoice preparation."
+    : "Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists.";
 
   return (
     <main className="min-h-screen">
@@ -2750,6 +2878,14 @@ function BillingReadinessWorkspace() {
               : "Could not update the billing draft."}
           </div>
         ) : null}
+        {createBillingDraftsMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {friendlyError(
+              createBillingDraftsMutation.error,
+              "Could not create billing drafts.",
+            )}
+          </div>
+        ) : null}
         {createInvoiceDraftMutation.error ? (
           <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
             {createInvoiceDraftMutation.error instanceof Error
@@ -2790,6 +2926,10 @@ function BillingReadinessWorkspace() {
 
         <InvoiceRunGuidePanel
           guide={invoiceRunGuide}
+          actionPending={
+            invoiceRunGuide.action?.kind === "create_billing_drafts" &&
+            createBillingDraftsMutation.isPending
+          }
           onAction={handleInvoiceRunGuideAction}
         />
 
@@ -3166,7 +3306,8 @@ function BillingReadinessWorkspace() {
                     <EmptyState
                       icon={<FileText size={18} />}
                       title="No billing drafts"
-                      description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
+                      description={billingDraftEmptyDescription}
+                      action={renderCreateBillingDraftsAction()}
                     />
                   ) : null}
                   {billingDraftsLoading ? (
@@ -3365,7 +3506,8 @@ function BillingReadinessWorkspace() {
                             <EmptyState
                               icon={<FileText size={18} />}
                               title="No billing drafts"
-                              description="Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists."
+                              description={billingDraftEmptyDescription}
+                              action={renderCreateBillingDraftsAction()}
                             />
                           </td>
                         </tr>

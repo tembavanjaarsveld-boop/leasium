@@ -254,6 +254,181 @@ test("billing delivery dead-end guides the operator back to invoice drafting", a
   expect(mutationCalls).toEqual([]);
 });
 
+test("empty billing draft review can create local drafts from ready charge rules", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const readyRentRow = {
+    entity_id: "entity-1",
+    entity_name: "Acme Holdings Pty Ltd",
+    property_id: "property-1",
+    property_name: "Queen Street Retail Centre",
+    tenancy_unit_id: "unit-1",
+    unit_label: "Shop 3",
+    lease_id: "lease-1",
+    tenant_id: "tenant-1",
+    tenant_name: "Bright Cafe Pty Ltd",
+    lease_status: "active",
+    commencement_date: "2025-07-01",
+    expiry_date: "2028-06-30",
+    tenant_billing_email: "accounts@bright.example",
+    annual_rent_cents: 9600000,
+    rent_frequency: "monthly",
+    charge_rules: [
+      {
+        id: "charge-1",
+        charge_type: "base_rent",
+        amount_cents: 880000,
+        frequency: "monthly",
+        gst_treatment: "taxable",
+        xero_account_code: "401",
+        xero_tax_type: "OUTPUT",
+        start_date: "2025-07-01",
+        end_date: null,
+        next_due_date: "2026-06-01",
+        arrears_or_advance: "advance",
+      },
+    ],
+    charge_rules_total_cents: 880000,
+    next_due_date: "2026-06-01",
+    gst_readiness_blockers: [],
+    xero_readiness_blockers: [],
+    invoice_readiness_blockers: [],
+  };
+  const localBillingDrafts: Array<Record<string, unknown>> = [];
+
+  await page.route("**/api/v1/rent-roll?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([readyRentRow]),
+    });
+  });
+  await page.route("**/api/v1/invoice-drafts?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+  await page.route(
+    (url) =>
+      url.pathname === "/api/v1/billing-drafts" ||
+      url.pathname === "/api/v1/billing-drafts/from-charge-rules",
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      if (request.method() === "GET" && path === "/api/v1/billing-drafts") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(localBillingDrafts),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/api/v1/billing-drafts/from-charge-rules"
+      ) {
+        const payload = request.postDataJSON() as {
+          entity_id: string;
+          lease_ids?: string[];
+          as_of?: string | null;
+        };
+        const createdDraft = {
+          id: "billing-draft-created-1",
+          entity_id: payload.entity_id,
+          property_id: readyRentRow.property_id,
+          tenancy_unit_id: readyRentRow.tenancy_unit_id,
+          tenant_id: readyRentRow.tenant_id,
+          lease_id: readyRentRow.lease_id,
+          document_id: "document-charge-rule-1",
+          document_intake_id: null,
+          status: "needs_review",
+          title: "Bright Cafe Pty Ltd draft charges",
+          currency: "AUD",
+          issue_date: payload.as_of ?? "2026-06-23",
+          due_date: readyRentRow.next_due_date,
+          total_cents: readyRentRow.charge_rules_total_cents,
+          notes:
+            "Prepared from existing Leasium charge rules. No PDF, tenant email, or Xero sync has run.",
+          metadata: {
+            source: "charge_rule_batch",
+            guardrail:
+              "No invoice PDF, tenant email, or Xero sync runs from this batch step.",
+          },
+          lines: [],
+          created_at: "2026-06-23T00:00:00.000Z",
+          updated_at: "2026-06-23T00:00:00.000Z",
+          deleted_at: null,
+        };
+        localBillingDrafts.push(createdDraft);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            created: 1,
+            existing: 0,
+            skipped: 0,
+            drafts: [createdDraft],
+            skipped_rows: [],
+          }),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  const mutationCalls: string[] = [];
+  page.on("request", (request) => {
+    const method = request.method();
+    const path = new URL(request.url()).pathname;
+    if (
+      path.startsWith("/api/v1/") &&
+      !["GET", "HEAD", "OPTIONS"].includes(method)
+    ) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+  });
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=billing-drafts");
+  await expect(
+    page.getByRole("heading", { name: "Billing draft review" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table").getByText("No billing drafts", { exact: true }),
+  ).toBeVisible();
+
+  const guide = page.getByRole("region", { name: "Invoice run guide" });
+  await expect(guide.getByText("Next: create billing drafts")).toBeVisible();
+  await guide.getByRole("button", { name: "Create billing drafts" }).click();
+
+  await expect
+    .poll(() => mutationCalls)
+    .toEqual(["POST /api/v1/billing-drafts/from-charge-rules"]);
+  await expect.poll(() => localBillingDrafts.length).toBe(1);
+  await expect(
+    page
+      .getByRole("table")
+      .getByText("Bright Cafe Pty Ltd draft charges", { exact: true }),
+  ).toBeVisible();
+  expect(mutationCalls).toEqual([
+    "POST /api/v1/billing-drafts/from-charge-rules",
+  ]);
+});
+
 test("self-managed billing readiness keeps statement handoff local", async ({
   page,
 }) => {

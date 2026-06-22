@@ -695,6 +695,16 @@ fixes · deferrals.
   the next internal invoice step, shows the four-step review path, and
   navigates to the right tab without sending tenant email, syncing Xero,
   recording payment, or mutating provider state · no UX debt deferred.
+- 2026-06-23 · Billing Readiness empty draft creation · existing Horizon Money /
+  Billing Readiness surface; screens checked at desktop 1440 and mobile 390
+  from local Playwright captures
+  (`/tmp/leasium-billing-drafts-empty-desktop.png`,
+  `/tmp/leasium-billing-drafts-empty-mobile.png`) · fixes in-slice: empty
+  Review drafts now explains when ready charge rules can become local billing
+  drafts and exposes a 44px+ create action in both the guide and empty state;
+  the action stays inside Leasium and does not create PDFs, email tenants,
+  sync Xero, reconcile payments, or mutate provider state · no UX debt
+  deferred.
 
 ## UX Debt Register
 
