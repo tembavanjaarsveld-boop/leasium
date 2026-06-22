@@ -689,6 +689,12 @@ fixes · deferrals.
   review panels, and Xero/Basiq result panels can shrink cleanly in the mobile
   settings grid · no provider calls, invoice posting, email sending, payment
   reconciliation, or UX debt deferred.
+- 2026-06-23 · Billing Readiness invoice run guide · existing Horizon Money /
+  Billing Readiness surface; screens checked at desktop 1440 and mobile 390
+  from local Playwright captures · fixes in-slice: delivery dead-end now names
+  the next internal invoice step, shows the four-step review path, and
+  navigates to the right tab without sending tenant email, syncing Xero,
+  recording payment, or mutating provider state · no UX debt deferred.
 
 ## UX Debt Register
 

@@ -167,6 +167,93 @@ test("desktop billing readiness row actions stay touch-safe without firing provi
   expect(mutationCalls).toEqual([]);
 });
 
+test("billing delivery dead-end guides the operator back to invoice drafting", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  await page.route("**/api/v1/invoice-drafts?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+  await page.route("**/api/v1/rent-roll?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          entity_id: "entity-1",
+          entity_name: "Acme Holdings Pty Ltd",
+          property_id: "property-1",
+          property_name: "Queen Street Retail Centre",
+          tenancy_unit_id: "unit-1",
+          unit_label: "Shop 3",
+          lease_id: "lease-1",
+          tenant_id: "tenant-1",
+          tenant_name: "Bright Cafe Pty Ltd",
+          lease_status: "active",
+          commencement_date: "2025-07-01",
+          expiry_date: "2028-06-30",
+          tenant_billing_email: "accounts@bright.example",
+          annual_rent_cents: 9600000,
+          rent_frequency: "monthly",
+          charge_rules: [],
+          charge_rules_total_cents: 880000,
+          next_due_date: "2026-05-01",
+          gst_readiness_blockers: [],
+          xero_readiness_blockers: [],
+          invoice_readiness_blockers: [],
+        },
+      ]),
+    });
+  });
+
+  const mutationCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=delivery");
+  await expect(
+    page.getByRole("heading", { name: "Delivery & payments" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table").getByText("No approved invoices", { exact: true }),
+  ).toBeVisible();
+
+  const guide = page.getByRole("region", { name: "Invoice run guide" });
+  await expect(guide).toBeVisible();
+  await expect(guide.getByText("Next: create invoice draft")).toBeVisible();
+  await expect(
+    guide.getByText(
+      "No email, Xero sync, or payment change runs from this guide.",
+    ),
+  ).toBeVisible();
+
+  await guide.getByRole("button", { name: "Review drafts" }).click();
+  await expect(
+    page.getByRole("tab", { name: /Review drafts/ }),
+  ).toHaveAttribute("aria-selected", "true");
+  expect(mutationCalls).toEqual([]);
+});
+
 test("self-managed billing readiness keeps statement handoff local", async ({
   page,
 }) => {

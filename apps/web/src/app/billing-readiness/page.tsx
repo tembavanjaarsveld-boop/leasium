@@ -140,6 +140,24 @@ type MonthEndHandoff = {
   issues: string[];
 };
 
+type InvoiceRunGuideStepState = "done" | "current" | "pending" | "blocked";
+
+type InvoiceRunGuideAction = {
+  label: string;
+  tab: BillingWorkspaceTab;
+  deliveryFilter?: DeliveryFilter;
+};
+
+type InvoiceRunGuide = {
+  statusLabel: string;
+  title: string;
+  detail: string;
+  tone: StatusTone;
+  currentStep: number | null;
+  blockedStep?: number;
+  action?: InvoiceRunGuideAction;
+};
+
 type BillingWorkspaceTab =
   | "readiness"
   | "billing-drafts"
@@ -187,6 +205,16 @@ const deliveryFilters: Array<{ id: DeliveryFilter; label: string }> = [
   { id: "complete", label: "Complete" },
   { id: "unpaid", label: "Unpaid" },
 ];
+
+const invoiceRunGuideSteps = [
+  "Fix blockers",
+  "Review drafts",
+  "Approve invoices",
+  "Dispatch & reconcile",
+];
+
+const invoiceRunGuideGuardrail =
+  "No email, Xero sync, or payment change runs from this guide.";
 
 function billingTabFromQuery(value: string | null): BillingWorkspaceTab | null {
   return billingWorkspaceTabs.some((tab) => tab.id === value)
@@ -1542,6 +1570,283 @@ function deliveryFilterMatches(
   }
 }
 
+function invoiceRunGuideStepTone(state: InvoiceRunGuideStepState) {
+  switch (state) {
+    case "done":
+      return "border-success/30 bg-success-soft text-success-strong";
+    case "current":
+      return "border-primary/40 bg-primary-soft text-primary-hover";
+    case "blocked":
+      return "border-danger/30 bg-danger-soft text-danger-strong";
+    default:
+      return "border-border bg-muted/40 text-muted-foreground";
+  }
+}
+
+function invoiceRunGuideStepIcon(state: InvoiceRunGuideStepState) {
+  switch (state) {
+    case "done":
+      return <CheckCircle2 size={15} />;
+    case "blocked":
+      return <AlertTriangle size={15} />;
+    case "current":
+      return <ArrowUpRight size={15} />;
+    default:
+      return <FileText size={15} />;
+  }
+}
+
+function invoiceRunGuideStepState(
+  guide: InvoiceRunGuide,
+  index: number,
+): InvoiceRunGuideStepState {
+  if (guide.blockedStep === index) {
+    return "blocked";
+  }
+  if (guide.currentStep === null) {
+    return "pending";
+  }
+  if (index < guide.currentStep) {
+    return "done";
+  }
+  if (index === guide.currentStep) {
+    return "current";
+  }
+  return "pending";
+}
+
+function buildInvoiceRunGuide({
+  loading,
+  selectedEntityId,
+  blockerCount,
+  readyRentRows,
+  billingDrafts,
+  invoiceDrafts,
+  invoiceDraftByBillingDraftId,
+  approvedInvoiceDrafts,
+}: {
+  loading: boolean;
+  selectedEntityId: string;
+  blockerCount: number;
+  readyRentRows: number;
+  billingDrafts: BillingDraftRecord[];
+  invoiceDrafts: InvoiceDraftRecord[];
+  invoiceDraftByBillingDraftId: Map<string, InvoiceDraftRecord>;
+  approvedInvoiceDrafts: InvoiceDraftRecord[];
+}): InvoiceRunGuide {
+  const openBillingDrafts = billingDrafts.filter(
+    (draft) => draft.status !== "void",
+  );
+  const openInvoiceDrafts = invoiceDrafts.filter(
+    (draft) => draft.status !== "void",
+  );
+  const billingDraftNeedsReview = openBillingDrafts.some(
+    (draft) => draft.status !== "approved",
+  );
+  const approvedBillingDraftMissingInvoice = openBillingDrafts.some(
+    (draft) =>
+      draft.status === "approved" && !invoiceDraftByBillingDraftId.has(draft.id),
+  );
+  const invoiceDraftNeedsApproval = openInvoiceDrafts.some(
+    (draft) => draft.status !== "approved",
+  );
+  const invoiceReadyForApproval = openInvoiceDrafts.some((draft) => {
+    const review = invoiceDeliveryReview(draft);
+    return draft.status === "ready_for_approval" && review.deliveryReady;
+  });
+  const deliveryReviews = approvedInvoiceDrafts.map((draft) =>
+    invoiceDeliveryReview(draft),
+  );
+  const providerRecoveryCount = deliveryReviews.filter(
+    (review) => review.xeroFailed || review.emailFailed,
+  ).length;
+  const needsXeroApprovalCount = deliveryReviews.filter(
+    (review) => !review.xeroApproved,
+  ).length;
+  const readyDispatchCount = deliveryReviews.filter(
+    (review) => review.readyForProviderDispatch && !review.xeroFailed,
+  ).length;
+  const unpaidCount = deliveryReviews.filter(
+    (review) => review.paymentLabel !== "paid",
+  ).length;
+
+  const hasDraftSource =
+    openBillingDrafts.length > 0 || openInvoiceDrafts.length > 0;
+
+  if (loading) {
+    return {
+      statusLabel: "Checking",
+      title: "Checking invoice run",
+      detail: "Loading rent roll checks, billing drafts, and invoice approvals.",
+      tone: "neutral",
+      currentStep: null,
+    };
+  }
+
+  if (!selectedEntityId) {
+    return {
+      statusLabel: "Select entity",
+      title: "Choose an entity to start",
+      detail: "Pick the billing entity first, then Leasium can show the next invoice step.",
+      tone: "neutral",
+      currentStep: null,
+    };
+  }
+
+  if (blockerCount > 0) {
+    return {
+      statusLabel: "Blocked",
+      title: "Next: fix billing blockers",
+      detail: `${countLabel(blockerCount, "blocker")} must be cleared before invoice drafts can move forward.`,
+      tone: "danger",
+      currentStep: 0,
+      blockedStep: 0,
+      action: { label: "Fix blockers", tab: "readiness" },
+    };
+  }
+
+  if (billingDraftNeedsReview) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: review billing draft",
+      detail: "Approve or void the source-linked billing work before Leasium creates an internal invoice draft.",
+      tone: "primary",
+      currentStep: 1,
+      action: { label: "Review drafts", tab: "billing-drafts" },
+    };
+  }
+
+  if (approvedBillingDraftMissingInvoice) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: create invoice draft",
+      detail: "Create the internal invoice draft from the approved billing draft. This stays inside Leasium.",
+      tone: "primary",
+      currentStep: 1,
+      action: { label: "Review drafts", tab: "billing-drafts" },
+    };
+  }
+
+  if (!hasDraftSource && readyRentRows > 0) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: review billing source",
+      detail: "The rent roll is ready, but there is no billing draft yet. Start with source-linked draft review.",
+      tone: "primary",
+      currentStep: 1,
+      action: { label: "Review drafts", tab: "billing-drafts" },
+    };
+  }
+
+  if (!hasDraftSource) {
+    return {
+      statusLabel: "No drafts",
+      title: "No invoice work ready",
+      detail: "There are no ready rent roll rows, billing drafts, or invoice drafts for this entity yet.",
+      tone: "neutral",
+      currentStep: 1,
+    };
+  }
+
+  if (invoiceReadyForApproval) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: approve invoice",
+      detail: "The invoice preview and email draft are ready. Approve the internal invoice before dispatch.",
+      tone: "primary",
+      currentStep: 2,
+      action: { label: "Approve invoices", tab: "invoice-prep" },
+    };
+  }
+
+  if (invoiceDraftNeedsApproval || approvedInvoiceDrafts.length === 0) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: prepare invoice preview",
+      detail: "Prepare the PDF and tenant email preview, then approve the internal invoice.",
+      tone: "primary",
+      currentStep: 2,
+      action: { label: "Approve invoices", tab: "invoice-prep" },
+    };
+  }
+
+  if (providerRecoveryCount > 0) {
+    return {
+      statusLabel: "Needs attention",
+      title: "Next: review dispatch recovery",
+      detail: `${countLabel(providerRecoveryCount, "approved invoice")} ${
+        providerRecoveryCount === 1 ? "needs" : "need"
+      } provider recovery before month end is clear.`,
+      tone: "warning",
+      currentStep: 3,
+      action: {
+        label: "Open delivery",
+        tab: "delivery",
+        deliveryFilter: "needs_action",
+      },
+    };
+  }
+
+  if (needsXeroApprovalCount > 0) {
+    return {
+      statusLabel: "Needs approval",
+      title: "Next: approve Xero draft",
+      detail: `${countLabel(needsXeroApprovalCount, "approved invoice")} ${
+        needsXeroApprovalCount === 1 ? "still needs" : "still need"
+      } explicit Xero approval before dispatch.`,
+      tone: "warning",
+      currentStep: 3,
+      action: {
+        label: "Open delivery",
+        tab: "delivery",
+        deliveryFilter: "needs_action",
+      },
+    };
+  }
+
+  if (readyDispatchCount > 0) {
+    return {
+      statusLabel: "Next step",
+      title: "Next: dispatch approved invoice",
+      detail: `${countLabel(readyDispatchCount, "approved invoice")} ${
+        readyDispatchCount === 1 ? "is" : "are"
+      } ready for explicit Xero and email approval.`,
+      tone: "primary",
+      currentStep: 3,
+      action: {
+        label: "Open delivery",
+        tab: "delivery",
+        deliveryFilter: "ready_dispatch",
+      },
+    };
+  }
+
+  if (unpaidCount > 0) {
+    return {
+      statusLabel: "Payment review",
+      title: "Next: review payment status",
+      detail: `${countLabel(unpaidCount, "approved invoice")} ${
+        unpaidCount === 1 ? "still needs" : "still need"
+      } local payment review.`,
+      tone: "warning",
+      currentStep: 3,
+      action: {
+        label: "Review payments",
+        tab: "delivery",
+        deliveryFilter: "unpaid",
+      },
+    };
+  }
+
+  return {
+    statusLabel: "Clear",
+    title: "Invoice run is clear",
+    detail: "Approved invoices have no open dispatch or payment work in Leasium.",
+    tone: "success",
+    currentStep: invoiceRunGuideSteps.length,
+  };
+}
+
 function blockerItems(row: RentRollRow): BlockerItem[] {
   const rows: BlockerItem[] = [];
   const push = (kind: BlockerKind, messages: string[] | undefined) => {
@@ -1749,6 +2054,75 @@ function KpiCard({
       </div>
       <p className="mt-3 text-sm text-muted-foreground">{detail}</p>
     </div>
+  );
+}
+
+function InvoiceRunGuidePanel({
+  guide,
+  onAction,
+}: {
+  guide: InvoiceRunGuide;
+  onAction: (action: InvoiceRunGuideAction) => void;
+}) {
+  const action = guide.action;
+  return (
+    <section
+      role="region"
+      aria-label="Invoice run guide"
+      className="rounded-2xl border border-primary/20 bg-white p-4 shadow-leasiumXs"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={guide.tone}>{guide.statusLabel}</StatusBadge>
+            <StatusBadge tone="neutral">Review first</StatusBadge>
+          </div>
+          <h2 className="mt-3 text-xl font-semibold tracking-normal text-foreground">
+            {guide.title}
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            {guide.detail}
+          </p>
+        </div>
+        {action ? (
+          <SecondaryButton
+            type="button"
+            onClick={() => onAction(action)}
+            className="min-h-11 shrink-0"
+          >
+            <ArrowUpRight size={15} />
+            {action.label}
+          </SecondaryButton>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {invoiceRunGuideSteps.map((step, index) => {
+          const stepState = invoiceRunGuideStepState(guide, index);
+          return (
+            <div
+              key={step}
+              aria-current={stepState === "current" ? "step" : undefined}
+              className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${invoiceRunGuideStepTone(
+                stepState,
+              )}`}
+            >
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/80">
+                {invoiceRunGuideStepIcon(stepState)}
+              </span>
+              <span className="min-w-0">
+                {index + 1}. {step}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-primary" />
+        <span>{invoiceRunGuideGuardrail}</span>
+      </div>
+    </section>
   );
 }
 
@@ -2234,6 +2608,35 @@ function BillingReadinessWorkspace() {
     }
     return drafts;
   }, [invoiceDrafts]);
+  const invoiceRunGuide = useMemo(
+    () =>
+      buildInvoiceRunGuide({
+        loading: billingReadinessLoading,
+        selectedEntityId,
+        blockerCount: blockerRows.length,
+        readyRentRows: counts.ready,
+        billingDrafts,
+        invoiceDrafts,
+        invoiceDraftByBillingDraftId,
+        approvedInvoiceDrafts,
+      }),
+    [
+      approvedInvoiceDrafts,
+      billingDrafts,
+      billingReadinessLoading,
+      blockerRows.length,
+      counts.ready,
+      invoiceDraftByBillingDraftId,
+      invoiceDrafts,
+      selectedEntityId,
+    ],
+  );
+  const handleInvoiceRunGuideAction = (action: InvoiceRunGuideAction) => {
+    setActiveBillingTab(action.tab);
+    if (action.deliveryFilter) {
+      setDeliveryFilter(action.deliveryFilter);
+    }
+  };
 
   return (
     <main className="min-h-screen">
@@ -2384,6 +2787,11 @@ function BillingReadinessWorkspace() {
             )}
           </div>
         ) : null}
+
+        <InvoiceRunGuidePanel
+          guide={invoiceRunGuide}
+          onAction={handleInvoiceRunGuideAction}
+        />
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <KpiCard
