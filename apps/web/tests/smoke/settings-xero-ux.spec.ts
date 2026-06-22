@@ -120,6 +120,15 @@ async function expectTouchTarget(locator: Locator) {
   expect(box.height).toBeGreaterThanOrEqual(44);
 }
 
+async function expectNearViewportTop(locator: Locator) {
+  await expect
+    .poll(async () => {
+      const box = await locator.boundingBox();
+      return box?.y ?? Number.POSITIVE_INFINITY;
+    })
+    .toBeLessThan(320);
+}
+
 test("settings Xero exceptions use contextual loading copy", async ({
   page,
 }) => {
@@ -294,6 +303,35 @@ test("desktop settings Xero readiness handoffs stay touch-safe", async ({
     mappingRow.getByRole("link", { name: "Open property" }),
   );
   await expectTouchTarget(mappingRow.getByRole("button", { name: "Apply" }));
+});
+
+test("settings Xero preview invoices handoff scrolls to the preview result", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1432, height: 900 });
+  await mockLeasiumApi(page, { xeroDiagnosticsDraftReady: true });
+  await mockXeroExceptionQueue(page);
+
+  await page.goto("/settings?tab=xero");
+
+  const xeroConnectionPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Connect Xero" }),
+    })
+    .first();
+  await expect(xeroConnectionPanel).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview invoices" }).click();
+
+  const invoicePreviewPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Xero invoice posting preview" }),
+    })
+    .first();
+  await expect(invoicePreviewPanel).toBeVisible();
+  await expectNearViewportTop(invoicePreviewPanel);
 });
 
 test("settings Xero draft creation action keeps the touch-safe class without creating drafts", async () => {

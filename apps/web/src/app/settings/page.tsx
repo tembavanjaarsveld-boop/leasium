@@ -2510,6 +2510,7 @@ function SettingsWorkspace() {
   );
   const xeroConnectionPanelRef = useRef<HTMLDivElement>(null);
   const xeroContactPreviewPanelRef = useRef<HTMLDivElement>(null);
+  const xeroChartTaxPreviewPanelRef = useRef<HTMLDivElement>(null);
   const xeroInvoicePostingPanelRef = useRef<HTMLDivElement>(null);
   const xeroPaymentPanelRef = useRef<HTMLDivElement>(null);
   const basiqReconciliationPanelRef = useRef<HTMLDivElement>(null);
@@ -6305,7 +6306,7 @@ function SettingsWorkspace() {
               />
             </section>
 
-            <div ref={xeroConnectionPanelRef}>
+            <div ref={xeroConnectionPanelRef} className="min-w-0 scroll-mt-24">
               <SectionPanel
                 title="Connect Xero"
                 description={`Connect ${selectedEntityName} to its matching Xero organisation. Nothing is posted during connection.`}
@@ -6789,7 +6790,12 @@ function SettingsWorkspace() {
                         xeroContactSyncMutation.isPending ||
                         !xeroCanPreviewContacts
                       }
-                      onClick={() => xeroContactSyncMutation.mutate()}
+                      onClick={() =>
+                        xeroContactSyncMutation.mutate(undefined, {
+                          onSuccess: () =>
+                            scrollToPanel(xeroContactPreviewPanelRef),
+                        })
+                      }
                     >
                       {xeroContactSyncMutation.isPending ? (
                         <Loader2 size={15} className="animate-spin" />
@@ -6805,7 +6811,12 @@ function SettingsWorkspace() {
                         xeroChartTaxMutation.isPending ||
                         !xeroCanValidateChartTax
                       }
-                      onClick={() => xeroChartTaxMutation.mutate()}
+                      onClick={() =>
+                        xeroChartTaxMutation.mutate(undefined, {
+                          onSuccess: () =>
+                            scrollToPanel(xeroChartTaxPreviewPanelRef),
+                        })
+                      }
                     >
                       {xeroChartTaxMutation.isPending ? (
                         <Loader2 size={15} className="animate-spin" />
@@ -6821,7 +6832,12 @@ function SettingsWorkspace() {
                         xeroInvoicePostingMutation.isPending ||
                         !xeroCanPreviewInvoicePosting
                       }
-                      onClick={() => xeroInvoicePostingMutation.mutate()}
+                      onClick={() =>
+                        xeroInvoicePostingMutation.mutate(undefined, {
+                          onSuccess: () =>
+                            scrollToPanel(xeroInvoicePostingPanelRef),
+                        })
+                      }
                     >
                       {xeroInvoicePostingMutation.isPending ? (
                         <Loader2 size={15} className="animate-spin" />
@@ -6837,7 +6853,11 @@ function SettingsWorkspace() {
                         xeroPaymentPreviewMutation.isPending ||
                         !xeroCanPreviewPayments
                       }
-                      onClick={() => xeroPaymentPreviewMutation.mutate()}
+                      onClick={() =>
+                        xeroPaymentPreviewMutation.mutate(undefined, {
+                          onSuccess: () => scrollToPanel(xeroPaymentPanelRef),
+                        })
+                      }
                     >
                       {xeroPaymentPreviewMutation.isPending ? (
                         <Loader2 size={15} className="animate-spin" />
@@ -7026,7 +7046,10 @@ function SettingsWorkspace() {
               </div>
             </SectionPanel>
 
-            <div ref={xeroExceptionQueuePanelRef}>
+            <div
+              ref={xeroExceptionQueuePanelRef}
+              className="min-w-0 scroll-mt-24"
+            >
               <SectionPanel
                 title="Xero sync exception queue"
                 description="Local accounting exceptions for mappings, approved drafts, provider receipts, and payment review."
@@ -7886,7 +7909,10 @@ function SettingsWorkspace() {
             </div>
 
             {xeroContactPreview ? (
-              <div ref={xeroContactPreviewPanelRef}>
+              <div
+                ref={xeroContactPreviewPanelRef}
+                className="min-w-0 scroll-mt-24"
+              >
                 <SectionPanel
                   title="Xero contact preview"
                   description="Review suggested matches from the latest provider pull, then apply the selected local mappings."
@@ -8051,23 +8077,27 @@ function SettingsWorkspace() {
             ) : null}
 
             {xeroChartTaxPreview ? (
-              <SectionPanel
-                title="Xero chart/tax preview"
-                description="Review provider-backed account and tax validation before any invoice posting path is enabled."
-                icon={<CircleDollarSign size={17} className="text-primary" />}
-                actions={
-                  <StatusBadge
-                    tone={
-                      chartTaxCounts.notFound || chartTaxCounts.needsMapping
-                        ? "warning"
-                        : "success"
-                    }
-                  >
-                    {chartTaxCounts.ready}/{xeroChartTaxPreview.checked_rules}{" "}
-                    ready
-                  </StatusBadge>
-                }
+              <div
+                ref={xeroChartTaxPreviewPanelRef}
+                className="min-w-0 scroll-mt-24"
               >
+                <SectionPanel
+                  title="Xero chart/tax preview"
+                  description="Review provider-backed account and tax validation before any invoice posting path is enabled."
+                  icon={<CircleDollarSign size={17} className="text-primary" />}
+                  actions={
+                    <StatusBadge
+                      tone={
+                        chartTaxCounts.notFound || chartTaxCounts.needsMapping
+                          ? "warning"
+                          : "success"
+                      }
+                    >
+                      {chartTaxCounts.ready}/{xeroChartTaxPreview.checked_rules}{" "}
+                      ready
+                    </StatusBadge>
+                  }
+                >
                 <div className="grid gap-3 p-4 md:grid-cols-4">
                   <div className="rounded-md border border-border bg-muted/25 p-3">
                     <div className="text-xs uppercase text-muted-foreground">
@@ -8207,11 +8237,15 @@ function SettingsWorkspace() {
                     </tbody>
                   </table>
                 </div>
-              </SectionPanel>
+                </SectionPanel>
+              </div>
             ) : null}
 
             {xeroInvoicePostingPreview ? (
-              <div ref={xeroInvoicePostingPanelRef}>
+              <div
+                ref={xeroInvoicePostingPanelRef}
+                className="min-w-0 scroll-mt-24"
+              >
                 <SectionPanel
                   title="Xero invoice posting preview"
                   description="Inspect provider-ready invoice drafts, record explicit local approval, then create Xero drafts as a separate action."
@@ -8594,7 +8628,10 @@ function SettingsWorkspace() {
             ) : null}
 
             {displayedPaymentReconciliation ? (
-              <div ref={xeroPaymentPanelRef}>
+              <div
+                ref={xeroPaymentPanelRef}
+                className="min-w-0 scroll-mt-24"
+              >
                 <SectionPanel
                   title="Payment reconciliation review"
                   description="Review provider payment status against Leasium invoice metadata before applying local payment updates."
@@ -8859,7 +8896,10 @@ function SettingsWorkspace() {
             ) : null}
 
             {SHOW_BASIQ_BANK_FEED ? (
-              <div ref={basiqReconciliationPanelRef}>
+              <div
+                ref={basiqReconciliationPanelRef}
+                className="min-w-0 scroll-mt-24"
+              >
                 <SectionPanel
                 title="Bank feed (Basiq)"
                 description="Reconcile imported bank transactions against Leasium invoice metadata before applying any local payment update."
@@ -9454,7 +9494,10 @@ function SettingsWorkspace() {
               </div>
             ) : null}
 
-            <div ref={xeroChartMappingPanelRef}>
+            <div
+              ref={xeroChartMappingPanelRef}
+              className="min-w-0 scroll-mt-24"
+            >
               <SectionPanel
                 title="Chart and tax mapping"
                 description="Review account codes and tax types on charge rules before any Xero posting approval exists."

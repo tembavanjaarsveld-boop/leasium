@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-21
+Last updated: 2026-06-23
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -678,6 +678,17 @@ fixes · deferrals.
   approve, apply, complete, send email/SMS, dispatch providers, post to
   Xero/Basiq, create payments, reconcile, mutate source records, or mutate
   provider history · none deferred.
+
+- 2026-06-23 · Settings Xero invoice preview handoff · existing Horizon
+  Settings surface; screens checked at desktop 1432 and mobile 390 from
+  Playwright captures
+  (`apps/web/test-results/settings-xero-invoice-handoff/desktop-1432.png`,
+  `apps/web/test-results/settings-xero-invoice-handoff/mobile-390.png`) ·
+  fixes in-slice: "Preview invoices" now scrolls to the generated invoice
+  posting preview, sibling Xero review actions scroll to their generated
+  review panels, and Xero/Basiq result panels can shrink cleanly in the mobile
+  settings grid · no provider calls, invoice posting, email sending, payment
+  reconciliation, or UX debt deferred.
 
 ## UX Debt Register
 
