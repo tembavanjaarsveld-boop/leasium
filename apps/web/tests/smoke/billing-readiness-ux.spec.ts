@@ -41,7 +41,7 @@ test("mobile billing readiness uses calm loading KPIs and review draft cards", a
   await expect(
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: /Review drafts/ }).click();
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
 
   const mobileDraftCard = page
     .getByTestId("billing-draft-mobile-card")
@@ -53,7 +53,7 @@ test("mobile billing readiness uses calm loading KPIs and review draft cards", a
     mobileDraftCard.getByRole("link", { name: /Intake intake-1/ }),
   ).toHaveAttribute("href", "/intake?entity_id=entity-1&review=intake-1");
   await expect(
-    mobileDraftCard.getByRole("button", { name: "Approve" }),
+    mobileDraftCard.getByRole("button", { name: "Go to send" }),
   ).toBeVisible();
 });
 
@@ -68,7 +68,7 @@ test("mobile billing operations expose invoice and delivery cards without raw pl
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
   const invoicePrepCard = page
     .getByTestId("invoice-prep-mobile-card")
     .filter({ hasText: "INV-1001" })
@@ -81,7 +81,7 @@ test("mobile billing operations expose invoice and delivery cards without raw pl
   const previewBox = await previewLink.boundingBox();
   expect(previewBox?.height).toBeGreaterThanOrEqual(44);
 
-  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await page.getByRole("tab", { name: /Send & get paid/ }).click();
   const deliveryCard = page
     .getByTestId("billing-delivery-mobile-card")
     .filter({ hasText: "INV-1002" })
@@ -119,20 +119,17 @@ test("desktop billing readiness row actions stay touch-safe without firing provi
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Review drafts/ }).click();
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
   const draftTable = page
     .locator("table")
     .filter({ hasText: "May rent and outgoings" })
     .first();
   await expect(draftTable).toBeVisible();
   await expectTouchSafe(
-    draftTable.getByRole("button", { name: "Approve" }).first(),
-  );
-  await expectTouchSafe(
-    draftTable.getByRole("button", { name: "Void" }).first(),
+    draftTable.getByRole("button", { name: "Go to send" }).first(),
   );
 
-  await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
   const invoicePrepTable = page
     .locator("table")
     .filter({ hasText: "INV-1001" })
@@ -145,7 +142,7 @@ test("desktop billing readiness row actions stay touch-safe without firing provi
     invoicePrepTable.getByRole("button", { name: "Approve" }).first(),
   );
 
-  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await page.getByRole("tab", { name: /Send & get paid/ }).click();
   const deliveryTable = page
     .locator("table")
     .filter({ hasText: "INV-1002" })
@@ -232,24 +229,23 @@ test("billing delivery dead-end guides the operator back to invoice drafting", a
 
   await page.goto("/billing-readiness?entity_id=entity-1&tab=delivery");
   await expect(
-    page.getByRole("heading", { name: "Delivery & payments" }),
+    page.getByRole("heading", { name: "Send & track payments" }),
   ).toBeVisible();
   await expect(
     page.getByRole("table").getByText("No approved invoices", { exact: true }),
   ).toBeVisible();
 
-  const guide = page.getByRole("region", { name: "Invoice run guide" });
+  const guide = page.getByRole("region", { name: "Monthly invoice run" });
   await expect(guide).toBeVisible();
-  await expect(guide.getByText("Next: create invoice draft")).toBeVisible();
   await expect(
     guide.getByText(
-      "No email, Xero sync, or payment change runs from this guide.",
+      "Nothing is emailed, synced to Xero, or marked paid until you choose to do it.",
     ),
   ).toBeVisible();
 
-  await guide.getByRole("button", { name: "Review drafts" }).click();
+  await guide.getByRole("button", { name: "Review & approve" }).click();
   await expect(
-    page.getByRole("tab", { name: /Review drafts/ }),
+    page.getByRole("tab", { name: /Review & approve/ }),
   ).toHaveAttribute("aria-selected", "true");
   expect(mutationCalls).toEqual([]);
 });
@@ -275,17 +271,13 @@ test("monthly invoice run separates setup and payment follow-up from dispatch", 
     name: "Monthly invoice run",
   });
   await expect(monthlyRun).toBeVisible();
-  await expect(
-    monthlyRun.getByRole("heading", { name: "Monthly invoice run" }),
-  ).toBeVisible();
-  await expect(
-    monthlyRun.getByText("One run: exceptions first, then batch dispatch."),
-  ).toBeVisible();
-  await expect(monthlyRun.getByText("Setup checks")).toBeVisible();
-  await expect(monthlyRun.getByText("After sending")).toBeVisible();
+  await expect(monthlyRun.getByText("Monthly invoice run")).toBeVisible();
+  await expect(monthlyRun.getByText("1. Review & approve")).toBeVisible();
+  await expect(monthlyRun.getByText("2. Send")).toBeVisible();
+  await expect(monthlyRun.getByText("3. Get paid")).toBeVisible();
   await expect(
     monthlyRun.getByText(
-      "Payment reconciliation happens after invoices are sent. It should not block getting rent invoices out.",
+      "Nothing is emailed, synced to Xero, or marked paid until you choose to do it.",
     ),
   ).toBeVisible();
   expect(mutationCalls).toEqual([]);
@@ -442,15 +434,19 @@ test("empty billing draft review can create local drafts from ready charge rules
 
   await page.goto("/billing-readiness?entity_id=entity-1&tab=billing-drafts");
   await expect(
-    page.getByRole("heading", { name: "Billing draft review" }),
+    page.getByRole("heading", { name: "Review & approve" }),
   ).toBeVisible();
   await expect(
     page.getByRole("table").getByText("No billing drafts", { exact: true }),
   ).toBeVisible();
 
-  const guide = page.getByRole("region", { name: "Invoice run guide" });
-  await expect(guide.getByText("Next: create billing drafts")).toBeVisible();
-  await guide.getByRole("button", { name: "Create billing drafts" }).click();
+  const guide = page.getByRole("region", { name: "Monthly invoice run" });
+  await expect(
+    guide.getByRole("heading", { name: "Create this month's invoices" }),
+  ).toBeVisible();
+  await guide
+    .getByRole("button", { name: "Create this month's invoices" })
+    .click();
 
   await expect
     .poll(() => mutationCalls)
@@ -662,7 +658,7 @@ test("voided charge-rule billing draft can be recreated locally", async ({
 
   await page.goto("/billing-readiness?entity_id=entity-1&tab=billing-drafts");
   await expect(
-    page.getByRole("heading", { name: "Billing draft review" }),
+    page.getByRole("heading", { name: "Review & approve" }),
   ).toBeVisible();
 
   const voidRow = page
@@ -709,7 +705,7 @@ test("self-managed billing readiness keeps statement handoff local", async ({
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await page.getByRole("tab", { name: /Send & get paid/ }).click();
 
   await expect(
     page.getByText("Entity statements", { exact: true }).first(),

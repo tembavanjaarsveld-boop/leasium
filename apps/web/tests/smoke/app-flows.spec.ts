@@ -385,19 +385,22 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     billingActionQueue.getByText("Xero mapping needs review").first(),
   ).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Fix blockers/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Review drafts/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Fix issues/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Review & approve/ })).toBeVisible();
   await expect(
-    page.getByRole("tab", { name: /Approve invoices/ }),
+    page.getByRole("tab", { name: /Review & approve/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("tab", { name: /Dispatch & reconcile/ }),
+    page.getByRole("tab", { name: /Send & get paid/ }),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Review drafts/ }).click();
-  const billingDraftTable = page.locator("table").filter({
-    hasText: "May rent and outgoings",
-  });
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
+  const billingDraftTable = page
+    .locator("table")
+    .filter({
+      hasText: "May rent and outgoings",
+    })
+    .first();
   await expect(billingDraftTable).toBeVisible();
   await expect(
     billingDraftTable.getByText("May rent and outgoings"),
@@ -409,11 +412,11 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     billingDraftTable.getByRole("link", { name: /Intake intake-1/ }),
   );
 
-  await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
   const invoicePrep = page
     .locator("section")
     .filter({
-      has: page.getByRole("heading", { name: "Invoice preparation" }),
+      has: page.getByRole("heading", { name: "Prepared invoices" }),
     })
     .first();
   await expect(invoicePrep).toBeVisible();
@@ -438,7 +441,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     invoicePrepRow.getByText("Please find your invoice attached.").first(),
   ).toBeVisible();
 
-  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await page.getByRole("tab", { name: /Send & get paid/ }).click();
   await expect(
     page.getByRole("heading", { name: "Month-end close checks" }),
   ).toBeVisible();
@@ -922,13 +925,13 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   await expect(
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await page.getByRole("tab", { name: /Send & get paid/ }).click();
   await expect(
     page.getByRole("heading", { name: "Month-end close checks" }),
   ).toBeVisible();
 
   const deliveryPanel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Delivery & payments" }),
+    has: page.getByRole("heading", { name: "Send & track payments" }),
   });
   const deliveryFilterButton = (name: RegExp) =>
     deliveryPanel.getByRole("button", { name });
@@ -987,11 +990,11 @@ test("billing readiness invoice preview action keeps a 44px touch target", async
   await expect(
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: /Approve invoices/ }).click();
+  await page.getByRole("tab", { name: /Review & approve/ }).click();
   const invoicePrep = page
     .locator("section")
     .filter({
-      has: page.getByRole("heading", { name: "Invoice preparation" }),
+      has: page.getByRole("heading", { name: "Prepared invoices" }),
     })
     .first();
   const invoicePrepRow = invoicePrep
@@ -7241,7 +7244,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
 
   await page.goto("/billing-readiness");
-  await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
+  await page.getByRole("tab", { name: /Send & get paid/ }).click();
   const primaryDispatchRow = page.getByRole("row").filter({
     hasText: "INV-1001",
   });

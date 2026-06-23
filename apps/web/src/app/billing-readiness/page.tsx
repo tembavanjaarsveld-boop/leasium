@@ -26,6 +26,7 @@ import { AppHeader } from "@/components/app-shell";
 import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
+  Button,
   EmptyState,
   Input,
   PageHeader,
@@ -183,6 +184,10 @@ type DeliveryFilter =
   | "complete"
   | "unpaid";
 
+// Three plain-English steps a non-specialist can follow: fix anything broken,
+// approve what's going out, then send and watch for payment. "invoice-prep"
+// is no longer its own tab — approving in step 1 auto-prepares the invoice, and
+// any invoice that still needs manual finalising is shown inside the review tab.
 const billingWorkspaceTabs: Array<{
   id: BillingWorkspaceTab;
   label: string;
@@ -190,23 +195,18 @@ const billingWorkspaceTabs: Array<{
 }> = [
   {
     id: "readiness",
-    label: "Fix blockers",
-    description: "Clear invoice, GST, Xero",
+    label: "Fix issues",
+    description: "Clear anything blocking invoices",
   },
   {
     id: "billing-drafts",
-    label: "Review drafts",
-    description: "Source-linked billing work",
-  },
-  {
-    id: "invoice-prep",
-    label: "Approve invoices",
-    description: "Preview and approve",
+    label: "Review & approve",
+    description: "Approve this month's invoices",
   },
   {
     id: "delivery",
-    label: "Dispatch & reconcile",
-    description: "Send, sync, record payment",
+    label: "Send & get paid",
+    description: "Send invoices, then track payment",
   },
 ];
 
@@ -218,15 +218,10 @@ const deliveryFilters: Array<{ id: DeliveryFilter; label: string }> = [
   { id: "unpaid", label: "Unpaid" },
 ];
 
-const invoiceRunGuideSteps = [
-  "Fix blockers",
-  "Review drafts",
-  "Approve invoices",
-  "Dispatch & reconcile",
-];
+const invoiceRunGuideSteps = ["Review & approve", "Send", "Get paid"];
 
 const invoiceRunGuideGuardrail =
-  "No email, Xero sync, or payment change runs from this guide.";
+  "Nothing is emailed, synced to Xero, or marked paid until you choose to do it.";
 
 function billingTabFromQuery(value: string | null): BillingWorkspaceTab | null {
   return billingWorkspaceTabs.some((tab) => tab.id === value)
@@ -1691,8 +1686,8 @@ function buildInvoiceRunGuide({
   if (loading) {
     return {
       statusLabel: "Checking",
-      title: "Checking invoice run",
-      detail: "Loading rent roll checks, billing drafts, and invoice approvals.",
+      title: "Checking this month's invoices",
+      detail: "Loading this month's invoices, approvals, and payments.",
       tone: "neutral",
       currentStep: null,
     };
@@ -1700,9 +1695,10 @@ function buildInvoiceRunGuide({
 
   if (!selectedEntityId) {
     return {
-      statusLabel: "Select entity",
+      statusLabel: "Choose entity",
       title: "Choose an entity to start",
-      detail: "Pick the billing entity first, then Leasium can show the next invoice step.",
+      detail:
+        "Pick an entity at the top of the page and we'll show you the next step.",
       tone: "neutral",
       currentStep: null,
     };
@@ -1710,107 +1706,120 @@ function buildInvoiceRunGuide({
 
   if (blockerCount > 0) {
     return {
-      statusLabel: "Blocked",
-      title: "Next: fix billing blockers",
-      detail: `${countLabel(blockerCount, "blocker")} must be cleared before invoice drafts can move forward.`,
+      statusLabel: "Fix first",
+      title: "First, fix what's blocking invoices",
+      detail: `${countLabel(blockerCount, "issue")} (missing details, Xero mapping, or GST) ${
+        blockerCount === 1 ? "needs" : "need"
+      } sorting before you can invoice.`,
       tone: "danger",
       currentStep: 0,
       blockedStep: 0,
-      action: { kind: "tab", label: "Fix blockers", tab: "readiness" },
+      action: {
+        kind: "tab",
+        label: `Fix ${countLabel(blockerCount, "issue")}`,
+        tab: "readiness",
+      },
     };
   }
 
   if (billingDraftNeedsReview) {
     return {
-      statusLabel: "Next step",
-      title: "Next: review billing draft",
-      detail: "Approve or void the source-linked billing work before Leasium creates an internal invoice draft.",
+      statusLabel: "Step 1 of 3",
+      title: "Review and approve this month's invoices",
+      detail:
+        "Check each invoice, then approve it. Approving also prepares it to send — no email or Xero sync happens yet.",
       tone: "primary",
-      currentStep: 1,
-      action: { kind: "tab", label: "Review drafts", tab: "billing-drafts" },
+      currentStep: 0,
+      action: { kind: "tab", label: "Review & approve", tab: "billing-drafts" },
     };
   }
 
   if (approvedBillingDraftMissingInvoice) {
     return {
-      statusLabel: "Next step",
-      title: "Next: create invoice draft",
-      detail: "Create the internal invoice draft from the approved billing draft. This stays inside Leasium.",
+      statusLabel: "Step 1 of 3",
+      title: "Finish approving this month's invoices",
+      detail:
+        "A few approved items still need turning into a ready-to-send invoice. “Approve & prepare to send” does this in one step.",
       tone: "primary",
-      currentStep: 1,
-      action: { kind: "tab", label: "Review drafts", tab: "billing-drafts" },
+      currentStep: 0,
+      action: { kind: "tab", label: "Review & approve", tab: "billing-drafts" },
     };
   }
 
   if (!hasDraftSource && draftableRentRows > 0) {
     return {
-      statusLabel: "Next step",
-      title: "Next: create billing drafts",
-      detail: `${countLabel(draftableRentRows, "ready rent row")} can become local billing drafts for review. This stays inside Leasium.`,
+      statusLabel: "Step 1 of 3",
+      title: "Create this month's invoices",
+      detail: `${countLabel(draftableRentRows, "tenancy", "tenancies")} ${
+        draftableRentRows === 1 ? "is" : "are"
+      } ready to invoice. Create the draft invoices, then review and approve them.`,
       tone: "primary",
-      currentStep: 1,
+      currentStep: 0,
       action: {
         kind: "create_billing_drafts",
-        label: "Create billing drafts",
+        label: "Create this month's invoices",
       },
     };
   }
 
   if (!hasDraftSource && readyRentRows > 0) {
     return {
-      statusLabel: "Next step",
-      title: "Next: review billing source",
-      detail: "The rent roll is ready, but there is no billing draft yet. Start with source-linked draft review.",
+      statusLabel: "Step 1 of 3",
+      title: "Start reviewing this month's invoices",
+      detail:
+        "The rent roll is ready. Open the review list to approve what's going out.",
       tone: "primary",
-      currentStep: 1,
-      action: { kind: "tab", label: "Review drafts", tab: "billing-drafts" },
+      currentStep: 0,
+      action: { kind: "tab", label: "Review & approve", tab: "billing-drafts" },
     };
   }
 
   if (!hasDraftSource) {
     return {
-      statusLabel: "No drafts",
-      title: "No invoice work ready",
-      detail: "There are no ready rent roll rows, billing drafts, or invoice drafts for this entity yet.",
+      statusLabel: "Nothing due",
+      title: "Nothing to invoice yet",
+      detail:
+        "When rent or charges are due for this entity, they'll show up here ready to bill.",
       tone: "neutral",
-      currentStep: 1,
+      currentStep: 0,
     };
   }
 
   if (invoiceReadyForApproval) {
     return {
-      statusLabel: "Next step",
-      title: "Next: approve invoice",
-      detail: "The invoice preview and email draft are ready. Approve the internal invoice before dispatch.",
+      statusLabel: "Step 1 of 3",
+      title: "Approve the prepared invoices",
+      detail:
+        "These invoices are prepared and waiting for your approval. Nothing is sent until you approve and then send.",
       tone: "primary",
-      currentStep: 2,
-      action: { kind: "tab", label: "Approve invoices", tab: "invoice-prep" },
+      currentStep: 0,
+      action: { kind: "tab", label: "Review & approve", tab: "billing-drafts" },
     };
   }
 
   if (invoiceDraftNeedsApproval || approvedInvoiceDrafts.length === 0) {
     return {
-      statusLabel: "Next step",
-      title: "Next: prepare invoice preview",
-      detail: "Prepare the PDF and tenant email preview, then approve the internal invoice.",
+      statusLabel: "Step 1 of 3",
+      title: "Finish approving this month's invoices",
+      detail: "A few invoices still need approving before they can be sent.",
       tone: "primary",
-      currentStep: 2,
-      action: { kind: "tab", label: "Approve invoices", tab: "invoice-prep" },
+      currentStep: 0,
+      action: { kind: "tab", label: "Review & approve", tab: "billing-drafts" },
     };
   }
 
   if (providerRecoveryCount > 0) {
     return {
-      statusLabel: "Needs attention",
-      title: "Next: review dispatch recovery",
-      detail: `${countLabel(providerRecoveryCount, "approved invoice")} ${
+      statusLabel: "Step 2 of 3",
+      title: "Some invoices didn't send",
+      detail: `${countLabel(providerRecoveryCount, "invoice")} ${
         providerRecoveryCount === 1 ? "needs" : "need"
-      } provider recovery before month end is clear.`,
+      } another send attempt.`,
       tone: "warning",
-      currentStep: 3,
+      currentStep: 1,
       action: {
         kind: "tab",
-        label: "Open delivery",
+        label: "Fix sending",
         tab: "delivery",
         deliveryFilter: "needs_action",
       },
@@ -1819,16 +1828,16 @@ function buildInvoiceRunGuide({
 
   if (needsXeroApprovalCount > 0) {
     return {
-      statusLabel: "Needs approval",
-      title: "Next: approve Xero draft",
-      detail: `${countLabel(needsXeroApprovalCount, "approved invoice")} ${
-        needsXeroApprovalCount === 1 ? "still needs" : "still need"
-      } explicit Xero approval before dispatch.`,
-      tone: "warning",
-      currentStep: 3,
+      statusLabel: "Step 2 of 3",
+      title: "Send this month's invoices",
+      detail: `${countLabel(needsXeroApprovalCount, "invoice")} ${
+        needsXeroApprovalCount === 1 ? "is" : "are"
+      } approved and ready to send. You'll confirm the Xero sync and tenant email as you send.`,
+      tone: "primary",
+      currentStep: 1,
       action: {
         kind: "tab",
-        label: "Open delivery",
+        label: "Send invoices",
         tab: "delivery",
         deliveryFilter: "needs_action",
       },
@@ -1837,16 +1846,16 @@ function buildInvoiceRunGuide({
 
   if (readyDispatchCount > 0) {
     return {
-      statusLabel: "Next step",
-      title: "Next: dispatch approved invoice",
-      detail: `${countLabel(readyDispatchCount, "approved invoice")} ${
+      statusLabel: "Step 2 of 3",
+      title: "Send this month's invoices",
+      detail: `${countLabel(readyDispatchCount, "invoice")} ${
         readyDispatchCount === 1 ? "is" : "are"
-      } ready for explicit Xero and email approval.`,
+      } ready to send to tenants.`,
       tone: "primary",
-      currentStep: 3,
+      currentStep: 1,
       action: {
         kind: "tab",
-        label: "Open delivery",
+        label: "Send invoices",
         tab: "delivery",
         deliveryFilter: "ready_dispatch",
       },
@@ -1855,16 +1864,16 @@ function buildInvoiceRunGuide({
 
   if (unpaidCount > 0) {
     return {
-      statusLabel: "Payment review",
-      title: "Next: review payment status",
-      detail: `${countLabel(unpaidCount, "approved invoice")} ${
-        unpaidCount === 1 ? "still needs" : "still need"
-      } local payment review.`,
+      statusLabel: "Step 3 of 3",
+      title: "Track who's paid",
+      detail: `${countLabel(unpaidCount, "invoice")} ${
+        unpaidCount === 1 ? "is" : "are"
+      } sent and waiting on payment. Record or reconcile payments as they arrive.`,
       tone: "warning",
-      currentStep: 3,
+      currentStep: 2,
       action: {
         kind: "tab",
-        label: "Review payments",
+        label: "Track payment",
         tab: "delivery",
         deliveryFilter: "unpaid",
       },
@@ -1872,9 +1881,9 @@ function buildInvoiceRunGuide({
   }
 
   return {
-    statusLabel: "Clear",
-    title: "Invoice run is clear",
-    detail: "Approved invoices have no open dispatch or payment work in Leasium.",
+    statusLabel: "All done",
+    title: "This month's invoice run is done",
+    detail: "Everything approved has been sent, and there's no open payment work.",
     tone: "success",
     currentStep: invoiceRunGuideSteps.length,
   };
@@ -2103,14 +2112,14 @@ function InvoiceRunGuidePanel({
   return (
     <section
       role="region"
-      aria-label="Invoice run guide"
-      className="rounded-2xl border border-primary/20 bg-white p-4 shadow-leasiumXs"
+      aria-label="Monthly invoice run"
+      className="rounded-2xl border border-primary/20 bg-primary/5 p-4 shadow-leasiumXs"
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="primary">Monthly invoice run</StatusBadge>
             <StatusBadge tone={guide.tone}>{guide.statusLabel}</StatusBadge>
-            <StatusBadge tone="neutral">Review first</StatusBadge>
           </div>
           <h2 className="mt-3 text-xl font-semibold tracking-normal text-foreground">
             {guide.title}
@@ -2120,11 +2129,11 @@ function InvoiceRunGuidePanel({
           </p>
         </div>
         {action ? (
-          <SecondaryButton
+          <Button
             type="button"
             onClick={() => onAction(action)}
             disabled={actionPending}
-            className="min-h-11 shrink-0"
+            className="shrink-0"
           >
             {actionPending ? (
               <Loader2 size={15} className="animate-spin" />
@@ -2132,15 +2141,15 @@ function InvoiceRunGuidePanel({
               <ArrowUpRight size={15} />
             )}
             {action.label}
-          </SecondaryButton>
+          </Button>
         ) : null}
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <ol className="mt-4 grid gap-2 sm:grid-cols-3">
         {invoiceRunGuideSteps.map((step, index) => {
           const stepState = invoiceRunGuideStepState(guide, index);
           return (
-            <div
+            <li
               key={step}
               aria-current={stepState === "current" ? "step" : undefined}
               className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${invoiceRunGuideStepTone(
@@ -2153,129 +2162,14 @@ function InvoiceRunGuidePanel({
               <span className="min-w-0">
                 {index + 1}. {step}
               </span>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
 
-      <div className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      <div className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-white px-3 py-2 text-xs text-muted-foreground">
         <ShieldCheck size={15} className="mt-0.5 shrink-0 text-primary" />
         <span>{invoiceRunGuideGuardrail}</span>
-      </div>
-    </section>
-  );
-}
-
-function MonthlyInvoiceRunPanel({
-  guide,
-  handoff,
-  allMode,
-  actionPending = false,
-  onAction,
-}: {
-  guide: InvoiceRunGuide;
-  handoff: MonthEndHandoff;
-  allMode: boolean;
-  actionPending?: boolean;
-  onAction: (action: InvoiceRunGuideAction) => void;
-}) {
-  const action = guide.action;
-  const setupNeedsAttention =
-    handoff.needsXeroApprovalCount + handoff.providerRecoveryCount;
-  const followUpCount = handoff.paymentReviewCount + handoff.unpaidCount;
-  const setupExceptionLabel = countLabel(setupNeedsAttention, "exception");
-  const followUpLabel = countLabel(followUpCount, "payment follow-up");
-  const dispatchDetail =
-    handoff.readyDispatchCount > 0
-      ? `${countLabel(handoff.readyDispatchCount, "approved invoice")} can be dispatched from the list below.`
-      : handoff.providerCompleteCount > 0
-        ? `${countLabel(handoff.providerCompleteCount, "approved invoice")} already has provider receipts.`
-        : "Approved invoices will appear below when they are ready to send.";
-  const setupDetail = allMode
-    ? "Select one entity to see Xero setup and exception detail for the run."
-    : setupNeedsAttention > 0
-      ? `${setupExceptionLabel} ${
-          setupNeedsAttention === 1 ? "needs" : "need"
-        } attention before dispatch.`
-      : "Xero/tax setup is clear or already handled for this run.";
-  const followUpDetail =
-    followUpCount > 0
-      ? `${followUpLabel} ${
-          followUpCount === 1 ? "remains" : "remain"
-        } after dispatch.`
-      : "Payment follow-up stays separate from sending rent invoices.";
-
-  return (
-    <section
-      role="region"
-      aria-label="Monthly invoice run"
-      className="border-b border-border bg-primary/5 px-4 py-4"
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone="primary">Monthly run</StatusBadge>
-            <StatusBadge tone={guide.tone}>{guide.statusLabel}</StatusBadge>
-          </div>
-          <h3 className="mt-2 text-base font-semibold text-foreground">
-            Monthly invoice run
-          </h3>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            One run: exceptions first, then batch dispatch.
-          </p>
-        </div>
-        {action ? (
-          <SecondaryButton
-            type="button"
-            onClick={() => onAction(action)}
-            disabled={actionPending}
-            className="min-h-11 shrink-0 rounded-lg px-3"
-          >
-            {actionPending ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <ArrowUpRight size={15} />
-            )}
-            {action.label}
-          </SecondaryButton>
-        ) : null}
-      </div>
-      <div className="mt-4 grid divide-y divide-border border-y border-border text-sm lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-        <div className="py-3 lg:pr-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone={setupNeedsAttention ? "warning" : "success"}>
-              {setupNeedsAttention || "Clear"}
-            </StatusBadge>
-            <span className="font-semibold text-foreground">Setup checks</span>
-          </div>
-          <p className="mt-2 text-muted-foreground">{setupDetail}</p>
-        </div>
-        <div className="py-3 lg:px-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge
-              tone={handoff.readyDispatchCount ? "primary" : "neutral"}
-            >
-              {handoff.readyDispatchCount}
-            </StatusBadge>
-            <span className="font-semibold text-foreground">Dispatch now</span>
-          </div>
-          <p className="mt-2 text-muted-foreground">{dispatchDetail}</p>
-        </div>
-        <div className="py-3 lg:pl-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone={followUpCount ? "warning" : "neutral"}>
-              {followUpCount}
-            </StatusBadge>
-            <span className="font-semibold text-foreground">After sending</span>
-          </div>
-          <p className="mt-2 text-muted-foreground">
-            Payment reconciliation happens after invoices are sent. It should
-            not block getting rent invoices out.
-          </p>
-          {followUpCount ? (
-            <p className="mt-1 text-muted-foreground">{followUpDetail}</p>
-          ) : null}
-        </div>
       </div>
     </section>
   );
@@ -2590,6 +2484,44 @@ function BillingReadinessWorkspace() {
     },
   });
 
+  // One-click internal staging: approve the billing draft, create the invoice
+  // draft, prepare its preview, and approve the invoice draft — all Leasium-only
+  // steps. No tenant email, Xero sync, or payment change runs here; those stay
+  // explicit on the Send & track payments tab.
+  const approveAndPrepareMutation = useMutation({
+    mutationFn: async ({
+      billingDraft,
+      invoiceDraft,
+    }: {
+      billingDraft: BillingDraftRecord;
+      invoiceDraft?: InvoiceDraftRecord | null;
+    }) => {
+      if (billingDraft.status !== "approved") {
+        await updateBillingDraft(billingDraft.id, { status: "approved" });
+      }
+      let invoice = invoiceDraft ?? null;
+      if (!invoice) {
+        invoice = await createInvoiceDraftFromBillingDraft(billingDraft.id);
+      }
+      if (invoice.status !== "approved" && invoice.status !== "void") {
+        const prepared = await prepareInvoiceDraftDelivery(invoice.id);
+        invoice =
+          prepared.status === "approved"
+            ? prepared
+            : await updateInvoiceDraft(invoice.id, { status: "approved" });
+      }
+      return invoice;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-drafts"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["billing-readiness-invoice-drafts"],
+      });
+    },
+  });
+
   const selectedEntity = entitiesQuery.data?.find(
     (entity) => entity.id === selectedEntityId,
   );
@@ -2817,6 +2749,22 @@ function BillingReadinessWorkspace() {
     }
     return drafts;
   }, [invoiceDrafts]);
+  // Billing drafts that still need approving/preparing into a send-ready
+  // invoice. Drives the "Approve & prepare to send all" batch action.
+  const reviewableBillingDrafts = useMemo(
+    () =>
+      billingDrafts.filter((draft) => {
+        if (draft.status === "void") {
+          return false;
+        }
+        const invoice = invoiceDraftByBillingDraftId.get(draft.id);
+        return (
+          !invoice ||
+          (invoice.status !== "approved" && invoice.status !== "void")
+        );
+      }),
+    [billingDrafts, invoiceDraftByBillingDraftId],
+  );
   const invoiceRunGuide = useMemo(
     () =>
       buildInvoiceRunGuide({
@@ -2861,6 +2809,20 @@ function BillingReadinessWorkspace() {
     setActiveBillingTab(action.tab);
     if (action.deliveryFilter) {
       setDeliveryFilter(action.deliveryFilter);
+    }
+  };
+  const handleApproveAndPrepareAll = async () => {
+    for (const draft of reviewableBillingDrafts) {
+      try {
+        await approveAndPrepareMutation.mutateAsync({
+          billingDraft: draft,
+          invoiceDraft: invoiceDraftByBillingDraftId.get(draft.id) ?? null,
+        });
+      } catch {
+        // Stop on the first failure so the operator can inspect it instead of
+        // firing a long chain of half-finished invoices.
+        break;
+      }
     }
   };
   const renderCreateBillingDraftsAction = () =>
@@ -2924,9 +2886,86 @@ function BillingReadinessWorkspace() {
       </SecondaryButton>
     );
   };
+  // Shared row actions for a billing draft, used by both the mobile cards and
+  // the desktop table. The one-click "Approve & prepare to send" runs only
+  // Leasium-internal steps; tenant email and Xero sync stay on the Send tab.
+  const renderBillingDraftActions = (draft: BillingDraftRecord) => {
+    const invoiceDraft = invoiceDraftByBillingDraftId.get(draft.id) ?? null;
+    if (draft.status === "void") {
+      return renderRecreateBillingDraftAction(draft);
+    }
+    if (invoiceDraft?.status === "approved") {
+      return (
+        <>
+          <StatusBadge tone="success">Ready to send</StatusBadge>
+          <SecondaryButton
+            type="button"
+            className="min-h-11 rounded-lg px-3"
+            onClick={() => setActiveBillingTab("delivery")}
+          >
+            <ArrowUpRight size={14} />
+            Go to send
+          </SecondaryButton>
+        </>
+      );
+    }
+    const isApprovingDraft =
+      approveAndPrepareMutation.isPending &&
+      approveAndPrepareMutation.variables?.billingDraft.id === draft.id;
+    const isVoiding =
+      updateDraftMutation.isPending &&
+      updateDraftMutation.variables?.draftId === draft.id;
+    return (
+      <>
+        <SecondaryButton
+          type="button"
+          className="min-h-11 rounded-lg px-3"
+          onClick={() =>
+            approveAndPrepareMutation.mutate({
+              billingDraft: draft,
+              invoiceDraft,
+            })
+          }
+          disabled={isApprovingDraft || allMode}
+          title={
+            allMode
+              ? "Select a single entity to approve invoices"
+              : "Approves this invoice and prepares it to send. No tenant email or Xero sync runs yet — you send on the next tab."
+          }
+        >
+          {isApprovingDraft ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <CheckCircle2 size={14} />
+          )}
+          Approve &amp; prepare to send
+        </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          className="min-h-11 rounded-lg px-3 text-danger"
+          onClick={() =>
+            updateDraftMutation.mutate({ draftId: draft.id, status: "void" })
+          }
+          disabled={isVoiding || allMode}
+          title={
+            allMode
+              ? "Select a single entity to void a billing draft"
+              : "Voids this draft only. No invoice is posted or synced."
+          }
+        >
+          {isVoiding ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Ban size={14} />
+          )}
+          Void
+        </SecondaryButton>
+      </>
+    );
+  };
   const billingDraftEmptyDescription = draftableBillingLeaseIds.length
-    ? "Create local billing drafts from the ready charge rules, then review and approve them here before invoice preparation."
-    : "Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists.";
+    ? "Create this month's invoices from the ready charge rules, then review and approve them here."
+    : "Reviewed invoice or admin documents show up here as draft invoices before anything is posted, emailed, or synced to Xero.";
 
   return (
     <main className="min-h-screen">
@@ -3215,7 +3254,7 @@ function BillingReadinessWorkspace() {
         {selectedEntityId ? (
           <>
             <div
-              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-4"
+              className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-3"
               role="tablist"
               aria-label="Billing readiness sections"
             >
@@ -3277,42 +3316,47 @@ function BillingReadinessWorkspace() {
 
             {activeBillingTab === "billing-drafts" ? (
               <SectionPanel
-                title="Billing draft review"
-                description="Source-linked Smart Intake drafts for review only. Approve or void updates draft status; it does not post an invoice, email a tenant, or sync to Xero."
+                title="Review & approve"
+                description="Check each invoice for this month, then approve it. Approving also prepares it to send — no tenant email or Xero sync happens until the Send step."
                 icon={<ReceiptText size={17} className="text-primary" />}
                 actions={
-                  <StatusBadge
-                    tone={
-                      billingDraftsLoading
-                        ? "neutral"
-                        : activeBillingDraftCount
-                          ? "primary"
-                          : "neutral"
-                    }
-                  >
-                    {billingDraftsLoading
-                      ? "Checking"
-                      : voidBillingDraftCount
-                        ? `${activeBillingDraftCount} active / ${voidBillingDraftCount} voided`
-                        : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
-                  </StatusBadge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!allMode && reviewableBillingDrafts.length > 0 ? (
+                      <Button
+                        type="button"
+                        onClick={handleApproveAndPrepareAll}
+                        disabled={approveAndPrepareMutation.isPending}
+                        className="px-3"
+                      >
+                        {approveAndPrepareMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={15} />
+                        )}
+                        Approve &amp; prepare all ({reviewableBillingDrafts.length})
+                      </Button>
+                    ) : null}
+                    <StatusBadge
+                      tone={
+                        billingDraftsLoading
+                          ? "neutral"
+                          : activeBillingDraftCount
+                            ? "primary"
+                            : "neutral"
+                      }
+                    >
+                      {billingDraftsLoading
+                        ? "Checking"
+                        : voidBillingDraftCount
+                          ? `${activeBillingDraftCount} active / ${voidBillingDraftCount} voided`
+                          : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
+                    </StatusBadge>
+                  </div>
                 }
               >
                 <div className="grid gap-3 p-3 md:hidden">
                   {billingDrafts.map((draft) => {
                     const source = billingDraftSourceContext(draft);
-                    const isUpdating =
-                      updateDraftMutation.isPending &&
-                      updateDraftMutation.variables?.draftId === draft.id;
-                    const canApprove =
-                      draft.status !== "approved" && draft.status !== "void";
-                    const canVoid = draft.status !== "void";
-                    const invoiceDraft = invoiceDraftByBillingDraftId.get(
-                      draft.id,
-                    );
-                    const isCreatingInvoice =
-                      createInvoiceDraftMutation.isPending &&
-                      createInvoiceDraftMutation.variables === draft.id;
                     return (
                       <article
                         key={draft.id}
@@ -3388,81 +3432,7 @@ function BillingReadinessWorkspace() {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <SecondaryButton
-                            type="button"
-                            className="min-h-11 rounded-lg px-3"
-                            onClick={() =>
-                              updateDraftMutation.mutate({
-                                draftId: draft.id,
-                                status: "approved",
-                              })
-                            }
-                            disabled={!canApprove || isUpdating || allMode}
-                            title={
-                              allMode
-                                ? "Select a single entity to approve a billing draft"
-                                : "Marks this draft approved for later billing steps. No invoice is posted or synced."
-                            }
-                          >
-                            {isUpdating ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <CheckCircle2 size={14} />
-                            )}
-                            Approve
-                          </SecondaryButton>
-                          <SecondaryButton
-                            type="button"
-                            className="min-h-11 rounded-lg px-3 text-danger"
-                            onClick={() =>
-                              updateDraftMutation.mutate({
-                                draftId: draft.id,
-                                status: "void",
-                              })
-                            }
-                            disabled={!canVoid || isUpdating || allMode}
-                            title={
-                              allMode
-                                ? "Select a single entity to void a billing draft"
-                                : "Voids this draft only. No invoice is posted or synced."
-                            }
-                          >
-                            {isUpdating ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <Ban size={14} />
-                            )}
-                            Void
-                          </SecondaryButton>
-                          {invoiceDraft ? (
-                            <StatusBadge
-                              tone={invoiceDraftStatusTone(invoiceDraft.status)}
-                            >
-                              Invoice {shortId(invoiceDraft.id)}
-                            </StatusBadge>
-                          ) : draft.status === "approved" ? (
-                            <SecondaryButton
-                              type="button"
-                              className="min-h-11 rounded-lg px-3"
-                              onClick={() =>
-                                createInvoiceDraftMutation.mutate(draft.id)
-                              }
-                              disabled={isCreatingInvoice || allMode}
-                              title={
-                                allMode
-                                  ? "Select a single entity to create an invoice draft"
-                                  : "Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
-                              }
-                            >
-                              {isCreatingInvoice ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : (
-                                <FileCheck2 size={14} />
-                              )}
-                              Invoice draft
-                            </SecondaryButton>
-                          ) : null}
-                          {renderRecreateBillingDraftAction(draft)}
+                          {renderBillingDraftActions(draft)}
                         </div>
                       </article>
                     );
@@ -3496,19 +3466,6 @@ function BillingReadinessWorkspace() {
                     <tbody>
                       {billingDrafts.map((draft) => {
                         const source = billingDraftSourceContext(draft);
-                        const isUpdating =
-                          updateDraftMutation.isPending &&
-                          updateDraftMutation.variables?.draftId === draft.id;
-                        const canApprove =
-                          draft.status !== "approved" &&
-                          draft.status !== "void";
-                        const canVoid = draft.status !== "void";
-                        const invoiceDraft = invoiceDraftByBillingDraftId.get(
-                          draft.id,
-                        );
-                        const isCreatingInvoice =
-                          createInvoiceDraftMutation.isPending &&
-                          createInvoiceDraftMutation.variables === draft.id;
                         return (
                           <tr
                             key={draft.id}
@@ -3573,94 +3530,7 @@ function BillingReadinessWorkspace() {
                             </td>
                             <td className="px-3 py-3">
                               <div className="flex flex-wrap gap-2">
-                                <SecondaryButton
-                                  type="button"
-                                  className="min-h-11 rounded-lg px-3"
-                                  onClick={() =>
-                                    updateDraftMutation.mutate({
-                                      draftId: draft.id,
-                                      status: "approved",
-                                    })
-                                  }
-                                  disabled={!canApprove || isUpdating || allMode}
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to approve a billing draft"
-                                      : "Marks this draft approved for later billing steps. No invoice is posted or synced."
-                                  }
-                                >
-                                  {isUpdating ? (
-                                    <Loader2
-                                      size={14}
-                                      className="animate-spin"
-                                    />
-                                  ) : (
-                                    <CheckCircle2 size={14} />
-                                  )}
-                                  Approve
-                                </SecondaryButton>
-                                <SecondaryButton
-                                  type="button"
-                                  className="min-h-11 rounded-lg px-3 text-danger"
-                                  onClick={() =>
-                                    updateDraftMutation.mutate({
-                                      draftId: draft.id,
-                                      status: "void",
-                                    })
-                                  }
-                                  disabled={!canVoid || isUpdating || allMode}
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to void a billing draft"
-                                      : "Voids this draft only. No invoice is posted or synced."
-                                  }
-                                >
-                                  {isUpdating ? (
-                                    <Loader2
-                                      size={14}
-                                      className="animate-spin"
-                                    />
-                                  ) : (
-                                    <Ban size={14} />
-                                  )}
-                                  Void
-                                </SecondaryButton>
-                                {invoiceDraft ? (
-                                  <StatusBadge
-                                    tone={invoiceDraftStatusTone(
-                                      invoiceDraft.status,
-                                    )}
-                                  >
-                                  Invoice {shortId(invoiceDraft.id)}
-                                </StatusBadge>
-                              ) : draft.status === "approved" ? (
-                                  <SecondaryButton
-                                    type="button"
-                                    className="min-h-11 rounded-lg px-3"
-                                    onClick={() =>
-                                      createInvoiceDraftMutation.mutate(
-                                        draft.id,
-                                      )
-                                    }
-                                    disabled={isCreatingInvoice || allMode}
-                                    title={
-                                      allMode
-                                        ? "Select a single entity to create an invoice draft"
-                                        : "Creates an internal invoice draft only. No PDF, tenant email, or Xero sync."
-                                    }
-                                  >
-                                    {isCreatingInvoice ? (
-                                      <Loader2
-                                        size={14}
-                                        className="animate-spin"
-                                      />
-                                    ) : (
-                                      <FileCheck2 size={14} />
-                                    )}
-                                  Invoice draft
-                                </SecondaryButton>
-                              ) : null}
-                              {renderRecreateBillingDraftAction(draft)}
+                                {renderBillingDraftActions(draft)}
                             </div>
                           </td>
                         </tr>
@@ -3694,10 +3564,11 @@ function BillingReadinessWorkspace() {
               </SectionPanel>
             ) : null}
 
-            {activeBillingTab === "invoice-prep" ? (
+            {activeBillingTab === "billing-drafts" &&
+            invoiceDrafts.length > 0 ? (
               <SectionPanel
-                title="Invoice preparation"
-                description="Approved billing drafts become internal invoice drafts. Prepare the preview, store the PDF artifact, and approve only when blockers are clear."
+                title="Prepared invoices"
+                description="Every invoice created from this month's approved drafts. Approve any that still need it here; approved invoices are sent and tracked on the Send & get paid tab. No tenant email or Xero sync runs from this view."
                 icon={<FileCheck2 size={17} className="text-primary" />}
                 actions={
                   <StatusBadge
@@ -3711,7 +3582,7 @@ function BillingReadinessWorkspace() {
                   >
                     {invoiceDraftsLoading
                       ? "Checking"
-                      : `${invoiceDrafts.length} invoice draft${invoiceDrafts.length === 1 ? "" : "s"}`}
+                      : `${invoiceDrafts.length} invoice${invoiceDrafts.length === 1 ? "" : "s"}`}
                   </StatusBadge>
                 }
               >
@@ -4353,8 +4224,8 @@ function BillingReadinessWorkspace() {
 
             {activeBillingTab === "delivery" ? (
               <SectionPanel
-                title="Delivery & payments"
-                description="Run the monthly invoice dispatch from one place. Setup exceptions and payment follow-up stay visible without becoming extra approval loops."
+                title="Send & track payments"
+                description="Send approved invoices to tenants, then track who has paid. Each send still asks you to confirm the Xero sync and the email — nothing goes out on its own."
                 icon={<Mail size={17} className="text-primary" />}
                 actions={
                   <StatusBadge
@@ -4372,16 +4243,6 @@ function BillingReadinessWorkspace() {
                   </StatusBadge>
                 }
               >
-                <MonthlyInvoiceRunPanel
-                  guide={invoiceRunGuide}
-                  handoff={monthEndHandoff}
-                  allMode={allMode}
-                  actionPending={
-                    invoiceRunGuide.action?.kind === "create_billing_drafts" &&
-                    createBillingDraftsMutation.isPending
-                  }
-                  onAction={handleInvoiceRunGuideAction}
-                />
                 <div className="border-b border-border p-3">
                   <div className="flex flex-wrap gap-2">
                     {deliveryFilters.map((filter) => {
