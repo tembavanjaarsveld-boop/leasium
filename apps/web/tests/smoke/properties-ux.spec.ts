@@ -180,6 +180,80 @@ test("desktop selected property opens on the Horizon detail frame", async ({
   await expect(page.getByRole("table").first()).toBeHidden();
 });
 
+test("lease editor saves monthly rent as annual storage", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  let leasePatchPayload: Record<string, unknown> | null = null;
+  await page.route("**/api/v1/leases/lease-1", async (route) => {
+    const request = route.request();
+    if (request.method() !== "PATCH") {
+      await route.fallback();
+      return;
+    }
+    leasePatchPayload = request.postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "lease-1",
+        tenancy_unit_id: "unit-1",
+        tenant_id: "tenant-1",
+        status: "active",
+        commencement_date: "2025-07-01",
+        expiry_date: "2028-06-30",
+        annual_rent_cents: leasePatchPayload.annual_rent_cents,
+        rent_frequency: leasePatchPayload.rent_frequency,
+        outgoings_recoverable: true,
+        next_review_date: "2026-07-01",
+        option_summary: null,
+        security_summary: null,
+        notes: null,
+        created_at: "2026-05-21T00:00:00.000Z",
+        updated_at: "2026-06-23T00:00:00.000Z",
+        deleted_at: null,
+      }),
+    });
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Lease" }).click();
+  await page.getByRole("button", { name: "Edit lease" }).first().click();
+
+  const leaseDialog = page.getByRole("dialog", { name: /Edit lease/ });
+  const rentInput = leaseDialog.getByRole("spinbutton");
+  await expect(rentInput).toHaveValue("8000");
+
+  await rentInput.fill("7916.67");
+  await leaseDialog.getByLabel("Frequency").selectOption("monthly");
+  await leaseDialog.getByRole("button", { name: "Save lease" }).click();
+
+  await expect.poll(() => leasePatchPayload).not.toBeNull();
+  expect(leasePatchPayload?.annual_rent_cents).toBe(9500004);
+  expect(leasePatchPayload?.rent_frequency).toBe("monthly");
+});
+
+test("mobile lease editor scrolls to rent amount controls", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Lease" }).click();
+  await page.getByRole("button", { name: "Edit lease" }).first().click();
+
+  const leaseDialog = page.getByRole("dialog", { name: /Edit lease/ });
+  const rentInput = leaseDialog.getByLabel("Rent amount");
+  await rentInput.scrollIntoViewIfNeeded();
+
+  const box = await rentInput.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box?.y ?? 0).toBeGreaterThanOrEqual(0);
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(844);
+});
+
 test("desktop Properties cards keep portfolio metrics after billing filters", async ({
   page,
 }) => {

@@ -705,6 +705,15 @@ fixes · deferrals.
   the action stays inside Leasium and does not create PDFs, email tenants,
   sync Xero, reconcile payments, or mutate provider state · no UX debt
   deferred.
+- 2026-06-23 · Property lease rent editor conversion · existing Horizon
+  Properties lease drawer; screens checked at desktop 1440 and mobile 390 from
+  local Playwright captures (`/tmp/leasium-rent-editor-desktop.png`,
+  `/tmp/leasium-rent-editor-mobile.png`) · fixes in-slice: the rent field now
+  shows and saves the amount for the selected frequency while preserving annual
+  rent storage, adds helper copy for monthly/annual entry, and makes the
+  mobile drawer body scroll so rent controls and 44px+ actions remain reachable
+  · no provider calls, tenant email, Xero sync, payment reconciliation, or UX
+  debt deferred.
 
 ## UX Debt Register
 

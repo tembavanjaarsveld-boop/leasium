@@ -677,6 +677,28 @@ function formatRent(
   return frequency ? `${amount} ${frequency}` : amount;
 }
 
+function rentAmountFromAnnualCents(
+  cents: number | null | undefined,
+  frequency: string | null | undefined,
+) {
+  if (cents === null || cents === undefined) {
+    return undefined;
+  }
+  const periods = RENT_PERIODS_PER_YEAR[(frequency ?? "").toLowerCase()] ?? 1;
+  return cents / periods / 100;
+}
+
+function annualCentsFromRentAmount(
+  amount: number | undefined,
+  frequency: string | null | undefined,
+) {
+  if (amount === undefined) {
+    return null;
+  }
+  const periods = RENT_PERIODS_PER_YEAR[(frequency ?? "").toLowerCase()] ?? 1;
+  return Math.round(amount * periods * 100);
+}
+
 function formatMoney(cents: number | null | undefined) {
   if (cents === null || cents === undefined) {
     return "-";
@@ -3456,10 +3478,10 @@ function Workspace({
         status: values.status,
         commencement_date: values.commencement_date ?? null,
         expiry_date: values.expiry_date ?? null,
-        annual_rent_cents:
-          values.annual_rent === undefined
-            ? null
-            : Math.round(values.annual_rent * 100),
+        annual_rent_cents: annualCentsFromRentAmount(
+          values.annual_rent,
+          values.rent_frequency,
+        ),
         rent_frequency: values.rent_frequency,
         outgoings_recoverable: values.outgoings_recoverable,
         next_review_date: values.next_review_date ?? null,
@@ -3881,16 +3903,15 @@ function Workspace({
               : "active",
             commencement_date: lease.commencement_date ?? undefined,
             expiry_date: lease.expiry_date ?? undefined,
-            annual_rent:
-              lease.annual_rent_cents === null ||
-              lease.annual_rent_cents === undefined
-                ? undefined
-                : lease.annual_rent_cents / 100,
             rent_frequency: rentFrequencies.some(
               (frequency) => frequency.value === lease.rent_frequency,
             )
               ? (lease.rent_frequency as LeaseFormValues["rent_frequency"])
               : "annual",
+            annual_rent: rentAmountFromAnnualCents(
+              lease.annual_rent_cents,
+              lease.rent_frequency,
+            ),
             outgoings_recoverable: lease.outgoings_recoverable,
             next_review_date: lease.next_review_date ?? undefined,
             option_summary: lease.option_summary ?? "",
@@ -4128,6 +4149,7 @@ function Workspace({
     "Lease file";
   const leaseEditorUnitId = leaseForm.watch("tenancy_unit_id");
   const leaseEditorTenantId = leaseForm.watch("tenant_id");
+  const leaseEditorRentFrequency = leaseForm.watch("rent_frequency");
   const leaseEditorUnit = leaseEditorUnitId
     ? unitsById.get(leaseEditorUnitId)
     : undefined;
@@ -7428,7 +7450,7 @@ function Workspace({
             />
             <form
               className={cn(
-                "relative grid h-full w-full max-w-xl grid-rows-[auto_1fr_auto] border-l border-border bg-white shadow-xl",
+                "relative grid h-full min-h-0 w-full max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] border-l border-border bg-white shadow-xl",
                 leaseEditorRender.isClosing
                   ? "animate-leasium-drawer-out-right"
                   : "animate-leasium-drawer-in-right",
@@ -7468,7 +7490,7 @@ function Workspace({
                 </div>
               </div>
 
-              <div className="overflow-y-auto px-5 py-4">
+              <div className="min-h-0 overflow-y-auto px-5 py-4">
                 <div className="mb-4 grid gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-2">
                   <div>
                     <div className="text-xs text-muted-foreground">Unit</div>
@@ -7590,12 +7612,16 @@ function Workspace({
                   <section className="grid gap-3">
                     <h4 className="text-sm font-semibold">Rent and review</h4>
                     <div className="grid gap-3 sm:grid-cols-3">
-                      <Field label="Rent">
+                      <Field label="Rent amount">
                         <Input
                           type="number"
                           min="0"
                           step="0.01"
-                          placeholder="180000"
+                          placeholder={
+                            leaseEditorRentFrequency === "monthly"
+                              ? "7916.67"
+                              : "95000"
+                          }
                           {...leaseForm.register("annual_rent")}
                         />
                       </Field>
@@ -7618,6 +7644,11 @@ function Workspace({
                         />
                       </Field>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enter the {rentFrequencyLabel(leaseEditorRentFrequency)}{" "}
+                      rent amount. Leasium stores the annual equivalent for
+                      reporting and billing checks.
+                    </p>
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
