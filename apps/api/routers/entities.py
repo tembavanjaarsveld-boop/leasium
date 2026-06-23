@@ -11,6 +11,7 @@ from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
     Entity,
+    EntityBranding,
     Lease,
     Obligation,
     Property,
@@ -22,6 +23,7 @@ from stewart.core.models import (
 )
 
 from apps.api.deps import CurrentUser, get_current_user, get_session
+from apps.api.schemas.branding import EntityBrandingRead, EntityBrandingUpdate
 from apps.api.schemas.register import (
     EntityCreate,
     EntityRead,
@@ -540,6 +542,69 @@ def update_entity(
     session.commit()
     session.refresh(entity)
     return entity
+
+
+def _entity_branding(entity_id: UUID, session: Session) -> EntityBranding | None:
+    return session.scalar(
+        select(EntityBranding).where(
+            EntityBranding.entity_id == entity_id,
+            EntityBranding.deleted_at.is_(None),
+        )
+    )
+
+
+@router.get("/{entity_id}/branding", response_model=EntityBrandingRead)
+def get_entity_branding(
+    entity_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> EntityBrandingRead:
+    # get_entity enforces org + READ_ROLES access.
+    entity = get_entity(entity_id, user, session)
+    record = _entity_branding(entity.id, session)
+    if record is None:
+        return EntityBrandingRead()
+    return EntityBrandingRead.model_validate(record)
+
+
+@router.put("/{entity_id}/branding", response_model=EntityBrandingRead)
+def update_entity_branding(
+    entity_id: UUID,
+    payload: EntityBrandingUpdate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> EntityBrandingRead:
+    # Local config only — no Xero/email/SMS/payment side effects.
+    entity = get_entity(entity_id, user, session)
+    role = session.scalar(
+        select(UserEntityRole.role).where(
+            UserEntityRole.user_id == user.id,
+            UserEntityRole.entity_id == entity.id,
+        )
+    )
+    if role not in WRITE_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Entity denied.")
+    record = _entity_branding(entity.id, session)
+    data = payload.model_dump(exclude_unset=True)
+    if record is None:
+        record = EntityBranding(entity_id=entity.id, **data)
+        session.add(record)
+    else:
+        for key, value in data.items():
+            setattr(record, key, value)
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="update",
+        target_table="entity_branding",
+        target_id=entity.id,
+        tool_output_summary="Updated entity invoice branding; no provider call was made.",
+    )
+    session.commit()
+    session.refresh(record)
+    return EntityBrandingRead.model_validate(record)
 
 
 @router.delete("/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)

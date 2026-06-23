@@ -2815,3 +2815,44 @@ Index(
     AuditAction.target_id,
     postgresql_where=AuditAction.target_id.is_not(None),
 )
+
+
+class EntityBranding(Base):
+    """Per-entity branding for generated invoices (and later statements).
+
+    Local configuration only — editing it never triggers a provider call. The
+    branded invoice render reads it; when no row exists it falls back to safe
+    defaults so an invoice always renders. The logo is derived as a monogram
+    from the entity name (no file upload in this version).
+    """
+
+    __tablename__ = "entity_branding"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    accent_color: Mapped[str | None] = mapped_column(Text)
+    business_address: Mapped[str | None] = mapped_column(Text)
+    contact_email: Mapped[str | None] = mapped_column(Text)
+    contact_phone: Mapped[str | None] = mapped_column(Text)
+    payment_payid: Mapped[str | None] = mapped_column(Text)
+    payment_bpay_biller: Mapped[str | None] = mapped_column(Text)
+    payment_bpay_reference: Mapped[str | None] = mapped_column(Text)
+    payment_bank_bsb: Mapped[str | None] = mapped_column(Text)
+    payment_bank_account: Mapped[str | None] = mapped_column(Text)
+    footer_terms: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+Index(
+    "entity_branding_entity_idx",
+    EntityBranding.entity_id,
+    postgresql_where=EntityBranding.deleted_at.is_(None),
+)
