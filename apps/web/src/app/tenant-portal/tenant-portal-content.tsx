@@ -4601,14 +4601,9 @@ function TenantPortalContent({
                         key={item.key}
                         className="rounded-md border border-warning/30 bg-warning/5 p-3"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 font-semibold">
-                            {item.label}
-                          </div>
-                          <StatusBadge
-                            tone={complianceTone(item.status)}
-                            className="shrink-0"
-                          >
+                        <div className="font-semibold">{item.label}</div>
+                        <div className="mt-1.5">
+                          <StatusBadge tone={complianceTone(item.status)}>
                             {tenantDocStatusLabel(item.status)}
                           </StatusBadge>
                         </div>
@@ -5571,14 +5566,9 @@ function TenantPortalContent({
                             : "border-border"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 font-semibold">
-                            {item.label}
-                          </div>
-                          <StatusBadge
-                            tone={complianceTone(item.status)}
-                            className="shrink-0"
-                          >
+                        <div className="font-semibold">{item.label}</div>
+                        <div className="mt-1.5">
+                          <StatusBadge tone={complianceTone(item.status)}>
                             {tenantDocStatusLabel(item.status)}
                           </StatusBadge>
                         </div>
