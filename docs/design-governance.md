@@ -715,6 +715,17 @@ fixes · deferrals.
   the recovery creates only a local Leasium billing draft from current charge
   rules and does not create PDFs, email tenants, sync Xero, reconcile payments,
   or mutate provider state · no UX debt deferred.
+- 2026-06-23 · Billing Readiness monthly invoice run · existing Horizon Money /
+  Billing Readiness surface; screens checked at desktop 1280 and mobile 390
+  from local Playwright captures
+  (`apps/web/test-results/billing-monthly-run-desktop-1280.png`,
+  `apps/web/test-results/billing-monthly-run-mobile-390.png`) · fixes
+  in-slice: Delivery & payments now leads with a "Monthly invoice run" strip,
+  separates one-time setup checks from dispatch, makes payment reconciliation
+  explicit follow-up after invoices are sent, and moves month-end close checks
+  below the invoice list; no tenant email, Xero posting, provider dispatch,
+  payment reconciliation, or provider-state mutation runs from loading the
+  screen · no UX debt deferred.
 - 2026-06-23 · Property lease rent editor conversion · existing Horizon
   Properties lease drawer; screens checked at desktop 1440 and mobile 390 from
   local Playwright captures (`/tmp/leasium-rent-editor-desktop.png`,

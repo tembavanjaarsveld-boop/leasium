@@ -1277,10 +1277,11 @@ function MonthEndChecklistStrip({ items }: { items: MonthEndChecklistItem[] }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-foreground">
-            Month-end checklist
+            Month-end close checks
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            One scan before statements or accounting reports go out.
+            Use after invoices are sent, before statements or accounting
+            reports go out.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2160,6 +2161,121 @@ function InvoiceRunGuidePanel({
       <div className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <ShieldCheck size={15} className="mt-0.5 shrink-0 text-primary" />
         <span>{invoiceRunGuideGuardrail}</span>
+      </div>
+    </section>
+  );
+}
+
+function MonthlyInvoiceRunPanel({
+  guide,
+  handoff,
+  allMode,
+  actionPending = false,
+  onAction,
+}: {
+  guide: InvoiceRunGuide;
+  handoff: MonthEndHandoff;
+  allMode: boolean;
+  actionPending?: boolean;
+  onAction: (action: InvoiceRunGuideAction) => void;
+}) {
+  const action = guide.action;
+  const setupNeedsAttention =
+    handoff.needsXeroApprovalCount + handoff.providerRecoveryCount;
+  const followUpCount = handoff.paymentReviewCount + handoff.unpaidCount;
+  const setupExceptionLabel = countLabel(setupNeedsAttention, "exception");
+  const followUpLabel = countLabel(followUpCount, "payment follow-up");
+  const dispatchDetail =
+    handoff.readyDispatchCount > 0
+      ? `${countLabel(handoff.readyDispatchCount, "approved invoice")} can be dispatched from the list below.`
+      : handoff.providerCompleteCount > 0
+        ? `${countLabel(handoff.providerCompleteCount, "approved invoice")} already has provider receipts.`
+        : "Approved invoices will appear below when they are ready to send.";
+  const setupDetail = allMode
+    ? "Select one entity to see Xero setup and exception detail for the run."
+    : setupNeedsAttention > 0
+      ? `${setupExceptionLabel} ${
+          setupNeedsAttention === 1 ? "needs" : "need"
+        } attention before dispatch.`
+      : "Xero/tax setup is clear or already handled for this run.";
+  const followUpDetail =
+    followUpCount > 0
+      ? `${followUpLabel} ${
+          followUpCount === 1 ? "remains" : "remain"
+        } after dispatch.`
+      : "Payment follow-up stays separate from sending rent invoices.";
+
+  return (
+    <section
+      role="region"
+      aria-label="Monthly invoice run"
+      className="border-b border-border bg-primary/5 px-4 py-4"
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="primary">Monthly run</StatusBadge>
+            <StatusBadge tone={guide.tone}>{guide.statusLabel}</StatusBadge>
+          </div>
+          <h3 className="mt-2 text-base font-semibold text-foreground">
+            Monthly invoice run
+          </h3>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+            One run: exceptions first, then batch dispatch.
+          </p>
+        </div>
+        {action ? (
+          <SecondaryButton
+            type="button"
+            onClick={() => onAction(action)}
+            disabled={actionPending}
+            className="min-h-11 shrink-0 rounded-lg px-3"
+          >
+            {actionPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <ArrowUpRight size={15} />
+            )}
+            {action.label}
+          </SecondaryButton>
+        ) : null}
+      </div>
+      <div className="mt-4 grid divide-y divide-border border-y border-border text-sm lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+        <div className="py-3 lg:pr-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={setupNeedsAttention ? "warning" : "success"}>
+              {setupNeedsAttention || "Clear"}
+            </StatusBadge>
+            <span className="font-semibold text-foreground">Setup checks</span>
+          </div>
+          <p className="mt-2 text-muted-foreground">{setupDetail}</p>
+        </div>
+        <div className="py-3 lg:px-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge
+              tone={handoff.readyDispatchCount ? "primary" : "neutral"}
+            >
+              {handoff.readyDispatchCount}
+            </StatusBadge>
+            <span className="font-semibold text-foreground">Dispatch now</span>
+          </div>
+          <p className="mt-2 text-muted-foreground">{dispatchDetail}</p>
+        </div>
+        <div className="py-3 lg:pl-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={followUpCount ? "warning" : "neutral"}>
+              {followUpCount}
+            </StatusBadge>
+            <span className="font-semibold text-foreground">After sending</span>
+          </div>
+          <p className="mt-2 text-muted-foreground">
+            Payment reconciliation happens after invoices are sent. It should
+            not block getting rent invoices out.
+          </p>
+          {followUpCount ? (
+            <p className="mt-1 text-muted-foreground">{followUpDetail}</p>
+          ) : null}
+        </div>
       </div>
     </section>
   );
@@ -4238,7 +4354,7 @@ function BillingReadinessWorkspace() {
             {activeBillingTab === "delivery" ? (
               <SectionPanel
                 title="Delivery & payments"
-                description="Send approved invoice emails when the provider is configured, or record manual delivery and payment status. Xero sync still needs a separate approval."
+                description="Run the monthly invoice dispatch from one place. Setup exceptions and payment follow-up stay visible without becoming extra approval loops."
                 icon={<Mail size={17} className="text-primary" />}
                 actions={
                   <StatusBadge
@@ -4256,6 +4372,16 @@ function BillingReadinessWorkspace() {
                   </StatusBadge>
                 }
               >
+                <MonthlyInvoiceRunPanel
+                  guide={invoiceRunGuide}
+                  handoff={monthEndHandoff}
+                  allMode={allMode}
+                  actionPending={
+                    invoiceRunGuide.action?.kind === "create_billing_drafts" &&
+                    createBillingDraftsMutation.isPending
+                  }
+                  onAction={handleInvoiceRunGuideAction}
+                />
                 <div className="border-b border-border p-3">
                   <div className="flex flex-wrap gap-2">
                     {deliveryFilters.map((filter) => {
@@ -4310,16 +4436,6 @@ function BillingReadinessWorkspace() {
                     Accounting freshness snapshot is unavailable. Billing rows
                     still show local invoice delivery and payment state.
                   </div>
-                ) : null}
-                {!allMode &&
-                !invoiceDraftsLoading &&
-                !xeroStatusQuery.isLoading ? (
-                  <MonthEndChecklistStrip items={monthEndChecklistItems} />
-                ) : null}
-                {!allMode &&
-                !invoiceDraftsLoading &&
-                !xeroStatusQuery.isLoading ? (
-                  <MonthEndHandoffPanel handoff={monthEndHandoff} />
                 ) : null}
                 <div className="grid gap-3 p-3 md:hidden">
                   {filteredApprovedInvoiceDrafts.map((draft) => {
@@ -5326,6 +5442,16 @@ function BillingReadinessWorkspace() {
                     </tbody>
                   </table>
                 </div>
+                {!allMode &&
+                !invoiceDraftsLoading &&
+                !xeroStatusQuery.isLoading ? (
+                  <MonthEndChecklistStrip items={monthEndChecklistItems} />
+                ) : null}
+                {!allMode &&
+                !invoiceDraftsLoading &&
+                !xeroStatusQuery.isLoading ? (
+                  <MonthEndHandoffPanel handoff={monthEndHandoff} />
+                ) : null}
               </SectionPanel>
             ) : null}
 

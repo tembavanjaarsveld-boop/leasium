@@ -440,7 +440,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
 
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Month-end checklist" }),
+    page.getByRole("heading", { name: "Month-end close checks" }),
   ).toBeVisible();
   await expect(
     page.getByText("1 provider recovery needs attention before month end."),
@@ -454,10 +454,12 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByText("1 owner need billing email before dispatch"),
   ).toBeVisible();
-  await expect(page.getByText("Needs Xero approval").first()).toBeVisible();
   const primaryDispatchRow = page.getByRole("row").filter({
     hasText: "INV-1001",
   });
+  await expect(
+    primaryDispatchRow.getByText("Needs Xero approval").first(),
+  ).toBeVisible();
   await expect(
     primaryDispatchRow.getByRole("button", { exact: true, name: "Dispatch" }),
   ).toBeVisible();
@@ -922,7 +924,7 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   ).toBeVisible();
   await page.getByRole("tab", { name: /Dispatch & reconcile/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Month-end checklist" }),
+    page.getByRole("heading", { name: "Month-end close checks" }),
   ).toBeVisible();
 
   const deliveryPanel = page.locator("section").filter({

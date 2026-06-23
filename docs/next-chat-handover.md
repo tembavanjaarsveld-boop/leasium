@@ -1,6 +1,32 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-21
+Last updated: 2026-06-23
+
+## Continuation - 2026-06-23 (Billing monthly invoice-run UX)
+
+Temba hit the real workflow problem in Billing Readiness: the Delivery &
+payments tab made monthly invoicing feel like repeated review loops across
+Leasium, Xero, dispatch, payment reconciliation, and month-end close.
+
+What changed:
+- Added a `Monthly invoice run` strip to Billing Readiness Delivery & payments.
+  It explains the intended flow: exceptions first, then batch dispatch.
+- Split the operator mental model into setup checks, dispatch now, and after
+  sending. Payment reconciliation is explicitly follow-up after invoices are
+  sent, not a blocker to getting rent invoices out.
+- Moved month-end close checks below the invoice list and renamed the checklist
+  so it reads as statements/accounting-close support, not another send gate.
+- Added Playwright smoke coverage that asserts the new monthly-run framing and
+  checks no provider mutation fires on load.
+
+Guardrails:
+- No tenant email, Xero posting, provider dispatch, payment reconciliation, or
+  provider-state mutation runs from loading the screen.
+- Existing explicit buttons still own real delivery/Xero/payment actions.
+
+Next sensible follow-up:
+- Add true batch selection/dispatch once Temba approves the provider action
+  contract for a batch run.
 
 ## Continuation - 2026-06-21 (Work approvals URL state v1.8)
 

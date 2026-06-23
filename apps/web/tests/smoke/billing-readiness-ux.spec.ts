@@ -254,6 +254,43 @@ test("billing delivery dead-end guides the operator back to invoice drafting", a
   expect(mutationCalls).toEqual([]);
 });
 
+test("monthly invoice run separates setup and payment follow-up from dispatch", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const mutationCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=delivery");
+  const monthlyRun = page.getByRole("region", {
+    name: "Monthly invoice run",
+  });
+  await expect(monthlyRun).toBeVisible();
+  await expect(
+    monthlyRun.getByRole("heading", { name: "Monthly invoice run" }),
+  ).toBeVisible();
+  await expect(
+    monthlyRun.getByText("One run: exceptions first, then batch dispatch."),
+  ).toBeVisible();
+  await expect(monthlyRun.getByText("Setup checks")).toBeVisible();
+  await expect(monthlyRun.getByText("After sending")).toBeVisible();
+  await expect(
+    monthlyRun.getByText(
+      "Payment reconciliation happens after invoices are sent. It should not block getting rent invoices out.",
+    ),
+  ).toBeVisible();
+  expect(mutationCalls).toEqual([]);
+});
+
 test("empty billing draft review can create local drafts from ready charge rules", async ({
   page,
 }) => {
