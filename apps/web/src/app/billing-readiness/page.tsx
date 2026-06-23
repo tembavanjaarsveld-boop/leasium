@@ -2517,6 +2517,11 @@ function BillingReadinessWorkspace() {
     () => (allMode ? billingDraftsFanOut.data : (billingDraftsQuery.data ?? [])),
     [allMode, billingDraftsFanOut.data, billingDraftsQuery.data],
   );
+  const activeBillingDraftCount = useMemo(
+    () => billingDrafts.filter((draft) => draft.status !== "void").length,
+    [billingDrafts],
+  );
+  const voidBillingDraftCount = billingDrafts.length - activeBillingDraftCount;
 
   const counts = useMemo(() => {
     const xero = rentRows.reduce(
@@ -2762,6 +2767,47 @@ function BillingReadinessWorkspace() {
         Create billing drafts
       </SecondaryButton>
     ) : null;
+  const renderRecreateBillingDraftAction = (draft: BillingDraftRecord) => {
+    const source = draft.metadata?.source;
+    const leaseId = draft.lease_id;
+    if (
+      draft.status !== "void" ||
+      source !== "charge_rule_batch" ||
+      !leaseId
+    ) {
+      return null;
+    }
+    const isRecreating =
+      createBillingDraftsMutation.isPending &&
+      createBillingDraftsMutation.variables?.leaseIds.includes(leaseId);
+    return (
+      <SecondaryButton
+        type="button"
+        className="min-h-11 rounded-lg px-3"
+        onClick={() =>
+          scopedEntityId
+            ? createBillingDraftsMutation.mutate({
+                entityId: scopedEntityId,
+                leaseIds: [leaseId],
+              })
+            : undefined
+        }
+        disabled={allMode || !scopedEntityId || createBillingDraftsMutation.isPending}
+        title={
+          allMode
+            ? "Select a single entity to recreate a billing draft"
+            : "Creates a fresh local billing draft from current charge rules. No PDF, tenant email, or Xero sync."
+        }
+      >
+        {isRecreating ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <RefreshCw size={14} />
+        )}
+        Recreate draft
+      </SecondaryButton>
+    );
+  };
   const billingDraftEmptyDescription = draftableBillingLeaseIds.length
     ? "Create local billing drafts from the ready charge rules, then review and approve them here before invoice preparation."
     : "Reviewed invoice or admin documents will appear here as source-linked billing drafts before any invoice posting or Xero sync exists.";
@@ -3123,14 +3169,16 @@ function BillingReadinessWorkspace() {
                     tone={
                       billingDraftsLoading
                         ? "neutral"
-                        : billingDrafts.length
+                        : activeBillingDraftCount
                           ? "primary"
                           : "neutral"
                     }
                   >
                     {billingDraftsLoading
                       ? "Checking"
-                      : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
+                      : voidBillingDraftCount
+                        ? `${activeBillingDraftCount} active / ${voidBillingDraftCount} voided`
+                        : `${billingDrafts.length} draft${billingDrafts.length === 1 ? "" : "s"}`}
                   </StatusBadge>
                 }
               >
@@ -3298,6 +3346,7 @@ function BillingReadinessWorkspace() {
                               Invoice draft
                             </SecondaryButton>
                           ) : null}
+                          {renderRecreateBillingDraftAction(draft)}
                         </div>
                       </article>
                     );
@@ -3466,9 +3515,9 @@ function BillingReadinessWorkspace() {
                                       invoiceDraft.status,
                                     )}
                                   >
-                                    Invoice {shortId(invoiceDraft.id)}
-                                  </StatusBadge>
-                                ) : draft.status === "approved" ? (
+                                  Invoice {shortId(invoiceDraft.id)}
+                                </StatusBadge>
+                              ) : draft.status === "approved" ? (
                                   <SecondaryButton
                                     type="button"
                                     className="min-h-11 rounded-lg px-3"
@@ -3492,12 +3541,13 @@ function BillingReadinessWorkspace() {
                                     ) : (
                                       <FileCheck2 size={14} />
                                     )}
-                                    Invoice draft
-                                  </SecondaryButton>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
+                                  Invoice draft
+                                </SecondaryButton>
+                              ) : null}
+                              {renderRecreateBillingDraftAction(draft)}
+                            </div>
+                          </td>
+                        </tr>
                         );
                       })}
                       {!billingDraftsLoading && billingDrafts.length === 0 ? (

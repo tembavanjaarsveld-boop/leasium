@@ -1308,6 +1308,26 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     assert repeat_billing_batch["existing"] == 1
     assert repeat_billing_batch["drafts"][0]["id"] == billing_draft["id"]
 
+    void_billing_draft_response = client.patch(
+        f"/api/v1/billing-drafts/{billing_draft['id']}",
+        json={"status": "void"},
+    )
+    assert void_billing_draft_response.status_code == 200
+    assert void_billing_draft_response.json()["status"] == "void"
+
+    recreate_billing_batch_response = client.post(
+        "/api/v1/billing-drafts/from-charge-rules",
+        json={"entity_id": entity_id, "lease_ids": [lease_id], "as_of": "2026-06-01"},
+    )
+    assert recreate_billing_batch_response.status_code == 200
+    recreate_billing_batch = recreate_billing_batch_response.json()
+    assert recreate_billing_batch["created"] == 1
+    assert recreate_billing_batch["existing"] == 0
+    recreated_billing_draft = recreate_billing_batch["drafts"][0]
+    assert recreated_billing_draft["id"] != billing_draft["id"]
+    assert recreated_billing_draft["status"] == "needs_review"
+    assert recreated_billing_draft["total_cents"] == 1100000
+
     update_response = client.patch(
         f"/api/v1/charge-rules/{charge_rule_id}",
         json={"amount_cents": 1200000, "xero_tax_type": None},

@@ -429,6 +429,225 @@ test("empty billing draft review can create local drafts from ready charge rules
   ]);
 });
 
+test("voided charge-rule billing draft can be recreated locally", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const readyRows = [
+    {
+      entity_id: "entity-1",
+      entity_name: "Acme Holdings Pty Ltd",
+      property_id: "property-1",
+      property_name: "Queen Street Retail Centre",
+      tenancy_unit_id: "unit-1",
+      unit_label: "Shop 3",
+      lease_id: "lease-active",
+      tenant_id: "tenant-1",
+      tenant_name: "Bright Cafe Pty Ltd",
+      lease_status: "active",
+      commencement_date: "2025-07-01",
+      expiry_date: "2028-06-30",
+      tenant_billing_email: "accounts@bright.example",
+      annual_rent_cents: 9600000,
+      rent_frequency: "monthly",
+      charge_rules: [],
+      charge_rules_total_cents: 880000,
+      next_due_date: "2026-06-01",
+      gst_readiness_blockers: [],
+      xero_readiness_blockers: [],
+      invoice_readiness_blockers: [],
+    },
+    {
+      entity_id: "entity-1",
+      entity_name: "Acme Holdings Pty Ltd",
+      property_id: "property-1",
+      property_name: "Queen Street Retail Centre",
+      tenancy_unit_id: "unit-void",
+      unit_label: "Unit 1 & Unit 3",
+      lease_id: "lease-void",
+      tenant_id: "tenant-void",
+      tenant_name: "Gorilla Grind Pty Ltd",
+      lease_status: "active",
+      commencement_date: "2024-01-29",
+      expiry_date: "2027-12-10",
+      tenant_billing_email: "Torsten@hbhgroup.info",
+      annual_rent_cents: 9500000,
+      rent_frequency: "monthly",
+      charge_rules: [],
+      charge_rules_total_cents: 791667,
+      next_due_date: "2026-06-30",
+      gst_readiness_blockers: [],
+      xero_readiness_blockers: [],
+      invoice_readiness_blockers: [],
+    },
+  ];
+  const localBillingDrafts: Array<Record<string, unknown>> = [
+    {
+      id: "billing-draft-active",
+      entity_id: "entity-1",
+      property_id: "property-1",
+      tenancy_unit_id: "unit-1",
+      tenant_id: "tenant-1",
+      lease_id: "lease-active",
+      document_id: "document-active",
+      document_intake_id: null,
+      status: "needs_review",
+      title: "Billing draft - Bright Cafe Pty Ltd - Shop 3",
+      currency: "AUD",
+      issue_date: "2026-06-23",
+      due_date: "2026-06-01",
+      total_cents: 880000,
+      notes:
+        "Prepared from existing Leasium charge rules. No PDF, tenant email, or Xero sync has run.",
+      metadata: { source: "charge_rule_batch", period_key: "2026-06-23" },
+      lines: [],
+      created_at: "2026-06-23T00:00:00.000Z",
+      updated_at: "2026-06-23T00:00:00.000Z",
+      deleted_at: null,
+    },
+    {
+      id: "billing-draft-void",
+      entity_id: "entity-1",
+      property_id: "property-1",
+      tenancy_unit_id: "unit-void",
+      tenant_id: "tenant-void",
+      lease_id: "lease-void",
+      document_id: "document-void",
+      document_intake_id: null,
+      status: "void",
+      title: "Billing draft - Gorilla Grind Pty Ltd - Unit 1 & Unit 3",
+      currency: "AUD",
+      issue_date: "2026-06-23",
+      due_date: "2026-06-30",
+      total_cents: 1583200,
+      notes:
+        "Prepared from existing Leasium charge rules. No PDF, tenant email, or Xero sync has run.",
+      metadata: {
+        source: "charge_rule_batch",
+        period_key: "2026-06-23",
+        voided_at: "2026-06-23T00:05:00.000Z",
+      },
+      lines: [],
+      created_at: "2026-06-23T00:00:00.000Z",
+      updated_at: "2026-06-23T00:05:00.000Z",
+      deleted_at: null,
+    },
+  ];
+
+  await page.route("**/api/v1/rent-roll?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(readyRows),
+    });
+  });
+  await page.route("**/api/v1/invoice-drafts?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+  await page.route(
+    (url) =>
+      url.pathname === "/api/v1/billing-drafts" ||
+      url.pathname === "/api/v1/billing-drafts/from-charge-rules",
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      if (request.method() === "GET" && path === "/api/v1/billing-drafts") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(localBillingDrafts),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path === "/api/v1/billing-drafts/from-charge-rules"
+      ) {
+        const payload = request.postDataJSON() as {
+          entity_id: string;
+          lease_ids?: string[];
+          as_of?: string | null;
+        };
+        expect(payload.lease_ids).toEqual(["lease-void"]);
+        const createdDraft = {
+          ...localBillingDrafts[1],
+          id: "billing-draft-recreated",
+          status: "needs_review",
+          total_cents: 791667,
+          title:
+            "Billing draft - Gorilla Grind Pty Ltd - Unit 1 & Unit 3 (recreated)",
+          updated_at: "2026-06-23T00:10:00.000Z",
+        };
+        localBillingDrafts.push(createdDraft);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            created: 1,
+            existing: 0,
+            skipped: 0,
+            drafts: [createdDraft],
+            skipped_rows: [],
+          }),
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  const mutationCalls: string[] = [];
+  page.on("request", (request) => {
+    const method = request.method();
+    const path = new URL(request.url()).pathname;
+    if (
+      path.startsWith("/api/v1/") &&
+      !["GET", "HEAD", "OPTIONS"].includes(method)
+    ) {
+      mutationCalls.push(`${method} ${path}`);
+    }
+  });
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=billing-drafts");
+  await expect(
+    page.getByRole("heading", { name: "Billing draft review" }),
+  ).toBeVisible();
+
+  const voidRow = page
+    .getByRole("row")
+    .filter({ hasText: "Gorilla Grind Pty Ltd" });
+  await expect(voidRow.getByText("void", { exact: true })).toBeVisible();
+  await voidRow.getByRole("button", { name: "Recreate draft" }).click();
+
+  await expect
+    .poll(() => mutationCalls)
+    .toEqual(["POST /api/v1/billing-drafts/from-charge-rules"]);
+  await expect(
+    page
+      .getByRole("row")
+      .filter({ hasText: "Gorilla Grind Pty Ltd - Unit 1 & Unit 3 (recreated)" })
+      .getByText("needs review"),
+  ).toBeVisible();
+  expect(mutationCalls).toEqual([
+    "POST /api/v1/billing-drafts/from-charge-rules",
+  ]);
+});
+
 test("self-managed billing readiness keeps statement handoff local", async ({
   page,
 }) => {

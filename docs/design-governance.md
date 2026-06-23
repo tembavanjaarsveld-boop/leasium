@@ -705,6 +705,16 @@ fixes · deferrals.
   the action stays inside Leasium and does not create PDFs, email tenants,
   sync Xero, reconcile payments, or mutate provider state · no UX debt
   deferred.
+- 2026-06-23 · Billing Readiness voided draft recovery · existing Horizon
+  Money / Billing Readiness surface; screens checked at desktop 1440 and
+  mobile 390 from local Playwright captures
+  (`/tmp/leasium-billing-void-recovery-desktop.png`,
+  `/tmp/leasium-billing-void-recovery-mobile.png`) · fixes in-slice: voided
+  charge-rule drafts remain visible for audit but expose a 44px+ `Recreate
+  draft` action, and the section count separates active from voided drafts;
+  the recovery creates only a local Leasium billing draft from current charge
+  rules and does not create PDFs, email tenants, sync Xero, reconcile payments,
+  or mutate provider state · no UX debt deferred.
 - 2026-06-23 · Property lease rent editor conversion · existing Horizon
   Properties lease drawer; screens checked at desktop 1440 and mobile 390 from
   local Playwright captures (`/tmp/leasium-rent-editor-desktop.png`,
