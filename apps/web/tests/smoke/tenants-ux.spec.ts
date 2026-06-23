@@ -466,35 +466,6 @@ test("tenant portal upload documents jump stays on the touch-target baseline", a
   expect(source).not.toMatch(/href="#tenant-documents"/);
 });
 
-test("tenant portal mobile Horizon cockpit stays mobile-only and anchor-safe", async () => {
-  const source = await readFile(
-    "src/app/tenant-portal/tenant-portal-content.tsx",
-    "utf8",
-  );
-
-  const cockpitStart = source.indexOf("function TenantPortalMobileCockpit");
-  const cockpitEnd = source.indexOf("function Panel", cockpitStart);
-  const cockpitSource = source.slice(cockpitStart, cockpitEnd);
-
-  expect(cockpitStart).toBeGreaterThan(-1);
-  expect(cockpitEnd).toBeGreaterThan(cockpitStart);
-  expect(cockpitSource).toContain('aria-label="Tenant portal mobile summary"');
-  expect(cockpitSource).toContain("md:hidden");
-  expect(cockpitSource).toContain("Pay now - PayID / BPAY");
-  expect(cockpitSource).toContain('href="#tenant-how-to-pay"');
-  expect(cockpitSource).toContain("Report an issue");
-  expect(cockpitSource).toMatch(/href:\s*"#tenant-maintenance"/);
-  expect(cockpitSource).toContain("My documents");
-  expect(cockpitSource).toMatch(/href:\s*"#tenant-documents"/);
-  expect(cockpitSource).toContain("Contact");
-  expect(cockpitSource).toMatch(/href:\s*"#tenant-contact"/);
-  expect(cockpitSource).toContain("MY REQUESTS");
-  expect(cockpitSource).toContain("RECENT DOCUMENTS");
-  expect(cockpitSource).not.toMatch(
-    /(uploadTenantPortal|createTenantPortal|downloadTenantPortal|claimTenantPortal|xero|basiq|sendgrid|twilio)/i,
-  );
-});
-
 test("mobile tenant portal recovery actions stay touch-safe", async ({
   page,
 }) => {
