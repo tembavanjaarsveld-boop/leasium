@@ -1837,3 +1837,5 @@ Official Re-Leased pages position their product around a few mature modules that
 - Avoid forcing users through accounting concepts until they are needed for invoice readiness.
 - Every module should reduce a spreadsheet, email chase, or duplicate entry job.
 - Prefer live dashboards and exception queues over static report pages; exports should be generated from dashboards when needed.
+
+Shipped 2026-06-24 — Tenant portal redesign: the post-onboarding portal moved from one long scroll to a light left sidebar (-> mobile bottom tab bar) with a maintenance-first Home (Report-an-issue hero + live request status) and Payments / Maintenance / Documents / Lease & details tabs. Section panels and mutations were relocated into tabs, not rewritten; behaviour and provider guardrails unchanged. Commits e5fd0b2, e3fe8d6.

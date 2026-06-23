@@ -10725,3 +10725,5 @@ transparency** bar Ailo set. Next AU comparisons still open: Kolmeo.
 - Next sensible Insights follow-up: richer owner/entity dashboard context, or
   use the same read-only snapshot pattern to deepen dashboard command-centre
   context.
+
+Recent (2026-06-24): Tenant portal redesigned and shipped to prod — light sidebar + mobile bottom bar, maintenance-first Home (commits e5fd0b2 redesign, e3fe8d6 cockpit cleanup; Vercel READY on leasium.ai). Section panels + mutations relocated into tabs, not rewritten; guardrails unchanged. Follow-ups: authed 1440/390 live screenshot pass (Clerk-gated), Figma SoT mirror. These three governance docs were EOF-appended to stay isolated from the uncommitted parked Workflows slice in the working tree.

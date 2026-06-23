@@ -3376,3 +3376,5 @@ the platform-admin `/admin` Mailbox aliases tab.
    placement/copy, the source-email provenance card inside the promote panel,
    compliance/insurance handoff copy, and property/task/owner-admin local
    target copy/density at desktop/mobile sizes.
+
+UX pass — 2026-06-24 · Tenant portal redesign (light left sidebar -> mobile bottom tab bar, maintenance-first Home). Surface: post-onboarding tenant portal. Design sign-off via the approved HTML prototype (docs/portal-redesign/), not a Figma frame. Built to design-source-of-truth tokens; no new tokens or components. Verified: eslint clean, tsc 0 errors, portal smoke 16 passed / 6 skipped, next build OK. Deferred to UX debt: the authed 1440/390 live screenshot pass — the full portal is Clerk-gated and will not render without a signed-in tenant session, so do it on the live deploy. Shipped: e5fd0b2 (redesign), e3fe8d6 (cockpit cleanup).
