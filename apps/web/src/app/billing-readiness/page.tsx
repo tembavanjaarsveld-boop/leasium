@@ -2963,6 +2963,21 @@ function BillingReadinessWorkspace() {
       </>
     );
   };
+  // Invoices created from an uploaded supplier document (document_intake_id set)
+  // can show the original supplier invoice, not just our generated render.
+  const renderSourceInvoiceLink = (draft: InvoiceDraftRecord) =>
+    draft.document_intake_id ? (
+      <a
+        href={`${documentDownloadUrl(draft.document_id)}?inline=1`}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+        title="Open the original supplier invoice this draft was created from."
+      >
+        <FileText size={14} />
+        Supplier invoice
+      </a>
+    ) : null;
   const billingDraftEmptyDescription = draftableBillingLeaseIds.length
     ? "Create this month's invoices from the ready charge rules, then review and approve them here."
     : "Reviewed invoice or admin documents show up here as draft invoices before anything is posted, emailed, or synced to Xero.";
@@ -3768,6 +3783,7 @@ function BillingReadinessWorkspace() {
                             )}
                             Prepare
                           </SecondaryButton>
+                          {renderSourceInvoiceLink(draft)}
                           {previewReady ? (
                             <a
                               href={invoiceDraftPreviewUrl(draft.id)}
@@ -4110,6 +4126,7 @@ function BillingReadinessWorkspace() {
                                   )}
                                   Prepare
                                 </SecondaryButton>
+                                {renderSourceInvoiceLink(draft)}
                                 {previewReady ? (
                                   <a
                                     href={invoiceDraftPreviewUrl(draft.id)}
@@ -4559,6 +4576,7 @@ function BillingReadinessWorkspace() {
                           </div>
                         ) : null}
                         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                          {renderSourceInvoiceLink(draft)}
                           {previewReady ? (
                             <a
                               href={invoiceDraftPreviewUrl(draft.id)}
@@ -5119,6 +5137,7 @@ function BillingReadinessWorkspace() {
                             </td>
                             <td className="min-w-72 px-3 py-3">
                               <div className="flex flex-wrap gap-2">
+                                {renderSourceInvoiceLink(draft)}
                                 {previewReady ? (
                                   <a
                                     href={invoiceDraftPreviewUrl(draft.id)}

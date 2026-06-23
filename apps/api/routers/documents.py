@@ -327,15 +327,19 @@ def download_document(
     document_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    inline: Annotated[bool, Query()] = False,
 ) -> Response:
+    # inline=1 serves the file for in-tab viewing (e.g. "View supplier invoice");
+    # the default keeps the download behaviour. Read-only either way.
     document = _document_for_user(document_id, user, session, READ_ROLES)
     safe_filename = quote(document.filename)
+    disposition = "inline" if inline else "attachment"
     return Response(
         content=document.file_data,
         media_type=document.content_type or "application/octet-stream",
         headers={
             "Content-Disposition": (
-                f"attachment; filename*=UTF-8''{safe_filename}"
+                f"{disposition}; filename*=UTF-8''{safe_filename}"
             )
         },
     )

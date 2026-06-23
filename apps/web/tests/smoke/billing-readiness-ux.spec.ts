@@ -790,6 +790,42 @@ test("self-managed billing readiness keeps clean statement packs local", async (
   expect(handoffCsv).not.toContain("missing recipient");
 });
 
+test("supplier-sourced invoice links to the original supplier invoice", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const mutationCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const method = route.request().method();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      mutationCalls.push(`${method} ${new URL(route.request().url()).pathname}`);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=delivery");
+  await expect(
+    page.getByRole("heading", { name: "Send & track payments" }),
+  ).toBeVisible();
+
+  // INV-1001 was created from an uploaded document (document_intake_id set),
+  // so its row exposes the original supplier invoice (opened inline), not just
+  // our generated render.
+  const supplierLink = page
+    .getByRole("row")
+    .filter({ hasText: "INV-1001" })
+    .first()
+    .getByRole("link", { name: "Supplier invoice" });
+  await expect(supplierLink).toHaveAttribute(
+    "href",
+    /\/documents\/document-1\/download\?inline=1$/,
+  );
+  // Viewing the supplier document is read-only.
+  expect(mutationCalls).toEqual([]);
+});
+
 async function mockOwnerStatementsWithBillingRecipients(
   page: Parameters<typeof mockLeasiumApi>[0],
 ) {

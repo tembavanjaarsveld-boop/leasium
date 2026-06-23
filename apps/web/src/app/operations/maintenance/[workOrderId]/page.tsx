@@ -5649,6 +5649,18 @@ function MaintenanceDetailRoute() {
                             Prepare
                           </SecondaryButton>
                         ) : null}
+                        {linkedInvoiceDraft.document_intake_id ? (
+                          <a
+                            href={`${documentDownloadUrl(linkedInvoiceDraft.document_id)}?inline=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-white px-3 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
+                            title="Open the original supplier invoice this draft was created from."
+                          >
+                            <FileText size={14} />
+                            Supplier invoice
+                          </a>
+                        ) : null}
                         <a
                           href={invoiceDraftPreviewUrl(linkedInvoiceDraft.id)}
                           target="_blank"
