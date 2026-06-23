@@ -1950,7 +1950,8 @@ def test_document_intake_apply_invoice_prepares_billing_work(
     assert "text/html" in preview_response.headers["content-type"]
     assert invoice_body["invoice_number"] in preview_response.text
     assert "Outgoings recovery" in preview_response.text
-    assert "A PDF artifact record has been stored" in preview_response.text
+    # Branded preview renders the tax-invoice layout (totals + GST summary).
+    assert "Total (inc GST)" in preview_response.text
 
     invoice_draft.recipient_email = "accounts@scope-tenant.example"
     session.commit()

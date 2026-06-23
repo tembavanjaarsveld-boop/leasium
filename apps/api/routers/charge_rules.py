@@ -1,7 +1,6 @@
 """Rent charge rule and rent roll routes."""
 
 from datetime import date
-from html import escape
 from typing import Annotated, cast
 from uuid import UUID
 
@@ -35,6 +34,11 @@ from stewart.integrations.communications import (
     InvoiceDeliveryEmail,
     render_invoice_delivery_email_preview,
     send_invoice_delivery_email,
+)
+from stewart.integrations.invoice_render import (
+    render_invoice_html,
+    render_invoice_pdf,
+    resolve_invoice_brand,
 )
 
 from apps.api import webhook_auth
@@ -403,68 +407,9 @@ def _initial_payment_status(total_cents: int, updated_at: str) -> dict[str, obje
     }
 
 
-def _pdf_text(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-
-
 def _invoice_pdf_filename(draft: InvoiceDraft) -> str:
     safe_number = (draft.invoice_number or str(draft.id)).replace("/", "-")
     return f"{safe_number}.pdf"
-
-
-def _invoice_pdf_bytes(draft: InvoiceDraft) -> bytes:
-    text_lines = [
-        "Leasium invoice draft",
-        f"Invoice: {draft.invoice_number or str(draft.id)}",
-        f"Issuer: {draft.issuer_name or 'Issuer to confirm'}",
-        f"Recipient: {draft.recipient_name or 'Recipient to confirm'}",
-        f"Due: {draft.due_date.isoformat() if draft.due_date else 'To confirm'}",
-        f"Total: {_invoice_money(draft.total_cents, draft.currency)}",
-        "This artifact is internal until approval. No Xero sync has run.",
-        "",
-        "Line items:",
-    ]
-    for line in draft.lines:
-        if line.deleted_at is None:
-            text_lines.append(
-                f"- {line.description}: {_invoice_money(line.amount_cents, line.currency)}"
-            )
-
-    content_lines = ["BT", "/F1 11 Tf", "14 TL", "50 760 Td"]
-    for index, text in enumerate(text_lines[:42]):
-        if index:
-            content_lines.append("T*")
-        content_lines.append(f"({_pdf_text(text[:120])}) Tj")
-    content_lines.append("ET")
-    stream = "\n".join(content_lines).encode("latin-1", errors="replace")
-    objects = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        (
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
-        ),
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-        b"<< /Length "
-        + str(len(stream)).encode()
-        + b" >>\nstream\n"
-        + stream
-        + b"\nendstream",
-    ]
-    pdf = b"%PDF-1.4\n"
-    offsets: list[int] = []
-    for index, obj in enumerate(objects, start=1):
-        offsets.append(len(pdf))
-        pdf += f"{index} 0 obj\n".encode() + obj + b"\nendobj\n"
-    xref_offset = len(pdf)
-    pdf += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
-    for offset in offsets:
-        pdf += f"{offset:010d} 00000 n \n".encode()
-    pdf += (
-        f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\n"
-        f"startxref\n{xref_offset}\n%%EOF\n"
-    ).encode()
-    return pdf
 
 
 def _uuid_from_metadata(value: object) -> UUID | None:
@@ -483,7 +428,7 @@ def _upsert_invoice_pdf_artifact(
     session: Session,
     generated_at: str,
 ) -> dict[str, object]:
-    pdf_bytes = _invoice_pdf_bytes(draft)
+    pdf_bytes = render_invoice_pdf(draft, resolve_invoice_brand(draft, session))
     filename = _invoice_pdf_filename(draft)
     document: StoredDocument | None = None
     existing_artifact = metadata.get("pdf_artifact")
@@ -599,99 +544,6 @@ def _invoice_posting_preparation(
         "external_posting_status": "not_started",
         "guardrail": "No Xero sync runs unless a future explicit sync action is approved.",
     }
-
-
-def _invoice_preview_html(draft: InvoiceDraft) -> str:
-    line_rows = "\n".join(
-        "<tr>"
-        f"<td>{escape(line.description)}</td>"
-        f"<td>{escape(line.source_hint or '')}</td>"
-        f"<td class=\"amount\">{escape(_invoice_money(line.amount_cents, line.currency))}</td>"
-        "</tr>"
-        for line in draft.lines
-        if line.deleted_at is None
-    )
-    pdf_artifact = (draft.invoice_metadata or {}).get("pdf_artifact")
-    pdf_notice = (
-        "A PDF artifact record has been stored for approval. No tenant email has been "
-        "sent, and no Xero sync has run."
-        if isinstance(pdf_artifact, dict) and pdf_artifact.get("document_id")
-        else "No PDF artifact record has been stored yet, no tenant email has been sent, "
-        "and no Xero sync has run."
-    )
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>{escape(draft.invoice_number or 'Invoice draft')}</title>
-  <style>
-    body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 40px;
-      color: #172033;
-    }}
-    main {{ max-width: 760px; margin: 0 auto; }}
-    header {{
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      border-bottom: 1px solid #d8dde8;
-      padding-bottom: 24px;
-    }}
-    h1 {{ margin: 0 0 8px; font-size: 28px; }}
-    h2 {{ margin: 28px 0 8px; font-size: 16px; }}
-    p {{ margin: 4px 0; }}
-    table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
-    th, td {{
-      border-bottom: 1px solid #e7eaf0;
-      padding: 10px 0;
-      text-align: left;
-      vertical-align: top;
-    }}
-    th {{ color: #5c667a; font-size: 12px; text-transform: uppercase; }}
-    .amount {{ text-align: right; white-space: nowrap; }}
-    .total {{ font-size: 20px; font-weight: 700; }}
-    .muted {{ color: #5c667a; }}
-    .notice {{
-      margin-top: 28px;
-      padding: 12px;
-      border: 1px solid #d8dde8;
-      background: #f7f9fc;
-      border-radius: 8px;
-    }}
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <section>
-        <h1>Invoice preview</h1>
-        <p class="muted">{escape(draft.invoice_number or 'Number to confirm')}</p>
-        <p>Issue date: {escape(draft.issue_date.isoformat() if draft.issue_date else '-')}</p>
-        <p>Due date: {escape(draft.due_date.isoformat() if draft.due_date else '-')}</p>
-      </section>
-      <section>
-        <p><strong>{escape(draft.issuer_name or 'Issuer to confirm')}</strong></p>
-        <p>ABN: {escape(draft.issuer_abn or '-')}</p>
-      </section>
-    </header>
-    <h2>Bill to</h2>
-    <p><strong>{escape(draft.recipient_name or 'Recipient to confirm')}</strong></p>
-    <p>{escape(draft.recipient_email or 'Billing email missing')}</p>
-    <h2>Line items</h2>
-    <table>
-      <thead>
-        <tr><th>Description</th><th>Source</th><th class="amount">Amount</th></tr>
-      </thead>
-      <tbody>{line_rows}</tbody>
-    </table>
-    <p class="amount total">Total {escape(_invoice_money(draft.total_cents, draft.currency))}</p>
-    <div class="notice">
-      {escape(pdf_notice)}
-    </div>
-  </main>
-</body>
-</html>"""
 
 
 def _prepare_invoice_delivery_metadata(
@@ -1944,7 +1796,9 @@ def preview_invoice_draft(
     session: Annotated[Session, Depends(get_session)],
 ) -> HTMLResponse:
     draft = _invoice_draft_for_access(invoice_draft_id, user, session, READ_ROLES)
-    return HTMLResponse(_invoice_preview_html(draft))
+    return HTMLResponse(
+        render_invoice_html(draft, resolve_invoice_brand(draft, session))
+    )
 
 
 @router.post(
