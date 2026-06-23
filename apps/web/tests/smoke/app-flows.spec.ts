@@ -6560,13 +6560,20 @@ test("tenant portal entry shows linked account-scoped tenant data", async ({
   );
 
   await expect(
-    page.getByRole("heading", { name: "Bright Cafe" }),
+    page.getByRole("heading", { name: /Bright Cafe/ }),
   ).toBeVisible();
+
+  // Account-link status now lives on the Lease & details tab.
+  const sidebar = page.locator("aside");
+  await sidebar.getByRole("button", { name: "Lease & details" }).click();
   await expect(page.getByText("Account linked")).toBeVisible();
   await expect(page.getByText("tenant_portal_account")).toBeVisible();
   await expect(
     page.getByText("Access is scoped to the tenant linked"),
   ).toBeVisible();
+
+  // Invoices now live on the Payments tab.
+  await sidebar.getByRole("button", { name: "Payments" }).click();
   await expect(page.getByText("INV-1001")).toBeVisible();
 });
 

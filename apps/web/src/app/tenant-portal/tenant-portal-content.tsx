@@ -20,6 +20,7 @@ import {
   Copy,
   Download,
   FileText,
+  Home,
   ImagePlus,
   Loader2,
   LogIn,
@@ -118,6 +119,21 @@ const categoryLabels: Record<DocumentCategory, string> = {
   invoice: "Invoice",
   other: "Other",
 };
+
+type TenantPortalTab = "home" | "maintenance" | "payments" | "documents" | "lease";
+
+const TENANT_PORTAL_TABS: {
+  key: TenantPortalTab;
+  label: string;
+  short: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}[] = [
+  { key: "home", label: "Home", short: "Home", icon: Home },
+  { key: "maintenance", label: "Maintenance", short: "Maintenance", icon: Wrench },
+  { key: "payments", label: "Payments", short: "Payments", icon: ReceiptText },
+  { key: "documents", label: "Documents", short: "Docs", icon: FileText },
+  { key: "lease", label: "Lease & details", short: "More", icon: Building2 },
+];
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -4116,6 +4132,7 @@ function TenantPortalContent({
     null,
   );
   const [maintenancePhotoInputKey, setMaintenancePhotoInputKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<TenantPortalTab>("home");
   const accountScoped = portal?.auth.mode === "tenant_portal_account";
 
   const getFreshAccountAuthToken = useCallback(async () => {
@@ -5001,88 +5018,306 @@ function TenantPortalContent({
   const attentionItems = actionItems.filter((item) => item.tone !== "success");
 
   return (
-    <PortalShell>
-      <div className="mx-auto grid max-w-4xl gap-5 px-5 py-6">
-        <TenantPortalMobileCockpit
-          portal={portal}
-          maintenanceSummary={maintenanceSummary}
-        />
-
-        {/* Status hero — identity plus one clear answer to "do I need to do anything?" */}
-        <section className="hidden gap-4 rounded-md border border-border bg-white p-5 md:grid">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              {portal.lease.property_name}
-              {portal.lease.unit_label ? ` · ${portal.lease.unit_label}` : ""}
-            </p>
-            <h2 className="mt-0.5 text-2xl font-semibold">
-              {portal.tenant.trading_name || portal.tenant.legal_name}
-            </h2>
-            {portal.lease.property_address ? (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {portal.lease.property_address}
-              </p>
-            ) : null}
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
+        {/* Sidebar (desktop) */}
+        <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-white px-3 py-5 lg:flex">
+          <div className="flex items-center gap-2.5 px-2 pb-5">
+            <LeasiumMark />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold leading-tight">Leasium</div>
+              <div className="text-xs text-muted-foreground">Tenant portal</div>
+            </div>
           </div>
+          <nav className="grid gap-1" aria-label="Tenant portal sections">
+            {TENANT_PORTAL_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`relative flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium transition duration-200 ease-leasium ${
+                    active
+                      ? "bg-primary-soft text-primary-hover"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {active ? (
+                    <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary" />
+                  ) : null}
+                  <Icon size={18} className={active ? "text-primary" : ""} />
+                  <span>{tab.label}</span>
+                  {tab.key === "maintenance" && maintenanceSummary.openCount ? (
+                    <span className="ml-auto rounded-full bg-primary-soft px-2 py-0.5 text-xs font-semibold text-primary-hover">
+                      {maintenanceSummary.openCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+          <button
+            type="button"
+            onClick={() => setActiveTab("lease")}
+            className="mt-auto flex items-center gap-3 rounded-md border-t border-border px-2 pt-4 text-left"
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
+              {(portal.tenant.trading_name || portal.tenant.legal_name)
+                .slice(0, 1)
+                .toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">
+                {portal.tenant.trading_name || portal.tenant.legal_name}
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Account &amp; settings
+              </span>
+            </span>
+          </button>
+        </aside>
 
-          {attentionItems.length === 0 ? (
-            <div className="flex items-start gap-3 rounded-md border border-success/30 bg-success/5 p-3">
-              <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-success" />
-              <div className="min-w-0">
-                <div className="font-medium text-success">You&apos;re all set</div>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Your tenancy is active and up to date — nothing needs your
-                  attention right now.
-                </p>
+        {/* Main */}
+        <div className="flex min-h-screen flex-col">
+          {/* Mobile top bar */}
+          <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+            <LeasiumMark />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold leading-tight">
+                {portal.lease.property_name}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {portal.lease.unit_label || "Tenant portal"}
               </div>
             </div>
-          ) : (
-            <div className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 p-3">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
+              {(portal.tenant.trading_name || portal.tenant.legal_name)
+                .slice(0, 1)
+                .toUpperCase()}
+            </span>
+          </header>
+
+          {/* Desktop context bar */}
+          <header className="sticky top-0 z-10 hidden items-center gap-4 border-b border-border bg-white/90 px-8 py-4 backdrop-blur lg:flex">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <Clock3 size={18} className="shrink-0 text-warning" />
-                <div className="font-medium text-warning">
-                  {attentionItems.length === 1
-                    ? "One thing to do"
-                    : `${attentionItems.length} things to do`}
-                </div>
+                <h2 className="text-base font-semibold">
+                  {portal.lease.property_name}
+                </h2>
+                {portal.lease.unit_label ? (
+                  <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {portal.lease.unit_label}
+                  </span>
+                ) : null}
               </div>
-              <div className="grid gap-1.5 pl-7">
-                {attentionItems.map((item) => (
-                  <div key={item.key} className="min-w-0 text-sm">
-                    <span className="font-medium text-foreground">
-                      {item.title}
-                    </span>{" "}
-                    <span className="text-muted-foreground">{item.detail}</span>
-                  </div>
-                ))}
-              </div>
-              {!documentsComplete ? (
-                <a
-                  href="#tenant-documents"
-                  className="ml-7 inline-flex min-h-11 w-fit items-center gap-2 rounded-md border border-warning/40 bg-white px-3 text-sm font-medium text-warning transition duration-200 ease-leasium hover:bg-warning/5"
-                >
-                  <UploadCloud size={15} />
-                  Upload documents
-                </a>
+              {portal.lease.property_address ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {portal.lease.property_address}
+                </p>
               ) : null}
             </div>
-          )}
-        </section>
+          </header>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="grid gap-5">
+          <main className="flex-1 px-4 py-6 pb-24 lg:px-8 lg:pb-10">
+            <div className="mx-auto w-full max-w-3xl">
+              {/* HOME — slim overview, maintenance front-and-centre */}
+              {activeTab === "home" ? (
+                <div className="grid gap-5">
+                  <div>
+                    <h1 className="text-2xl font-semibold">
+                      Hi {portal.tenant.trading_name || portal.tenant.legal_name}
+                    </h1>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Here&apos;s everything for your space at{" "}
+                      {portal.lease.property_name}.
+                    </p>
+                  </div>
 
-            {/* Lease signing — only if not yet signed */}
-            {portal.lease_agreement.status !== "signed" ? (
-              <LeaseAgreementPanel
-                portal={portal}
-                token={token}
-                accountAuthToken={accountAuthToken}
-                getAccountAuthToken={getFreshAccountAuthToken}
-                onSaved={refreshPortal}
-              />
-            ) : null}
+                  {attentionItems.length === 0 ? (
+                    <div className="flex items-start gap-3 rounded-md border border-success/30 bg-success/5 p-4">
+                      <CheckCircle2
+                        size={18}
+                        className="mt-0.5 shrink-0 text-success"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium text-success">
+                          You&apos;re all set
+                        </div>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          Your tenancy is active and up to date — nothing needs
+                          your attention right now.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2 rounded-md border border-warning/30 bg-warning/5 p-4">
+                      <div className="flex items-center gap-2">
+                        <Clock3 size={18} className="shrink-0 text-warning" />
+                        <div className="font-medium text-warning">
+                          {attentionItems.length === 1
+                            ? "One thing to do"
+                            : `${attentionItems.length} things to do`}
+                        </div>
+                      </div>
+                      <div className="grid gap-1.5 pl-7">
+                        {attentionItems.map((item) => (
+                          <div key={item.key} className="min-w-0 text-sm">
+                            <span className="font-medium text-foreground">
+                              {item.title}
+                            </span>{" "}
+                            <span className="text-muted-foreground">
+                              {item.detail}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pl-7 pt-1">
+                        {portal.payment_summary.status === "overdue" ||
+                        portal.payment_summary.status === "unpaid" ? (
+                          <SecondaryButton
+                            type="button"
+                            onClick={() => setActiveTab("payments")}
+                          >
+                            <ReceiptText size={15} />
+                            View payment
+                          </SecondaryButton>
+                        ) : null}
+                        {!documentsComplete ? (
+                          <SecondaryButton
+                            type="button"
+                            onClick={() => setActiveTab("documents")}
+                          >
+                            <UploadCloud size={15} />
+                            Upload documents
+                          </SecondaryButton>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
 
+                  {/* Maintenance hero — the most-used action, front and centre */}
+                  <section className="overflow-hidden rounded-md border border-primary/20 bg-primary-soft p-5">
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                      <div>
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+                          <Wrench size={14} />
+                          Maintenance
+                        </span>
+                        <h2 className="mt-2 text-xl font-semibold">
+                          Something not working?
+                        </h2>
+                        <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+                          Report an issue at your space in under a minute.
+                          We&apos;ll keep you posted on every step until
+                          it&apos;s fixed.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => setActiveTab("maintenance")}
+                      >
+                        <Wrench size={16} />
+                        Report an issue
+                      </Button>
+                    </div>
+                    <div className="mt-4 grid gap-2 border-t border-primary/15 pt-4">
+                      {maintenanceSummary.latestOpenRequest ? (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("maintenance")}
+                          className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-left text-sm transition hover:bg-muted"
+                        >
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {maintenanceSummary.latestOpenRequest.title}
+                          </span>
+                          <StatusBadge
+                            tone={maintenanceTone(
+                              maintenanceSummary.latestOpenRequest.status,
+                            )}
+                          >
+                            {label(maintenanceSummary.latestOpenRequest.status)}
+                          </StatusBadge>
+                        </button>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No open requests right now.
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {maintenanceSummary.openCount} active ·{" "}
+                        {maintenanceSummary.completedCount} completed
+                      </p>
+                    </div>
+                  </section>
+
+                  {/* Quick tiles */}
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("payments")}
+                      className="rounded-md border border-border bg-white p-4 text-left transition duration-200 ease-leasium hover:bg-muted"
+                    >
+                      <div className="text-xs font-medium text-muted-foreground">
+                        Balance
+                      </div>
+                      <div className="mt-1 text-xl font-semibold">
+                        {portal.payment_summary.status === "no_invoices"
+                          ? "Nothing due"
+                          : formatMoney(
+                              portal.payment_summary.outstanding_cents,
+                            )}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {portal.payment_summary.next_due_date
+                          ? `Due ${formatDate(portal.payment_summary.next_due_date)}`
+                          : "View payments"}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("documents")}
+                      className="rounded-md border border-border bg-white p-4 text-left transition duration-200 ease-leasium hover:bg-muted"
+                    >
+                      <div className="text-xs font-medium text-muted-foreground">
+                        Documents
+                      </div>
+                      <div className="mt-1 text-xl font-semibold">
+                        {portal.compliance.uploaded_documents.length} file
+                        {portal.compliance.uploaded_documents.length === 1
+                          ? ""
+                          : "s"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Lease, invoices &amp; more
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("lease")}
+                      className="rounded-md border border-border bg-white p-4 text-left transition duration-200 ease-leasium hover:bg-muted"
+                    >
+                      <div className="text-xs font-medium text-muted-foreground">
+                        Next lease review
+                      </div>
+                      <div className="mt-1 text-xl font-semibold">
+                        {portal.lease.next_review_date
+                          ? formatDate(portal.lease.next_review_date)
+                          : "—"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Lease &amp; details
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* PAYMENTS */}
+              {activeTab === "payments" ? (
+                <div className="grid gap-5">
             {/* Payments */}
             <Panel
               id="tenant-payments"
@@ -5264,8 +5499,12 @@ function TenantPortalContent({
                 </p>
               </div>
             </Panel>
+                </div>
+              ) : null}
 
-            {/* Maintenance */}
+              {/* MAINTENANCE */}
+              {activeTab === "maintenance" ? (
+                <div className="grid gap-5">
             <Panel
               id="tenant-maintenance"
               title="Maintenance"
@@ -5462,8 +5701,12 @@ function TenantPortalContent({
                 </div>
               </div>
             </Panel>
+                </div>
+              ) : null}
 
-            {/* Documents */}
+              {/* DOCUMENTS */}
+              {activeTab === "documents" ? (
+                <div className="grid gap-5">
             <Panel
               id="tenant-documents"
               title="Documents"
@@ -5631,9 +5874,12 @@ function TenantPortalContent({
                 </div>
               </div>
             </Panel>
-          </div>
+                </div>
+              ) : null}
 
-          <aside className="grid content-start gap-5">
+              {/* LEASE & DETAILS */}
+              {activeTab === "lease" ? (
+                <div className="grid gap-5">
             {/* Account — with email OTP login explanation */}
             <TenantAccountPanel
               token={token}
@@ -5708,9 +5954,37 @@ function TenantPortalContent({
               getAccountAuthToken={getFreshAccountAuthToken}
               onSaved={refreshPortal}
             />
-          </aside>
+                </div>
+              ) : null}
+            </div>
+          </main>
+
+          {/* Bottom nav (mobile) */}
+          <nav
+            className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+            aria-label="Tenant portal sections"
+          >
+            {TENANT_PORTAL_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-md py-1.5 text-xs font-medium transition ${
+                    active ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  <Icon size={22} />
+                  <span>{tab.short}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </div>
-    </PortalShell>
+    </div>
   );
 }

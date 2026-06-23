@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Leasium — Tenant portal redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --blue:#245BFF; --blue-hover:#1E4FE5; --blue-pressed:#173FC2; --blue-soft:#EAF0FF;
+    --teal:#27D8C2; --teal-soft:#E8FAF7; --teal-strong:#107569;
+    --navy:#101828; --slate700:#1D2939; --slate600:#344054; --slate500:#475467;
+    --slate400:#667085; --slate300:#98A2B3; --slate200:#D0D5DD; --slate150:#E4E7EC; --slate100:#F2F4F7;
+    --bg:#F7F9FC; --surface:#FFFFFF; --border:#E7EBF0; --border-strong:#D0D5DD;
+    --success:#12B76A; --success-soft:#ECFDF3; --success-strong:#067647;
+    --warning:#F79009; --warning-soft:#FFFAEB; --warning-strong:#B54708;
+    --danger:#F04438; --danger-soft:#FEF3F2; --danger-strong:#B42318;
+    --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --shadow-xs:0 1px 2px rgba(16,24,40,.05);
+    --shadow-sm:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+    --shadow-card:0 1px 3px rgba(16,24,40,.05);
+    --glow:0 6px 16px rgba(36,91,255,.28);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--navy);-webkit-font-smoothing:antialiased;line-height:1.5}
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  a{color:inherit;text-decoration:none}
+  svg{display:block}
+
+  /* ---------- App shell (desktop: light left sidebar) ---------- */
+  .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  .sidebar{position:sticky;top:0;height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 14px}
+  .brand{display:flex;align-items:center;gap:11px;padding:8px 8px 18px}
+  .brand .mark{width:34px;height:34px;border-radius:9px;background:var(--blue);position:relative;flex:none}
+  .brand .mark::before{content:"";position:absolute;left:9px;top:8px;width:11px;height:16px;border-left:3.5px solid #fff;border-bottom:3.5px solid #fff;border-bottom-left-radius:2px}
+  .brand .mark::after{content:"";position:absolute;right:6px;top:6px;width:7px;height:7px;border-radius:50%;background:var(--teal)}
+  .brand .name{font-weight:700;font-size:16px;letter-spacing:-.02em;line-height:1.1}
+  .brand .sub{font-size:11.5px;color:var(--slate400);font-weight:500}
+  .nav{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+  .nav-label{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--slate300);padding:10px 10px 6px}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;color:var(--slate600);font-weight:500;font-size:14.5px;position:relative;transition:background .15s,color .15s;min-height:42px}
+  .nav-item svg{width:19px;height:19px;color:var(--slate400);flex:none;transition:color .15s}
+  .nav-item:hover{background:var(--slate100)}
+  .nav-item .badge{margin-left:auto;background:var(--blue-soft);color:var(--blue-pressed);font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;min-width:20px;text-align:center}
+  .nav-item.active{background:var(--blue-soft);color:var(--blue-pressed);font-weight:600}
+  .nav-item.active svg{color:var(--blue)}
+  .nav-item.active::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--blue)}
+  .side-foot{margin-top:auto;border-top:1px solid var(--border);padding-top:12px}
+  .acct{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:11px;transition:background .15s}
+  .acct:hover{background:var(--slate100)}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#245BFF,#27D8C2);color:#fff;font-weight:700;font-size:14px;display:grid;place-items:center;flex:none}
+  .acct .who{font-size:13.5px;font-weight:600;line-height:1.2}
+  .acct .role{font-size:11.5px;color:var(--slate400)}
+  .acct .cog{margin-left:auto;color:var(--slate400)}
+
+  /* ---------- Main ---------- */
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{position:sticky;top:0;z-index:5;background:rgba(247,249,252,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:14px 32px;display:flex;align-items:center;gap:16px}
+  .topbar .ctx{min-width:0}
+  .topbar .ctx h2{font-size:16px;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:9px}
+  .topbar .ctx .pill{font-size:11px;font-weight:600;color:var(--slate600);background:var(--slate100);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+  .topbar .ctx p{font-size:12.5px;color:var(--slate400);margin-top:2px}
+  .topbar .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .ghost{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:10px;color:var(--slate600);font-size:13.5px;font-weight:600;border:1px solid var(--border);background:var(--surface)}
+  .ghost:hover{background:var(--slate100)}
+  .ghost svg{width:16px;height:16px}
+  .content{padding:28px 32px 56px;max-width:1080px;width:100%}
+  .mobile-top,.bottomnav{display:none}
+
+  /* ---------- Typography helpers ---------- */
+  .h1{font-size:24px;font-weight:700;letter-spacing:-.025em}
+  .lead{color:var(--slate500);font-size:14.5px;margin-top:3px}
+  .h3{font-size:18px;font-weight:700;letter-spacing:-.015em}
+  .muted{color:var(--slate500)}
+  .tiny{font-size:12px;color:var(--slate400)}
+
+  /* ---------- Cards ---------- */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow-card)}
+  .pad{padding:22px}
+
+  /* attention strip */
+  .attn{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:14px;background:var(--warning-soft);border:1px solid #FCE7BE;margin-bottom:20px}
+  .attn .dot{width:9px;height:9px;border-radius:50%;background:var(--warning);flex:none;box-shadow:0 0 0 4px rgba(247,144,9,.15)}
+  .attn .txt{font-size:14px;color:var(--slate700)}
+  .attn .txt b{color:var(--navy);font-weight:700}
+  .attn a{margin-left:auto}
+
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:0 18px;border-radius:12px;font-weight:600;font-size:14.5px;transition:background .15s,box-shadow .15s,transform .05s}
+  .btn:active{transform:translateY(1px)}
+  .btn svg{width:18px;height:18px}
+  .btn-primary{background:var(--blue);color:#fff;box-shadow:var(--glow)}
+  .btn-primary:hover{background:var(--blue-hover)}
+  .btn-sec{background:var(--surface);border:1px solid var(--border-strong);color:var(--slate600)}
+  .btn-sec:hover{background:var(--slate100)}
+  .btn-sm{min-height:38px;padding:0 14px;font-size:13.5px;border-radius:10px}
+  .btn-link{color:var(--blue);font-weight:600;font-size:13.5px;display:inline-flex;align-items:center;gap:6px}
+  .btn-link:hover{color:var(--blue-hover)}
+  .btn-link svg{width:15px;height:15px}
+
+  /* ---------- Maintenance hero ---------- */
+  .hero{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:20px;background:
+     radial-gradient(1100px 220px at 88% -40%, rgba(39,216,194,.16), transparent 60%),
+     linear-gradient(180deg,#F4F8FF 0%, #FFFFFF 58%);
+     box-shadow:var(--shadow-card)}
+  .hero .pad{padding:24px}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .95fr;gap:22px}
+  .hero .eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--teal-strong);background:var(--teal-soft);border-radius:999px;padding:4px 10px}
+  .hero h2{font-size:23px;font-weight:700;letter-spacing:-.025em;margin-top:13px}
+  .hero p{color:var(--slate500);font-size:14.5px;margin-top:7px;max-width:42ch}
+  .hero .cta{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}
+  .req-box{background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:15px}
+  .req-box .rb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+  .req-box .rb-head h4{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--slate500)}
+  .req{padding:11px 0;border-top:1px solid var(--border)}
+  .req:first-of-type{border-top:none;padding-top:0}
+  .req .r1{display:flex;align-items:center;gap:9px}
+  .req .r1 .t{font-weight:600;font-size:14px}
+  .req .r2{font-size:12.5px;color:var(--slate400);margin-top:3px}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:5px;min-height:22px;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+  .chip svg{width:12px;height:12px}
+  .chip-primary{background:var(--blue-soft);color:var(--blue-pressed)}
+  .chip-success{background:var(--success-soft);color:var(--success-strong)}
+  .chip-warning{background:var(--warning-soft);color:var(--warning-strong)}
+  .chip-danger{background:var(--danger-soft);color:var(--danger-strong)}
+  .chip-neutral{background:var(--slate100);color:var(--slate600)}
+  .chip-teal{background:var(--teal-soft);color:var(--teal-strong)}
+
+  /* quick tiles */
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 17px;box-shadow:var(--shadow-card);transition:box-shadow .15s,transform .1s;display:block}
+  .tile:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+  .tile .ico{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;margin-bottom:11px}
+  .tile .ico svg{width:19px;height:19px}
+  .tile .k{font-size:12.5px;color:var(--slate500);font-weight:500}
+  .tile .v{font-size:20px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
+  .tile .d{font-size:12px;color:var(--slate400);margin-top:3px;display:flex;align-items:center;gap:5px}
+  .tile .d svg{width:13px;height:13px;color:var(--blue)}
+
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin:26px 0 13px}
+  .section-head h3{font-size:16px;font-weight:700;letter-spacing:-.015em}
+
+  /* tracker / steppers */
+  .track{display:flex;align-items:center;gap:6px;margin-top:12px}
+  .step{display:flex;align-items:center;gap:6px;flex:1}
+  .step .node{width:18px;height:18px;border-radius:50%;border:2px solid var(--slate200);background:#fff;flex:none;display:grid;place-items:center}
+  .step .node svg{width:10px;height:10px;color:#fff}
+  .step .lab{font-size:11px;color:var(--slate400);font-weight:600;white-space:nowrap}
+  .step .bar{height:2px;flex:1;background:var(--slate150);border-radius:2px}
+  .step.done .node{background:var(--success);border-color:var(--success)}
+  .step.done .bar{background:var(--success)}
+  .step.cur .node{background:var(--blue);border-color:var(--blue);box-shadow:0 0 0 4px var(--blue-soft)}
+  .step.cur .lab{color:var(--blue-pressed)}
+
+  .req-card{padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:var(--shadow-card)}
+  .req-card+.req-card{margin-top:12px}
+  .rc-head{display:flex;align-items:flex-start;gap:12px}
+  .rc-head .t{font-weight:700;font-size:15px}
+  .rc-head .chips{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap}
+  .next{margin-top:13px;font-size:13px;color:var(--slate600);background:var(--slate100);border-radius:11px;padding:10px 13px;display:flex;gap:9px;align-items:flex-start}
+  .next svg{width:16px;height:16px;color:var(--blue);flex:none;margin-top:1px}
+
+  /* forms */
+  .field{margin-bottom:15px}
+  .field label{display:block;font-size:13px;font-weight:600;color:var(--slate600);margin-bottom:6px}
+  .input,.textarea{width:100%;min-height:44px;border:1px solid var(--border-strong);border-radius:12px;padding:11px 13px;font-family:inherit;font-size:14px;color:var(--navy);background:#fff;transition:border .15s,box-shadow .15s}
+  .textarea{min-height:96px;resize:vertical}
+  .input::placeholder,.textarea::placeholder{color:var(--slate300)}
+  .input:focus,.textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(36,91,255,.14)}
+  .seg{display:flex;gap:8px;flex-wrap:wrap}
+  .seg button{min-height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border-strong);background:#fff;font-weight:600;font-size:13.5px;color:var(--slate600);transition:.15s}
+  .seg button.on{background:var(--blue-soft);border-color:var(--blue);color:var(--blue-pressed)}
+  .seg button[data-p="High"].on{background:var(--warning-soft);border-color:var(--warning);color:var(--warning-strong)}
+  .seg button[data-p="Urgent"].on{background:var(--danger-soft);border-color:var(--danger);color:var(--danger-strong)}
+  .drop{border:1.5px dashed var(--border-strong);border-radius:12px;padding:18px;display:flex;align-items:center;gap:11px;color:var(--slate500);font-size:13.5px;background:#FCFDFE}
+  .drop svg{width:20px;height:20px;color:var(--slate400)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+  /* generic rows */
+  .row{display:flex;align-items:center;gap:13px;padding:13px 0;border-top:1px solid var(--border)}
+  .row:first-child{border-top:none}
+  .row .ri{width:38px;height:38px;border-radius:10px;background:var(--slate100);display:grid;place-items:center;flex:none}
+  .row .ri svg{width:18px;height:18px;color:var(--slate500)}
+  .row .rt{font-weight:600;font-size:14px}
+  .row .rs{font-size:12.5px;color:var(--slate400);margin-top:1px}
+  .row .re{margin-left:auto;display:flex;align-items:center;gap:12px}
+
+  .kv{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 26px}
+  .kv .k{font-size:12px;color:var(--slate400);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+  .kv .v{font-size:15px;font-weight:600;margin-top:3px}
+
+  .toggle{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-top:1px solid var(--border)}
+  .toggle:first-child{border-top:none}
+  .sw{width:42px;height:25px;border-radius:999px;background:var(--slate200);position:relative;transition:.2s;flex:none}
+  .sw::after{content:"";position:absolute;top:2.5px;left:2.5px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:var(--shadow-xs);transition:.2s}
+  .sw.on{background:var(--blue)}
+  .sw.on::after{left:19.5px}
+
+  .panel{display:none;animation:fade .25s ease}
+  .panel.show{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .note{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--slate500);background:var(--slate100);border-radius:11px;padding:11px 13px;margin-top:14px}
+  .note svg{width:15px;height:15px;color:var(--slate400);flex:none;margin-top:1px}
+
+  /* ---------- Responsive: tablet collapses sidebar to icon rail ---------- */
+  @container (max-width:1100px){
+    .app{grid-template-columns:72px 1fr}
+    .brand .name,.brand .sub,.nav-item span,.nav-label,.acct .who,.acct .role,.acct .cog,.nav-item .badge{display:none}
+    .nav-item{justify-content:center;padding:11px 0}
+    .nav-item.active::before{display:none}
+    .brand{justify-content:center;padding:8px 0 18px}
+    .acct{justify-content:center;padding:8px 0}
+    .hero-grid{grid-template-columns:1fr}
+  }
+  /* ---------- Mobile: bottom nav ---------- */
+  @container (max-width:720px){
+    .app{grid-template-columns:1fr}
+    .sidebar{display:none}
+    .topbar{display:none}
+    .mobile-top{display:flex;align-items:center;gap:11px;position:sticky;top:0;z-index:6;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 16px}
+    .mobile-top .mark{width:30px;height:30px;border-radius:8px;background:var(--blue);position:relative;flex:none}
+    .mobile-top .mark::before{content:"";position:absolute;left:8px;top:7px;width:9px;height:14px;border-left:3px solid #fff;border-bottom:3px solid #fff}
+    .mobile-top .mark::after{content:"";position:absolute;right:5px;top:5px;width:6px;height:6px;border-radius:50%;background:var(--teal)}
+    .mobile-top .mt-ctx{min-width:0}
+    .mobile-top .mt-ctx h2{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mobile-top .mt-ctx p{font-size:11.5px;color:var(--slate400)}
+    .mobile-top .avatar{margin-left:auto;width:32px;height:32px}
+    .content{padding:18px 16px 96px}
+    .hero-grid{grid-template-columns:1fr}
+    .tiles{grid-template-columns:1fr;gap:12px}
+    .tile{display:flex;align-items:center;gap:13px}
+    .tile .ico{margin-bottom:0}
+    .two{grid-template-columns:1fr}
+    .kv{grid-template-columns:1fr}
+    .h1{font-size:21px}
+    .bottomnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-top:1px solid var(--border);padding:7px 6px calc(7px + env(safe-area-inset-bottom))}
+    .bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;border-radius:12px;color:var(--slate400);font-size:10.5px;font-weight:600}
+    .bn svg{width:22px;height:22px}
+    .bn.active{color:var(--blue)}
+    .rc-head .chips{margin-left:0;width:100%;margin-top:8px}
+    .track{flex-wrap:wrap;gap:8px}
+    .step{flex:none}
+    .step .bar{display:none}
+  }
+  /* viewport toggle (prototype only) */
+  .vp{position:fixed;right:16px;bottom:16px;z-index:50;display:flex;gap:4px;background:var(--navy);border-radius:999px;padding:5px;box-shadow:var(--shadow-sm)}
+  .vp button{color:#cbd5e1;font-size:12px;font-weight:600;padding:7px 14px;border-radius:999px}
+  .vp button.on{background:#fff;color:var(--navy)}
+  .frame{margin:0 auto;transition:max-width .25s;container-type:inline-size}
+  .frame.m{max-width:430px;border-left:1px solid var(--border);border-right:1px solid var(--border);min-height:100vh;box-shadow:0 0 60px rgba(16,24,40,.08)}
+</style>
+</head>
+<body>
+<div class="frame" id="frame">
+<div class="app" id="app">
+  <!-- ===================== SIDEBAR (desktop) ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <div class="name">Leasium</div>
+        <div class="sub">Tenant portal</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav">
+      <a class="nav-item active" data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg><span>Home</span></a>
+      <a class="nav-item" data-go="maint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.3 2.3-2.5-.7-.7-2.5z"/></svg><span>Maintenance</span><span class="badge">1</span></a>
+      <a class="nav-item" data-go="pay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg><span>Payments</span></a>
+      <a class="nav-item" data-go="docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span>Documents</span></a>
+      <a class="nav-item" data-go="lease"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M9 13h6M9 17h6M9 9h2"/></svg><span>Lease &amp; details</span></a>
+    </nav>
+    <div class="side-foot">
+      <a class="acct" data-go="lease">
+        <div class="avatar">B</div>
+        <div>
+          <div class="who">Bright Coffee Co.</div>
+          <div class="role">Account &amp; settings</div>
+        </div>
+        <svg class="cog" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H7a1.6 1.6 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.2A1.6 1.6 0 0 0 17 2.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"/></svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="main">
+    <!-- mobile top bar -->
+    <div class="mobile-top">
+      <div class="mark"></div>
+      <div class="mt-ctx">
+        <h2 id="mTitle">Kingfisher Retail Arcade</h2>
+        <p>Shop 4 · West End</p>
+      </div>
+      <div class="avatar">B</div>
+    </div>
+    <!-- desktop top bar -->
+    <div class="topbar">
+      <div class="ctx">
+        <h2>Kingfisher Retail Arcade <span class="pill">Shop 4</span></h2>
+        <p>120 Vulture St, West End QLD 4101</p>
+      </div>
+      <div class="right">
+        <a class="ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>Need help?</a>
+        <div class="avatar">B</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- =============== HOME =============== -->
+      <section class="panel show" id="p-home">
+        <h1 class="h1">Hi Bright Coffee Co.</h1>
+        <p class="lead">Here's everything for your space at Kingfisher Retail Arcade.</p>
+
+        <div class="attn" style="margin-top:20px">
+          <span class="dot"></span>
+          <span class="txt"><b>One thing to do — payment due.</b> $4,820.00 outstanding · due 30 Jun 2026.</span>
+          <a class="btn btn-sec btn-sm" data-go="pay">View payment</a>
+        </div>
+
+        <!-- maintenance hero -->
+        <div class="hero">
+          <div class="pad">
+            <div class="hero-grid">
+              <div>
+                <span class="eyebrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.3 2.3-2.5-.7-.7-2.5z"/></svg>Maintenance</span>
+                <h2>Something not working?</h2>
+                <p>Report an issue at your space in under a minute. We'll keep you posted on every step until it's fixed.</p>
+                <div class="cta">
+                  <a class="btn btn-primary" data-go="maint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Report an issue</a>
+                  <a class="btn btn-sec" data-go="maint">View my requests</a>
+                </div>
+              </div>
+              <div class="req-box">
+                <div class="rb-head">
+                  <h4>My requests</h4>
+                  <span class="tiny">1 active · 1 done</span>
+                </div>
+                <div class="req">
+                  <div class="r1"><span class="t">Aircon not cooling</span><span class="chip chip-primary" style="margin-left:auto">In progress</span></div>
+                  <div class="r2">High priority · contractor assigned · updated today</div>
+                </div>
+                <div class="req">
+                  <div class="r1"><span class="t">Front door lock sticking</span><span class="chip chip-success" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Done</span></div>
+                  <div class="r2">Completed 18 Jun 2026</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- quick tiles -->
+        <div class="tiles">
+          <a class="tile" data-go="pay">
+            <div class="ico" style="background:var(--warning-soft)"><svg viewBox="0 0 24 24" fill="none" stroke="#B54708" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg></div>
+            <div class="k">Balance</div>
+            <div class="v">$4,820.00</div>
+            <div class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Due 30 Jun · view & pay</div>
+          </a>
+          <a class="tile" data-go="docs">
+            <div class="ico" style="background:var(--blue-soft)"><svg viewBox="0 0 24 24" fill="none" stroke="#1E4FE5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+            <div class="k">Documents</div>
+            <div class="v">6 files</div>
+            <div class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Lease, invoices &amp; more</div>
+          </a>
+          <a class="tile" data-go="lease">
+            <div class="ico" style="background:var(--teal-soft)"><svg viewBox="0 0 24 24" fill="none" stroke="#107569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg></div>
+            <div class="k">Next lease review</div>
+            <div class="v">1 Sep 2026</div>
+            <div class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>View lease &amp; details</div>
+          </a>
+        </div>
+      </section>
+
+      <!-- =============== MAINTENANCE =============== -->
+      <section class="panel" id="p-maint">
+        <h1 class="h1">Maintenance</h1>
+        <p class="lead">Report an issue and follow it from submitted to fixed.</p>
+
+        <div class="card pad" style="margin-top:20px">
+          <h3 class="h3" style="margin-bottom:4px">Report an issue</h3>
+          <p class="muted" style="font-size:13.5px;margin-bottom:18px">Tell us what's wrong. Add a photo if you can — it helps us send the right person.</p>
+          <div class="field">
+            <label>What's the issue?</label>
+            <input class="input" placeholder="e.g. Aircon not cooling in the main retail area" />
+          </div>
+          <div class="field">
+            <label>How urgent is it?</label>
+            <div class="seg" id="seg">
+              <button data-p="Low">Low</button>
+              <button data-p="Normal" class="on">Normal</button>
+              <button data-p="High">High</button>
+              <button data-p="Urgent">Urgent</button>
+            </div>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label>Where is it?</label>
+              <input class="input" placeholder="e.g. Main retail area, near the counter" />
+            </div>
+            <div class="field">
+              <label>Add photos</label>
+              <div class="drop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5M12 4v12"/></svg>Tap to add a photo or video</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Anything else we should know?</label>
+            <textarea class="textarea" placeholder="Optional details — when it started, access notes, etc."></textarea>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>Submit request</button>
+          </div>
+        </div>
+
+        <div class="section-head"><h3>My requests</h3><span class="tiny">1 active · 1 completed</span></div>
+
+        <div class="req-card">
+          <div class="rc-head">
+            <div>
+              <div class="t">Aircon not cooling in main retail area</div>
+              <div class="tiny" style="margin-top:3px">Submitted 21 Jun 2026 · 2 photos</div>
+            </div>
+            <div class="chips"><span class="chip chip-warning">High</span><span class="chip chip-primary">In progress</span></div>
+          </div>
+          <div class="track">
+            <div class="step done"><span class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="lab">Submitted</span></div>
+            <div class="bar" style="height:2px;flex:1;background:var(--success);border-radius:2px"></div>
+            <div class="step done"><span class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="lab">Reviewed</span></div>
+            <div class="bar" style="height:2px;flex:1;background:var(--success);border-radius:2px"></div>
+            <div class="step cur"><span class="node"></span><span class="lab">In progress</span></div>
+            <div class="bar" style="height:2px;flex:1;background:var(--slate150);border-radius:2px"></div>
+            <div class="step"><span class="node"></span><span class="lab">Done</span></div>
+          </div>
+          <div class="next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg><span><b>What's next:</b> A contractor has been assigned and will attend this week. Keep the area accessible — we'll message you before anyone arrives.</span></div>
+        </div>
+
+        <div class="req-card">
+          <div class="rc-head">
+            <div>
+              <div class="t">Front door lock sticking</div>
+              <div class="tiny" style="margin-top:3px">Submitted 12 Jun 2026 · 1 photo</div>
+            </div>
+            <div class="chips"><span class="chip chip-neutral">Normal</span><span class="chip chip-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Done</span></div>
+          </div>
+          <div class="next" style="background:var(--success-soft);color:var(--success-strong)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span><b>Completed 18 Jun 2026.</b> Lock replaced by the property team. If it happens again, just report a new issue.</span></div>
+        </div>
+      </section>
+
+      <!-- =============== PAYMENTS =============== -->
+      <section class="panel" id="p-pay">
+        <h1 class="h1">Payments</h1>
+        <p class="lead">Your balance, invoices, and how to pay.</p>
+
+        <div class="card pad" style="margin-top:20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+          <div>
+            <div class="tiny" style="font-weight:600">Outstanding balance</div>
+            <div style="font-size:32px;font-weight:700;letter-spacing:-.03em;margin-top:2px">$4,820.00</div>
+            <div class="muted" style="font-size:13px">1 invoice · next due 30 Jun 2026</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap">
+            <span class="chip chip-warning" style="align-self:center">Due in 6 days</span>
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg>How to pay</button>
+          </div>
+        </div>
+
+        <div class="section-head"><h3>Invoices</h3></div>
+        <div class="card pad">
+          <div class="row">
+            <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+            <div><div class="rt">INV-20260623 · Base rent</div><div class="rs">Issued 23 Jun 2026 · due 30 Jun 2026</div></div>
+            <div class="re"><span class="chip chip-warning">Unpaid</span><span style="font-weight:700">$4,820.00</span><a class="btn-link">PDF</a></div>
+          </div>
+          <div class="row">
+            <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div>
+            <div><div class="rt">INV-20260524 · Base rent</div><div class="rs">Issued 24 May 2026 · paid 28 May 2026</div></div>
+            <div class="re"><span class="chip chip-success">Paid</span><span style="font-weight:700">$4,820.00</span><a class="btn-link">PDF</a></div>
+          </div>
+        </div>
+
+        <div class="card pad" style="margin-top:16px">
+          <h3 class="h3" style="margin-bottom:10px">How to pay</h3>
+          <div class="two">
+            <div><div class="tiny" style="font-weight:600">PayID</div><div style="font-weight:600;font-size:15px;margin-top:3px">accounts@kingfisher-arcade.com.au</div></div>
+            <div><div class="tiny" style="font-weight:600">BPAY biller</div><div style="font-weight:600;font-size:15px;margin-top:3px">Biller 12345 · Ref 0042 0019</div></div>
+          </div>
+          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span>Quote your invoice reference when paying. Leasium doesn't process payments — these are the property team's direct payment details.</span></div>
+        </div>
+      </section>
+
+      <!-- =============== DOCUMENTS =============== -->
+      <section class="panel" id="p-docs">
+        <h1 class="h1">Documents</h1>
+        <p class="lead">Your lease, invoices, and compliance files in one place.</p>
+
+        <div class="card pad" style="margin-top:20px;border-style:dashed;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div class="ri" style="width:44px;height:44px;background:var(--blue-soft)"><svg viewBox="0 0 24 24" fill="none" stroke="#1E4FE5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5M12 4v12"/></svg></div>
+          <div><div class="rt">Upload a document</div><div class="rs">Insurance certificate, bank guarantee, or anything the team asks for.</div></div>
+          <button class="btn btn-sec btn-sm" style="margin-left:auto">Choose file</button>
+        </div>
+
+        <div class="section-head"><h3>Lease &amp; agreements</h3></div>
+        <div class="card pad">
+          <div class="row"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div><div><div class="rt">Commercial tenancy agreement</div><div class="rs">Signed 24 Feb 2024 · 566 KB</div></div><div class="re"><span class="chip chip-success">Signed</span><a class="btn-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Download</a></div></div>
+        </div>
+
+        <div class="section-head"><h3>Compliance</h3></div>
+        <div class="card pad">
+          <div class="row"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/></svg></div><div><div class="rt">Public liability insurance</div><div class="rs">Received · expires 30 Apr 2027</div></div><div class="re"><span class="chip chip-success">Received</span><a class="btn-link">Download</a></div></div>
+          <div class="row"><div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6z"/></svg></div><div><div class="rt">Bank guarantee</div><div class="rs">Not required for this lease</div></div><div class="re"><span class="chip chip-neutral">Not required</span></div></div>
+        </div>
+      </section>
+
+      <!-- =============== LEASE & DETAILS =============== -->
+      <section class="panel" id="p-lease">
+        <h1 class="h1">Lease &amp; details</h1>
+        <p class="lead">Your tenancy, contact details, and notification preferences.</p>
+
+        <div class="section-head"><h3>Your lease</h3></div>
+        <div class="card pad">
+          <div class="kv">
+            <div><div class="k">Property</div><div class="v">Kingfisher Retail Arcade</div></div>
+            <div><div class="k">Unit</div><div class="v">Shop 4</div></div>
+            <div><div class="k">Lease period</div><div class="v">1 Mar 2024 – 28 Feb 2027</div></div>
+            <div><div class="k">Next review</div><div class="v">1 Sep 2026</div></div>
+          </div>
+        </div>
+
+        <div class="section-head"><h3>Contact details</h3><span class="chip chip-success">Confirmed</span></div>
+        <div class="card pad">
+          <div class="kv">
+            <div><div class="k">Legal name</div><div class="v">Bright Coffee Co. Pty Ltd</div></div>
+            <div><div class="k">Contact</div><div class="v">Jordan Avery</div></div>
+            <div><div class="k">Email</div><div class="v">jordan@brightcoffee.example</div></div>
+            <div><div class="k">Phone</div><div class="v">0400 000 000</div></div>
+          </div>
+          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span>If something looks wrong, send a note to the property team before signing or paying anything that depends on these details.</span></div>
+          <div style="margin-top:14px"><button class="btn btn-sec btn-sm">Request a change</button></div>
+        </div>
+
+        <div class="section-head"><h3>Notifications</h3></div>
+        <div class="card pad">
+          <div class="toggle"><div><div class="rt">Email updates</div><div class="rs">Maintenance progress, invoices, and reminders</div></div><div class="sw on"></div></div>
+          <div class="toggle"><div><div class="rt">SMS updates</div><div class="rs">Quick texts for urgent items and contractor visits</div></div><div class="sw on"></div></div>
+          <div class="toggle"><div><div class="rt">Billing notices</div><div class="rs">New invoices and payment reminders</div></div><div class="sw on"></div></div>
+          <div class="toggle"><div><div class="rt">Compliance reminders</div><div class="rs">Insurance and certificate renewals</div></div><div class="sw"></div></div>
+          <div style="margin-top:16px"><button class="btn btn-primary btn-sm">Save preferences</button></div>
+        </div>
+
+        <div class="card pad" style="margin-top:16px;background:var(--slate100);border:none">
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div class="ri" style="background:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="var(--slate500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></div>
+            <div><div class="rt">How to get back in</div><div class="rs" style="margin-top:2px">Go to leasium.ai/tenant-portal, enter your email, and we'll send a 6-digit code. No password needed.</div></div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+
+  <!-- ===================== BOTTOM NAV (mobile) ===================== -->
+  <nav class="bottomnav" id="bnav">
+    <a class="bn active" data-go="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg>Home</a>
+    <a class="bn" data-go="maint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.3 2.3-2.5-.7-.7-2.5z"/></svg>Maintenance</a>
+    <a class="bn" data-go="pay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/></svg>Payments</a>
+    <a class="bn" data-go="docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Docs</a>
+    <a class="bn" data-go="lease"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M9 13h6M9 17h6"/></svg>More</a>
+  </nav>
+</div><!-- /app -->
+</div><!-- /frame -->
+
+<!-- viewport toggle (prototype helper) -->
+<div class="vp">
+  <button id="vp-d" class="on">Desktop</button>
+  <button id="vp-m">Mobile</button>
+</div>
+
+<script>
+  var titles={home:"Home",maint:"Maintenance",pay:"Payments",docs:"Documents",lease:"Lease & details"};
+  function go(key){
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('show')});
+    var el=document.getElementById('p-'+key); if(el)el.classList.add('show');
+    document.querySelectorAll('#nav .nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.go===key)});
+    document.querySelectorAll('#bnav .bn').forEach(function(n){n.classList.toggle('active',n.dataset.go===key)});
+    var mt=document.getElementById('mTitle'); if(mt&&titles[key])mt.textContent=({home:"Kingfisher Retail Arcade",maint:"Maintenance",pay:"Payments",docs:"Documents",lease:"Lease & details"})[key];
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('[data-go]'); if(t){e.preventDefault();go(t.dataset.go);}
+    var s=e.target.closest('#seg button'); if(s){document.querySelectorAll('#seg button').forEach(function(b){b.classList.remove('on')});s.classList.add('on');}
+    var sw=e.target.closest('.sw'); if(sw){sw.classList.toggle('on');}
+  });
+  // viewport toggle
+  var frame=document.getElementById('frame'),vd=document.getElementById('vp-d'),vm=document.getElementById('vp-m');
+  vd.onclick=function(){frame.classList.remove('m');vd.classList.add('on');vm.classList.remove('on');};
+  vm.onclick=function(){frame.classList.add('m');vm.classList.add('on');vd.classList.remove('on');};
+</script>
+</body>
+</html>

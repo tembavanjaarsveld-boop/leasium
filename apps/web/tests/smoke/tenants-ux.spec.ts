@@ -457,8 +457,13 @@ test("tenant portal upload documents jump stays on the touch-target baseline", a
     "utf8",
   );
 
-  expect(source).not.toMatch(/href="#tenant-documents"[\s\S]{0,220}min-h-9/);
-  expect(source).toMatch(/href="#tenant-documents"[\s\S]{0,220}min-h-11/);
+  // The Home "Upload documents" shortcut now switches to the Documents tab via
+  // the shared SecondaryButton primitive (a 44px touch target by construction),
+  // rather than an in-page anchor jump.
+  expect(source).toMatch(
+    /<SecondaryButton[\s\S]{0,160}setActiveTab\("documents"\)[\s\S]{0,200}Upload documents/,
+  );
+  expect(source).not.toMatch(/href="#tenant-documents"/);
 });
 
 test("tenant portal mobile Horizon cockpit stays mobile-only and anchor-safe", async () => {
