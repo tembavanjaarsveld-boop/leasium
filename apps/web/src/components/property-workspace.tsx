@@ -94,6 +94,7 @@ import {
   type EntityType,
   deleteChargeRule,
   deleteLease,
+  deleteProperty,
   deleteTenancyUnit,
   downloadDocumentBlob,
   EnrichmentSuggestion,
@@ -3298,6 +3299,21 @@ function Workspace({
     },
   });
 
+  const deletePropertyMutation = useMutation({
+    mutationFn: deleteProperty,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["properties"] });
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      queryClient.invalidateQueries({ queryKey: ["entities-xero-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["ownership-split-plan"] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll"] });
+      setSelectedPropertyId("");
+      setEditing(null);
+      setPropertyEditorOpen(false);
+      setBillingProfileOpen(false);
+    },
+  });
+
   // Inline-edit handler for property cells. Optimistic patch of the
   // /properties query cache so the table reflects the change instantly;
   // rollback + rethrow on failure so <InlineEditCell> can keep the cell
@@ -3857,6 +3873,27 @@ function Workspace({
     setPropertyEditorOpen(false);
     setBillingProfileOpen(false);
     form.reset(defaultPropertyFormValues);
+  }
+
+  function handleDeleteProperty() {
+    if (!editing) {
+      return;
+    }
+    const unitCount = selectedPropertyUnitCount;
+    const leaseCount = leasesQuery.data?.length ?? 0;
+    const detail =
+      unitCount || leaseCount
+        ? ` This also removes ${unitCount} unit${
+            unitCount === 1 ? "" : "s"
+          } and ${leaseCount} lease${leaseCount === 1 ? "" : "s"}.`
+        : "";
+    if (
+      window.confirm(
+        `Delete "${editing.name}" from your portfolio?${detail} Tenants are kept. This can't be undone from the app.`,
+      )
+    ) {
+      deletePropertyMutation.mutate(editing.id);
+    }
   }
 
   function startUnitEdit(unit: TenancyUnitRecord) {
@@ -8142,6 +8179,34 @@ function Workspace({
                   <p className="text-sm text-danger">
                     {mutation.error.message}
                   </p>
+                ) : null}
+                {editing ? (
+                  <div className="mt-2 border-t border-border pt-4">
+                    <p className="text-xs text-muted-foreground">
+                      Removes this property from your portfolio along with{" "}
+                      {selectedPropertyUnitCount} unit
+                      {selectedPropertyUnitCount === 1 ? "" : "s"} and{" "}
+                      {leasesQuery.data?.length ?? 0} lease
+                      {(leasesQuery.data?.length ?? 0) === 1 ? "" : "s"}. Tenants
+                      are kept.
+                    </p>
+                    <SecondaryButton
+                      type="button"
+                      onClick={handleDeleteProperty}
+                      disabled={deletePropertyMutation.isPending}
+                      className="mt-2 text-danger"
+                    >
+                      <Trash2 size={16} />
+                      {deletePropertyMutation.isPending
+                        ? "Deleting…"
+                        : "Delete property"}
+                    </SecondaryButton>
+                    {deletePropertyMutation.error ? (
+                      <p className="mt-1 text-sm text-danger">
+                        {deletePropertyMutation.error.message}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </form>
             </aside>

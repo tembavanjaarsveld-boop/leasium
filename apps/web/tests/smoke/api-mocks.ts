@@ -7588,6 +7588,17 @@ export async function mockLeasiumApi(
       }
     }
 
+    if (method === "DELETE" && premiseMatch) {
+      const propertyIndex = properties.findIndex(
+        (property) => property.id === premiseMatch[1],
+      );
+      if (propertyIndex >= 0) {
+        properties.splice(propertyIndex, 1);
+      }
+      await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+      return;
+    }
+
     if (
       method === "GET" &&
       path === `/documents/${propertyImageDocumentId}/download`

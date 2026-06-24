@@ -4526,6 +4526,10 @@ export function updateProperty(
   });
 }
 
+export function deleteProperty(propertyId: string) {
+  return request<void>(`/premises/${propertyId}`, { method: "DELETE" });
+}
+
 export function listTenancyUnits(propertyId: string) {
   const params = new URLSearchParams({ property_id: propertyId });
   return request<TenancyUnitRecord[]>(`/tenancy-units?${params.toString()}`);

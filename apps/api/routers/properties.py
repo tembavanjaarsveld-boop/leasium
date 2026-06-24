@@ -4,11 +4,18 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Property, UserRole
+from stewart.core.models import (
+    Lease,
+    Obligation,
+    Property,
+    RentChargeRule,
+    TenancyUnit,
+    UserRole,
+)
 
 from apps.api.deps import (
     CurrentUser,
@@ -121,6 +128,67 @@ def update_property(
     return prop
 
 
+def _soft_delete_property_cascade(prop: Property, session: Session) -> dict[str, int]:
+    """Soft-delete a property and the register records that hang off it.
+
+    Units, their leases, those leases' charge rules, and any obligations scoped
+    to the property/unit/lease are all marked deleted so nothing is orphaned and
+    a later re-import stays clean. Tenants are entity-scoped and shared, so they
+    are intentionally left in place.
+    """
+    now = utcnow()
+    units = list(
+        session.scalars(
+            select(TenancyUnit).where(
+                TenancyUnit.property_id == prop.id,
+                TenancyUnit.deleted_at.is_(None),
+            )
+        )
+    )
+    unit_ids = [unit.id for unit in units]
+
+    leases: list[Lease] = []
+    if unit_ids:
+        leases = list(
+            session.scalars(
+                select(Lease).where(
+                    Lease.tenancy_unit_id.in_(unit_ids),
+                    Lease.deleted_at.is_(None),
+                )
+            )
+        )
+    lease_ids = [lease.id for lease in leases]
+
+    if lease_ids:
+        for rule in session.scalars(
+            select(RentChargeRule).where(
+                RentChargeRule.lease_id.in_(lease_ids),
+                RentChargeRule.deleted_at.is_(None),
+            )
+        ):
+            rule.deleted_at = now
+
+    obligation_scope = [Obligation.property_id == prop.id]
+    if unit_ids:
+        obligation_scope.append(Obligation.tenancy_unit_id.in_(unit_ids))
+    if lease_ids:
+        obligation_scope.append(Obligation.lease_id.in_(lease_ids))
+    for obligation in session.scalars(
+        select(Obligation).where(
+            Obligation.deleted_at.is_(None),
+            or_(*obligation_scope),
+        )
+    ):
+        obligation.deleted_at = now
+
+    for lease in leases:
+        lease.deleted_at = now
+    for unit in units:
+        unit.deleted_at = now
+    prop.deleted_at = now
+    return {"units": len(units), "leases": len(leases)}
+
+
 @router.delete("/{property_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_property(
     property_id: UUID,
@@ -128,7 +196,7 @@ def delete_property(
     session: Annotated[Session, Depends(get_session)],
 ) -> None:
     prop = _get_property_for_user(property_id, user, session, WRITE_ROLES)
-    prop.deleted_at = utcnow()
+    cascade = _soft_delete_property_cascade(prop, session)
     audit_log(
         session,
         actor=user.actor,
@@ -137,6 +205,10 @@ def delete_property(
         action="delete",
         target_table="property",
         target_id=prop.id,
+        tool_output_summary=(
+            f"Soft-deleted property with {cascade['units']} unit(s) "
+            f"and {cascade['leases']} lease(s)."
+        ),
     )
     session.commit()
 

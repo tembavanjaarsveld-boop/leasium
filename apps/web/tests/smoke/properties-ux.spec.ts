@@ -753,3 +753,46 @@ test("property owner chips display ownership chains with cleaner arrows", async 
     ),
   ).toBe(true);
 });
+
+test("property editor deletes a property after an explicit confirm", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const deleteCalls: string[] = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    if (request.method() === "DELETE") {
+      deleteCalls.push(new URL(request.url()).pathname);
+    }
+    await route.fallback();
+  });
+  // The destructive action is a window.confirm — accept it.
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.goto("/properties");
+  await expect(page.getByRole("heading", { name: "Properties" })).toBeVisible();
+  await page.getByRole("tab", { name: "Table" }).click();
+  await page
+    .getByRole("button", { name: "Edit Queen Street Retail Centre" })
+    .click();
+
+  await expect(
+    page.getByRole("heading", { name: "Edit property", exact: true }),
+  ).toBeVisible();
+
+  // The destructive zone only renders when editing an existing property and
+  // spells out the cascade before anything is removed.
+  await expect(
+    page.getByText(/Removes this property from your portfolio/),
+  ).toBeVisible();
+  const deleteButton = page.getByRole("button", { name: "Delete property" });
+  await expect(deleteButton).toBeVisible();
+  await deleteButton.click();
+
+  await expect.poll(() => deleteCalls).toContain("/api/v1/premises/property-1");
+  // The editor closes once the delete lands.
+  await expect(
+    page.getByRole("heading", { name: "Edit property", exact: true }),
+  ).toHaveCount(0);
+});

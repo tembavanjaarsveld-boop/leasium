@@ -15,6 +15,8 @@ from stewart.core.models import (
     Obligation,
     Property,
     RentChargeRule,
+    RentChargeType,
+    RentFrequency,
     TenancyUnit,
     Tenant,
     XeroConnection,
@@ -363,6 +365,89 @@ def test_property_crud_writes_audit_and_filters_soft_deleted(
         select(AuditAction).where(AuditAction.target_table == "property")
     ).all()
     assert [row.action for row in audit_rows] == ["create", "update", "delete"]
+
+
+def test_property_delete_cascades_units_leases_and_obligations(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    property_id = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Cascade Tower",
+            "street_address": "9 Cascade Street",
+            "suburb": "North Lakes",
+            "state": "QLD",
+            "postcode": "4509",
+            "property_type": "commercial_retail",
+        },
+    ).json()["id"]
+
+    unit_id = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 1", "sqm": 80},
+    ).json()["id"]
+
+    tenant_id = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Cascade Tenant Pty Ltd"},
+    ).json()["id"]
+
+    lease_id = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2027-12-31",
+        },
+    ).json()["id"]
+
+    charge_rule = RentChargeRule(
+        lease_id=UUID(lease_id),
+        charge_type=RentChargeType.base_rent,
+        amount_cents=500000,
+        frequency=RentFrequency.monthly,
+    )
+    obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        title="Annual fire safety statement",
+        due_date=date(2026, 6, 30),
+    )
+    session.add_all([charge_rule, obligation])
+    session.commit()
+    charge_rule_id = charge_rule.id
+    obligation_id = obligation.id
+
+    delete_response = client.delete(f"/api/v1/properties/{property_id}")
+    assert delete_response.status_code == 204
+
+    # Property drops out of its list view and the lease no longer surfaces at the
+    # entity scope, so nothing is left orphaned behind the deleted property.
+    assert client.get(f"/api/v1/properties?entity_id={entity_id}").json() == []
+    assert client.get(f"/api/v1/leases?entity_id={entity_id}").json() == []
+
+    # Soft-deleted, not hard-deleted: rows persist with deleted_at stamped.
+    session.expire_all()
+    assert session.get(TenancyUnit, UUID(unit_id)).deleted_at is not None
+    assert session.get(Lease, UUID(lease_id)).deleted_at is not None
+    assert session.get(RentChargeRule, charge_rule_id).deleted_at is not None
+    assert session.get(Obligation, obligation_id).deleted_at is not None
+
+    # Tenants are shared/entity-scoped and must survive a property delete so a
+    # re-import reuses them instead of creating a duplicate.
+    assert session.get(Tenant, UUID(tenant_id)).deleted_at is None
+
+
+def test_property_delete_missing_returns_404(client: TestClient, session: Session) -> None:
+    missing_id = "00000000-0000-0000-0000-000000000000"
+    response = client.delete(f"/api/v1/properties/{missing_id}")
+    assert response.status_code == 404
 
 
 def test_tenancy_unit_crud_inherits_property_scope(client: TestClient, session: Session) -> None:
