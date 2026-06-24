@@ -23,3 +23,9 @@ build/
 .DS_Store
 .env.neon
 .vercel
+# Operator/tenant data — stray Office docs (e.g. Smart Intake test leases) land
+# at repo root; never commit them. Already-tracked root .docx stay tracked.
+/*.docx
+# Generated artifacts + local tooling state
+output/
+.superpowers/
