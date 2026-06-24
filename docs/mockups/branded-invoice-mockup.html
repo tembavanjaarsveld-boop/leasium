@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Branded invoice mockup — Leasium</title>
+<style>
+  /* Brand assets that would come from Settings → Branding (per Entity).
+     Change these three and the whole document re-skins. */
+  :root {
+    --accent: #15565a;          /* entity accent colour */
+    --accent-soft: #eaf2f1;
+    --ink: #1b2430;
+    --muted: #5d6b7a;
+    --line: #e2e7ee;
+    --page: #f4f5f7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  .sheet {
+    width: 820px; max-width: calc(100% - 32px); margin: 28px auto;
+    background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(20,30,45,.08); overflow: hidden;
+  }
+  .accent-bar { height: 6px; background: var(--accent); }
+  .pad { padding: 40px 48px; }
+
+  /* Header */
+  header.inv { display: flex; justify-content: space-between; gap: 32px; align-items: flex-start; }
+  .brand { display: flex; gap: 16px; align-items: center; }
+  .logo {
+    width: 56px; height: 56px; border-radius: 12px; flex: none;
+    background: var(--accent); color: #fff; display: grid; place-items: center;
+    font-weight: 700; font-size: 22px; letter-spacing: .5px;
+  }
+  .brand h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }
+  .brand .meta { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .doc-title { text-align: right; }
+  .doc-title .kicker { color: var(--accent); font-weight: 700; letter-spacing: 1.5px;
+    font-size: 12px; text-transform: uppercase; }
+  .doc-title .num { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .doc-title .due-chip { margin-top: 12px; display: inline-block; background: var(--accent-soft);
+    color: var(--accent); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 13px; }
+
+  /* Parties + dates */
+  .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; margin-top: 34px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 6px; }
+  .party .name { font-weight: 600; }
+  .party .row, .dates .row { color: var(--muted); font-size: 13px; }
+  .dates { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; align-content: start; }
+  .dates .v { color: var(--ink); font-weight: 600; }
+
+  /* Line items */
+  table { width: 100%; border-collapse: collapse; margin-top: 34px; }
+  thead th { text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); border-bottom: 2px solid var(--line); padding: 0 0 10px; }
+  thead th.r, tbody td.r { text-align: right; }
+  thead th.c, tbody td.c { text-align: center; }
+  tbody td { padding: 14px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody .desc { font-weight: 600; }
+  tbody .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  tbody td.r { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* Totals */
+  .totals { display: flex; justify-content: flex-end; margin-top: 20px; }
+  .totals table { width: 320px; margin: 0; }
+  .totals td { border: 0; padding: 6px 0; }
+  .totals td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .totals .k { color: var(--muted); }
+  .totals .grand td { border-top: 2px solid var(--ink); padding-top: 12px; font-weight: 700; font-size: 16px; }
+  .totals .grand .accent { color: var(--accent); }
+
+  /* Pay + footer */
+  .pay { margin-top: 34px; background: #fafbfc; border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 28px; }
+  .pay .blk .v { font-weight: 600; }
+  .pay .blk .v small { color: var(--muted); font-weight: 400; }
+  .terms { margin-top: 22px; color: var(--muted); font-size: 12.5px; }
+  footer.inv { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+
+  .note { width: 820px; max-width: calc(100% - 32px); margin: 0 auto 36px; color: var(--muted);
+    font-size: 12.5px; text-align: center; }
+  @media print { body { background: #fff; } .sheet { box-shadow: none; border: 0; margin: 0; } .note { display: none; } }
+</style>
+</head>
+<body>
+
+  <div class="sheet">
+    <div class="accent-bar"></div>
+    <div class="pad">
+
+      <header class="inv">
+        <div class="brand">
+          <div class="logo">SK</div>
+          <div>
+            <h1>SKJ Capital Pty Ltd <span style="font-weight:400;color:var(--muted)">ATF SKJ Property Trust</span></h1>
+            <div class="meta">ABN 12 345 678 901 · Level 2, 144 Edward St, Brisbane QLD 4000</div>
+            <div class="meta">accounts@skjcapital.com · (07) 3000 0000</div>
+          </div>
+        </div>
+        <div class="doc-title">
+          <div class="kicker">Tax Invoice</div>
+          <div class="num">INV-1042</div>
+          <div class="due-chip">Amount due $10,120.00</div>
+        </div>
+      </header>
+
+      <div class="grid">
+        <div class="party">
+          <div class="label">Bill to</div>
+          <div class="name">Bright Cafe Pty Ltd</div>
+          <div class="row">ABN 98 765 432 109</div>
+          <div class="row">Shop 3, Queen Street Retail Centre</div>
+          <div class="row">Brisbane QLD 4000</div>
+          <div class="row">accounts@brightcafe.example</div>
+        </div>
+        <div class="dates">
+          <div><div class="label">Issue date</div><div class="v">1 Jun 2026</div></div>
+          <div><div class="label">Due date</div><div class="v">14 Jun 2026</div></div>
+          <div><div class="label">Property</div><div class="v">Queen St — Shop 3</div></div>
+          <div><div class="label">Period</div><div class="v">Jun 2026</div></div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="c">GST</th>
+            <th class="r">Amount (ex GST)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="desc">Base rent — June 2026</div>
+                <div class="sub">Lease L-2025-014 · monthly in advance</div></td>
+            <td class="c">10%</td>
+            <td class="r">$8,000.00</td>
+          </tr>
+          <tr>
+            <td><div class="desc">Outgoings recovery</div>
+                <div class="sub">Council rates, water &amp; building insurance — June</div></td>
+            <td class="c">10%</td>
+            <td class="r">$1,200.00</td>
+          </tr>
+          <tr>
+            <td><div class="desc">Water usage</div>
+                <div class="sub">Sub-meter reading 14 May – 13 Jun</div></td>
+            <td class="c">GST-free</td>
+            <td class="r">$0.00</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <table>
+          <tr><td class="k">Subtotal (ex GST)</td><td class="r">$9,200.00</td></tr>
+          <tr><td class="k">GST 10%</td><td class="r">$920.00</td></tr>
+          <tr class="grand"><td class="accent">Total (inc GST)</td><td class="r accent">$10,120.00</td></tr>
+        </table>
+      </div>
+
+      <div class="pay">
+        <div class="blk">
+          <div class="label">Pay by PayID</div>
+          <div class="v">accounts@skjcapital.com</div>
+        </div>
+        <div class="blk">
+          <div class="label">Pay by BPAY</div>
+          <div class="v">Biller 247135 <small>· Ref 1042 0014</small></div>
+        </div>
+        <div class="blk">
+          <div class="label">Pay by EFT</div>
+          <div class="v">BSB 034-002 · Acct 4471 0142 <small><br>Ref INV-1042</small></div>
+        </div>
+      </div>
+
+      <div class="terms">
+        Payment due within 14 days. Please use reference <strong>INV-1042</strong> so your
+        payment reconciles automatically. This document is a tax invoice for GST purposes —
+        please retain it for your records.
+      </div>
+
+      <footer class="inv">
+        <div>SKJ Capital Pty Ltd ATF SKJ Property Trust · ABN 12 345 678 901</div>
+        <div>Page 1 of 1</div>
+      </footer>
+
+    </div>
+  </div>
+
+  <p class="note">
+    Mockup only — not generated by the app. Branding (logo, accent colour, business
+    details, payment rails) would be set per Entity under Settings → Branding. Edit the
+    three CSS variables at the top to see the document re-skin.
+  </p>
+
+</body>
+</html>
