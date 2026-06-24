@@ -7156,6 +7156,26 @@ export async function mockLeasiumApi(
             confidence: 0.94,
           },
         ],
+        contacts: [
+          {
+            contact_id: "contact-bright-cafe",
+            name: "Bright Cafe",
+            email: "accounts@bright.example",
+          },
+          {
+            contact_id: "contact-gorilla-grind",
+            name: "Gorilla Grind Pty Ltd",
+            email: "ar@gorilla.example",
+          },
+        ],
+        unmatched_targets: [
+          {
+            target_type: "tenant",
+            target_id: "tenant-gorilla",
+            target_name: "Gorilla Grind Pty Ltd",
+            suggested_xero_contact_id: null,
+          },
+        ],
         last_contact_sync_at: "2026-05-19T10:05:00.000Z",
         guardrails: [
           "This is a preview only; tenant and property Xero contact IDs were not changed.",

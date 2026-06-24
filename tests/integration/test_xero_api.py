@@ -1083,7 +1083,11 @@ def test_xero_contact_sync_preview_suggests_matches_without_applying(
         legal_name="Bright Cafe Pty Ltd",
         billing_email="accounts@bright.example",
     )
-    session.add(tenant)
+    unmatched_tenant = Tenant(
+        entity_id=UUID(entity_id),
+        legal_name="Gorilla Grind Pty Ltd",
+    )
+    session.add_all([tenant, unmatched_tenant])
     session.commit()
 
     state = _start_xero_oauth(client, entity_id)
@@ -1127,6 +1131,12 @@ def test_xero_contact_sync_preview_suggests_matches_without_applying(
     assert body["suggested_matches"][0]["target_id"] == str(tenant.id)
     assert body["suggested_matches"][0]["xero_contact_id"] == "xero-contact-bright"
     assert body["suggested_matches"][0]["confidence"] == 0.94
+    assert {option["contact_id"] for option in body["contacts"]} == {
+        "xero-contact-bright"
+    }
+    unmatched_names = {target["target_name"] for target in body["unmatched_targets"]}
+    assert "Gorilla Grind Pty Ltd" in unmatched_names
+    assert "Bright Cafe Pty Ltd" not in unmatched_names
 
     session.refresh(tenant)
     assert "xero_contact_id" not in tenant.tenant_metadata

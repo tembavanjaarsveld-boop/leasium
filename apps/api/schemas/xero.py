@@ -229,12 +229,27 @@ class XeroContactMatchRead(BaseModel):
     confidence: float
 
 
+class XeroContactOptionRead(BaseModel):
+    contact_id: str
+    name: str
+    email: str | None
+
+
+class XeroContactTargetRead(BaseModel):
+    target_type: Literal["tenant", "property"]
+    target_id: UUID
+    target_name: str
+    suggested_xero_contact_id: str | None = None
+
+
 class XeroContactSyncPreviewRead(BaseModel):
     entity_id: UUID
     xero_tenant_id: str
     tenant_name: str | None
     fetched_contacts: int
     suggested_matches: list[XeroContactMatchRead]
+    contacts: list[XeroContactOptionRead]
+    unmatched_targets: list[XeroContactTargetRead]
     last_contact_sync_at: datetime
     guardrails: list[str]
 

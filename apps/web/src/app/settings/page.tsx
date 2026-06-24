@@ -2445,6 +2445,8 @@ function SettingsWorkspace() {
     useState<XeroContactSyncPreviewRecord | null>(null);
   const [xeroContactApplyResult, setXeroContactApplyResult] =
     useState<XeroContactApplyPreviewRecord | null>(null);
+  const [xeroManualContactSelections, setXeroManualContactSelections] =
+    useState<Record<string, string>>({});
   const [xeroChartTaxPreview, setXeroChartTaxPreview] =
     useState<XeroChartTaxValidationPreviewRecord | null>(null);
   const [xeroChartTaxApplyResult, setXeroChartTaxApplyResult] =
@@ -2841,6 +2843,42 @@ function SettingsWorkspace() {
             confidence: match.confidence,
             match_reason: match.match_reason,
           })),
+      ),
+    onSuccess: (result) => {
+      setXeroContactApplyResult(result);
+      refreshXeroViews();
+    },
+  });
+
+  const xeroManualContactApplyMutation = useMutation({
+    mutationFn: () =>
+      applyXeroContactPreview(
+        selectedEntityId,
+        (xeroContactPreview?.unmatched_targets ?? [])
+          .map((target) => {
+            const contactId =
+              xeroManualContactSelections[
+                `${target.target_type}:${target.target_id}`
+              ];
+            const contact = (xeroContactPreview?.contacts ?? []).find(
+              (option) => option.contact_id === contactId,
+            );
+            if (!contact) {
+              return null;
+            }
+            return {
+              target_type: target.target_type,
+              target_id: target.target_id,
+              xero_contact_id: contact.contact_id,
+              xero_contact_name: contact.name,
+              xero_email: contact.email,
+              match_reason: "manually assigned",
+            };
+          })
+          .filter(
+            (mapping): mapping is NonNullable<typeof mapping> =>
+              mapping !== null,
+          ),
       ),
     onSuccess: (result) => {
       setXeroContactApplyResult(result);
@@ -7672,6 +7710,77 @@ function SettingsWorkspace() {
                       />
                     ) : null}
                   </div>
+                  {xeroContactPreview.unmatched_targets.length > 0 ? (
+                    <div className="border-t border-border px-4 py-3">
+                      <div className="text-sm font-semibold text-foreground">
+                        Assign contacts manually
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Pick the matching Xero contact for each tenant or
+                        property that did not auto-match, then apply. Saved
+                        locally only — no Xero contacts are created or changed.
+                      </p>
+                      <div className="mt-3 grid gap-2">
+                        {xeroContactPreview.unmatched_targets.map((target) => {
+                          const key = `${target.target_type}:${target.target_id}`;
+                          return (
+                            <div
+                              key={key}
+                              className="grid gap-2 md:grid-cols-[1fr_minmax(0,280px)] md:items-center"
+                            >
+                              <div className="text-sm">
+                                <span className="font-medium text-foreground">
+                                  {target.target_name}
+                                </span>
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  {target.target_type}
+                                </span>
+                              </div>
+                              <Select
+                                aria-label={`Xero contact for ${target.target_name}`}
+                                value={xeroManualContactSelections[key] ?? ""}
+                                onChange={(event) =>
+                                  setXeroManualContactSelections((current) => ({
+                                    ...current,
+                                    [key]: event.target.value,
+                                  }))
+                                }
+                              >
+                                <option value="">Choose contact…</option>
+                                {xeroContactPreview.contacts.map((contact) => (
+                                  <option
+                                    key={contact.contact_id}
+                                    value={contact.contact_id}
+                                  >
+                                    {contact.name}
+                                    {contact.email ? ` · ${contact.email}` : ""}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        type="button"
+                        className="mt-3"
+                        disabled={
+                          xeroManualContactApplyMutation.isPending ||
+                          Object.values(xeroManualContactSelections).every(
+                            (value) => !value,
+                          )
+                        }
+                        onClick={() => xeroManualContactApplyMutation.mutate()}
+                      >
+                        {xeroManualContactApplyMutation.isPending ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={15} />
+                        )}
+                        Apply contact assignments
+                      </Button>
+                    </div>
+                  ) : null}
                 </SectionPanel>
               </div>
             ) : null}

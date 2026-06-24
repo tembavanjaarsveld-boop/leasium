@@ -7019,6 +7019,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   await expect(
     xeroContactPreviewPanel.getByText("Suggested Xero contact: Bright Cafe"),
   ).toBeVisible();
+  await expect(
+    xeroContactPreviewPanel.getByText("Assign contacts manually"),
+  ).toBeVisible();
+  await xeroContactPreviewPanel
+    .getByLabel("Xero contact for Gorilla Grind Pty Ltd")
+    .selectOption("contact-gorilla-grind");
 
   await page.getByRole("button", { name: "Apply selected mappings" }).click();
   await expect(page.getByText("1 applied")).toBeVisible();

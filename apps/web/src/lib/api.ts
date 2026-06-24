@@ -2086,12 +2086,27 @@ export type XeroContactMatchRecord = {
   confidence: number;
 };
 
+export type XeroContactOption = {
+  contact_id: string;
+  name: string;
+  email: string | null;
+};
+
+export type XeroContactTarget = {
+  target_type: "tenant" | "property";
+  target_id: string;
+  target_name: string;
+  suggested_xero_contact_id: string | null;
+};
+
 export type XeroContactSyncPreviewRecord = {
   entity_id: string;
   xero_tenant_id: string;
   tenant_name: string | null;
   fetched_contacts: number;
   suggested_matches: XeroContactMatchRecord[];
+  contacts: XeroContactOption[];
+  unmatched_targets: XeroContactTarget[];
   last_contact_sync_at: string;
   guardrails: string[];
 };

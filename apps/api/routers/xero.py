@@ -78,7 +78,9 @@ from apps.api.schemas.xero import (
     XeroContactMappingApplyRequest,
     XeroContactMappingApplyResultRead,
     XeroContactMatchRead,
+    XeroContactOptionRead,
     XeroContactSyncPreviewRead,
+    XeroContactTargetRead,
     XeroExceptionQueueItemRead,
     XeroExceptionQueueRead,
     XeroExceptionQueueSummaryRead,
@@ -833,7 +835,9 @@ def _charge_rule_rows(session: Session, entity_id: UUID) -> list[Any]:
 
 
 def _normalise(value: str | None) -> str:
-    return " ".join((value or "").casefold().replace("&", "and").split())
+    text = (value or "").casefold().replace("&", "and")
+    text = "".join(char if char.isalnum() or char.isspace() else " " for char in text)
+    return " ".join(text.split())
 
 
 def _email(value: str | None) -> str:
@@ -927,6 +931,53 @@ def _match_xero_contacts(
             )
         )
     return matches[:50]
+
+
+def _contact_options(contacts: list[dict[str, Any]]) -> list[XeroContactOptionRead]:
+    options: list[XeroContactOptionRead] = []
+    for contact in contacts:
+        contact_id = _contact_id(contact)
+        if contact_id is None or not _active_xero_contact(contact):
+            continue
+        options.append(
+            XeroContactOptionRead(
+                contact_id=contact_id,
+                name=_contact_name(contact),
+                email=_contact_email(contact),
+            )
+        )
+    return options
+
+
+def _unmatched_contact_targets(
+    *,
+    tenants: list[Tenant],
+    properties: list[Property],
+    matches: list[XeroContactMatchRead],
+) -> list[XeroContactTargetRead]:
+    matched = {(match.target_type, match.target_id) for match in matches}
+    targets: list[XeroContactTargetRead] = []
+    for tenant in tenants:
+        if _tenant_xero_contact_id(tenant) or ("tenant", tenant.id) in matched:
+            continue
+        targets.append(
+            XeroContactTargetRead(
+                target_type="tenant",
+                target_id=tenant.id,
+                target_name=_tenant_name(tenant) or tenant.legal_name,
+            )
+        )
+    for prop in properties:
+        if prop.xero_contact_id or ("property", prop.id) in matched:
+            continue
+        targets.append(
+            XeroContactTargetRead(
+                target_type="property",
+                target_id=prop.id,
+                target_name=prop.name,
+            )
+        )
+    return targets
 
 
 def _contact_mapping_metadata(
@@ -2382,6 +2433,12 @@ def preview_xero_contact_sync(
         )
     )
     matches = _match_xero_contacts(contacts=contacts, tenants=tenants, properties=properties)
+    contact_options = _contact_options(contacts)
+    unmatched_targets = _unmatched_contact_targets(
+        tenants=tenants,
+        properties=properties,
+        matches=matches,
+    )
     synced_at = utcnow()
     provider_connection.last_contact_sync_at = synced_at
     provider_connection.updated_by_user_id = user.id
@@ -2416,6 +2473,8 @@ def preview_xero_contact_sync(
         tenant_name=provider_connection.tenant_name,
         fetched_contacts=len(contacts),
         suggested_matches=matches,
+        contacts=contact_options,
+        unmatched_targets=unmatched_targets,
         last_contact_sync_at=synced_at,
         guardrails=[
             "This is a preview only; tenant and property Xero contact IDs were not changed.",
