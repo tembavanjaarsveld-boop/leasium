@@ -78,27 +78,27 @@ const trustPillars = [
 
 export default function WelcomePage() {
   return (
-    <main className="min-h-screen bg-leasium-bg text-foreground">
+    <main className="min-h-screen bg-leasium-canvas text-foreground">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <Link
           href="/welcome"
           className="inline-flex min-h-11 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
         >
           <LeasiumMark className="h-9 w-9" />
-          <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
+          <span className="text-base font-semibold tracking-tight text-foreground">
             Relby
           </span>
         </Link>
         <nav className="flex items-center gap-2 text-sm">
           <Link
             href={accountSignInHref}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 font-semibold text-leasium-slate-600 transition duration-200 ease-leasium hover:text-leasium-navy-800"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 font-semibold text-muted-foreground transition duration-200 ease-leasium hover:text-foreground"
           >
             Sign in
           </Link>
           <Link
             href="/tenant-portal"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-3 font-semibold text-leasium-slate-600 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-3 font-semibold text-muted-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           >
             Tenant invite
           </Link>
@@ -107,13 +107,13 @@ export default function WelcomePage() {
 
       <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-16 pt-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-start lg:gap-14">
         <div className="grid gap-6">
-          <span className="inline-flex w-fit items-center gap-2 rounded-full bg-leasium-blue-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-leasium-blue">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
             Relby sign in
           </span>
-          <h1 className="text-4xl font-bold tracking-tight text-leasium-navy-800 sm:text-5xl">
+          <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
             Sign in to your Relby account.
           </h1>
-          <p className="max-w-xl text-lg leading-relaxed text-leasium-slate-500">
+          <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">
             One sign-in works for property teams and tenants. Relby checks the
             account and opens the right workspace.
           </p>
@@ -134,7 +134,7 @@ export default function WelcomePage() {
             </Link>
             <Link
               href="/tenant-portal"
-              className="group inline-flex min-h-12 items-center justify-between gap-3 rounded-xl border border-border-strong bg-white px-5 text-sm font-semibold text-leasium-slate-700 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
+              className="group inline-flex min-h-12 items-center justify-between gap-3 rounded-xl border border-border-strong bg-white px-5 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
             >
               <span className="flex items-center gap-2">
                 <UserRound size={18} aria-hidden="true" />
@@ -147,7 +147,7 @@ export default function WelcomePage() {
               />
             </Link>
           </div>
-          <p className="flex items-center gap-2 text-sm text-leasium-slate-500">
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <CheckCircle2
               size={16}
               aria-hidden="true"
@@ -160,17 +160,17 @@ export default function WelcomePage() {
         <div className="grid gap-4">
           <article className="grid gap-4 rounded-2xl border border-border bg-white p-6 shadow-leasiumMd">
             <div className="flex items-start gap-3">
-              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-leasium-blue-soft text-leasium-blue">
+              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
                 <Building2 size={21} aria-hidden="true" />
               </span>
               <div className="grid gap-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-leasium-blue">
+                <p className="text-xs font-semibold uppercase tracking-wider text-primary">
                   Agents
                 </p>
-                <h2 className="text-xl font-semibold tracking-tight text-leasium-navy-800">
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">
                   Property team workspace
                 </h2>
-                <p className="text-sm leading-relaxed text-leasium-slate-500">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   Review lease intake, tenant onboarding, billing readiness,
                   maintenance, approvals, and portfolio activity.
                 </p>
@@ -189,17 +189,17 @@ export default function WelcomePage() {
 
           <article className="grid gap-4 rounded-2xl border border-border bg-white p-6 shadow-leasiumMd">
             <div className="flex items-start gap-3">
-              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-leasium-teal-soft text-success-strong">
+              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-success-strong">
                 <UserRound size={21} aria-hidden="true" />
               </span>
               <div className="grid gap-1">
                 <p className="text-xs font-semibold uppercase tracking-wider text-success-strong">
                   Tenants
                 </p>
-                <h2 className="text-xl font-semibold tracking-tight text-leasium-navy-800">
+                <h2 className="text-xl font-semibold tracking-tight text-foreground">
                   Tenant portal
                 </h2>
-                <p className="text-sm leading-relaxed text-leasium-slate-500">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   Sign in to continue onboarding, review lease documents, upload
                   requested items, and raise maintenance requests.
                 </p>
@@ -213,7 +213,7 @@ export default function WelcomePage() {
                 <KeyRound size={16} aria-hidden="true" />
                 Sign in
               </Link>
-              <p className="inline-flex min-h-11 items-center text-xs leading-relaxed text-leasium-slate-500">
+              <p className="inline-flex min-h-11 items-center text-xs leading-relaxed text-muted-foreground">
                 New tenant? Start from the invite email so your portal links to
                 the right lease.
               </p>
@@ -225,13 +225,13 @@ export default function WelcomePage() {
       <section className="border-y border-border bg-white">
         <div className="mx-auto grid max-w-6xl gap-8 px-6 py-12">
           <div className="grid gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-leasium-blue">
+            <span className="text-xs font-semibold uppercase tracking-wider text-primary">
               Upload. Review. Automate.
             </span>
-            <h2 className="text-2xl font-bold tracking-tight text-leasium-navy-800">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">
               From document to controlled workflow.
             </h2>
-            <p className="max-w-2xl text-sm text-leasium-slate-500">
+            <p className="max-w-2xl text-sm text-muted-foreground">
               Every lease, invoice, certificate, and tenant document moves
               through the same four-step path. Nothing skips review.
             </p>
@@ -242,20 +242,20 @@ export default function WelcomePage() {
               return (
                 <li
                   key={step.title}
-                  className="grid gap-3 rounded-2xl border border-border bg-leasium-slate-50 p-5"
+                  className="grid gap-3 rounded-2xl border border-border bg-muted p-5"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-leasium-blue-soft text-leasium-blue">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
                       <Icon size={18} aria-hidden="true" />
                     </span>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-leasium-slate-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Step {index + 1}
                     </span>
                   </div>
-                  <h3 className="text-base font-semibold tracking-tight text-leasium-navy-800">
+                  <h3 className="text-base font-semibold tracking-tight text-foreground">
                     {step.title}
                   </h3>
-                  <p className="text-sm leading-relaxed text-leasium-slate-500">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     {step.body}
                   </p>
                 </li>
@@ -267,10 +267,10 @@ export default function WelcomePage() {
 
       <section className="mx-auto grid max-w-6xl gap-8 px-6 py-14">
         <div className="grid gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-leasium-blue">
+          <span className="text-xs font-semibold uppercase tracking-wider text-primary">
             Built for daily lease operations
           </span>
-          <h2 className="text-2xl font-bold tracking-tight text-leasium-navy-800">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">
             One workspace for every lease motion.
           </h2>
         </div>
@@ -282,13 +282,13 @@ export default function WelcomePage() {
                 key={card.title}
                 className="grid gap-3 rounded-2xl border border-border bg-white p-6 shadow-leasiumXs"
               >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-leasium-teal-soft text-success-strong">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-success-strong">
                   <Icon size={20} aria-hidden="true" />
                 </span>
-                <h3 className="text-lg font-semibold tracking-tight text-leasium-navy-800">
+                <h3 className="text-lg font-semibold tracking-tight text-foreground">
                   {card.title}
                 </h3>
-                <p className="text-sm leading-relaxed text-leasium-slate-500">
+                <p className="text-sm leading-relaxed text-muted-foreground">
                   {card.body}
                 </p>
               </article>
@@ -335,19 +335,19 @@ export default function WelcomePage() {
       >
         <article className="grid gap-4 rounded-2xl border border-border bg-white p-6 shadow-leasiumSm">
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-leasium-blue-soft text-leasium-blue">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
               <ShieldCheck size={20} aria-hidden="true" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-leasium-blue">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">
                 Agent
               </p>
-              <h3 className="text-lg font-semibold tracking-tight text-leasium-navy-800">
+              <h3 className="text-lg font-semibold tracking-tight text-foreground">
                 Operator workspace
               </h3>
             </div>
           </div>
-              <p className="text-sm leading-relaxed text-leasium-slate-500">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 For property managers and operations leads. Sign in to your
                 command centre, review intake, approve workflows, and clear
                 billing blockers.
@@ -364,19 +364,19 @@ export default function WelcomePage() {
 
         <article className="grid gap-4 rounded-2xl border border-border bg-white p-6 shadow-leasiumSm">
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-leasium-teal-soft text-success-strong">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-success-strong">
               <UploadCloud size={20} aria-hidden="true" />
             </span>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-success-strong">
                 Tenant
               </p>
-              <h3 className="text-lg font-semibold tracking-tight text-leasium-navy-800">
+              <h3 className="text-lg font-semibold tracking-tight text-foreground">
                 Tenant portal
               </h3>
             </div>
           </div>
-          <p className="text-sm leading-relaxed text-leasium-slate-500">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             For tenants and their teams. Sign in to your portal, complete
             onboarding, submit documents, and raise maintenance requests.
           </p>
@@ -387,7 +387,7 @@ export default function WelcomePage() {
             >
               Sign in <ArrowRight size={16} aria-hidden="true" />
             </Link>
-            <p className="inline-flex min-h-11 items-center text-xs text-leasium-slate-500">
+            <p className="inline-flex min-h-11 items-center text-xs text-muted-foreground">
               Have a setup link? Use the link in your invite email.
             </p>
           </div>
@@ -395,11 +395,11 @@ export default function WelcomePage() {
       </section>
 
       <footer className="border-t border-border bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-6 text-xs text-leasium-slate-500">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-6 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <LeasiumMark className="h-6 w-6" />
-            <span className="font-semibold text-leasium-navy-800">Relby</span>
-            <span className="text-leasium-slate-400">
+            <span className="font-semibold text-foreground">Relby</span>
+            <span className="text-muted-foreground">
               · Lease operations, automated
             </span>
           </div>

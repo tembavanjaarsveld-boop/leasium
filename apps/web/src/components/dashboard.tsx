@@ -3160,7 +3160,7 @@ export function Dashboard({
                 uploadSmartIntake(event.dataTransfer.files[0]);
               }}
               className={[
-                "overflow-hidden rounded-[22px] border bg-[linear-gradient(135deg,var(--leasium-hero-wash-from)_0%,rgba(255,255,255,0.94)_46%,var(--leasium-hero-wash-to)_100%)] px-4 py-6 shadow-[0_18px_44px_rgba(36,91,255,0.08),0_1px_3px_rgba(16,24,40,0.04)] transition sm:px-6 sm:py-10 xl:px-10",
+                "overflow-hidden rounded-[22px] border bg-[linear-gradient(135deg,var(--leasium-hero-wash-from)_0%,var(--leasium-hero-wash-mid)_46%,var(--leasium-hero-wash-to)_100%)] px-4 py-6 shadow-[0_18px_44px_rgba(36,91,255,0.08),0_1px_3px_rgba(16,24,40,0.04)] transition sm:px-6 sm:py-10 xl:px-10",
                 dragActive
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-primary/35",

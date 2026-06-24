@@ -28,6 +28,7 @@
   --leasium-bg: #f7f9fc;
   --leasium-surface: #ffffff;
   --leasium-hero-wash-from: #eaf0ff;
+  --leasium-hero-wash-mid: rgba(255, 255, 255, 0.94);
   --leasium-hero-wash-to: #e8faf7;
   --leasium-success: #12b76a;
   --leasium-success-soft: #ecfdf3;
@@ -91,6 +92,7 @@
   --leasium-bg: #0d1424;
   --leasium-surface: #121a2a;
   --leasium-hero-wash-from: #111b35;
+  --leasium-hero-wash-mid: #16223f;
   --leasium-hero-wash-to: #102b2a;
   --leasium-success: #32d583;
   --leasium-success-soft: #0f2f24;
@@ -262,6 +264,19 @@
     color-mix(in srgb, var(--leasium-blue-soft) 40%, transparent),
     var(--leasium-surface),
     color-mix(in srgb, var(--leasium-teal-soft) 25%, transparent)
+  ) !important;
+}
+
+/* Relby AI hero toolbar strip: bg-gradient-to-r from-primary-soft/60
+   via-white to-accent-soft/70. The to-r direction is not caught by the
+   to-br rule above, so its via-white stop stays bright in dark mode.
+   Remap to the dark soft tokens to match the hero card. */
+:root[data-theme="dark"] .bg-gradient-to-r.via-white {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--leasium-blue-soft) 60%, transparent),
+    var(--leasium-surface),
+    color-mix(in srgb, var(--leasium-teal-soft) 70%, transparent)
   ) !important;
 }
 
