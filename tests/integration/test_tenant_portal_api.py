@@ -605,6 +605,56 @@ def test_tenant_portal_account_claim_accepts_verified_secondary_email(
     assert account.tenant_id == UUID(scope["tenant_id"])
 
 
+def test_migrated_applied_onboarding_claims_into_working_portal(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    """A migrated (already-applied) row claims a login and skips the wizard."""
+
+    app.dependency_overrides[get_settings] = _tenant_account_settings
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.applied
+    onboarding.review_data = {"origin": "migration"}
+    session.commit()
+
+    def fake_identity(authorization, settings):  # noqa: ANN001, ARG001
+        return ClerkIdentity(
+            provider_id="tenant-subject-one",
+            verified_email="avery@portal-one.example",
+        )
+
+    monkeypatch.setattr(tenant_portal_router, "_tenant_portal_identity", fake_identity)
+
+    claim = client.post(
+        "/api/v1/tenant-portal/account/claim",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={"portal_token": scope["token"]},
+    )
+
+    assert claim.status_code == 200
+    assert claim.json()["onboarding"]["status"] == "applied"
+    account = _account_by_provider(session, "tenant-subject-one")
+    assert account.status == TenantPortalAccountStatus.active
+    session.refresh(onboarding)
+    assert onboarding.token_consumed_at is not None
+
+    # The confirm-details wizard stays closed for an applied row.
+    blocked = client.post(
+        "/api/v1/tenant-portal/onboarding/submit",
+        headers={"Authorization": "Bearer tenant-subject-one"},
+        json={
+            "legal_name": "Portal Tenant One Pty Ltd",
+            "contact_name": "Avery Tenant",
+            "contact_email": "avery@portal-one.example",
+            "accepted": True,
+        },
+    )
+    assert blocked.status_code == 409
+
+
 def test_tenant_portal_account_claim_ignores_client_claimed_email_without_clerk_match(
     client: TestClient,
     session: Session,

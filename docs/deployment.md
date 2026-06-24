@@ -674,3 +674,36 @@ to a new revision such as `20260520_0018`, recover by redeploying the same or
 newer commit that contains that migration. Do not intentionally start an older
 backend against the advanced database unless the database is first restored,
 downgraded, or explicitly stamped to a revision that the older artifact contains.
+
+## Tenant migration runbook (existing / already-onboarded tenants)
+
+Goal: give existing tenants a working portal login without the confirm-details
+wizard. The wizard is gated on `tenant_onboarding.status == 'sent'`, so a row
+created directly in `applied` state skips it.
+
+1. Import each lease via Smart Intake (or register import) so the tenant/lease
+   records exist; set live leases to `active` (Smart Intake defaults to
+   `pending`).
+2. Email-quality pass: the portal claim verifies the tenant's Clerk login email
+   against the tenant's contact/billing email. Fix mismatches first, or the
+   claim is rejected.
+3. Create the migrated onboarding rows (provider-inert, idempotent):
+   - Dry run + email pre-check (writes nothing):
+     `.venv/bin/python -m scripts.migrate_existing_tenants --leases-file leases.txt`
+   - Apply:
+     `.venv/bin/python -m scripts.migrate_existing_tenants --leases-file leases.txt --apply`
+   - Or per-tenant via the API:
+     `POST /api/v1/tenant-onboarding/migrated {"lease_id": "<uuid>"}`.
+4. Send each tenant their login link (explicit operator action; SendGrid):
+   `POST /api/v1/tenant-onboarding/{onboarding_id}/send-portal-invite`.
+   The in-app "Send portal invite" button is currently shown only for `sent`
+   rows; until that is relaxed for `applied` rows, send migrated links via the
+   API.
+5. The tenant opens the link → signs in with Clerk → the account is
+   claimed/linked → they land directly in the working portal. Afterwards they
+   sign in at `/tenant-portal` with no token.
+
+Notes: creating migrated rows never mutates the tenant record or contacts a
+provider. Re-sending a login link rotates the token if a prior one was consumed.
+Migrated rows carry `review_data.origin = 'migration'`, which is also what
+authorises the relaxed portal invite.

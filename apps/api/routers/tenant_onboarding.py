@@ -37,6 +37,11 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
+from stewart.domain.tenant_migration import (
+    build_migrated_onboarding,
+    find_active_onboarding,
+    is_migration_onboarding,
+)
 from stewart.integrations.communications import (
     DeliveryResult,
     TenantOnboardingInvite,
@@ -68,6 +73,7 @@ from apps.api.schemas.tenant_onboarding import (
     TenantOnboardingCancel,
     TenantOnboardingCreate,
     TenantOnboardingFreshLink,
+    TenantOnboardingMigratedCreate,
     TenantOnboardingPublicRead,
     TenantOnboardingRead,
     TenantOnboardingReminderRunRead,
@@ -1636,6 +1642,61 @@ def create_tenant_onboarding(
     return _read(onboarding)
 
 
+@router.post(
+    "/migrated",
+    response_model=TenantOnboardingRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_migrated_tenant_onboarding(
+    payload: TenantOnboardingMigratedCreate,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> TenantOnboardingRead:
+    """Create an onboarding row for an already-onboarded (migrated) tenant.
+
+    The tenant's details already live on the tenant record (imported from the
+    existing lease via Smart Intake), so there is nothing for the tenant to
+    confirm. The row is created directly in ``applied`` state with operator
+    attribution and a migration provenance marker, so the tenant skips the
+    confirm-details wizard and lands straight in the working portal once they
+    claim their login. Provider-inert: no invite is sent here, and the tenant
+    record is never mutated. Delivering the login link is a separate, explicit
+    operator action via ``/{onboarding_id}/send-portal-invite``.
+    """
+
+    lease, prop, tenant = _lease_scope(payload.lease_id, session)
+    assert_entity_role(session, user, prop.entity_id, WRITE_ROLES)
+
+    existing = find_active_onboarding(session, lease.id, tenant.id)
+    if existing is not None:
+        return _read(existing)
+
+    onboarding = build_migrated_onboarding(
+        entity_id=prop.entity_id,
+        lease_id=lease.id,
+        tenant_id=tenant.id,
+        token=_new_token(session),
+        now=utcnow(),
+        user_id=user.id,
+        due_date=payload.due_date,
+        expires_at=payload.expires_at,
+    )
+    session.add(onboarding)
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=prop.entity_id,
+        action="migrate",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+    )
+    session.commit()
+    session.refresh(onboarding)
+    return _read(onboarding)
+
+
 @router.post("/reminders/run", response_model=TenantOnboardingReminderRunRead)
 def run_tenant_onboarding_reminders(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -2100,14 +2161,19 @@ def send_tenant_onboarding_portal_invite(
     Operator-triggered. Builds an invite pointing at the tenant portal (where
     the tenant signs in with Clerk and the existing claim flow links them to
     this onboarding row). Never mutates the tenant record. The onboarding row
-    must be live (``sent`` and not expired).
+    must be live and not expired: either ``sent``, or a migrated ``applied``
+    row whose tenant was onboarded outside Leasium.
     """
 
     onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)
-    if onboarding.status != TenantOnboardingStatus.sent:
+    portal_invite_ready = onboarding.status == TenantOnboardingStatus.sent or (
+        onboarding.status == TenantOnboardingStatus.applied
+        and is_migration_onboarding(onboarding)
+    )
+    if not portal_invite_ready:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Only sent onboarding rows can receive a portal invite.",
+            detail="Only sent or migrated onboarding rows can receive a portal invite.",
         )
     if _is_expired(onboarding):
         raise HTTPException(

@@ -838,6 +838,100 @@ def test_tenant_onboarding_send_portal_invite_rejects_submitted_or_expired(
     assert reject_response.status_code == 409
 
 
+def test_migrated_tenant_onboarding_creates_applied_row_without_provider(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    tenant = session.scalar(
+        select(Tenant).where(Tenant.legal_name == "Onboarding Tenant Pty Ltd")
+    )
+    assert tenant is not None
+
+    response = client.post(
+        "/api/v1/tenant-onboarding/migrated",
+        json={"lease_id": lease_id},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "applied"
+    assert body["token"]
+    assert body["last_sent_at"] is None
+    assert body["delivery_data"] == {}
+
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    assert onboarding.review_data["origin"] == "migration"
+    assert onboarding.applied_by_user_id is not None
+    assert onboarding.reviewed_by_user_id is not None
+    # Provider-inert: the tenant record is never mutated by migration.
+    session.refresh(tenant)
+    assert tenant.legal_name == "Onboarding Tenant Pty Ltd"
+
+
+def test_migrated_tenant_onboarding_send_portal_invite_delivers(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    def fake_portal_send(invite, settings):  # noqa: ANN001, ARG001
+        return [
+            DeliveryResult(
+                channel="email",
+                status="queued",
+                provider="sendgrid",
+                recipient="tenant@example.com",
+                provider_message_id="migrated-portal-invite-1",
+            )
+        ]
+
+    monkeypatch.setattr(
+        tenant_onboarding_router, "send_tenant_portal_invite", fake_portal_send
+    )
+    lease_id = _lease_id(client, session)
+    created = client.post(
+        "/api/v1/tenant-onboarding/migrated",
+        json={"lease_id": lease_id},
+    )
+    assert created.status_code == 201
+    onboarding_id = created.json()["id"]
+
+    invite_response = client.post(
+        f"/api/v1/tenant-onboarding/{onboarding_id}/send-portal-invite",
+    )
+
+    assert invite_response.status_code == 200
+    body = invite_response.json()
+    assert body["status"] == "applied"
+    assert body["delivery_data"]["portal_invite"]["template_key"] == "tenant_portal_invite"
+
+
+def test_send_portal_invite_rejects_non_migration_applied(
+    client: TestClient,
+    session: Session,
+) -> None:
+    applied = _create_applied_onboarding(client, session)
+
+    response = client.post(
+        f"/api/v1/tenant-onboarding/{applied['id']}/send-portal-invite",
+    )
+
+    assert response.status_code == 409
+
+
+def test_migrated_tenant_onboarding_is_idempotent(
+    client: TestClient,
+    session: Session,
+) -> None:
+    lease_id = _lease_id(client, session)
+    first = client.post("/api/v1/tenant-onboarding/migrated", json={"lease_id": lease_id})
+    assert first.status_code == 201
+    second = client.post("/api/v1/tenant-onboarding/migrated", json={"lease_id": lease_id})
+    assert second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+
+
 def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
     client: TestClient,
     session: Session,

@@ -17,6 +17,20 @@ class TenantOnboardingCreate(BaseModel):
     send_initial_invite: bool = True
 
 
+class TenantOnboardingMigratedCreate(BaseModel):
+    """Create an onboarding row for an already-onboarded (migrated) tenant.
+
+    The tenant's details already live on the tenant record (imported from the
+    existing lease), so the row is created directly in ``applied`` state and
+    the tenant skips the confirm-details wizard. Provider-inert: no invite is
+    sent on create.
+    """
+
+    lease_id: UUID
+    due_date: date | None = None
+    expires_at: datetime | None = None
+
+
 class TenantOnboardingCancel(BaseModel):
     reason: str | None = None
 
