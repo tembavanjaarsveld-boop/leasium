@@ -6426,50 +6426,87 @@ function SettingsWorkspace() {
                       ) : null}
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {[
+                    {(() => {
+                      const connectDone = xeroHasProviderConnection;
+                      const autoMapDone =
+                        connectDone &&
+                        status.chart_mapping.missing === 0 &&
+                        status.tax_mapping.missing === 0;
+                      const contactsDone =
+                        connectDone &&
+                        status.contact_mapping.total > 0 &&
+                        status.contact_mapping.missing === 0;
+                      const setupSteps = [
                         {
-                          label: "1. Connect",
-                          detail: xeroHasProviderConnection
-                            ? (xeroConnectedOrgName ?? "Xero connected")
-                            : "Choose the matching Xero organisation.",
-                          done: xeroHasProviderConnection,
+                          key: "connect",
+                          label: "Connect",
+                          done: connectDone,
+                          detail: connectDone
+                            ? `Connected to ${xeroConnectedOrgName ?? "Xero"}.`
+                            : "Sign in to the matching Xero organisation.",
                         },
                         {
-                          label: "2. Review",
-                          detail: xeroCanPreviewContacts
-                            ? "Match Xero contacts to tenants and owners."
-                            : "Available after connection.",
-                          done:
-                            status.contact_mapping.total > 0 &&
-                            status.contact_mapping.missing === 0,
+                          key: "automap",
+                          label: "Auto-map accounts & tax",
+                          done: autoMapDone,
+                          detail: autoMapDone
+                            ? "Account codes and tax types are mapped."
+                            : "Pull your Xero chart and apply the suggested account and tax mappings.",
                         },
                         {
-                          label: "3. Prepare",
-                          detail: xeroCanPreviewInvoicePosting
-                            ? "Preview draft invoices before approval."
-                            : "No invoices are created here.",
-                          done: status.invoice_sync.synced > 0,
+                          key: "contacts",
+                          label: "Match contacts",
+                          done: contactsDone,
+                          detail: contactsDone
+                            ? "Tenants and owners are matched to Xero contacts."
+                            : "Match Xero contacts to tenants and owners.",
                         },
-                      ].map((step) => (
-                        <div
-                          key={step.label}
-                          className="rounded-lg border border-border bg-white p-3 text-sm"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold">{step.label}</span>
-                            <StatusBadge
-                              tone={step.done ? "success" : "neutral"}
-                            >
-                              {step.done ? "Done" : "Next"}
-                            </StatusBadge>
-                          </div>
-                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                            {step.detail}
-                          </p>
+                      ];
+                      const activeIndex = setupSteps.findIndex(
+                        (step) => !step.done,
+                      );
+                      return (
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {setupSteps.map((step, index) => {
+                            const isActive = index === activeIndex;
+                            return (
+                              <div
+                                key={step.key}
+                                className={`rounded-lg border p-3 text-sm ${
+                                  isActive
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border bg-white"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold">
+                                    {index + 1}. {step.label}
+                                  </span>
+                                  <StatusBadge
+                                    tone={
+                                      step.done
+                                        ? "success"
+                                        : isActive
+                                          ? "primary"
+                                          : "neutral"
+                                    }
+                                  >
+                                    {step.done
+                                      ? "Done"
+                                      : isActive
+                                        ? "Now"
+                                        : "Next"}
+                                  </StatusBadge>
+                                </div>
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                  {step.detail}
+                                </p>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
 
                     <details className="rounded-xl border border-border bg-white">
                       <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-foreground">
