@@ -162,7 +162,7 @@ test("operator shell muted text and urgent badges keep readable contrast", async
   );
 
   await page.goto("/billing-readiness?tab=delivery");
-  await expectContrast(page.getByText("Send, sync, record payment"));
+  await expectContrast(page.getByText("Send invoices, then track payment"));
   await expectContrast(
     page
       .getByRole("button", { name: /All \d+/ })
