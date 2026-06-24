@@ -7044,7 +7044,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
     })
     .first();
   await chartTaxPreviewPanel
-    .getByRole("button", { name: "Apply suggested mappings" })
+    .getByRole("button", { name: "Apply mappings" })
     .click();
   await expect(chartTaxPreviewPanel.getByText("1 applied")).toBeVisible();
   await expect(chartTaxPreviewPanel.getByText("0 skipped")).toBeVisible();
@@ -7067,8 +7067,12 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("button", { name: "Check accounts and tax" }).click();
   await expect(page.getByText("1/1 ready").first()).toBeVisible();
-  await expect(page.getByText("Rental Income")).toBeVisible();
-  await expect(page.getByText("GST on Income")).toBeVisible();
+  await expect(page.getByLabel("Xero account for base_rent")).toHaveValue(
+    "401",
+  );
+  await expect(page.getByLabel("Xero tax type for base_rent")).toHaveValue(
+    "OUTPUT",
+  );
 
   await page.getByRole("button", { name: "Review posting" }).click();
   const xeroInvoicePostingPreviewPanel = page.locator("section").filter({

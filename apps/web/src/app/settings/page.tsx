@@ -2449,6 +2449,9 @@ function SettingsWorkspace() {
     useState<XeroChartTaxValidationPreviewRecord | null>(null);
   const [xeroChartTaxApplyResult, setXeroChartTaxApplyResult] =
     useState<XeroChartTaxApplyRecord | null>(null);
+  const [xeroChartTaxSelections, setXeroChartTaxSelections] = useState<
+    Record<string, { account_code: string; tax_type: string }>
+  >({});
   const [xeroInvoicePostingPreview, setXeroInvoicePostingPreview] =
     useState<XeroInvoicePostingPreviewRecord | null>(null);
   const [xeroInvoiceApprovalResults, setXeroInvoiceApprovalResults] = useState<
@@ -2850,6 +2853,17 @@ function SettingsWorkspace() {
     onSuccess: (result) => {
       setXeroChartTaxPreview(result);
       setXeroChartTaxApplyResult(null);
+      setXeroChartTaxSelections(
+        Object.fromEntries(
+          result.results.map((row) => [
+            row.charge_rule_id,
+            {
+              account_code: row.account_code ?? row.suggested_account_code ?? "",
+              tax_type: row.tax_type ?? row.suggested_tax_type ?? "",
+            },
+          ]),
+        ),
+      );
       refreshXeroViews();
     },
   });
@@ -2859,16 +2873,15 @@ function SettingsWorkspace() {
       applyXeroChartTaxMapping(
         selectedEntityId,
         (xeroChartTaxPreview?.results ?? [])
-          .filter(
-            (result) =>
-              result.status !== "ready" && result.suggested_account_code,
-          )
           .map((result) => ({
             charge_rule_id: result.charge_rule_id,
-            account_code: result.suggested_account_code,
-            tax_type: result.suggested_tax_type,
-            source: "xero_chart_tax_preview",
-          })),
+            account_code:
+              xeroChartTaxSelections[result.charge_rule_id]?.account_code || null,
+            tax_type:
+              xeroChartTaxSelections[result.charge_rule_id]?.tax_type || null,
+            source: "xero_chart_tax_picker",
+          }))
+          .filter((mapping) => mapping.account_code),
       ),
     onSuccess: (result) => {
       setXeroChartTaxApplyResult(result);
@@ -7741,17 +7754,16 @@ function SettingsWorkspace() {
                 </div>
                 <div className="flex flex-col gap-3 border-t border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
                   <div className="text-xs text-muted-foreground">
-                    Applies the suggested account code and tax type to charge
-                    rules that still need review. Saved locally only — no Xero
-                    posting or mutation runs.
+                    Pick the Xero account and tax type for each charge rule
+                    below, then apply. Saved locally only — no Xero posting or
+                    mutation runs.
                   </div>
                   <Button
                     type="button"
                     disabled={
                       xeroChartTaxApplyMutation.isPending ||
                       !xeroCanValidateChartTax ||
-                      chartTaxCounts.needsMapping + chartTaxCounts.notFound ===
-                        0
+                      xeroChartTaxPreview.results.length === 0
                     }
                     onClick={() => xeroChartTaxApplyMutation.mutate()}
                   >
@@ -7760,7 +7772,7 @@ function SettingsWorkspace() {
                     ) : (
                       <CheckCircle2 size={15} />
                     )}
-                    Apply suggested mappings
+                    Apply mappings
                   </Button>
                 </div>
                 {xeroChartTaxApplyResult ? (
@@ -7824,27 +7836,66 @@ function SettingsWorkspace() {
                                 : ""}
                             </div>
                           </td>
-                          <td className="min-w-48 px-3 py-3 text-xs">
-                            <div>
-                              {result.account_code ?? "-"}
-                              {result.account_name
-                                ? ` / ${result.account_name}`
-                                : ""}
-                            </div>
+                          <td className="min-w-56 px-3 py-3 text-xs">
+                            <Select
+                              aria-label={`Xero account for ${result.charge_type}`}
+                              value={
+                                xeroChartTaxSelections[result.charge_rule_id]
+                                  ?.account_code ?? ""
+                              }
+                              onChange={(event) =>
+                                setXeroChartTaxSelections((current) => ({
+                                  ...current,
+                                  [result.charge_rule_id]: {
+                                    account_code: event.target.value,
+                                    tax_type:
+                                      current[result.charge_rule_id]?.tax_type ??
+                                      "",
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">Choose account…</option>
+                              {xeroChartTaxPreview.accounts.map((account) => (
+                                <option key={account.code} value={account.code}>
+                                  {account.code}
+                                  {account.name ? ` · ${account.name}` : ""}
+                                </option>
+                              ))}
+                            </Select>
                             <div className="mt-1 text-muted-foreground">
-                              {result.account_valid ? "Valid" : "Needs review"}
-                              {result.account_status
-                                ? ` / ${result.account_status}`
-                                : ""}
+                              Saved: {result.account_code ?? "unset"}
                             </div>
                           </td>
-                          <td className="min-w-48 px-3 py-3 text-xs">
-                            <div>
-                              {result.tax_type ?? "-"}
-                              {result.tax_name ? ` / ${result.tax_name}` : ""}
-                            </div>
+                          <td className="min-w-56 px-3 py-3 text-xs">
+                            <Select
+                              aria-label={`Xero tax type for ${result.charge_type}`}
+                              value={
+                                xeroChartTaxSelections[result.charge_rule_id]
+                                  ?.tax_type ?? ""
+                              }
+                              onChange={(event) =>
+                                setXeroChartTaxSelections((current) => ({
+                                  ...current,
+                                  [result.charge_rule_id]: {
+                                    account_code:
+                                      current[result.charge_rule_id]
+                                        ?.account_code ?? "",
+                                    tax_type: event.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">No tax</option>
+                              {xeroChartTaxPreview.tax_rates.map((tax) => (
+                                <option key={tax.tax_type} value={tax.tax_type}>
+                                  {tax.tax_type}
+                                  {tax.name ? ` · ${tax.name}` : ""}
+                                </option>
+                              ))}
+                            </Select>
                             <div className="mt-1 text-muted-foreground">
-                              {result.tax_valid ? "Valid" : "Needs review"}
+                              Saved: {result.tax_type ?? "unset"}
                             </div>
                           </td>
                           <td className="px-3 py-3 text-xs">

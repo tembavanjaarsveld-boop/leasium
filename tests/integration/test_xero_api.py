@@ -1366,6 +1366,8 @@ def test_xero_chart_tax_validation_preview_checks_provider_accounts_and_tax_rate
     body = response.json()
     assert body["fetched_accounts"] == 2
     assert body["fetched_tax_rates"] == 1
+    assert {account["code"] for account in body["accounts"]} == {"200", "999"}
+    assert body["tax_rates"][0]["tax_type"] == "OUTPUT"
     assert body["checked_rules"] == 2
     assert "No invoice posting" in body["guardrails"][2]
 
@@ -1405,6 +1407,66 @@ def test_xero_chart_tax_validation_preview_checks_provider_accounts_and_tax_rate
     )
     assert audit is not None
     assert "no invoice posting" in audit.tool_output_summary
+
+
+def test_xero_chart_tax_suggestion_prefers_named_rent_account(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    rule_id = _create_charge_rule_fixture(client, entity_id, charge_type="base_rent")
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    def fake_refresh_xero_tokens(
+        refresh_token: str,  # noqa: ARG001
+        settings: Settings,  # noqa: ARG001
+    ) -> dict[str, object]:
+        return {
+            "access_token": "raw-access-token-validation",
+            "refresh_token": "raw-refresh-token-validation",
+            "expires_in": 1800,
+            "scope": "offline_access accounting.settings.read",
+        }
+
+    def fake_fetch_xero_accounts(
+        access_token: str,  # noqa: ARG001
+        xero_tenant_id: str,  # noqa: ARG001
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        return [
+            {"Code": "200", "Name": "Sales", "Class": "REVENUE", "Status": "ACTIVE"},
+            {
+                "Code": "275",
+                "Name": "Rent received",
+                "Class": "REVENUE",
+                "Status": "ACTIVE",
+            },
+        ]
+
+    def fake_fetch_xero_tax_rates(
+        access_token: str,  # noqa: ARG001
+        xero_tenant_id: str,  # noqa: ARG001
+        settings: Settings,  # noqa: ARG001
+    ) -> list[dict[str, object]]:
+        return [{"TaxType": "OUTPUT", "Name": "GST on Income", "Status": "ACTIVE"}]
+
+    monkeypatch.setattr(xero_router, "refresh_xero_tokens", fake_refresh_xero_tokens)
+    monkeypatch.setattr(xero_router, "fetch_xero_accounts", fake_fetch_xero_accounts)
+    monkeypatch.setattr(xero_router, "fetch_xero_tax_rates", fake_fetch_xero_tax_rates)
+
+    response = client.post(f"/api/v1/xero/chart-tax/validate-preview/{entity_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    result = next(item for item in body["results"] if item["charge_rule_id"] == rule_id)
+    assert result["suggested_account_code"] == "275"
+    assert "275" in {account["code"] for account in body["accounts"]}
 
 
 def test_xero_chart_tax_validation_preview_requires_provider_connection(

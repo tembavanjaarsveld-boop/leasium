@@ -2144,6 +2144,20 @@ export type XeroChartTaxValidationResultRecord = {
   blockers: string[];
 };
 
+export type XeroAccountOption = {
+  code: string;
+  name: string | null;
+  type: string | null;
+  account_class: string | null;
+  status: string | null;
+};
+
+export type XeroTaxRateOption = {
+  tax_type: string;
+  name: string | null;
+  status: string | null;
+};
+
 export type XeroChartTaxValidationPreviewRecord = {
   entity_id: string;
   xero_tenant_id: string;
@@ -2152,6 +2166,8 @@ export type XeroChartTaxValidationPreviewRecord = {
   fetched_tax_rates: number;
   checked_rules: number;
   results: XeroChartTaxValidationResultRecord[];
+  accounts: XeroAccountOption[];
+  tax_rates: XeroTaxRateOption[];
   validated_at: string;
   guardrails: string[];
 };

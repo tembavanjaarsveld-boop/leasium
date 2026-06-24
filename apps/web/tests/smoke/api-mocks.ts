@@ -4646,6 +4646,33 @@ export async function mockLeasiumApi(
           blockers,
         },
       ],
+      accounts: [
+        {
+          code: "200",
+          name: "Rental Income",
+          type: "REVENUE",
+          account_class: "REVENUE",
+          status: "ACTIVE",
+        },
+        {
+          code: "275",
+          name: "Rent received",
+          type: "REVENUE",
+          account_class: "REVENUE",
+          status: "ACTIVE",
+        },
+        {
+          code: "401",
+          name: "Sales",
+          type: "REVENUE",
+          account_class: "REVENUE",
+          status: "ACTIVE",
+        },
+      ],
+      tax_rates: [
+        { tax_type: "OUTPUT", name: "GST on Income", status: "ACTIVE" },
+        { tax_type: "EXEMPTOUTPUT", name: "GST Free Income", status: "ACTIVE" },
+      ],
       validated_at: "2026-05-19T10:12:00.000Z",
       guardrails: [
         "This preview validates local charge-rule mappings against provider chart and tax settings only.",

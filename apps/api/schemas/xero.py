@@ -295,6 +295,20 @@ class XeroChartTaxValidationResultRead(BaseModel):
     blockers: list[str]
 
 
+class XeroAccountOptionRead(BaseModel):
+    code: str
+    name: str | None
+    type: str | None
+    account_class: str | None
+    status: str | None
+
+
+class XeroTaxRateOptionRead(BaseModel):
+    tax_type: str
+    name: str | None
+    status: str | None
+
+
 class XeroChartTaxValidationPreviewRead(BaseModel):
     entity_id: UUID
     xero_tenant_id: str
@@ -303,6 +317,8 @@ class XeroChartTaxValidationPreviewRead(BaseModel):
     fetched_tax_rates: int
     checked_rules: int
     results: list[XeroChartTaxValidationResultRead]
+    accounts: list[XeroAccountOptionRead]
+    tax_rates: list[XeroTaxRateOptionRead]
     validated_at: datetime
     guardrails: list[str]
 

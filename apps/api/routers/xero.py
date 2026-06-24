@@ -63,6 +63,7 @@ from apps.api.routers.charge_rules import (
 )
 from apps.api.schemas.xero import (
     XeroAccountingFreshnessRead,
+    XeroAccountOptionRead,
     XeroChartTaxMappingApplyItem,
     XeroChartTaxMappingApplyRead,
     XeroChartTaxMappingApplyRequest,
@@ -105,6 +106,7 @@ from apps.api.schemas.xero import (
     XeroProviderStatusReceiptRead,
     XeroReadinessSummaryRead,
     XeroStatusRead,
+    XeroTaxRateOptionRead,
 )
 
 router = APIRouter(prefix="/xero", tags=["xero"])
@@ -134,6 +136,16 @@ SUGGESTED_CHARGE_MAPPINGS: dict[RentChargeType, tuple[str, str | None]] = {
     RentChargeType.promotion_levy: ("205", "OUTPUT"),
     RentChargeType.other: ("299", "OUTPUT"),
 }
+CHARGE_ACCOUNT_NAME_HINTS: dict[RentChargeType, tuple[str, ...]] = {
+    RentChargeType.base_rent: ("rent",),
+    RentChargeType.outgoings: ("outgoing", "recover", "opex"),
+    RentChargeType.parking: ("parking", "car park"),
+    RentChargeType.storage: ("storage",),
+    RentChargeType.utilities: ("utilit", "recover"),
+    RentChargeType.promotion_levy: ("promotion", "marketing", "advertis", "levy"),
+    RentChargeType.other: (),
+}
+REVENUE_ACCOUNT_CLASSES = {"REVENUE"}
 OAUTH_STATE_TTL_MINUTES = 15
 XERO_EXCEPTION_KINDS = (
     "connection",
@@ -969,6 +981,40 @@ def _xero_account_code(account: dict[str, Any]) -> str | None:
     return _xero_text(account, "Code")
 
 
+def _xero_account_name(account: dict[str, Any]) -> str | None:
+    return _xero_text(account, "Name")
+
+
+def _xero_account_class(account: dict[str, Any]) -> str | None:
+    return _xero_text(account, "Class")
+
+
+def _suggest_charge_account_code(
+    charge_type: RentChargeType,
+    accounts: list[dict[str, Any]],
+) -> str | None:
+    """Suggest a Xero account code for a charge type, preferring a name match
+    against the live chart (e.g. base rent -> "Rent received") and falling back
+    to the built-in default code."""
+    default_code, _ = SUGGESTED_CHARGE_MAPPINGS.get(charge_type, ("299", "OUTPUT"))
+    hints = CHARGE_ACCOUNT_NAME_HINTS.get(charge_type, ())
+    if hints:
+        active = [account for account in accounts if _active_xero_status(account)]
+        revenue = [
+            account
+            for account in active
+            if (_xero_account_class(account) or "").upper() in REVENUE_ACCOUNT_CLASSES
+        ]
+        candidates = revenue or active
+        for hint in hints:
+            for account in candidates:
+                code = _xero_account_code(account)
+                name = (_xero_account_name(account) or "").casefold()
+                if code and hint in name:
+                    return code
+    return default_code
+
+
 def _xero_tax_type(tax_rate: dict[str, Any]) -> str | None:
     return _xero_text(tax_rate, "TaxType")
 
@@ -996,10 +1042,11 @@ def _validate_xero_chart_tax(
     }
     results: list[XeroChartTaxValidationResultRead] = []
     for rule, _lease, unit, prop, tenant in charge_rows:
-        suggested_account, suggested_tax = SUGGESTED_CHARGE_MAPPINGS.get(
+        _, suggested_tax = SUGGESTED_CHARGE_MAPPINGS.get(
             rule.charge_type,
             ("299", "OUTPUT"),
         )
+        suggested_account = _suggest_charge_account_code(rule.charge_type, accounts)
         account_code = rule.xero_account_code.strip() if rule.xero_account_code else None
         tax_type = rule.xero_tax_type.strip() if rule.xero_tax_type else None
         account = accounts_by_code.get(account_code or "")
@@ -2655,6 +2702,26 @@ def validate_xero_chart_tax_preview(
             "no invoice posting, Xero mutation, or payment reconciliation was run."
         ),
     )
+    account_options = [
+        XeroAccountOptionRead(
+            code=code,
+            name=_xero_account_name(account),
+            type=_xero_text(account, "Type"),
+            account_class=_xero_account_class(account),
+            status=_xero_text(account, "Status"),
+        )
+        for account in accounts
+        if (code := _xero_account_code(account)) is not None
+    ]
+    tax_options = [
+        XeroTaxRateOptionRead(
+            tax_type=tax_type,
+            name=_xero_text(tax_rate, "Name"),
+            status=_xero_text(tax_rate, "Status"),
+        )
+        for tax_rate in tax_rates
+        if (tax_type := _xero_tax_type(tax_rate)) is not None
+    ]
     session.commit()
     return XeroChartTaxValidationPreviewRead(
         entity_id=entity.id,
@@ -2664,6 +2731,8 @@ def validate_xero_chart_tax_preview(
         fetched_tax_rates=len(tax_rates),
         checked_rules=len(charge_rows),
         results=results,
+        accounts=account_options,
+        tax_rates=tax_options,
         validated_at=validated_at,
         guardrails=[
             "This is a provider-backed validation preview only.",
