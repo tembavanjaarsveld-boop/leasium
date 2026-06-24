@@ -14,13 +14,13 @@ import {
 import { friendlyError } from "@/lib/utils";
 
 /**
- * Ask Leasium AI — natural-language Q&A panel on the operator dashboard.
+ * Ask Relby AI — natural-language Q&A panel on the operator dashboard.
  *
  * Backend `/api/v1/ai/ask` (Tier 2 (e) per docs/product-roadmap.md) takes
  * an entity ID + question, builds a bounded context dump, and calls
  * OpenAI with a strict-JSON citation schema. This panel renders the
  * question form, suggestion chips, response card with citations, and
- * the guardrail disclosure. Read-only: Leasium AI never mutates state.
+ * the guardrail disclosure. Read-only: Relby AI never mutates state.
  *
  * Extracted from the monolithic dashboard.tsx per
  * `docs/external-design-review-2026-05-23.md` §1.2 (page-file size
@@ -112,14 +112,14 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
           </div>
           <div className="min-w-0">
             <h3 className="flex flex-wrap items-center gap-2 text-leasium-body-compact font-semibold leading-5">
-              Leasium AI
+              Relby AI
               <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-leasium-micro font-bold uppercase tracking-wide text-primary">
                 Beta
               </span>
             </h3>
             <p className="mt-0.5 max-w-2xl text-xs leading-4 text-muted-foreground">
               Ask plain-English questions about your portfolio. Answers cite
-              the records they came from. Read-only — Leasium AI will never
+              the records they came from. Read-only — Relby AI will never
               act on a question.
             </p>
           </div>
@@ -139,7 +139,7 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="Which leases expire in the next 90 days?"
                 disabled={disabled}
-                aria-label="Ask Leasium question"
+                aria-label="Ask Relby question"
                 className="flex-1 min-w-[200px]"
               />
               <Button type="submit" disabled={disabled || !question.trim()}>
@@ -247,7 +247,7 @@ export function AskLeasiumPanel({ entityId }: { entityId: string }) {
           </div>
         ) : !isPending && !errorMessage ? (
           <div className="rounded-md border border-dashed border-primary/20 bg-white/50 p-3 text-xs text-muted-foreground">
-            Answers stay grounded in your portfolio. Leasium AI quotes the
+            Answers stay grounded in your portfolio. Relby AI quotes the
             record it pulled the answer from, and won&apos;t take any action.
           </div>
         ) : null}

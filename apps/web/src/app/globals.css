@@ -252,7 +252,7 @@
   background-color: var(--leasium-danger-soft) !important;
 }
 
-/* Ask Leasium (dashboard) and the AI Inbox hero share one light hero
+/* Ask Relby (dashboard) and the AI Inbox hero share one light hero
    gradient: from-primary-soft/40 via-white to-accent-soft/25. All three
    stops are static light hexes, so remap the whole gradient to the dark
    soft tokens here instead of overriding three Tailwind stop variables. */

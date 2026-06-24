@@ -92,7 +92,7 @@ function useCommsBadge(): { urgent: number; total: number } | null {
     // `/comms/queue/counts` runs the full set of queue scanners server-side
     // (it is far from the "lightweight" call its name implies), so we do NOT
     // refetch on window focus — re-scanning every time the operator tabs back
-    // to Leasium just hogs a backend worker and slows the page they're loading.
+    // to Relby just hogs a backend worker and slows the page they're loading.
     // This keeps the root QueryClient's no-focus-refetch policy intact for the
     // one query that opted out of it. (See backend perf note: the counts
     // endpoint should compute counts without building full candidate payloads.)
@@ -122,7 +122,7 @@ type CommandAction = {
 // then consolidated 2026-05-31 (DoorLoop benchmark refocus): 8 → 7
 // primary hubs plus Settings.
 // Reachable via Cmd-K command palette but not in sidebar:
-//   AI Inbox (folds conceptually into Leasium AI)
+//   AI Inbox (folds conceptually into Relby AI)
 //   Tenants, Contractors (folded under People)
 //   Contractors, Comms (folded under Work where task-shaped)
 //   Billing Readiness, Statements (folded under Money)
@@ -134,7 +134,7 @@ const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home, shortcut: "G D" },
   {
     href: "/intake",
-    label: "Leasium AI",
+    label: "Relby AI",
     icon: FileSpreadsheet,
     shortcut: "G I",
   },
@@ -200,7 +200,7 @@ const frequentActions: CommandAction[] = [
   {
     href: "/intake",
     label: "Upload document",
-    meta: "Leasium AI",
+    meta: "Relby AI",
   },
   {
     href: "/properties?action=new",
@@ -258,7 +258,7 @@ const moduleJumpActions: CommandAction[] = [
   {
     href: "/inbox",
     label: "Open AI Inbox",
-    meta: "Leasium AI",
+    meta: "Relby AI",
   },
   {
     href: "/contractors",
@@ -355,7 +355,7 @@ function commandAskHref(
 // most often during a typical session.
 const SHORTCUT_NAV: ShortcutNav[] = [
   { key: "d", href: "/", label: "Dashboard" },
-  { key: "i", href: "/intake", label: "Leasium AI" },
+  { key: "i", href: "/intake", label: "Relby AI" },
   { key: "m", href: "/inbox", label: "AI Inbox" },
   { key: "p", href: "/properties", label: "Properties" },
   { key: "t", href: "/people?tab=tenants", label: "Tenants" },
@@ -645,8 +645,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ? "All entities"
       : shellEntity?.name ??
         currentOperatorQuery.data?.organisation.name ??
-        "Leasium";
-  const orgName = currentOperatorQuery.data?.organisation.name ?? "Leasium";
+        "Relby";
+  const orgName = currentOperatorQuery.data?.organisation.name ?? "Relby";
   const entityCount = entitiesQuery.data?.length ?? 0;
   const isPlatformAdminRoute = pathname.startsWith("/admin");
   const entityCountLabel = entitiesQuery.isLoading
@@ -681,7 +681,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               action.href.toLowerCase().includes(needle),
           )
           .slice(0, 8);
-    // Typing turns the command bar into a Leasium AI ask from any page: the
+    // Typing turns the command bar into a Relby AI ask from any page: the
     // top action carries the text to /intake, which answers it inline.
     if (trimmed) {
       return [
@@ -691,8 +691,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             pathname,
             new URLSearchParams(locationSearch),
           ),
-          label: `Ask Leasium AI: “${trimmed}”`,
-          meta: "Leasium AI",
+          label: `Ask Relby AI: “${trimmed}”`,
+          meta: "Relby AI",
         },
         ...base,
       ];
@@ -1027,7 +1027,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
             <Link
               {...shellLinkProps}
               href="/intake"
-              aria-label="Leasium AI"
+              aria-label="Relby AI"
               aria-current={isNavActive(navItems[1]) ? "page" : undefined}
               onMouseEnter={() => router.prefetch("/intake")}
               onFocus={() => router.prefetch("/intake")}
@@ -1240,7 +1240,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                   aria-label="Command search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Ask Leasium AI, or search actions..."
+                  placeholder="Ask Relby AI, or search actions..."
                   className="min-h-[44px] flex-1 bg-transparent text-sm outline-none"
                 />
                 <button

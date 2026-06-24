@@ -2202,7 +2202,7 @@ function complianceReviewCsv({
       intakeChip(intake),
       "",
       intake.document_id ? "Source document linked" : "",
-      "Open Leasium AI review",
+      "Open Relby AI review",
       COMPLIANCE_REVIEW_PACKET_GUARDRAIL,
     ]),
     ...workOrders.map((workOrder) => [
@@ -2513,7 +2513,7 @@ function assignmentActionMetadata({
 
   const now = new Date().toISOString();
   const actorName =
-    currentUser?.display_name || currentUser?.email || "Leasium operator";
+    currentUser?.display_name || currentUser?.email || "Relby operator";
   const reminder = isPlainRecord(raw.reminder) ? raw.reminder : {};
   const escalation = isPlainRecord(raw.escalation) ? raw.escalation : {};
   const notification = isPlainRecord(raw.notification) ? raw.notification : {};
@@ -2657,7 +2657,7 @@ function assignmentMetadata({
   const existing = workAssignment(metadata);
   const existingHistory = existing?.history ?? [];
   const actorName =
-    currentUser?.display_name || currentUser?.email || "Leasium operator";
+    currentUser?.display_name || currentUser?.email || "Relby operator";
   const assigneeName = assignee ? memberLabel(assignee) : null;
   const notificationStatus = assignee ? "ready" : "skipped";
   const workflowPlan = assignmentWorkflowPlan({
@@ -2704,7 +2704,7 @@ function assignmentMetadata({
         template_version: WORK_ASSIGNMENT_TEMPLATE_VERSION,
         prepared_at: now,
         detail: assignee
-          ? "Assignment notification is ready inside Leasium. Provider email/SMS delivery is a separate approval step."
+          ? "Assignment notification is ready inside Relby. Provider email/SMS delivery is a separate approval step."
           : "Assignment was cleared; no notification was prepared.",
       },
       history: [historyEntry, ...existingHistory].slice(0, 10),
@@ -9644,7 +9644,7 @@ function WorkAssignmentControl({
         ? "Ready to send the assignment email when an operator approves it."
         : assignment?.assignedAt
           ? "In-app reminder only; provider email has not been sent."
-          : "Assign the owner and prepare the Leasium notification.";
+          : "Assign the owner and prepare the Relby notification.";
   const showFootnote = Boolean(
     assignment?.assignedAt ||
       notificationReady ||
@@ -9876,7 +9876,7 @@ function WorkAssignmentControl({
         <div className="text-xs text-muted-foreground">
           {assignment?.assignedAt
             ? `Updated ${formatDateTime(assignment.assignedAt)} by ${
-                assignment.assignedByName ?? "Leasium"
+                assignment.assignedByName ?? "Relby"
               }. ${notificationFootnote}`
             : notificationFootnote}
         </div>

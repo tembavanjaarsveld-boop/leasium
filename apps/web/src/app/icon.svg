@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="32" fill="#245BFF"/>
-  <rect x="36" y="36" width="16" height="64" rx="8" fill="#FFFFFF"/>
-  <rect x="36" y="84" width="56" height="16" rx="8" fill="#FFFFFF"/>
-  <circle cx="94" cy="38" r="12" fill="#27D8C2"/>
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Relby">
+  <rect width="64" height="64" rx="14" fill="#1546E9"/>
+  <g transform="scale(0.25)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M55 60 H126 C164 60 187 84 187 119 C187 154 164 177 126 177 H55 M108 177 L186 228" stroke="#FFFFFF" stroke-width="28"/>
+    <circle cx="58" cy="216" r="18" fill="#1DCBC1"/>
+  </g>
 </svg>

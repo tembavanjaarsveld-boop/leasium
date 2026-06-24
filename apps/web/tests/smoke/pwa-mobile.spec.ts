@@ -12,9 +12,9 @@ test("pwa assets stay outside the temporary access gate", () => {
   for (const path of [
     "/manifest.webmanifest",
     "/icon.svg",
-    "/icons/leasium-icon-192.png",
-    "/icons/leasium-icon-512.png",
-    "/icons/leasium-maskable-512.png",
+    "/icons/relby-icon-192.png",
+    "/icons/relby-icon-512.png",
+    "/icons/relby-maskable-512.png",
     "/apple-touch-icon.png",
   ]) {
     expect(isPublicOperatorPath(path)).toBe(true);
@@ -44,8 +44,8 @@ test("root exposes installable app metadata without offline caching", async ({
   const manifest = await response.json();
   expect(manifest).toMatchObject({
     id: "/",
-    name: "Leasium",
-    short_name: "Leasium",
+    name: "Relby",
+    short_name: "Relby",
     start_url: "/",
     scope: "/",
     display: "standalone",
@@ -60,19 +60,19 @@ test("root exposes installable app metadata without offline caching", async ({
         type: "image/svg+xml",
       }),
       expect.objectContaining({
-        src: "/icons/leasium-icon-192.png",
+        src: "/icons/relby-icon-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       }),
       expect.objectContaining({
-        src: "/icons/leasium-icon-512.png",
+        src: "/icons/relby-icon-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       }),
       expect.objectContaining({
-        src: "/icons/leasium-maskable-512.png",
+        src: "/icons/relby-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
@@ -125,7 +125,7 @@ test("mobile shell carries standalone metadata and avoids horizontal overflow", 
   ).toHaveAttribute("content", "yes");
   await expect(
     page.locator('meta[name="apple-mobile-web-app-title"]'),
-  ).toHaveAttribute("content", "Leasium");
+  ).toHaveAttribute("content", "Relby");
   await expect(
     page.locator('meta[name="mobile-web-app-capable"]'),
   ).toHaveAttribute("content", "yes");

@@ -281,7 +281,7 @@ test("dark mode renders the core operator surfaces on desktop and mobile", async
 
   const surfaces = [
     { path: "/", heading: "Today's focus" },
-    { path: "/intake", heading: "Leasium AI" },
+    { path: "/intake", heading: "Relby AI" },
     { path: "/properties", heading: "Properties" },
     {
       path: "/properties?entity_id=entity-1&property_id=property-1",

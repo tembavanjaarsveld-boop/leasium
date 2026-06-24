@@ -12,14 +12,14 @@ function ClerkNotConfigured() {
       <section className="mx-auto grid max-w-md gap-4 rounded-lg border border-border bg-white p-6 shadow-sm">
         <div className="flex items-center gap-2 text-primary">
           <ShieldCheck size={18} />
-          <span className="font-semibold">Leasium operator login</span>
+          <span className="font-semibold">Relby operator login</span>
         </div>
         <h1 className="text-2xl font-semibold">Provider login is not configured yet.</h1>
         <p className="text-sm text-muted-foreground">
           Clerk keys need to be added before operator sign-in can run.
         </p>
         <Link className="text-sm font-semibold text-primary" href="https://leasium.ai/welcome">
-          Open live Leasium
+          Open live Relby
         </Link>
       </section>
     </main>

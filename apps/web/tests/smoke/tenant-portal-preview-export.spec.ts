@@ -11,7 +11,7 @@ const previewPayload = {
     dev_fallback: false,
     boundary: "operator_session",
     detail:
-      "Read-only operator preview scoped by the signed-in Leasium role. No tenant portal account is created.",
+      "Read-only operator preview scoped by the signed-in Relby role. No tenant portal account is created.",
   },
   tenant: {
     id: "tenant-1",
@@ -339,6 +339,6 @@ test("tenant portal preview shows How to pay instructions and per-invoice refere
   await expect(page.getByText("Biller code: 123456")).toBeVisible();
   await expect(page.getByText(/Payment reference:/)).toBeVisible();
   await expect(
-    page.getByText(/Leasium does not process payments/),
+    page.getByText(/Relby does not process payments/),
   ).toBeVisible();
 });

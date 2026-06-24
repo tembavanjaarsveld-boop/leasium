@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
  * Generic right-side detail drawer for in-flow editing/preview without
  * navigating off the current list. Backdrop click and Escape close it.
  *
- * Matches the "Right-side detail panels" pattern in the Leasium design
+ * Matches the "Right-side detail panels" pattern in the Relby design
  * source of truth — Tier 1 (b) of the 2026-05-22 UX review.
  */
 export function DetailDrawer({

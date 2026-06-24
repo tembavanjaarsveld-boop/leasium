@@ -14,7 +14,7 @@ function InviteShell({ children }: { children: React.ReactNode }) {
       <section className="mx-auto grid max-w-lg gap-5 rounded-lg border border-border bg-white p-6 shadow-sm">
         <div className="flex items-center gap-2 text-primary">
           <ShieldCheck size={18} />
-          <span className="font-semibold">Leasium operator invite</span>
+          <span className="font-semibold">Relby operator invite</span>
         </div>
         {children}
       </section>
@@ -32,7 +32,7 @@ function AcceptInviteContent() {
       <>
         <h1 className="text-2xl font-semibold">Invite link missing</h1>
         <p className="text-sm text-muted-foreground">
-          Open the invite link from your email so Leasium can match the operator record.
+          Open the invite link from your email so Relby can match the operator record.
         </p>
       </>
     );
@@ -120,7 +120,7 @@ function ClerkInviteLinker({ token }: { token: string }) {
       <>
         <h1 className="text-2xl font-semibold">Sign in to accept your invite</h1>
         <p className="text-sm text-muted-foreground">
-          Use the same email address the Leasium invite was sent to.
+          Use the same email address the Relby invite was sent to.
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
@@ -147,7 +147,7 @@ function ClerkInviteLinker({ token }: { token: string }) {
           <CheckCircle2 size={18} />
           <span className="font-semibold">Invite accepted</span>
         </div>
-        <h1 className="text-2xl font-semibold">You can now open Leasium.</h1>
+        <h1 className="text-2xl font-semibold">You can now open Relby.</h1>
         <p className="text-sm text-muted-foreground">
           {result.member.display_name} is linked to provider login for {result.member.email}.
         </p>

@@ -38,7 +38,7 @@ function AccountShell({ children }: { children: React.ReactNode }) {
         >
           <LeasiumMark className="h-10 w-10" />
           <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
-            Leasium
+            Relby
           </span>
         </Link>
         {children}
@@ -53,18 +53,18 @@ function ClerkNotConfigured() {
       <div className="grid max-w-xl gap-4 rounded-lg border border-border bg-white p-6 shadow-leasiumXs">
         <div className="flex items-center gap-2 text-primary">
           <ShieldCheck size={18} />
-          <span className="font-semibold">Leasium account login</span>
+          <span className="font-semibold">Relby account login</span>
         </div>
         <h1 className="text-2xl font-semibold">Provider login is not configured yet.</h1>
         <p className="text-sm text-muted-foreground">
-          Add Clerk keys to this environment before Leasium accounts can sign in here.
+          Add Clerk keys to this environment before Relby accounts can sign in here.
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition hover:bg-primary-hover"
             href="https://leasium.ai/welcome"
           >
-            Open live Leasium
+            Open live Relby
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition hover:bg-muted"
@@ -84,10 +84,10 @@ function AccountSignIn() {
       <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
         <div className="grid gap-4">
           <span className="inline-flex w-fit items-center gap-2 rounded-full bg-leasium-blue-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-leasium-blue">
-            One Leasium login
+            One Relby login
           </span>
           <h1 className="text-3xl font-bold tracking-tight text-leasium-navy-800 sm:text-4xl">
-            Sign in once. Leasium opens the right workspace.
+            Sign in once. Relby opens the right workspace.
           </h1>
           <p className="text-base leading-relaxed text-leasium-slate-500">
             Operators go to the property team workspace. Tenants go to the tenant
@@ -98,7 +98,7 @@ function AccountSignIn() {
               <Building2 className="mt-0.5 text-leasium-blue" size={18} />
               <div>
                 <p className="font-semibold text-leasium-navy-800">Property teams</p>
-                <p>Use the operator account invited by the Leasium admin.</p>
+                <p>Use the operator account invited by the Relby admin.</p>
               </div>
             </div>
             <div className="flex items-start gap-3 rounded-xl border border-border bg-white p-4">
@@ -188,7 +188,7 @@ function AccountRouter() {
           setRouteError(
             error instanceof Error
               ? error.message
-              : "Leasium could not verify this account.",
+              : "Relby could not verify this account.",
           );
         }
       }
@@ -208,7 +208,7 @@ function AccountRouter() {
         ) : (
           <div className="flex max-w-xl items-center gap-3 rounded-xl border border-border bg-white p-5 text-sm text-muted-foreground shadow-leasiumXs">
             <Loader2 className="animate-spin text-primary" size={18} />
-            Checking your Leasium session.
+            Checking your Relby session.
           </div>
         )}
       </AccountShell>
@@ -227,7 +227,7 @@ function AccountRouter() {
             <Loader2 className="animate-spin text-primary" size={20} />
             <div>
               <h1 className="text-xl font-semibold text-leasium-navy-800">
-                Opening your Leasium account
+                Opening your Relby account
               </h1>
               <p className="text-sm text-muted-foreground">
                 {user?.primaryEmailAddress?.emailAddress ??
@@ -250,7 +250,7 @@ function AccountRouter() {
               <span className="font-semibold">Account not linked yet</span>
             </div>
             <h1 className="text-2xl font-semibold text-leasium-navy-800">
-              This login is not attached to a Leasium workspace.
+              This login is not attached to a Relby workspace.
             </h1>
           </div>
           <UserButton appearance={clerkUserButtonTouchTargetAppearance} />
@@ -259,8 +259,8 @@ function AccountRouter() {
           {routeState === "error"
             ? routeError
             : signedInEmail
-              ? `${signedInEmail} signed in successfully, but Leasium could not match that email to an operator or tenant portal yet.`
-              : "You signed in successfully, but Leasium could not match this login to an operator or tenant portal yet."}
+              ? `${signedInEmail} signed in successfully, but Relby could not match that email to an operator or tenant portal yet.`
+              : "You signed in successfully, but Relby could not match this login to an operator or tenant portal yet."}
         </p>
         <div className="grid gap-3 rounded-xl border border-border bg-leasium-slate-50 p-4 text-sm">
           <div className="flex items-start gap-2">

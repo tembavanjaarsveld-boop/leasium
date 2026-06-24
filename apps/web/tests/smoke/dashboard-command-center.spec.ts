@@ -60,7 +60,7 @@ test("dashboard mobile matches the Horizon first viewport without provider write
   await expect(cockpit).toBeVisible();
   await expect(cockpit.getByText("Good morning, Temba")).toBeVisible();
   await expect(
-    cockpit.getByRole("link", { name: "Ask Leasium anything" }),
+    cockpit.getByRole("link", { name: "Ask Relby anything" }),
   ).toBeVisible();
 
   const focus = page.getByRole("region", { name: "Today's focus" });
@@ -189,7 +189,7 @@ test("dashboard renders Horizon bento frame without provider writes", async ({
     page.getByText("Nothing is applied until you approve it."),
   ).toHaveCount(0);
   await expectTouchTarget(page.getByRole("link", { name: "Manage links" }));
-  await expectTouchTarget(page.getByRole("link", { name: "Open Leasium AI" }));
+  await expectTouchTarget(page.getByRole("link", { name: "Open Relby AI" }));
   expect(forbiddenRequests).toEqual([]);
 });
 

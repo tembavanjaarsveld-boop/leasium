@@ -63,7 +63,7 @@ const XERO_EXCEPTION_QUEUE_FIXTURE = {
       severity: "info",
       label: "Xero payment status needs review",
       detail:
-        "INV-1001 is linked to a Xero draft but Leasium still shows unpaid.",
+        "INV-1001 is linked to a Xero draft but Relby still shows unpaid.",
       action:
         "Preview provider payments, then apply reviewed local payment metadata if a match is found.",
       next_action: "preview_payment_reconciliation",
@@ -97,7 +97,7 @@ const XERO_EXCEPTION_QUEUE_FIXTURE = {
     },
   ],
   guardrails: [
-    "The exception queue is built from local Leasium records only.",
+    "The exception queue is built from local Relby records only.",
     "Loading this queue does not refresh Xero tokens, call Xero APIs, post invoices, send emails, or reconcile payments.",
   ],
 };

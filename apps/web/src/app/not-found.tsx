@@ -10,7 +10,7 @@ export default function NotFound() {
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-9 w-9" />
           <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
-            Leasium
+            Relby
           </span>
         </div>
         <div className="grid gap-2">
@@ -39,7 +39,7 @@ export default function NotFound() {
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-leasium-slate-700 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
           >
             <Sparkles size={16} aria-hidden="true" />
-            Open Leasium AI
+            Open Relby AI
           </Link>
         </div>
       </div>

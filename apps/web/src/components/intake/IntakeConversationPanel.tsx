@@ -71,7 +71,7 @@ function ChatShell({
           </div>
           <div className="min-w-0">
             <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold leading-5 text-foreground">
-              Leasium AI
+              Relby AI
               {status}
             </h2>
             <p className="mt-0.5 max-w-2xl text-xs leading-4 text-muted-foreground">
@@ -193,7 +193,7 @@ function reviewExtraction(intake: DocumentIntakeRecord): DocumentIntakeExtractio
 // Match extracted records against what already exists so the plan links
 // instead of duplicating. Mirrors the backend find-or-create keys
 // (property name/address, tenant abn/legal_name) but resolves the id up
-// front so the operator sees whether Leasium will use an existing record before approving.
+// front so the operator sees whether Relby will use an existing record before approving.
 type RecordMatch = { id: string; label: string };
 function norm(value: unknown): string {
   return (typeof value === "string" ? value : "")
@@ -623,7 +623,7 @@ function buildCreated(
     rows.push({ label: `${workOrderCount} work order draft` });
   }
   if (rows.length === 0) {
-    rows.push({ label: "Records created and linked in Leasium." });
+    rows.push({ label: "Records created and linked in Relby." });
   }
   return rows;
 }
@@ -641,9 +641,9 @@ function applyNeedsAttentionMessage(record: DocumentIntakeRecord): string {
 }
 
 const GUARDRAIL_PRE =
-  "I can create the Leasium records after you approve this. I will not send anything to Xero, email anyone, charge anyone, or mark an invoice approved from here.";
+  "I can create the Relby records after you approve this. I will not send anything to Xero, email anyone, charge anyone, or mark an invoice approved from here.";
 const GUARDRAIL_POST =
-  "I created only the Leasium records you approved. Xero, email, charges, and tenant messages still need a separate yes.";
+  "I created only the Relby records you approved. Xero, email, charges, and tenant messages still need a separate yes.";
 
 function GuardrailNote({ children }: { children: ReactNode }) {
   return (
@@ -663,14 +663,14 @@ function intakeQuestion(data: DocumentIntakeExtraction, plan: PlanRow[]) {
   });
   if (docType.includes("notice")) {
     return {
-      title: "Leasium needs one answer",
+      title: "Relby needs one answer",
       body: "Should I turn this into a follow-up task, link it to a lease, or ignore it?",
     };
   }
   if (docType.includes("invoice") || docType.includes("admin")) {
     if (!hasProperty && !hasTenant) {
       return {
-        title: "Leasium needs one answer",
+        title: "Relby needs one answer",
         body: "Which property, unit, tenant, or lease should this invoice help with?",
       };
     }
@@ -678,8 +678,8 @@ function intakeQuestion(data: DocumentIntakeExtraction, plan: PlanRow[]) {
   }
   if (plan.length > 0) return null;
   return {
-    title: "Leasium needs one answer",
-    body: "What should this document become in Leasium?",
+    title: "Relby needs one answer",
+    body: "What should this document become in Relby?",
   };
 }
 
@@ -805,7 +805,7 @@ export function IntakeConversationPanel({
       source: "intake",
       context_route: "/intake",
       context_record_refs: { document_intake_id: intake.id },
-      title: intake.filename || intake.summary || "Leasium AI review",
+      title: intake.filename || intake.summary || "Relby AI review",
     }),
     [entityId, intake.filename, intake.id, intake.summary],
   );
@@ -1068,7 +1068,7 @@ export function IntakeConversationPanel({
         placeholder={
           nextQuestion
             ? "Reply in plain English..."
-            : "Ask Leasium AI anything about this document..."
+            : "Ask Relby AI anything about this document..."
         }
         className="min-h-12 w-full rounded-xl border border-border bg-white px-4 text-base outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
       />
@@ -1247,7 +1247,7 @@ export function IntakeConversationPanel({
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-base font-semibold text-foreground">
                 {plan.length > 0
-                  ? "I can create these Leasium records"
+                  ? "I can create these Relby records"
                   : "I can keep this ready for review"}
               </h3>
               <button
@@ -1521,7 +1521,7 @@ export function IntakeConversationPanel({
             className="rounded-xl border-[1.5px] border-success/50 bg-success-soft/40 p-3 sm:p-4"
           >
             <h3 className="mb-3 text-base font-semibold text-foreground">
-              Done. I created the records in Leasium.
+              Done. I created the records in Relby.
             </h3>
             <ul className="space-y-2">
               {buildCreated(applied, entityId).map((row, i) => (

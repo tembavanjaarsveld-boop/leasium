@@ -167,7 +167,7 @@ function VendorPortalInviteContent({
 
           <div className="mt-6 grid gap-3 text-sm leading-6 text-muted-foreground">
             <p>
-              Create or sign in to a Leasium login with the invite email. Your
+              Create or sign in to a Relby login with the invite email. Your
               jobs stay hidden until the account is claimed.
             </p>
             {claimMutation.error ? (

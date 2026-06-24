@@ -49,7 +49,7 @@ export default function AccessPage() {
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-12 w-12" />
           <div>
-            <h1 className="text-xl font-semibold">Leasium access</h1>
+            <h1 className="text-xl font-semibold">Relby access</h1>
             <p className="text-sm text-muted-foreground">
               Lease operations, automated
             </p>

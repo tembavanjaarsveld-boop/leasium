@@ -169,7 +169,7 @@ function OwnerPortalInviteContent({
 
           <div className="mt-6 grid gap-3 text-sm leading-6 text-muted-foreground">
             <p>
-              Create or sign in to a Leasium owner login with the invite email.
+              Create or sign in to a Relby owner login with the invite email.
               Statement and property data stays hidden until the account is
               claimed.
             </p>

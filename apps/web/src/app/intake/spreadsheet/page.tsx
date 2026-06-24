@@ -230,7 +230,7 @@ function SpreadsheetImportWorkspace() {
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
           title="Spreadsheet Intake"
-          description="Review a portfolio workbook before Leasium creates or updates register records."
+          description="Review a portfolio workbook before Relby creates or updates register records."
           actions={
             <div className="flex flex-wrap gap-2">
               <SecondaryButton
@@ -431,7 +431,7 @@ function SpreadsheetImportWorkspace() {
                     : "Drop in the portfolio spreadsheet"}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  Leasium will only stage proposed actions. Nothing changes until Apply.
+                  Relby will only stage proposed actions. Nothing changes until Apply.
                 </span>
               </span>
             </button>

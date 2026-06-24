@@ -2737,20 +2737,20 @@ function workNoticeEmailPreview(title: string) {
     channel: "email",
     provider: "sendgrid",
     recipient_email: "temba@example.com",
-    subject: `Leasium work assigned: ${title}`,
+    subject: `Relby work assigned: ${title}`,
     body_text: [
       "Hi Temba van Jaarsveld,",
       "",
-      "Maintenance has been assigned to you in Leasium.",
+      "Maintenance has been assigned to you in Relby.",
       "",
       `Work: ${title}`,
       "Due: 20 May 2026",
-      "Assigned in Leasium",
+      "Assigned in Relby",
       "Open work: /operations",
       "",
-      "Please open Leasium to review the work, update status, or reassign if needed.",
+      "Please open Relby to review the work, update status, or reassign if needed.",
       "",
-      "Leasium",
+      "Relby",
     ].join("\n"),
     template_key: "work_assignment_notification",
     template_version: "v1",
@@ -2765,7 +2765,7 @@ function workNoticeSmsPreview(title: string) {
     provider: "twilio",
     recipient_phone: "+61400111222",
     subject: null,
-    body_text: `Leasium: Maintenance assigned to Temba van Jaarsveld: ${title}. Due: 20 May 2026. /operations`,
+    body_text: `Relby: Maintenance assigned to Temba van Jaarsveld: ${title}. Due: 20 May 2026. /operations`,
     template_key: "work_assignment_notification",
     template_version: "v1",
     action_label: "Open assigned work",
@@ -2778,11 +2778,11 @@ function workDigestMessagePreview() {
     channel: "email",
     provider: "sendgrid",
     recipient_email: "owner@example.com",
-    subject: "Leasium Daily Work digest: 4 items",
+    subject: "Relby Daily Work digest: 4 items",
     body_text: [
       "Hi Owner Operator,",
       "",
-      "Your daily Leasium Work digest is ready.",
+      "Your daily Relby Work digest is ready.",
       "",
       "Open items: 4",
       "Follow-ups due: 2",
@@ -2794,9 +2794,9 @@ function workDigestMessagePreview() {
       "  Due: 20 May 2026",
       "  Status: requested",
       "",
-      "Please open Leasium to review the work, update status, or reassign if needed.",
+      "Please open Relby to review the work, update status, or reassign if needed.",
       "",
-      "Leasium",
+      "Relby",
     ].join("\n"),
     template_key: "work_assignment_digest",
     template_version: "v1",
@@ -3746,7 +3746,7 @@ export async function mockLeasiumApi(
           ? "local_payment_status_apply"
           : null,
         guardrails: [
-          "Accounting freshness is calculated from local Leasium metadata only.",
+          "Accounting freshness is calculated from local Relby metadata only.",
           "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
           "Stale payment reconciliation is a review cue, not an automatic accounting action.",
         ],
@@ -4271,7 +4271,7 @@ export async function mockLeasiumApi(
         severity: "info",
         label: "Xero payment status needs review",
         detail:
-          "INV-1001 is linked to a Xero draft but Leasium still shows unpaid.",
+          "INV-1001 is linked to a Xero draft but Relby still shows unpaid.",
         action:
           "Preview provider payments, then apply reviewed local payment metadata if a match is found.",
         next_action: "preview_payment_reconciliation",
@@ -4309,7 +4309,7 @@ export async function mockLeasiumApi(
       },
       items,
       guardrails: [
-        "The exception queue is built from local Leasium records only.",
+        "The exception queue is built from local Relby records only.",
         "Loading this queue does not refresh Xero tokens, call Xero APIs, post invoices, send emails, or reconcile payments.",
         "Provider actions still require explicit operator review before any mutation is attempted.",
       ],
@@ -4486,9 +4486,9 @@ export async function mockLeasiumApi(
     ],
     guardrails: [
       "Payment reconciliation preview does not change local invoice payment status.",
-      "Apply only updates Leasium invoice payment metadata; it never mutates Xero payments.",
+      "Apply only updates Relby invoice payment metadata; it never mutates Xero payments.",
       "Duplicate payment idempotency keys are skipped.",
-      "Bank-feed evidence is stored for review only; Leasium does not create, edit, or match bank transactions in Xero.",
+      "Bank-feed evidence is stored for review only; Relby does not create, edit, or match bank transactions in Xero.",
     ],
   });
 
@@ -4534,7 +4534,7 @@ export async function mockLeasiumApi(
     results: [basiqReconciliationResultRow(false)],
     guardrails: [
       "Bank-feed preview does not change local invoice payment status.",
-      "Apply only updates Leasium invoice payment metadata for approved transactions; it never mutates a bank feed.",
+      "Apply only updates Relby invoice payment metadata for approved transactions; it never mutates a bank feed.",
       "Imported transactions not approved by an operator are skipped.",
     ],
   });
@@ -4562,7 +4562,7 @@ export async function mockLeasiumApi(
       ],
       guardrails: [
         "Bank-feed preview does not change local invoice payment status.",
-        "Apply only updates Leasium invoice payment metadata for approved transactions; it never mutates a bank feed.",
+        "Apply only updates Relby invoice payment metadata for approved transactions; it never mutates a bank feed.",
         "Imported transactions not approved by an operator are skipped.",
       ],
     };
@@ -5486,7 +5486,7 @@ export async function mockLeasiumApi(
     }
     await fulfillJson(route, {
       status: "ok",
-      app: "Leasium",
+      app: "Relby",
       release: {
         commit: "7248a2b879722a0c6941dd2ff7436170b6cfb93d",
         source: "render",
@@ -6825,7 +6825,7 @@ export async function mockLeasiumApi(
         ],
         warnings: [],
         guardrails: [
-          "Read-only: Leasium will not send messages, post invoices, or change records based on this answer.",
+          "Read-only: Relby will not send messages, post invoices, or change records based on this answer.",
           "Verify amounts and dates against the linked record before acting.",
         ],
         response_id: "resp_smoke_ask",
@@ -7079,7 +7079,7 @@ export async function mockLeasiumApi(
         payload: snapshot.payload,
         guardrails: [
           "This is a frozen snapshot, not a live portfolio connection.",
-          "The public link cannot mutate Leasium records.",
+          "The public link cannot mutate Relby records.",
         ],
       });
       return;
@@ -8596,7 +8596,7 @@ export async function mockLeasiumApi(
           dev_fallback: false,
           boundary: "operator_session",
           detail:
-            "Read-only operator preview scoped by the signed-in Leasium role. No tenant portal account is created.",
+            "Read-only operator preview scoped by the signed-in Relby role. No tenant portal account is created.",
         },
         guardrails: [
           "Operator preview is read-only and does not create a tenant portal session.",
@@ -10137,7 +10137,7 @@ export async function mockLeasiumApi(
                 label: "SendGrid event webhook",
                 status: "review",
                 detail:
-                  "Use this endpoint in SendGrid Event Webhook and configure the shared webhook secret outside Leasium.",
+                  "Use this endpoint in SendGrid Event Webhook and configure the shared webhook secret outside Relby.",
                 value:
                   "https://api.leasium.test/api/v1/work-assignments/webhooks/sendgrid-events",
               },
@@ -10176,7 +10176,7 @@ export async function mockLeasiumApi(
                 label: "Twilio status callback",
                 status: "review",
                 detail:
-                  "Use this endpoint for Work SMS status callbacks and configure the shared webhook secret outside Leasium.",
+                  "Use this endpoint for Work SMS status callbacks and configure the shared webhook secret outside Relby.",
                 value:
                   "https://api.leasium.test/api/v1/work-assignments/webhooks/twilio-status",
               },
@@ -10197,10 +10197,10 @@ export async function mockLeasiumApi(
             setup_checks: [
               {
                 key: "leasium_receipts",
-                label: "Leasium receipts",
+                label: "Relby receipts",
                 status: "ready",
                 detail:
-                  "In-app assignment receipts are stored in Leasium work metadata.",
+                  "In-app assignment receipts are stored in Relby work metadata.",
                 value: null,
               },
             ],
@@ -10591,9 +10591,9 @@ export async function mockLeasiumApi(
             default_version: "v1",
             channel: "email",
             provider: "sendgrid",
-            subject_preview: "New Leasium work assigned",
+            subject_preview: "New Relby work assigned",
             content_summary:
-              "Includes the work title, due date, source workspace, and a link back to Leasium.",
+              "Includes the work title, due date, source workspace, and a link back to Relby.",
             recovery_summary:
               "Use for normal assignment sends and retries from Work.",
             is_system: true,
@@ -10605,7 +10605,7 @@ export async function mockLeasiumApi(
             default_version: "v1",
             channel: "email",
             provider: "sendgrid",
-            subject_preview: "Leasium work follow-up needed",
+            subject_preview: "Relby work follow-up needed",
             content_summary:
               "Emphasises due reminders, escalation watch dates, and the assigned operator.",
             recovery_summary:
@@ -10621,7 +10621,7 @@ export async function mockLeasiumApi(
             default_version: "v1",
             channel: "email",
             provider: "sendgrid",
-            subject_preview: "Leasium daily or weekly Work digest",
+            subject_preview: "Relby daily or weekly Work digest",
             content_summary:
               "Groups assigned work by urgency, follow-up status, and source workspace.",
             recovery_summary:
@@ -10635,7 +10635,7 @@ export async function mockLeasiumApi(
             default_version: "v1",
             channel: "email",
             provider: "sendgrid",
-            subject_preview: "Leasium owner review digest",
+            subject_preview: "Relby owner review digest",
             content_summary:
               "Highlights owner-facing review items, approvals, blockers, and overdue follow-ups.",
             recovery_summary:
@@ -11607,7 +11607,7 @@ export async function mockLeasiumApi(
         title:
           jsonText(payload.title) ??
           jsonText(initialPayload.text)?.slice(0, 80) ??
-          "Leasium AI thread",
+          "Relby AI thread",
         metadata: {},
         created_at: now,
         updated_at: now,

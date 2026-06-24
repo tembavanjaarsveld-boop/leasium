@@ -1626,7 +1626,7 @@ function customNotificationTemplate(
     channel: "email",
     provider: "sendgrid",
     subject_preview:
-      kind === "digest" ? "Leasium Work digest" : "New Leasium work assigned",
+      kind === "digest" ? "Relby Work digest" : "New Relby work assigned",
     content_summary:
       "Custom template key stored on this operator; provider sends still require explicit approval.",
     recovery_summary: null,
@@ -1673,11 +1673,11 @@ function notificationTemplatePreview(
     noticeTitle:
       noticeTemplate?.name ?? notificationTemplateTitle(cleanDraft.noticeKey),
     noticeSubject: `${
-      noticeTemplate?.subject_preview ?? "New Leasium work assigned"
+      noticeTemplate?.subject_preview ?? "New Relby work assigned"
     } to ${member.display_name}`,
     noticeDetail:
       noticeTemplate?.content_summary ??
-      "Includes the work title, due date, source workspace, and a link back to Leasium.",
+      "Includes the work title, due date, source workspace, and a link back to Relby.",
     digestTitle:
       digestTemplate?.name ?? notificationTemplateTitle(cleanDraft.digestKey),
     digestSubject: `${
@@ -1782,7 +1782,7 @@ function communicationTemplateCatalog({
       templateKey: "operator_invite",
       templateVersion: "v1",
       brand: brandName,
-      subjectPreview: "Join SKJ Capital on Leasium",
+      subjectPreview: "Join SKJ Capital on Relby",
       bodyPreview:
         "Owner/admin invite with organisation context, Clerk sign-in handoff, and expiry copy.",
       actionLabel:
@@ -1802,12 +1802,12 @@ function communicationTemplateCatalog({
       provider: "SendGrid",
       templateKey: workNotice?.key ?? "work_assignment_notification",
       templateVersion: workNotice?.default_version ?? "v1",
-      brand: "Leasium",
+      brand: "Relby",
       subjectPreview:
-        workNotice?.subject_preview ?? "New Leasium work assigned",
+        workNotice?.subject_preview ?? "New Relby work assigned",
       bodyPreview:
         workNotice?.content_summary ??
-        "Includes the work title, due date, source workspace, and a link back to Leasium.",
+        "Includes the work title, due date, source workspace, and a link back to Relby.",
       actionLabel:
         "Work rows and Notifications send notices only after operator action.",
       receiptLabel: "Work SendGrid events",
@@ -1825,9 +1825,9 @@ function communicationTemplateCatalog({
       provider: "SendGrid",
       templateKey: workDigest?.key ?? "work_assignment_digest",
       templateVersion: workDigest?.default_version ?? "v1",
-      brand: "Leasium",
+      brand: "Relby",
       subjectPreview:
-        workDigest?.subject_preview ?? "Leasium daily or weekly Work digest",
+        workDigest?.subject_preview ?? "Relby daily or weekly Work digest",
       bodyPreview:
         workDigest?.content_summary ??
         "Groups assigned work by urgency, follow-up status, and source workspace.",
@@ -1848,7 +1848,7 @@ function communicationTemplateCatalog({
       provider: "SendGrid",
       templateKey: "maintenance_contractor_update",
       templateVersion: "v1",
-      brand: "Leasium",
+      brand: "Relby",
       subjectPreview: "Maintenance update request",
       bodyPreview:
         "Reviewed contractor email with attendance, quote, completion evidence, or billing-document copy.",
@@ -1869,7 +1869,7 @@ function communicationTemplateCatalog({
       provider: "Twilio",
       templateKey: "maintenance_contractor_sms",
       templateVersion: "v1",
-      brand: "Leasium",
+      brand: "Relby",
       subjectPreview: "SMS contractor update",
       bodyPreview:
         "Short reviewed SMS for attendance windows, quote follow-up, or completion evidence.",
@@ -1887,7 +1887,7 @@ function communicationTemplateCatalog({
       title: "Tenant portal notification preferences",
       audience: "Tenants",
       channel: "portal",
-      provider: "Leasium",
+      provider: "Relby",
       templateKey: "tenant_portal_preferences",
       templateVersion: "v1",
       brand: brandName,
@@ -2115,7 +2115,7 @@ function PaymentInstructionsPanel({ entityId }: { entityId: string }) {
   return (
     <SectionPanel
       title="Tenant payment instructions"
-      description="Shown to tenants in their portal as 'How to pay'. Display-only - Leasium does not process payments or move money."
+      description="Shown to tenants in their portal as 'How to pay'. Display-only - Relby does not process payments or move money."
       icon={<CircleDollarSign size={17} className="text-primary" />}
       actions={
         data ? (
@@ -2295,7 +2295,7 @@ function TrustedSendersPanel({ entityId }: { entityId: string }) {
                 Client mailbox aliases
               </p>
               <p className="text-sm text-muted-foreground">
-                Leasium manages reserved aliases. Operators can copy the active
+                Relby manages reserved aliases. Operators can copy the active
                 address and keep trusted forwarders below.
               </p>
             </div>
@@ -2703,7 +2703,7 @@ function SettingsWorkspace() {
         brandName:
           selectedEntity?.name ??
           securityQuery.data?.organisation.name ??
-          "Leasium",
+          "Relby",
       }),
     [
       notificationTemplateCatalogQuery.data,
@@ -5452,7 +5452,7 @@ function SettingsWorkspace() {
                       ] ?? "Self-managed owner"}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      Set by Leasium for your account. Contact Leasium if your
+                      Set by Relby for your account. Contact Relby if your
                       operating model changes.
                     </span>
                   </div>
@@ -6424,7 +6424,7 @@ function SettingsWorkspace() {
                           </div>
                           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                             {xeroHasProviderConnection
-                              ? `Leasium is connected to ${xeroConnectedOrgName ?? "Xero"} for this entity. Next, review contacts and accounting mappings before any invoice draft is created.`
+                              ? `Relby is connected to ${xeroConnectedOrgName ?? "Xero"} for this entity. Next, review contacts and accounting mappings before any invoice draft is created.`
                               : "Each entity has its own Xero organisation, so connect them one at a time. Nothing is posted during connection."}
                           </p>
                         </div>
@@ -7596,7 +7596,7 @@ function SettingsWorkspace() {
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge tone="warning">Local only</StatusBadge>
                         <span className="font-medium">
-                          Applies saved Leasium mappings only; no Xero contacts
+                          Applies saved Relby mappings only; no Xero contacts
                           are created, updated, or deleted.
                         </span>
                       </div>
@@ -8431,7 +8431,7 @@ function SettingsWorkspace() {
               >
                 <SectionPanel
                   title="Payment reconciliation review"
-                  description="Review provider payment status against Leasium invoice metadata before applying local payment updates."
+                  description="Review provider payment status against Relby invoice metadata before applying local payment updates."
                   icon={<CircleDollarSign size={17} className="text-primary" />}
                   actions={
                     <div className="flex flex-wrap items-center gap-2">
@@ -8516,8 +8516,8 @@ function SettingsWorkspace() {
                         Local metadata only
                       </StatusBadge>
                       <span className="font-medium">
-                        Provider payments are compared against Leasium invoices;
-                        Apply updates Leasium payment metadata only.
+                        Provider payments are compared against Relby invoices;
+                        Apply updates Relby payment metadata only.
                       </span>
                     </div>
                     <ul className="grid gap-1 text-xs text-muted-foreground">
@@ -8699,7 +8699,7 @@ function SettingsWorkspace() {
               >
                 <SectionPanel
                 title="Bank feed (Basiq)"
-                description="Reconcile imported bank transactions against Leasium invoice metadata before applying any local payment update."
+                description="Reconcile imported bank transactions against Relby invoice metadata before applying any local payment update."
                 icon={<CircleDollarSign size={17} className="text-primary" />}
                 actions={
                   displayedBasiqReconciliation ? (
@@ -8787,7 +8787,7 @@ function SettingsWorkspace() {
                   <p className="text-sm text-muted-foreground">
                     Connecting links a Basiq consent so the feed can be fetched
                     for review. Connecting and fetching never moves money or
-                    writes to the bank — Apply only updates Leasium invoice
+                    writes to the bank — Apply only updates Relby invoice
                     payment metadata for approved rows.
                   </p>
                   <div className="grid gap-3 md:grid-cols-3">
@@ -8882,7 +8882,7 @@ function SettingsWorkspace() {
                         <div className="font-medium">Consent ready</div>
                         <p className="text-xs text-muted-foreground">
                           Open the Basiq consent in a new tab to authorise the
-                          feed. Leasium does not redirect automatically.
+                          feed. Relby does not redirect automatically.
                         </p>
                         <a
                           className="inline-flex min-h-11 w-fit items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
@@ -8939,7 +8939,7 @@ function SettingsWorkspace() {
                   <div className="text-sm font-semibold">Add transaction</div>
                   <p className="text-sm text-muted-foreground">
                     No live Basiq feed yet — enter imported bank transactions to
-                    reconcile against Leasium invoice metadata.
+                    reconcile against Relby invoice metadata.
                   </p>
                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                     <Field label="Amount (AUD)">
@@ -9095,8 +9095,8 @@ function SettingsWorkspace() {
                           Local metadata only
                         </StatusBadge>
                         <span className="font-medium">
-                          Imported transactions are compared against Leasium
-                          invoices; Apply updates Leasium payment metadata only.
+                          Imported transactions are compared against Relby
+                          invoices; Apply updates Relby payment metadata only.
                         </span>
                       </div>
                       <ul className="grid gap-1 text-xs text-muted-foreground">

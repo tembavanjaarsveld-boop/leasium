@@ -752,14 +752,14 @@ function InboxWorkspace() {
             </div>
             <div className="min-w-0">
               <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-                Leasium AI Inbox
+                Relby AI Inbox
                 <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-leasium-micro font-bold uppercase tracking-wide text-primary">
                   Beta
                 </span>
               </h1>
               <p className="text-sm text-muted-foreground">
-                Paste an inbound email, SMS, or message. Leasium AI classifies
-                it and points you at the right next step. Read-only — Leasium
+                Paste an inbound email, SMS, or message. Relby AI classifies
+                it and points you at the right next step. Read-only — Relby
                 AI will never act on a message without you.
               </p>
             </div>
@@ -777,7 +777,7 @@ function InboxWorkspace() {
                   <h2 className="text-lg font-semibold">AI Mailbox</h2>
                   <p className="text-sm text-muted-foreground">
                     Forward an email to {displayMailboxAddress}. Review what
-                    Leasium found. Apply only what you approve.
+                    Relby found. Apply only what you approve.
                   </p>
                 </div>
               </div>
@@ -787,7 +787,7 @@ function InboxWorkspace() {
                     Forward anything — agent updates, notices, quotes, renewals
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Trusted senders only. Leasium reads the email, suggests
+                    Trusted senders only. Relby reads the email, suggests
                     where details and tasks belong, and waits for your approval.
                   </p>
                 </div>
@@ -941,7 +941,7 @@ function InboxWorkspace() {
                         ? "Checking mailbox."
                         : "No trusted mailbox rows."
                     }
-                    description="Forwarded emails from trusted senders will appear here after Leasium has stored the raw email provenance."
+                    description="Forwarded emails from trusted senders will appear here after Relby has stored the raw email provenance."
                   />
                 )}
               </div>
@@ -1289,7 +1289,7 @@ function InboxWorkspace() {
                   </Link>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    No clear Leasium surface for this message. Handle outside
+                    No clear Relby surface for this message. Handle outside
                     the platform or paste a fuller message.
                   </p>
                 )}
@@ -1303,15 +1303,15 @@ function InboxWorkspace() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-primary">
-                        Promote to a Leasium draft
+                        Promote to a Relby draft
                       </div>
                       <p className="text-sm text-foreground">
                         {promoteKindLabel}.{" "}
                         {promoteDetailCopy
                           ? promoteDetailCopy
                           : promoteShowsTenantContactPreview
-                            ? "Leasium updates only the checked fields; nothing is sent."
-                            : "Leasium creates the draft; nothing is sent until you approve from inside the target surface."}
+                            ? "Relby updates only the checked fields; nothing is sent."
+                            : "Relby creates the draft; nothing is sent until you approve from inside the target surface."}
                       </p>
                     </div>
                   </div>
@@ -1731,12 +1731,12 @@ function InboxWorkspace() {
                   tenant, contractor, agent, or supplier.
                 </li>
                 <li>
-                  Leasium classifies it into one of seven kinds (maintenance,
+                  Relby classifies it into one of seven kinds (maintenance,
                   payment, lease, tenant contact, vendor, general, spam).
                 </li>
                 <li>
                   You get a short summary, the suggested next action, and a
-                  deep-link to the right Leasium surface so the reviewed
+                  deep-link to the right Relby surface so the reviewed
                   workflow can take over.
                 </li>
                 <li>

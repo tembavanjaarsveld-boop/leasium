@@ -57,7 +57,7 @@ function SetupShell({ children }: { children: ReactNode }) {
           <LeasiumMark className="h-12 w-12" />
           <div>
             <div className="text-sm font-semibold text-primary">
-              Leasium operator setup
+              Relby operator setup
             </div>
             <h1 className="text-2xl font-semibold">First workspace setup</h1>
           </div>
@@ -220,7 +220,7 @@ function WorkspaceCreatedState({ result }: { result: SecurityBootstrapRecord }) 
       <div>
         <h2 className="text-xl font-semibold">{result.organisation.name}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {result.member.display_name} can now open Leasium as the first owner
+          {result.member.display_name} can now open Relby as the first owner
           operator.
         </p>
       </div>

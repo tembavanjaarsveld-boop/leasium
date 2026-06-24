@@ -26,13 +26,13 @@ test("dashboard shows an onboarding welcome when the account has no entities", a
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Welcome to Leasium" }),
+    page.getByRole("heading", { name: "Welcome to Relby" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Add a property" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open Leasium AI" }),
+    page.getByRole("button", { name: "Open Relby AI" }),
   ).toBeVisible();
 
   // The scary live-data error must not appear for an empty account.

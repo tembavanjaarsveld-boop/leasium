@@ -227,14 +227,14 @@ test("welcome header links keep 44px touch targets", async ({ page }) => {
 
   await expect(
     page.getByRole("heading", {
-      name: "Sign in to your Leasium account.",
+      name: "Sign in to your Relby account.",
     }),
   ).toBeVisible();
   const header = page.locator("header");
 
   await expectTouchTarget(header.getByRole("link", { name: "Sign in" }));
   await expectTouchTarget(header.getByRole("link", { name: "Tenant invite" }));
-  await expectTouchTarget(header.getByRole("link", { name: "Leasium" }));
+  await expectTouchTarget(header.getByRole("link", { name: "Relby" }));
 });
 
 test("workspace guard asks signed-out operators to sign in when Clerk is configured", async ({
@@ -279,7 +279,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByText("Insurance certificate renewal").first(),
   ).toBeVisible();
   await expectTouchTarget(
-    page.getByRole("link", { name: "Open Leasium AI" }),
+    page.getByRole("link", { name: "Open Relby AI" }),
   );
   const sidebar = page.getByRole("complementary", {
     name: "Primary navigation",
@@ -349,10 +349,10 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
     page.getByRole("link", { name: /Open comms queue/ }),
   ).toBeVisible();
   await commandSearch.fill("zzzz-no-match");
-  // Typing always offers an Ask Leasium AI action now (replaces the old
+  // Typing always offers an Ask Relby AI action now (replaces the old
   // "No matching action." empty state — you can ask the AI anything).
   await expect(
-    page.getByRole("link", { name: /Ask Leasium AI:/ }),
+    page.getByRole("link", { name: /Ask Relby AI:/ }),
   ).toBeVisible();
   await page.mouse.click(300, 100);
   await expect(
@@ -535,7 +535,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(page.getByText("Review only. This does not send")).toBeVisible();
 });
 
-test("Cmd-K Leasium AI ask carries page context into the persistent thread launcher", async ({
+test("Cmd-K Relby AI ask carries page context into the persistent thread launcher", async ({
   page,
 }) => {
   await page.goto("/properties?property_id=property-1");
@@ -545,7 +545,7 @@ test("Cmd-K Leasium AI ask carries page context into the persistent thread launc
   await commandSearch.fill("add the lease for this property");
 
   const askAction = page.getByRole("link", {
-    name: /Ask Leasium AI: “add the lease for this property”/,
+    name: /Ask Relby AI: “add the lease for this property”/,
   });
   await expect(askAction).toBeVisible();
   const href = await askAction.getAttribute("href");
@@ -619,7 +619,7 @@ test("smart intake quick-add links keep 44px touch targets", async ({
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
   const addProperty = page.getByRole("link", { name: "Add property" });
   await expectTouchTarget(addProperty);
@@ -635,18 +635,18 @@ test("smart intake review filter keeps a 44px touch target", async ({
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
   await expectTouchTarget(page.getByLabel("Review filter"));
 });
 
-test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
+test("smart intake opens as one Relby AI workspace", async ({ page }) => {
   await mkdir("../../output/playwright", { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
   const home = page.getByTestId("leasium-ai-home");
   await expect(home).toBeVisible();
@@ -663,17 +663,17 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   );
   await expect(
     page.getByText(
-      "Drop a lease, invoice, contract, or question. Leasium AI reads first and asks before anything changes.",
+      "Drop a lease, invoice, contract, or question. Relby AI reads first and asks before anything changes.",
     ),
   ).toBeVisible();
-  await expect(composer.getByText("Leasium AI")).toBeVisible();
+  await expect(composer.getByText("Relby AI")).toBeVisible();
   await expect(
     composer.getByText(
       "Ask a question, drop in a lease or invoice, and I'll talk you through the next step before anything changes.",
     ),
   ).toHaveCount(0);
   await expect(
-    page.getByPlaceholder("Ask Leasium anything, or add a file..."),
+    page.getByPlaceholder("Ask Relby anything, or add a file..."),
   ).toBeVisible();
   await expect(page.getByText("What's overdue?")).toBeVisible();
   await expect(page.getByTestId("leasium-ai-home-recent")).toHaveCount(0);
@@ -698,7 +698,7 @@ test("smart intake opens as one Leasium AI workspace", async ({ page }) => {
   });
 });
 
-test("mobile Leasium AI landing keeps the assistant prompt first", async ({
+test("mobile Relby AI landing keeps the assistant prompt first", async ({
   page,
 }) => {
   await mkdir("../../output/playwright", { recursive: true });
@@ -706,13 +706,13 @@ test("mobile Leasium AI landing keeps the assistant prompt first", async ({
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
   const composer = page.getByTestId("leasium-ai-home-composer");
   await expect(composer).toBeVisible();
-  await expect(composer.getByText("Leasium AI")).toBeVisible();
+  await expect(composer.getByText("Relby AI")).toBeVisible();
   await expect(
-    page.getByPlaceholder("Ask Leasium anything, or add a file..."),
+    page.getByPlaceholder("Ask Relby anything, or add a file..."),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Overdue?" })).toBeVisible();
   await expect(page.getByLabel("Review filter")).toBeHidden();
@@ -749,7 +749,7 @@ test("mobile Leasium AI landing keeps the assistant prompt first", async ({
   ).toBeVisible();
 });
 
-test("document review opens as a focused Leasium AI chat without provider writes", async ({
+test("document review opens as a focused Relby AI chat without provider writes", async ({
   page,
 }) => {
   const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
@@ -762,7 +762,7 @@ test("document review opens as a focused Leasium AI chat without provider writes
   await expect(page.getByTestId("leasium-ai-home-rail")).toHaveCount(0);
   await expect(documentChat.getByText("Review first")).toBeVisible();
   await expect(
-    documentChat.getByRole("button", { name: "Back to Leasium AI" }),
+    documentChat.getByRole("button", { name: "Back to Relby AI" }),
   ).toBeVisible();
 
   const conversation = page.getByTestId("intake-conversation");
@@ -772,7 +772,7 @@ test("document review opens as a focused Leasium AI chat without provider writes
     "Bright Cafe Pty Ltd",
   );
   await expect(page.getByTestId("intake-plan")).toContainText(
-    "I can create these Leasium records",
+    "I can create these Relby records",
   );
   await expect(page.getByTestId("intake-create-all")).toHaveText(
     "Approve and create records",
@@ -784,7 +784,7 @@ test("document review opens as a focused Leasium AI chat without provider writes
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("mobile Leasium AI document review keeps one touch-safe conversation", async ({
+test("mobile Relby AI document review keeps one touch-safe conversation", async ({
   page,
 }) => {
   const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
@@ -805,7 +805,7 @@ test("mobile Leasium AI document review keeps one touch-safe conversation", asyn
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("Leasium AI asks one plain-English question when invoice extraction has zero fields", async ({
+test("Relby AI asks one plain-English question when invoice extraction has zero fields", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
@@ -822,7 +822,7 @@ test("Leasium AI asks one plain-English question when invoice extraction has zer
   );
   const question = page.getByTestId("intake-question");
   await expect(question).toBeVisible();
-  await expect(question).toContainText("Leasium needs one answer");
+  await expect(question).toContainText("Relby needs one answer");
   await expect(question).toContainText(
     "Which property, unit, tenant, or lease should this invoice help with?",
   );
@@ -838,7 +838,7 @@ test("Leasium AI asks one plain-English question when invoice extraction has zer
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("Leasium AI waits while an invoice is still reading", async ({ page }) => {
+test("Relby AI waits while an invoice is still reading", async ({ page }) => {
   await mockLeasiumApi(page, { includeReadingInvoiceIntake: true });
   await mkdir("../../output/playwright", { recursive: true });
   const forbiddenRequests = watchForbiddenDocumentReviewRequests(page);
@@ -862,7 +862,7 @@ test("Leasium AI waits while an invoice is still reading", async ({ page }) => {
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("mobile Leasium AI still asks one question for a zero-field invoice", async ({
+test("mobile Relby AI still asks one question for a zero-field invoice", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeZeroFieldInvoiceIntake: true });
@@ -886,7 +886,7 @@ test("mobile Leasium AI still asks one question for a zero-field invoice", async
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("Leasium AI follow-up chat stays read-only in document review", async ({
+test("Relby AI follow-up chat stays read-only in document review", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { includeUnmatchedNoticeIntake: true });
@@ -1055,7 +1055,7 @@ test("notifications mobile actions keep intended touch targets", async ({
 
   const mobileNav = page.getByRole("navigation", { name: "Mobile primary" });
   await expect(mobileNav).toBeVisible();
-  await expectTouchTarget(mobileNav.getByRole("link", { name: "Leasium AI" }));
+  await expectTouchTarget(mobileNav.getByRole("link", { name: "Relby AI" }));
   const summaryBox = await mobileSummary.boundingBox();
   const navBox = await mobileNav.boundingBox();
   expect(summaryBox).not.toBeNull();
@@ -1064,17 +1064,17 @@ test("notifications mobile actions keep intended touch targets", async ({
   await expectNoHorizontalOverflow(page);
 });
 
-test("dashboard Leasium AI panel answers with cited record", async ({
+test("dashboard Relby AI panel answers with cited record", async ({
   page,
 }) => {
   await page.goto("/");
 
   const askPanel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: /^Leasium AI/ }),
+    has: page.getByRole("heading", { name: /^Relby AI/ }),
   });
   await expect(askPanel).toBeVisible();
   await expect(
-    askPanel.getByText(/Read-only — Leasium AI will never act on a question/),
+    askPanel.getByText(/Read-only — Relby AI will never act on a question/),
   ).toBeVisible();
 
   for (const suggestion of [
@@ -1181,7 +1181,7 @@ test("AI mailbox surfaces queue and quarantine provenance", async ({
   await expect(page.getByRole("heading", { name: "AI Mailbox" })).toBeVisible();
   await expect(
     page.getByText(
-      "Forward an email to harbour-lane@inbox.leasium.ai. Review what Leasium found. Apply only what you approve.",
+      "Forward an email to harbour-lane@inbox.leasium.ai. Review what Relby found. Apply only what you approve.",
     ),
   ).toBeVisible();
   await expect(page.getByText("Client mailbox")).toBeVisible();
@@ -2212,7 +2212,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     emailCard.getByText("1 attachment routed to Smart Intake"),
   ).toBeVisible();
   await expect(
-    emailCard.getByRole("link", { name: "Open Leasium AI" }),
+    emailCard.getByRole("link", { name: "Open Relby AI" }),
   ).toHaveAttribute("href", "/intake");
   await expect(emailCard.getByText("SendGrid email")).toBeVisible();
   await expect(emailCard.getByLabel("Email recipient")).toHaveValue(
@@ -2269,7 +2269,7 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
     complianceCard.getByRole("link", { name: "Open compliance work" }),
   ).toHaveAttribute("href", "/operations?tab=compliance");
   await expect(
-    complianceCard.getByRole("link", { name: "Upload via Leasium AI" }),
+    complianceCard.getByRole("link", { name: "Upload via Relby AI" }),
   ).toHaveAttribute("href", "/intake");
   const evidenceFileChooserPromise = page.waitForEvent("filechooser");
   await complianceCard
@@ -2396,7 +2396,7 @@ test("grouped compliance comms drafts avoid single-obligation evidence upload", 
     "/operations?tab=compliance#compliance-obligation-obligation-compliance-2",
   );
   await expect(
-    complianceCard.getByRole("link", { name: "Upload via Leasium AI" }),
+    complianceCard.getByRole("link", { name: "Upload via Relby AI" }),
   ).toHaveAttribute("href", "/intake");
   await expect(
     complianceCard.getByRole("button", { name: "Or attach a file manually" }),
@@ -2725,7 +2725,7 @@ test("keyboard cheatsheet hides owner-statement shortcuts for self-managed accou
   await page
     .getByRole("textbox", { name: "Command search" })
     .fill("owner statements");
-  // Owner statements is gated out for self-managed owners (the Ask Leasium AI
+  // Owner statements is gated out for self-managed owners (the Ask Relby AI
   // fallback row may still appear, so assert on the module command itself).
   await expect(
     page.getByRole("link", { name: /Open owner statements/i }),
@@ -3065,7 +3065,7 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expectTouchTarget(digestMessagePreview);
   await digestMessagePreview.click();
   await expect(
-    page.getByText("Leasium Daily Work digest: 4 items"),
+    page.getByText("Relby Daily Work digest: 4 items"),
   ).toBeVisible();
   await expect(page.getByText("- Air conditioning fault")).toBeVisible();
   await exportDigestMenu.click();
@@ -3377,10 +3377,10 @@ test("notification center shows work notices and digest receipts", async ({
   await expect(page.getByText("Message preview").first()).toBeVisible();
   await page.getByText("Message preview").first().click();
   await expect(
-    page.getByText("Leasium work assigned: Air conditioning fault"),
+    page.getByText("Relby work assigned: Air conditioning fault"),
   ).toBeVisible();
   await expect(
-    page.getByText("Maintenance has been assigned to you in Leasium.").first(),
+    page.getByText("Maintenance has been assigned to you in Relby.").first(),
   ).toBeVisible();
   await expect(
     page.getByText("Retry the assignment email from this page."),
@@ -3391,7 +3391,7 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await page.getByText("Message preview").nth(1).click();
   await expect(
-    page.getByText("Leasium work assigned: Bright Cafe arrears"),
+    page.getByText("Relby work assigned: Bright Cafe arrears"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Send SMS" }).last().click();
   await expect(
@@ -3399,7 +3399,7 @@ test("notification center shows work notices and digest receipts", async ({
   ).toBeVisible();
   await page.getByText("Message preview").nth(2).click();
   await expect(
-    page.getByText("Leasium: Maintenance assigned to Temba van Jaarsveld"),
+    page.getByText("Relby: Maintenance assigned to Temba van Jaarsveld"),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry SMS" })).toBeVisible();
   await expect(page.getByText("Digest history")).toBeVisible();
@@ -3410,7 +3410,7 @@ test("notification center shows work notices and digest receipts", async ({
   await expect(receiptsPanel.getByText("No messages sent").first()).toBeVisible();
   await receiptsPanel.getByText("Message preview").last().click();
   await expect(
-    page.getByText("Leasium Daily Work digest: 4 items"),
+    page.getByText("Relby Daily Work digest: 4 items"),
   ).toBeVisible();
   await expect(page.getByText("Send digest from this page.")).toBeVisible();
   await expect(
@@ -3902,7 +3902,7 @@ test("maintenance detail route shows quote evidence", async ({ page }) => {
       .first(),
   ).toBeVisible();
   await expect(
-    page.getByText("Review this copy before sending anything outside Leasium."),
+    page.getByText("Review this copy before sending anything outside Relby."),
   ).toBeVisible();
   await expect(
     page.getByText(
@@ -4955,7 +4955,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText(/Confirmed until 30 .* 2027/)).toBeVisible();
   await expect(page.getByText("Source: Smart Intake")).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open Leasium AI review" }),
+    page.getByRole("link", { name: "Open Relby AI review" }),
   ).toHaveAttribute(
     "href",
     "/intake?entity_id=entity-1&review=intake-insurance-1",
@@ -5126,7 +5126,7 @@ test("tenant detail keeps provider detail in one responsive surface", async ({
   ).toBeVisible();
 });
 
-test("smart intake opens lease reviews in the Leasium AI chat", async ({
+test("smart intake opens lease reviews in the Relby AI chat", async ({
   page,
 }) => {
   await page.goto("/intake");
@@ -5145,7 +5145,7 @@ test("smart intake opens lease reviews in the Leasium AI chat", async ({
     "Bright Cafe Pty Ltd",
   );
   await expect(page.getByTestId("intake-plan")).toContainText(
-    "I can create these Leasium records",
+    "I can create these Relby records",
   );
 });
 
@@ -5205,7 +5205,7 @@ test("smart intake labels inbound email attachments in review queue", async ({
   );
   await expect(
     page.getByText(
-      "I can create the Leasium records after you approve this.",
+      "I can create the Relby records after you approve this.",
     ),
   ).toBeVisible();
 });
@@ -5260,7 +5260,7 @@ test("smart intake applies inspection findings into work orders", async ({
     "Queen Street Retail Centre",
   );
   await expect(
-    page.getByText("I can create the Leasium records after you approve this."),
+    page.getByText("I can create the Relby records after you approve this."),
   ).toBeVisible();
 
   await page.getByTestId("intake-create-all").click();
@@ -5750,7 +5750,7 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
   await expect(
     page
       .locator('a[href="/intake?entity_id=entity-1&review=intake-1"]')
-      .getByText("Open Leasium AI review"),
+      .getByText("Open Relby AI review"),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Activate lease" }).click();
@@ -7201,7 +7201,7 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   );
   expect(freshnessCsv).toContain("Xero-linked open invoices");
   expect(freshnessCsv).toContain(
-    "Accounting freshness is calculated from local Leasium metadata only.",
+    "Accounting freshness is calculated from local Relby metadata only.",
   );
   expect(freshnessCsv).toContain(
     "Loading Xero status does not refresh tokens, call Xero, post invoices, or reconcile payments.",
@@ -7693,7 +7693,7 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
   await expect(ownerSnapshotSection.getByText("Guardrails")).toBeVisible();
 });
 
-test("settings shows account type as read-only set by Leasium", async ({
+test("settings shows account type as read-only set by Relby", async ({
   page,
 }) => {
   await page.goto("/settings");
@@ -7707,7 +7707,7 @@ test("settings shows account type as read-only set by Leasium", async ({
     accountTypePanel.getByText("Self-managed owner", { exact: true }),
   ).toBeVisible();
   await expect(
-    accountTypePanel.getByText(/set by Leasium for your account/i),
+    accountTypePanel.getByText(/set by Relby for your account/i),
   ).toBeVisible();
   // The old client-side operating-mode dropdown is gone: clients don't
   // decide what they are. The control now lives on /admin.

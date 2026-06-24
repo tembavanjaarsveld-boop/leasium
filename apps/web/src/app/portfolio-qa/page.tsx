@@ -389,7 +389,7 @@ function sourceLabel(metadata: Record<string, unknown>) {
     metadataText(metadata, "portfolio_import_source") ??
     metadataText(metadata, "source") ??
     metadataText(metadata, "source_sheet") ??
-    "Leasium record"
+    "Relby record"
   ).replaceAll("_", " ");
 }
 

@@ -422,7 +422,7 @@ function ClientsTab() {
       <ProvisionClientForm />
       <SectionPanel
         title="Clients"
-        description="Every client organisation Leasium hosts, with its operating mode, status, and first-operator access."
+        description="Every client organisation Relby hosts, with its operating mode, status, and first-operator access."
         icon={<Building2 size={17} className="text-primary" />}
       >
         <div className="grid gap-3 p-4">
@@ -879,7 +879,7 @@ function AdminWorkspace() {
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
           title="Platform admin"
-          description="Provision and manage Leasium client organisations and review platform integration health. No property management lives here."
+          description="Provision and manage Relby client organisations and review platform integration health. No property management lives here."
           actions={
             <StatusBadge tone="primary">
               <ShieldCheck size={13} className="mr-1 inline" />
@@ -900,7 +900,7 @@ function AdminWorkspace() {
               <EmptyState
                 icon={<ShieldCheck size={18} />}
                 title="Platform admin access required"
-                description="This area is for Leasium platform administrators. Your operator account does not have platform-admin access."
+                description="This area is for Relby platform administrators. Your operator account does not have platform-admin access."
               />
             </div>
           </SectionPanel>

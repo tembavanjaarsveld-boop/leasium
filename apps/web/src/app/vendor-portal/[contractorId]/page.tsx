@@ -85,7 +85,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-4">
           <LeasiumMark />
           <div className="min-w-0">
-            <p className="text-lg font-semibold leading-6">Leasium</p>
+            <p className="text-lg font-semibold leading-6">Relby</p>
             <p className="text-sm text-muted-foreground">Vendor portal</p>
           </div>
         </div>

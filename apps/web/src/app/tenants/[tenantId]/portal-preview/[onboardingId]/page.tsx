@@ -900,7 +900,7 @@ function PreviewLoaded({
                     </p>
                   ) : null}
                   <p className="text-xs text-muted-foreground">
-                    Shown to tenants as how to pay. Leasium does not process
+                    Shown to tenants as how to pay. Relby does not process
                     payments or move money.
                   </p>
                 </div>

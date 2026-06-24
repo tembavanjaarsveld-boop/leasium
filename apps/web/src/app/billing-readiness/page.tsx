@@ -2485,7 +2485,7 @@ function BillingReadinessWorkspace() {
   });
 
   // One-click internal staging: approve the billing draft, create the invoice
-  // draft, prepare its preview, and approve the invoice draft — all Leasium-only
+  // draft, prepare its preview, and approve the invoice draft — all Relby-only
   // steps. No tenant email, Xero sync, or payment change runs here; those stay
   // explicit on the Send & track payments tab.
   const approveAndPrepareMutation = useMutation({
@@ -2888,7 +2888,7 @@ function BillingReadinessWorkspace() {
   };
   // Shared row actions for a billing draft, used by both the mobile cards and
   // the desktop table. The one-click "Approve & prepare to send" runs only
-  // Leasium-internal steps; tenant email and Xero sync stay on the Send tab.
+  // Relby-internal steps; tenant email and Xero sync stay on the Send tab.
   const renderBillingDraftActions = (draft: BillingDraftRecord) => {
     const invoiceDraft = invoiceDraftByBillingDraftId.get(draft.id) ?? null;
     if (draft.status === "void") {
@@ -3261,7 +3261,7 @@ function BillingReadinessWorkspace() {
             <EmptyState
               icon={<Building2 size={18} />}
               title="No entity selected"
-              description="Choose an entity from the header to load billing readiness checks. Leasium will show invoice, Xero, and GST blockers here."
+              description="Choose an entity from the header to load billing readiness checks. Relby will show invoice, Xero, and GST blockers here."
             />
           </SectionPanel>
         ) : null}
@@ -4683,7 +4683,7 @@ function BillingReadinessWorkspace() {
                             title={
                               allMode
                                 ? "Select a single entity to mark paid"
-                                : "Marks the approved internal invoice as paid in Leasium only."
+                                : "Marks the approved internal invoice as paid in Relby only."
                             }
                           >
                             {isUpdatingPayment ? (
@@ -5266,7 +5266,7 @@ function BillingReadinessWorkspace() {
                                   title={
                                     allMode
                                       ? "Select a single entity to mark paid"
-                                      : "Marks the approved internal invoice as paid in Leasium only."
+                                      : "Marks the approved internal invoice as paid in Relby only."
                                   }
                                 >
                                   {isUpdatingPayment ? (
@@ -5675,7 +5675,7 @@ function BillingReadinessWorkspace() {
                     title="No billing blockers"
                     description={
                       rentRows.length
-                        ? "This portfolio is ready for the next invoice run. Leasium will flag missing tenant details, charge rules, Xero mapping, and GST checks here."
+                        ? "This portfolio is ready for the next invoice run. Relby will flag missing tenant details, charge rules, Xero mapping, and GST checks here."
                         : "Blockers will appear here once rent roll rows are available."
                     }
                   />

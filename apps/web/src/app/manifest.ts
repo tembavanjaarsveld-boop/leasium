@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Leasium",
-    short_name: "Leasium",
+    name: "Relby",
+    short_name: "Relby",
     description: "Review-first automation for lease and tenant workflows.",
     lang: "en-AU",
     start_url: "/",
@@ -20,19 +20,19 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/svg+xml",
       },
       {
-        src: "/icons/leasium-icon-192.png",
+        src: "/icons/relby-icon-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/leasium-icon-512.png",
+        src: "/icons/relby-icon-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/leasium-maskable-512.png",
+        src: "/icons/relby-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
@@ -40,9 +40,9 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: "Leasium AI",
+        name: "Relby AI",
         short_name: "AI",
-        description: "Ask Leasium AI with lease and property documents.",
+        description: "Ask Relby AI with lease and property documents.",
         url: "/intake",
       },
       {

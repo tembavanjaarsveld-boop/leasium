@@ -78,7 +78,7 @@ test("creates an operator template without touching send paths", async ({
     .fill("New work assigned to {{assignee_name}}");
   await drawer
     .getByLabel("Body")
-    .fill("Please review {{work_title}} in Leasium.");
+    .fill("Please review {{work_title}} in Relby.");
 
   const postRequestPromise = page.waitForRequest(
     (request) =>
@@ -95,7 +95,7 @@ test("creates an operator template without touching send paths", async ({
     provider: "sendgrid",
     name: "Work assignment notice",
     subject_template: "New work assigned to {{assignee_name}}",
-    body_template: "Please review {{work_title}} in Leasium.",
+    body_template: "Please review {{work_title}} in Relby.",
     is_active: true,
   });
   await expect(catalog.getByText("Work assignment notice")).toBeVisible();

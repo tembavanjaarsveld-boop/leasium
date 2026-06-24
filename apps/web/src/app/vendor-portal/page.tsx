@@ -94,7 +94,7 @@ function VendorPortalAccountQueries({ auth }: { auth: VendorAccountAuthContext }
     return (
       <VendorPortalNotice title="Open your vendor portal">
         <p>
-          Sign in with the login linked to your Leasium vendor portal. If this is
+          Sign in with the login linked to your Relby vendor portal. If this is
           your first visit, open the claim link from the property team first.
         </p>
         {statusQuery.error ? <p>{friendlyError(statusQuery.error)}</p> : null}

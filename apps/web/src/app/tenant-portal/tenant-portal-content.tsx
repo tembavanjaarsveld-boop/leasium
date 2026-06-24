@@ -1042,12 +1042,12 @@ function tenantPortalClaimErrorMessage(
   if (lower.includes("login email must match")) {
     if (signedInEmail && inviteEmail) {
       if (normaliseEmail(signedInEmail) === normaliseEmail(inviteEmail)) {
-        return `The browser is signed in as ${signedInEmail}, but Leasium could not verify that session on the server. Reset sign-in, then enter the code for ${inviteEmail} again.`;
+        return `The browser is signed in as ${signedInEmail}, but Relby could not verify that session on the server. Reset sign-in, then enter the code for ${inviteEmail} again.`;
       }
-      return `Leasium could not verify that ${signedInEmail} owns this invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
+      return `Relby could not verify that ${signedInEmail} owns this invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
     }
     if (inviteEmail) {
-      return `Leasium could not verify that this account owns the invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
+      return `Relby could not verify that this account owns the invite for ${inviteEmail}. Sign out, then sign in directly with ${inviteEmail}.`;
     }
   }
   return message;
@@ -1590,7 +1590,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-4">
           <LeasiumMark />
           <div>
-            <h1 className="text-lg font-semibold">Leasium</h1>
+            <h1 className="text-lg font-semibold">Relby</h1>
             <p className="text-sm text-muted-foreground">Tenant portal</p>
           </div>
         </div>
@@ -2991,7 +2991,7 @@ function OnboardingPanel({
       portal.onboarding.status === "reviewed"
         ? `Submitted ${formatDateTime(portal.onboarding.submitted_at)}. Your property manager will review and confirm shortly.`
         : portal.onboarding.status === "applied"
-          ? "Applied. Your contact details are now confirmed in Leasium."
+          ? "Applied. Your contact details are now confirmed in Relby."
           : `Onboarding is ${tenantOnboardingStatusLabel(portal.onboarding.status)}.`;
     return (
       <Panel
@@ -3708,8 +3708,8 @@ function TenantPortalContentWithoutAuth({
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               {view === "lease"
-                ? "Sign in with your Leasium tenant account to review and sign."
-                : "Sign in with your Leasium tenant account."}
+                ? "Sign in with your Relby tenant account to review and sign."
+                : "Sign in with your Relby tenant account."}
             </p>
           </section>
           <TenantLoginNotConfiguredPanel />
@@ -4205,7 +4205,7 @@ function TenantPortalContent({
             <p className="text-sm font-medium text-primary">Tenant Portal</p>
             <h2 className="mt-1 text-2xl font-semibold">Open your portal</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Sign in with your Leasium tenant account.
+              Sign in with your Relby tenant account.
             </p>
           </section>
           <TenantAccountPanel
@@ -4339,7 +4339,7 @@ function TenantPortalContent({
                     Couldn&apos;t read this login
                   </StatusBadge>
                   <p className="text-muted-foreground">
-                    Leasium could not read the email on this signed-in account.
+                    Relby could not read the email on this signed-in account.
                     Sign out, then sign in directly with{" "}
                     <span className="font-medium text-foreground">
                       {preview.tenant_email}
@@ -4862,7 +4862,7 @@ function TenantPortalContent({
           <div className="flex items-center gap-2.5 px-2 pb-5">
             <LeasiumMark />
             <div className="min-w-0">
-              <div className="text-sm font-semibold leading-tight">Leasium</div>
+              <div className="text-sm font-semibold leading-tight">Relby</div>
               <div className="text-xs text-muted-foreground">Tenant portal</div>
             </div>
           </div>
@@ -5450,7 +5450,7 @@ function TenantPortalContent({
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Quote your invoice reference when paying. Leasium does not
+                  Quote your invoice reference when paying. Relby does not
                   process payments.
                 </p>
               </div>

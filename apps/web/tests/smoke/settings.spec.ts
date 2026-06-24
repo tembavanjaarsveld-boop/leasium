@@ -830,7 +830,7 @@ test("settings keeps account type read-only without orphaning self-managed owner
     accountTypePanel.getByText("Self-managed owner", { exact: true }),
   ).toBeVisible();
   await expect(
-    accountTypePanel.getByText(/set by Leasium for your account/i),
+    accountTypePanel.getByText(/set by Relby for your account/i),
   ).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "Account operating mode" }),
@@ -885,7 +885,7 @@ test("settings account type stays read-only without manage-security", async ({
     accountTypePanel.getByText("Self-managed owner", { exact: true }),
   ).toBeVisible();
   await expect(
-    accountTypePanel.getByText(/set by Leasium for your account/i),
+    accountTypePanel.getByText(/set by Relby for your account/i),
   ).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "Account operating mode" }),

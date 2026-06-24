@@ -15,7 +15,7 @@ const upcomingLeaseEventsPath = path.join(
   "src/components/dashboard/UpcomingLeaseEventsPanel.tsx",
 );
 
-test("dashboard list rows use the shared Leasium motion tokens", async () => {
+test("dashboard list rows use the shared Relby motion tokens", async () => {
   const [commandCenterSource, activityAuditSource, upcomingLeaseEventsSource] =
     await Promise.all([
       readFile(commandCenterPath, "utf8"),

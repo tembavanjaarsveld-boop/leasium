@@ -2663,7 +2663,7 @@ function TenantDetail() {
                             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-border bg-white px-3 text-sm font-medium transition hover:bg-muted"
                           >
                             <Sparkles size={15} />
-                            Open Leasium AI review
+                            Open Relby AI review
                           </Link>
                         ) : null}
                         <a
@@ -3252,7 +3252,7 @@ function TenantDetail() {
                           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
                         >
                           <Sparkles size={15} />
-                          Open Leasium AI
+                          Open Relby AI
                         </Link>
                       </div>
                     }
@@ -4048,7 +4048,7 @@ function TenantDetail() {
                                 )}
                               >
                                 <Sparkles size={15} />
-                                Open Leasium AI review
+                                Open Relby AI review
                               </Link>
                             ) : null}
                             <Link

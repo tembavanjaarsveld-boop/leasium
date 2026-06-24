@@ -1748,7 +1748,7 @@ function statementDispatchDraft({
   const outstandingLine =
     owner.outstanding_cents > 0
       ? `There is ${formatMoney(owner.outstanding_cents)} still showing as outstanding. Please review the payment notes before the statement is sent.`
-      : "The statement is showing as fully paid in Leasium.";
+      : "The statement is showing as fully paid in Relby.";
   return {
     subject: `Owner statement for ${monthLabel} - ${owner.owner_identity}`,
     body: [
@@ -1763,7 +1763,7 @@ function statementDispatchDraft({
       outstandingLine,
       "",
       "Kind regards,",
-      "Leasium",
+      "Relby",
     ].join("\n"),
   };
 }

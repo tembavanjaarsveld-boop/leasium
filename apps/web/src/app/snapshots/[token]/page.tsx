@@ -368,7 +368,7 @@ function PublicSnapshotContent() {
           <div className="flex items-center gap-3">
             <LeasiumMark className="h-12 w-12" />
             <div>
-              <div className="text-sm font-semibold text-primary">Leasium snapshot</div>
+              <div className="text-sm font-semibold text-primary">Relby snapshot</div>
               <h1 className="text-2xl font-semibold">
                 {snapshot ? snapshotTypeLabel(snapshot.snapshot_type) : "Portfolio snapshot"}
               </h1>
@@ -378,7 +378,7 @@ function PublicSnapshotContent() {
             href="/"
             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted"
           >
-            Open Leasium
+            Open Relby
           </Link>
         </header>
 
@@ -439,7 +439,7 @@ function PublicSnapshotContent() {
 
             <SectionPanel
               title="Snapshot Controls"
-              description="This public link is read-only and cannot change Leasium records."
+              description="This public link is read-only and cannot change Relby records."
               icon={<FileText size={17} className="text-primary" />}
             >
               <div className="grid gap-2 p-4 text-sm text-muted-foreground">

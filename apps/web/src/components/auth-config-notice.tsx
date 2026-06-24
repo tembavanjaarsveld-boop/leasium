@@ -62,11 +62,11 @@ export function ClerkSessionUnavailableNotice({
         <AlertTriangle className="mt-0.5 text-warning-strong" size={18} />
         <div className="grid gap-1">
           <h2 className="text-base font-semibold">
-            Leasium login is still being configured.
+            Relby login is still being configured.
           </h2>
           <p className="leading-6 text-slate">
             Sign-in could not finish because the live auth domain is not aligned
-            with the Leasium domain yet.
+            with the Relby domain yet.
           </p>
         </div>
       </div>

@@ -92,7 +92,7 @@ async function expectLeasiumAiColourWash(page: Page) {
   expect(visualStyle.borderColor).toContain("36, 91, 255");
 }
 
-test("Leasium AI conversation thread home stays clean at 1440", async ({
+test("Relby AI conversation thread home stays clean at 1440", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -106,7 +106,7 @@ test("Leasium AI conversation thread home stays clean at 1440", async ({
   });
 });
 
-test("Leasium AI conversation thread home stays clean at 390", async ({
+test("Relby AI conversation thread home stays clean at 390", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });

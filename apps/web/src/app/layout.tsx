@@ -18,13 +18,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  applicationName: "Leasium",
-  title: "Leasium | Lease operations, automated",
+  applicationName: "Relby",
+  title: "Relby | Lease operations, automated",
   description: "Review-first automation for lease and tenant workflows.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Leasium",
+    title: "Relby",
     statusBarStyle: "default",
   },
   formatDetection: {

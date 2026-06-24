@@ -104,7 +104,7 @@ function OwnerPortalAccountQueries({ auth }: { auth: OwnerAccountAuthContext }) 
     return (
       <OwnerPortalNotice title="Open your owner portal">
         <p>
-          Sign in with the owner login linked to your Leasium owner portal. If
+          Sign in with the owner login linked to your Relby owner portal. If
           this is your first visit, open the claim link from the property team
           first.
         </p>
@@ -117,7 +117,7 @@ function OwnerPortalAccountQueries({ auth }: { auth: OwnerAccountAuthContext }) 
     return (
       <OwnerPortalNotice title="Open your owner portal">
         <p>
-          Sign in with the owner login linked to your Leasium owner portal. If
+          Sign in with the owner login linked to your Relby owner portal. If
           this is your first visit, open the claim link from the property team
           first.
         </p>

@@ -28,7 +28,7 @@ function OperatorAuthLoading() {
           <LeasiumMark className="h-12 w-12" />
           <div>
             <div className="text-sm font-semibold text-primary">
-              Leasium operator login
+              Relby operator login
             </div>
             <h1 className="text-2xl font-semibold">Checking your session</h1>
           </div>
@@ -50,7 +50,7 @@ function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
           <LeasiumMark className="h-12 w-12" />
           <div>
             <div className="text-sm font-semibold text-primary">
-              Leasium operator login
+              Relby operator login
             </div>
             <h1 className="text-2xl font-semibold">
               Sign in to open the workspace
@@ -123,7 +123,7 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
             <LeasiumMark className="h-12 w-12" />
             <div>
               <div className="text-sm font-semibold text-primary">
-                Leasium operator login
+                Relby operator login
               </div>
               <h1 className="text-2xl font-semibold">Checking your session</h1>
             </div>

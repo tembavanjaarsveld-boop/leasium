@@ -62,7 +62,7 @@ function OnboardingWelcome({ token }: { token: string | null }) {
         <header className="flex items-center gap-3 lg:col-span-2">
           <LeasiumMark className="h-12 w-12" />
           <div>
-            <SectionTitle>Leasium</SectionTitle>
+            <SectionTitle>Relby</SectionTitle>
             <p className="text-sm text-muted-foreground">
               Lease operations, automated.
             </p>
@@ -135,7 +135,7 @@ function AccountFirstInvitation({
       <div className="grid gap-3">
         <PageTitle>{title}</PageTitle>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          Start in the Leasium tenant portal so your onboarding is connected to
+          Start in the Relby tenant portal so your onboarding is connected to
           your account. You can complete requested details, upload documents,
           and return later without hunting for this invite.
         </p>

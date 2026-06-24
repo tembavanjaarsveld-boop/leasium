@@ -4763,7 +4763,7 @@ function Workspace({
                   </label>
                   {selectedProperty ? (
                     <p className="text-xs text-muted-foreground">
-                      Leasium will match this document against{" "}
+                      Relby will match this document against{" "}
                       {selectedProperty.name} where possible.
                     </p>
                   ) : (
@@ -4851,7 +4851,7 @@ function Workspace({
                                 Review and edit
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                These values are what Leasium will apply.
+                                These values are what Relby will apply.
                               </div>
                             </div>
                             <SecondaryButton
@@ -7683,7 +7683,7 @@ function Workspace({
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Enter the {rentFrequencyLabel(leaseEditorRentFrequency)}{" "}
-                      rent amount. Leasium stores the annual equivalent for
+                      rent amount. Relby stores the annual equivalent for
                       reporting and billing checks.
                     </p>
                     <label className="flex items-center gap-2 text-sm">

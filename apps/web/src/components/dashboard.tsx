@@ -1718,7 +1718,7 @@ export function Dashboard({
     );
   }, [isIntakeWorkspace]);
 
-  // Global ⌘K "Ask Leasium AI" hands a question to /intake?ask=… — run it once
+  // Global ⌘K "Ask Relby AI" hands a question to /intake?ask=… — run it once
   // in the landing composer, then strip the param so refresh/back won't re-ask.
   const askConsumedRef = useRef(false);
   useEffect(() => {
@@ -2150,13 +2150,13 @@ export function Dashboard({
   if (topSmartReview) {
     commandCenterItems.push({
       id: "smart-intake-review",
-      area: commandCenterArea("Leasium AI", topSmartReview.entity_id),
-      title: `${smartReviewIntakes.length} Leasium AI ${
+      area: commandCenterArea("Relby AI", topSmartReview.entity_id),
+      title: `${smartReviewIntakes.length} Relby AI ${
         smartReviewIntakes.length === 1 ? "review" : "reviews"
       } waiting`,
       why:
         topSmartReview.status === "needs_attention"
-          ? `${topSmartReview.filename} needs a human match before Leasium can turn it into reviewed workflow data.`
+          ? `${topSmartReview.filename} needs a human match before Relby can turn it into reviewed workflow data.`
           : `${topSmartReview.filename} has extracted terms waiting for approval before lease, billing, or task work is created.`,
       href: intakeReviewHref(topSmartReview.entity_id, topSmartReview.id),
       nextStep: "Review document",
@@ -2172,7 +2172,7 @@ export function Dashboard({
   if (topFailedIntake) {
     commandCenterItems.push({
       id: "smart-intake-failed",
-      area: commandCenterArea("Leasium AI", topFailedIntake.entity_id),
+      area: commandCenterArea("Relby AI", topFailedIntake.entity_id),
       title: `${failedIntakes.length} document ${
         failedIntakes.length === 1 ? "read" : "reads"
       } failed`,
@@ -2284,8 +2284,8 @@ export function Dashboard({
     if (overviewDocumentNeedsReviewCount) {
       overviewCommandCenterItems.push({
         id: "overview-smart-intake-review",
-        area: "Leasium AI",
-        title: `${overviewDocumentNeedsReviewCount} Leasium AI ${
+        area: "Relby AI",
+        title: `${overviewDocumentNeedsReviewCount} Relby AI ${
           overviewDocumentNeedsReviewCount === 1 ? "review" : "reviews"
         } waiting`,
         why: "Extracted document data is ready for operator review before any portfolio changes are applied.",
@@ -2302,13 +2302,13 @@ export function Dashboard({
     if (overviewDocumentFailedCount) {
       overviewCommandCenterItems.push({
         id: "overview-smart-intake-failed",
-        area: "Leasium AI",
+        area: "Relby AI",
         title: `${overviewDocumentFailedCount} document ${
           overviewDocumentFailedCount === 1 ? "read" : "reads"
         } failed`,
         why: "Some uploaded documents could not become source-backed review data and need a quick operator check.",
         href: "/intake",
-        nextStep: "Fix in Leasium AI",
+        nextStep: "Fix in Relby AI",
         chip: "Could not read",
         tone: "danger",
         score: 6,
@@ -2554,7 +2554,7 @@ export function Dashboard({
           className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-primary transition hover:bg-primary/5"
         >
           <ArrowLeft size={16} aria-hidden="true" />
-          Back to Leasium AI
+          Back to Relby AI
         </button>
       </div>
       <IntakeConversationPanel
@@ -2730,7 +2730,7 @@ export function Dashboard({
         <div className="mx-auto grid max-w-none gap-[18px] px-5 py-5 lg:px-9 lg:py-7">
           <h1 className="sr-only">Dashboard</h1>
           <SectionPanel
-            title="Welcome to Leasium"
+            title="Welcome to Relby"
             description="This workspace doesn't have any properties yet."
             icon={<Sparkles size={17} className="text-primary" />}
           >
@@ -2738,7 +2738,7 @@ export function Dashboard({
               <p className="max-w-2xl text-sm text-muted-foreground">
                 Add your first property to get started — you can create its
                 owning entity (a trust or company) in the same step. Or drop a
-                lease, rent roll, or purchase contract into Leasium AI and let
+                lease, rent roll, or purchase contract into Relby AI and let
                 it extract the details for your review.
               </p>
               <div className="flex flex-wrap gap-3">
@@ -2754,7 +2754,7 @@ export function Dashboard({
                   onClick={() => window.location.assign("/intake")}
                 >
                   <FileUp size={15} />
-                  Open Leasium AI
+                  Open Relby AI
                 </SecondaryButton>
               </div>
             </div>
@@ -2781,12 +2781,12 @@ export function Dashboard({
           <section className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <PageTitle className="text-[21px] leading-7 tracking-[-0.02em] sm:text-3xl sm:leading-9">
-                Leasium AI
+                Relby AI
               </PageTitle>
               <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground sm:mt-1.5 sm:text-sm">
                 <span className="sm:hidden">Drop a document or ask in plain English.</span>
                 <span className="hidden sm:inline">
-                  Drop a lease, invoice, contract, or question. Leasium AI reads first and asks before anything changes.
+                  Drop a lease, invoice, contract, or question. Relby AI reads first and asks before anything changes.
                 </span>
               </p>
             </div>
@@ -2830,11 +2830,11 @@ export function Dashboard({
             </div>
             <Link
               href="#ask-leasium"
-              aria-label="Ask Leasium anything"
+              aria-label="Ask Relby anything"
               className="flex min-h-11 items-center gap-2 rounded-full border border-leasium-card-border bg-white px-3.5 py-2.5 text-[13px] leading-5 text-muted-foreground shadow-[0_2px_8px_rgba(16,24,40,0.06)] transition duration-200 ease-leasium hover:border-primary/30 hover:text-foreground"
             >
               <Sparkles size={14} className="shrink-0 text-primary" />
-              <span>Ask Leasium anything...</span>
+              <span>Ask Relby anything...</span>
             </Link>
           </section>
         ) : null}
@@ -3095,7 +3095,7 @@ export function Dashboard({
               </DashboardBentoCard>
 
               <DashboardBentoCard
-                label="Leasium AI"
+                label="Relby AI"
                 icon={<FileUp size={14} />}
                 dashed
                 className="col-span-2 lg:col-span-1"
@@ -3107,13 +3107,13 @@ export function Dashboard({
                   </div>
                 </div>
                 <p className="mt-2 max-w-[220px] text-[11px] leading-4 text-muted-foreground">
-                  Lease, invoice, contract - Leasium AI reviews before anything changes.
+                  Lease, invoice, contract - Relby AI reviews before anything changes.
                 </p>
                 <Link
                   href="/intake"
                   className="mt-auto inline-flex min-h-11 items-center text-xs font-semibold text-primary transition hover:text-primary-hover"
                 >
-                  Open Leasium AI
+                  Open Relby AI
                 </Link>
               </DashboardBentoCard>
             </section>
@@ -3185,7 +3185,7 @@ export function Dashboard({
                     <Sparkles size={22} />
                   </div>
                   <p className="text-2xl font-semibold leading-8 text-foreground sm:text-4xl sm:leading-[44px]">
-                    Leasium AI
+                    Relby AI
                   </p>
                 </div>
 
@@ -3199,7 +3199,7 @@ export function Dashboard({
                         handleLandingAsk();
                       }
                     }}
-                    placeholder="Ask Leasium anything, or add a file..."
+                    placeholder="Ask Relby anything, or add a file..."
                     className="min-h-[112px] w-full resize-none bg-white/95 px-4 py-4 text-base leading-7 text-foreground outline-none placeholder:text-muted-foreground sm:min-h-[132px] sm:px-5"
                   />
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-primary/10 bg-gradient-to-r from-primary-soft/60 via-white to-accent-soft/70 px-3 py-3">
@@ -3416,7 +3416,7 @@ export function Dashboard({
                       Documents waiting
                     </h2>
                     <p className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">
-                      Open one document at a time. Leasium AI will ask what it needs before anything changes.
+                      Open one document at a time. Relby AI will ask what it needs before anything changes.
                     </p>
                   </div>
                   <StatusBadge
@@ -3595,7 +3595,7 @@ export function Dashboard({
                     <EmptyState
                       icon={<CheckCircle2 size={18} />}
                       title="No documents waiting for review."
-                      description="Ask Leasium AI with a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
+                      description="Ask Relby AI with a lease, acquisition contract, invoice, guarantee, insurance certificate, or tenant document to start your first review."
                     />
                   ) : filteredReviewIntakes.length === 0 ? (
                     <EmptyState
@@ -3723,7 +3723,7 @@ export function Dashboard({
           />
         ) : null}
 
-        {/* Ask Leasium is a single-entity scoped surface. In all-mode we pass
+        {/* Ask Relby is a single-entity scoped surface. In all-mode we pass
             the empty scoped id so it falls back to its "select an entity"
             state rather than firing with the sentinel. */}
         {!isIntakeWorkspace ? (

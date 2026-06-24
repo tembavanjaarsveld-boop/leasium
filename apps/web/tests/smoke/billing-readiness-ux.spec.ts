@@ -391,7 +391,7 @@ test("empty billing draft review can create local drafts from ready charge rules
           due_date: readyRentRow.next_due_date,
           total_cents: readyRentRow.charge_rules_total_cents,
           notes:
-            "Prepared from existing Leasium charge rules. No PDF, tenant email, or Xero sync has run.",
+            "Prepared from existing Relby charge rules. No PDF, tenant email, or Xero sync has run.",
           metadata: {
             source: "charge_rule_batch",
             guardrail:
@@ -533,7 +533,7 @@ test("voided charge-rule billing draft can be recreated locally", async ({
       due_date: "2026-06-01",
       total_cents: 880000,
       notes:
-        "Prepared from existing Leasium charge rules. No PDF, tenant email, or Xero sync has run.",
+        "Prepared from existing Relby charge rules. No PDF, tenant email, or Xero sync has run.",
       metadata: { source: "charge_rule_batch", period_key: "2026-06-23" },
       lines: [],
       created_at: "2026-06-23T00:00:00.000Z",
@@ -556,7 +556,7 @@ test("voided charge-rule billing draft can be recreated locally", async ({
       due_date: "2026-06-30",
       total_cents: 1583200,
       notes:
-        "Prepared from existing Leasium charge rules. No PDF, tenant email, or Xero sync has run.",
+        "Prepared from existing Relby charge rules. No PDF, tenant email, or Xero sync has run.",
       metadata: {
         source: "charge_rule_batch",
         period_key: "2026-06-23",

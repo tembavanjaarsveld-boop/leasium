@@ -257,7 +257,7 @@ test("notifications exports provider readiness review CSV", async ({ page }) => 
   expect(csv).toContain("SMS");
   expect(csv).toContain("Twilio");
   expect(csv).toContain("In-app");
-  expect(csv).toContain("Leasium");
+  expect(csv).toContain("Relby");
   expect(csv).toContain("SendGrid sender");
   expect(csv).toContain("Twilio status callback");
   expect(csv).toContain("Configure SendGrid to queue provider emails");
@@ -353,7 +353,7 @@ test("notifications exports work notification review packet without provider cal
   expect(csv).toContain("Assignment email was queued by SendGrid.");
   expect(csv).toContain("SendGrid returned 500.");
   expect(csv).toContain("Work digest email");
-  expect(csv).toContain("Leasium Daily Work digest: 4 items");
+  expect(csv).toContain("Relby Daily Work digest: 4 items");
   expect(csv).toContain("Send digest from this page.");
   expect(csv).toContain("Retry the assignment email from this page.");
   expect(csv).toContain(

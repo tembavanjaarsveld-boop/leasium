@@ -306,7 +306,7 @@ test("smart intake review queue copies and downloads identical filtered CSV loca
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
 
   const exportControls = page.getByLabel("Review filter").locator("xpath=..");

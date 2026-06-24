@@ -947,7 +947,7 @@ function closeoutCommunicationDrafts({
     contractor_follow_up: [
       `Thanks for completing ${workOrder.title}.`,
       "Please send any final invoice, tax invoice, and remaining completion evidence for the file.",
-      `Closeout note recorded by Leasium: ${note}`,
+      `Closeout note recorded by Relby: ${note}`,
     ].join("\n"),
     tenant_update: [
       `The maintenance job "${workOrder.title}" has been marked complete.`,
@@ -6205,7 +6205,7 @@ function MaintenanceDetailRoute() {
                         ))}
                         <div className="text-muted-foreground">
                           Review this copy before sending anything outside
-                          Leasium.
+                          Relby.
                         </div>
                         {ownerReviewHistory.length > 1 ? (
                           <div className="grid gap-1 rounded-md border border-border bg-white px-2 py-2">

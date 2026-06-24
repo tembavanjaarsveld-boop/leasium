@@ -78,7 +78,7 @@ function docusignProviderSetupPacket(status: ProviderStatusRecord) {
     "DocuSign Connect:",
     "- Subscribe to completed envelope events.",
     "- Send DOCUSIGN_WEBHOOK_SECRET as x-docusign-webhook-secret or token query parameter.",
-    "- Keep signer, envelope, and custom-field review in Leasium before activating leases.",
+    "- Keep signer, envelope, and custom-field review in Relby before activating leases.",
     "",
     "Guardrails:",
     `- ${DOCUSIGN_SETUP_PACKET_GUARDRAIL}`,

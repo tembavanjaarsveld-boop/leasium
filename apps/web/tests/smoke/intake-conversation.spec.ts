@@ -249,7 +249,7 @@ test("conversation-first intake panel reads the lease and creates records withou
   await page.goto("/intake");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
 
   // 2. Select the lease intake from the review queue.
@@ -454,7 +454,7 @@ test("links an existing property instead of creating a duplicate", async ({
 
   await page.goto("/intake");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
   await page
     .getByTestId(`review-intake-${leaseIntakeId}`)

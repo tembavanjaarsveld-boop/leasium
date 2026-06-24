@@ -160,7 +160,7 @@ export function PageHeader({
 
 // SectionPanel — the "aside" container archetype. White card with
 // border, radius, and shadow. Use for content that supports the main
-// workspace task: Ask Leasium, Recent activity, evidence/source-trail
+// workspace task: Ask Relby, Recent activity, evidence/source-trail
 // disclosures, preview/receipt panels.
 //
 // For the main workspace body (tables, lists, dense data on a

@@ -380,7 +380,7 @@ export function InboxConversationPanel({
         role: "ai",
         kind: "created",
         payload: {
-          summary: "Promoted email to a Leasium draft.",
+          summary: "Promoted email to a Relby draft.",
           target_kind: result.target_kind,
           target_id: result.target_id,
           target_label: result.target_label,

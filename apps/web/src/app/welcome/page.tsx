@@ -19,9 +19,9 @@ import Link from "next/link";
 import { LeasiumMark } from "@/components/brand";
 
 export const metadata: Metadata = {
-  title: "Leasium | Sign in",
+  title: "Relby | Sign in",
   description:
-    "Sign in to the Leasium agent workspace or tenant portal.",
+    "Sign in to the Relby agent workspace or tenant portal.",
 };
 
 const accountSignInHref = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -47,7 +47,7 @@ const workflowSteps = [
   {
     icon: Workflow,
     title: "Automate",
-    body: "Leasium tracks dates, reminders, and billing readiness for you.",
+    body: "Relby tracks dates, reminders, and billing readiness for you.",
   },
 ];
 
@@ -59,7 +59,7 @@ const featureCards = [
   },
   {
     icon: FileSearch,
-    title: "Leasium AI",
+    title: "Relby AI",
     body: "Leases, invoices, and tenant documents become reviewable extractions with source clauses and confidence.",
   },
   {
@@ -86,7 +86,7 @@ export default function WelcomePage() {
         >
           <LeasiumMark className="h-9 w-9" />
           <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
-            Leasium
+            Relby
           </span>
         </Link>
         <nav className="flex items-center gap-2 text-sm">
@@ -108,13 +108,13 @@ export default function WelcomePage() {
       <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-16 pt-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-start lg:gap-14">
         <div className="grid gap-6">
           <span className="inline-flex w-fit items-center gap-2 rounded-full bg-leasium-blue-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-leasium-blue">
-            Leasium sign in
+            Relby sign in
           </span>
           <h1 className="text-4xl font-bold tracking-tight text-leasium-navy-800 sm:text-5xl">
-            Sign in to your Leasium account.
+            Sign in to your Relby account.
           </h1>
           <p className="max-w-xl text-lg leading-relaxed text-leasium-slate-500">
-            One sign-in works for property teams and tenants. Leasium checks the
+            One sign-in works for property teams and tenants. Relby checks the
             account and opens the right workspace.
           </p>
           <div className="grid gap-3">
@@ -398,7 +398,7 @@ export default function WelcomePage() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-6 text-xs text-leasium-slate-500">
           <div className="flex items-center gap-2">
             <LeasiumMark className="h-6 w-6" />
-            <span className="font-semibold text-leasium-navy-800">Leasium</span>
+            <span className="font-semibold text-leasium-navy-800">Relby</span>
             <span className="text-leasium-slate-400">
               · Lease operations, automated
             </span>

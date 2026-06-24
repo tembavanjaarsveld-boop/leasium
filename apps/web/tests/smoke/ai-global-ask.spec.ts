@@ -28,10 +28,10 @@ async function openCommandSearch(page: Page) {
   await expect(dialog).toBeVisible();
 }
 
-// The ⌘K command bar becomes a Leasium AI launcher from any page: typing a
-// question surfaces an "Ask Leasium AI" action that carries the text to
+// The ⌘K command bar becomes a Relby AI launcher from any page: typing a
+// question surfaces an "Ask Relby AI" action that carries the text to
 // /intake?ask=… .
-test("command bar surfaces an Ask Leasium AI action from any page", async ({
+test("command bar surfaces an Ask Relby AI action from any page", async ({
   page,
 }) => {
   await page.goto("/");
@@ -41,7 +41,7 @@ test("command bar surfaces an Ask Leasium AI action from any page", async ({
   await expect(input).toBeVisible();
   await input.fill("when does the gorilla grind lease end");
 
-  const askRow = page.getByRole("link", { name: /Ask Leasium AI:/ });
+  const askRow = page.getByRole("link", { name: /Ask Relby AI:/ });
   await expect(askRow).toBeVisible();
   await expect(askRow).toHaveAttribute("href", /\/intake\?ask=/);
 });
@@ -66,7 +66,7 @@ test("intake answers a handed-off ?ask= question inline", async ({ page }) => {
   await page.goto(`/intake?ask=${encodeURIComponent("when does the lease end")}`);
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Leasium AI" }),
+    page.getByRole("heading", { level: 1, name: "Relby AI" }),
   ).toBeVisible();
   await expect(
     page.getByText("Their lease ends 10 Dec 2027."),
