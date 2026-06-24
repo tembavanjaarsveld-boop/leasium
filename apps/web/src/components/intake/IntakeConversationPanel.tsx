@@ -736,18 +736,44 @@ export function IntakeConversationPanel({
   useEffect(() => {
     setLinkTenant(tenantMatchId !== null);
   }, [tenantMatchId]);
+  // Manual override: the operator can link this lease to an existing property
+  // even when nothing auto-matched (the common case where extraction found no
+  // building), instead of being forced to type a name that creates a duplicate.
+  const [manualPropertyId, setManualPropertyId] = useState("");
+  useEffect(() => {
+    // A fresh extraction or a new auto-match supersedes a manual choice.
+    setManualPropertyId("");
+  }, [propertyMatchId, intake.id]);
+  const selectedManualProperty = useMemo(
+    () =>
+      manualPropertyId
+        ? ((propertiesQuery.data ?? []).find((p) => p.id === manualPropertyId) ??
+          null)
+        : null,
+    [manualPropertyId, propertiesQuery.data],
+  );
+  // The property actually being linked: an explicit pick wins, otherwise the
+  // auto-match when the operator kept "Link existing".
+  const effectivePropertyMatch = useMemo<RecordMatch | null>(
+    () =>
+      manualPropertyId
+        ? {
+            id: manualPropertyId,
+            label: selectedManualProperty?.name ?? "Selected property",
+          }
+        : linkProperty
+          ? propertyMatch
+          : null,
+    [manualPropertyId, selectedManualProperty, linkProperty, propertyMatch],
+  );
   const understanding = useMemo(
     () => buildUnderstanding(data, intake.confidence),
     [data, intake.confidence],
   );
   const plan = useMemo(
     () =>
-      buildPlan(
-        data,
-        linkProperty ? propertyMatch : null,
-        linkTenant ? tenantMatch : null,
-      ),
-    [data, propertyMatch, tenantMatch, linkProperty, linkTenant],
+      buildPlan(data, effectivePropertyMatch, linkTenant ? tenantMatch : null),
+    [data, effectivePropertyMatch, tenantMatch, linkTenant],
   );
   const nextQuestion = useMemo(() => intakeQuestion(data, plan), [data, plan]);
   const summary =
@@ -840,6 +866,51 @@ export function IntakeConversationPanel({
   }, [defaultEdits]);
   const setEdit = (key: keyof EditState, value: string) =>
     setEdits((current) => ({ ...current, [key]: value }));
+  // Shown in the "create new" state: lets the operator link this lease to an
+  // existing building instead of creating one. Picking a property sets
+  // manualPropertyId, which the apply uses as an explicit property_id.
+  const createOrLinkProperty = (
+    <div className="grid gap-3">
+      <Field label="Link to an existing property">
+        <Select
+          value={manualPropertyId}
+          onChange={(e) => setManualPropertyId(e.target.value)}
+        >
+          <option value="">Create a new property</option>
+          {(propertiesQuery.data ?? []).map((property) => (
+            <option key={property.id} value={property.id}>
+              {property.name}
+              {property.street_address ? ` — ${property.street_address}` : ""}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {manualPropertyId ? (
+        <p className="text-xs text-muted-foreground">
+          Linking this lease to{" "}
+          <span className="font-medium text-foreground">
+            {selectedManualProperty?.name ?? "the selected property"}
+          </span>
+          . A unit is added under it — no new property is created.
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Property name">
+            <Input
+              value={edits.propertyName}
+              onChange={(e) => setEdit("propertyName", e.target.value)}
+            />
+          </Field>
+          <Field label="Address">
+            <Input
+              value={edits.propertyAddress}
+              onChange={(e) => setEdit("propertyAddress", e.target.value)}
+            />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
   const segBtn = (active: boolean) =>
     cn(
       "rounded-md px-3 py-1 text-xs font-medium transition-colors",
@@ -869,13 +940,20 @@ export function IntakeConversationPanel({
       // property/tenant already exists.
       const result = await applyDocumentIntake(intake.id, {
         reviewData,
-        // Only pass link ids when the operator chose to link. When creating new,
-        // also drop the suggested unit/lease links (they belong to the existing
-        // property) so the apply builds a fresh property/unit/lease.
-        propertyId: linkProperty ? (propertyMatch?.id ?? text(links.property_id)) : undefined,
-        tenancyUnitId: linkProperty ? text(links.tenancy_unit_id) : undefined,
+        // An explicit pick from the existing-property selector wins; otherwise
+        // link the auto-match when the operator kept "Link existing". Unit/lease
+        // links only apply to the auto-matched property — a manual pick builds a
+        // fresh unit under the chosen building instead.
+        propertyId:
+          effectivePropertyMatch?.id ??
+          (linkProperty ? text(links.property_id) : undefined),
+        tenancyUnitId:
+          !manualPropertyId && linkProperty
+            ? text(links.tenancy_unit_id)
+            : undefined,
         tenantId: linkTenant ? (tenantMatch?.id ?? text(links.tenant_id)) : undefined,
-        leaseId: linkProperty ? text(links.lease_id) : undefined,
+        leaseId:
+          !manualPropertyId && linkProperty ? text(links.lease_id) : undefined,
         threadId: currentThread.id,
       });
       if (result.status === "needs_attention") {
@@ -1218,43 +1296,11 @@ export function IntakeConversationPanel({
                           .
                         </p>
                       ) : (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label="Property name">
-                            <Input
-                              value={edits.propertyName}
-                              onChange={(e) =>
-                                setEdit("propertyName", e.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Address">
-                            <Input
-                              value={edits.propertyAddress}
-                              onChange={(e) =>
-                                setEdit("propertyAddress", e.target.value)
-                              }
-                            />
-                          </Field>
-                        </div>
+                        createOrLinkProperty
                       )}
                     </div>
                   ) : (
-                    <div className="mb-3 grid gap-3 sm:grid-cols-2">
-                      <Field label="Property name">
-                        <Input
-                          value={edits.propertyName}
-                          onChange={(e) => setEdit("propertyName", e.target.value)}
-                        />
-                      </Field>
-                      <Field label="Address">
-                        <Input
-                          value={edits.propertyAddress}
-                          onChange={(e) =>
-                            setEdit("propertyAddress", e.target.value)
-                          }
-                        />
-                      </Field>
-                    </div>
+                    <div className="mb-3">{createOrLinkProperty}</div>
                   )}
                   <Field label="Unit(s)">
                     <Input

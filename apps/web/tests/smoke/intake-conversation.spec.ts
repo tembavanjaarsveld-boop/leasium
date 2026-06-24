@@ -523,3 +523,100 @@ test("edit before creating sends the corrected lease term", async ({ page }) => 
   // The corrected expiry is handed to apply (so the backend won't block on it).
   expect(applyBody).toContain("2030-06-30");
 });
+
+test("links an existing building from the picker when nothing auto-matches", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // An existing property whose name does NOT match the extracted lease, so the
+  // panel finds no auto-match and the operator must reach for the manual picker
+  // instead of being forced to type a name (which would create a duplicate).
+  const unmatchedExistingProperty = {
+    id: "property-anzac",
+    entity_id: "entity-1",
+    name: "1642 Anzac Avenue, North Lakes",
+    street_address: "1642 Anzac Avenue",
+    suburb: "North Lakes",
+    state: "QLD",
+    postcode: "4509",
+  };
+
+  let applyBody = "";
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([leaseIntake]),
+      });
+      return;
+    }
+    // The intake panel lists existing properties via /premises/by-entity. Return
+    // only the non-matching building so no auto-match fires.
+    if (request.method() === "GET" && path.startsWith("/premises/by-entity/")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([unmatchedExistingProperty]),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/properties") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([unmatchedExistingProperty]),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/tenants") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${leaseIntakeId}/apply`
+    ) {
+      applyBody = request.postData() ?? "";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(appliedLeaseIntake),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await page
+    .getByTestId(`review-intake-${leaseIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  // Nothing auto-matched, so open the edit form and link the existing building.
+  await page.getByTestId("intake-edit").click();
+  const editForm = page.getByTestId("intake-edit-form");
+  await expect(editForm).toBeVisible();
+
+  const propertySelect = editForm.locator("select").filter({
+    has: page.getByRole("option", { name: "Create a new property" }),
+  });
+  await propertySelect.selectOption(unmatchedExistingProperty.id);
+  await expect(editForm.getByText(/Linking this lease to/)).toBeVisible();
+
+  await page.getByTestId("intake-create-all").click();
+  await expect(page.getByTestId("intake-created")).toBeVisible();
+  // Apply received the chosen property id, so the backend links instead of
+  // creating a duplicate property.
+  expect(applyBody).toContain(unmatchedExistingProperty.id);
+});
