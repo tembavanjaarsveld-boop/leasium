@@ -1839,3 +1839,5 @@ Official Re-Leased pages position their product around a few mature modules that
 - Prefer live dashboards and exception queues over static report pages; exports should be generated from dashboards when needed.
 
 Shipped 2026-06-24 — Tenant portal redesign: the post-onboarding portal moved from one long scroll to a light left sidebar (-> mobile bottom tab bar) with a maintenance-first Home (Report-an-issue hero + live request status) and Payments / Maintenance / Documents / Lease & details tabs. Section panels and mutations were relocated into tabs, not rewritten; behaviour and provider guardrails unchanged. Commits e5fd0b2, e3fe8d6.
+
+Shipped 2026-06-24 — Xero chart/tax auto-map apply: Settings → Xero chart/tax preview gained an "Apply suggested mappings" action that persists the reviewed suggested account code and GST tax type onto charge rules (POST /xero/chart-tax/apply-preview), closing the apply step in the connect → auto-map → confirm flow. Review-first: conflict/dedupe handling, per-rule provenance, audit row; requires an active connection; no Xero call. Commit 03bec1e.
