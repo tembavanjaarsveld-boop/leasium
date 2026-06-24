@@ -1420,6 +1420,128 @@ def test_xero_chart_tax_validation_preview_requires_provider_connection(
     )
 
 
+def test_xero_chart_tax_apply_saves_reviewed_mappings_locally(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    rule_id = _create_charge_rule_fixture(client, entity_id, charge_type="base_rent")
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    response = client.post(
+        f"/api/v1/xero/chart-tax/apply-preview/{entity_id}",
+        json={
+            "mappings": [
+                {
+                    "charge_rule_id": rule_id,
+                    "account_code": "200",
+                    "tax_type": "OUTPUT",
+                    "confidence": 0.9,
+                    "source": "xero_chart_tax_preview",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["applied_mappings"]) == 1
+    assert body["applied_mappings"][0]["status"] == "applied"
+    assert body["applied_mappings"][0]["account_code"] == "200"
+    assert body["applied_mappings"][0]["previous_account_code"] is None
+    assert body["skipped_mappings"] == []
+    assert "No Xero accounts" in body["guardrails"][1]
+
+    charge_rule = session.get(RentChargeRule, UUID(rule_id))
+    assert charge_rule is not None
+    session.refresh(charge_rule)
+    assert charge_rule.xero_account_code == "200"
+    assert charge_rule.xero_tax_type == "OUTPUT"
+    assert charge_rule.charge_rule_metadata["xero_chart_tax_mapping"]["account_code"] == "200"
+
+    connection = session.scalar(
+        select(XeroConnection).where(XeroConnection.entity_id == UUID(entity_id))
+    )
+    assert connection is not None
+    assert connection.connection_metadata["last_chart_tax_apply"]["applied_mappings"] == 1
+    assert connection.connection_metadata["last_chart_tax_apply"]["mode"] == "local_mapping_apply"
+
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.tool_name == "xero.chart_tax_mapping_apply",
+        )
+    )
+    assert audit is not None
+    assert "no Xero accounts" in audit.tool_output_summary
+
+
+def test_xero_chart_tax_apply_requires_provider_connection(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+
+    response = client.post(
+        f"/api/v1/xero/chart-tax/apply-preview/{entity_id}",
+        json={
+            "mappings": [
+                {"charge_rule_id": "00000000-0000-0000-0000-000000000000", "account_code": "200"}
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Connect Xero through OAuth before applying reviewed chart and tax mappings."
+    )
+
+
+def test_xero_chart_tax_apply_skips_unknown_and_missing_account(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    rule_id = _create_charge_rule_fixture(client, entity_id, charge_type="base_rent")
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    response = client.post(
+        f"/api/v1/xero/chart-tax/apply-preview/{entity_id}",
+        json={
+            "mappings": [
+                {"charge_rule_id": rule_id, "account_code": ""},
+                {
+                    "charge_rule_id": "00000000-0000-0000-0000-000000000000",
+                    "account_code": "200",
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied_mappings"] == []
+    reasons = {mapping["reason"] for mapping in body["skipped_mappings"]}
+    assert "An account code is required to apply this mapping." in reasons
+    assert "Charge rule was not found in this entity." in reasons
+
+    charge_rule = session.get(RentChargeRule, UUID(rule_id))
+    assert charge_rule is not None
+    session.refresh(charge_rule)
+    assert charge_rule.xero_account_code is None
+
+
 def test_xero_invoice_posting_preview_builds_payload_without_posting(
     client: TestClient,
     session: Session,

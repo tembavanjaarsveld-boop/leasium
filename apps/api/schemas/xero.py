@@ -307,6 +307,43 @@ class XeroChartTaxValidationPreviewRead(BaseModel):
     guardrails: list[str]
 
 
+class XeroChartTaxMappingApplyItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    charge_rule_id: UUID
+    account_code: str | None = Field(default=None, max_length=50)
+    tax_type: str | None = Field(default=None, max_length=50)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    source: str | None = Field(default=None, max_length=60)
+
+
+class XeroChartTaxMappingApplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mappings: list[XeroChartTaxMappingApplyItem] = Field(min_length=1, max_length=200)
+
+
+class XeroChartTaxMappingApplyResultRead(BaseModel):
+    charge_rule_id: UUID
+    charge_type: str
+    property_name: str
+    unit_label: str
+    previous_account_code: str | None
+    previous_tax_type: str | None
+    account_code: str | None
+    tax_type: str | None
+    status: Literal["applied", "skipped"]
+    reason: str
+
+
+class XeroChartTaxMappingApplyRead(BaseModel):
+    entity_id: UUID
+    applied_mappings: list[XeroChartTaxMappingApplyResultRead]
+    skipped_mappings: list[XeroChartTaxMappingApplyResultRead]
+    applied_at: datetime
+    guardrails: list[str]
+
+
 class XeroInvoicePostingPreviewLineRead(BaseModel):
     description: str
     quantity: float

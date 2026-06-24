@@ -7037,6 +7037,18 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("No invoice posting").first()).toBeVisible();
 
+  const chartTaxPreviewPanel = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Xero chart/tax preview" }),
+    })
+    .first();
+  await chartTaxPreviewPanel
+    .getByRole("button", { name: "Apply suggested mappings" })
+    .click();
+  await expect(chartTaxPreviewPanel.getByText("1 applied")).toBeVisible();
+  await expect(chartTaxPreviewPanel.getByText("0 skipped")).toBeVisible();
+
   const baseRentExceptionRow = exceptionQueuePanel
     .getByTestId("xero-exception-desktop-row")
     .filter({ hasText: "Base Rent tax type missing" });

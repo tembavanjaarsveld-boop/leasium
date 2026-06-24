@@ -7228,6 +7228,59 @@ export async function mockLeasiumApi(
 
     if (
       method === "POST" &&
+      path === `/xero/chart-tax/apply-preview/${entityId}`
+    ) {
+      const payload = request.postDataJSON() as {
+        mappings?: {
+          charge_rule_id?: string;
+          account_code?: string | null;
+          tax_type?: string | null;
+        }[];
+      };
+      const applied: JsonBody[] = [];
+      const skipped: JsonBody[] = [];
+      for (const mapping of payload.mappings ?? []) {
+        const accountCode = (mapping.account_code ?? "").trim();
+        const base = {
+          charge_rule_id: mapping.charge_rule_id ?? "unknown",
+          charge_type: "base_rent",
+          property_name: "Queen Street Retail Centre",
+          unit_label: "Shop 3",
+          previous_account_code: null,
+          previous_tax_type: null,
+          account_code: accountCode || null,
+          tax_type: mapping.tax_type ?? null,
+        };
+        if (accountCode) {
+          applied.push({
+            ...base,
+            status: "applied",
+            reason: "Reviewed chart and tax mapping was saved locally.",
+          });
+        } else {
+          skipped.push({
+            ...base,
+            status: "skipped",
+            reason: "An account code is required to apply this mapping.",
+          });
+        }
+      }
+      await fulfillJson(route, {
+        entity_id: entityId,
+        applied_mappings: applied,
+        skipped_mappings: skipped,
+        applied_at: "2026-05-19T10:14:00.000Z",
+        guardrails: [
+          "Only reviewed charge-rule account codes and tax types were saved locally.",
+          "No Xero accounts, tax rates, invoices, or payments were created or changed.",
+          "Account codes and tax types are checked against Xero only in the validate preview.",
+        ],
+      });
+      return;
+    }
+
+    if (
+      method === "POST" &&
       path === `/xero/invoices/posting-preview/${entityId}`
     ) {
       xeroTenantId = xeroTenantId ?? "tenant-smoke";

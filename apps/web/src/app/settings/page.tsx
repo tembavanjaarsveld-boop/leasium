@@ -64,6 +64,7 @@ import {
 import {
   applyBasiqReconciliation,
   createCommsTrustedSender,
+  applyXeroChartTaxMapping,
   applyXeroContactPreview,
   applyXeroPaymentReconciliation,
   approveXeroInvoicePosting,
@@ -105,6 +106,7 @@ import {
   unlinkSecurityMemberLogin,
   updateXeroConnection,
   type XeroContactApplyPreviewRecord,
+  type XeroChartTaxApplyRecord,
   type XeroChartTaxValidationPreviewRecord,
   type XeroChartTaxValidationResultRecord,
   type XeroContactMatchRecord,
@@ -2445,6 +2447,8 @@ function SettingsWorkspace() {
     useState<XeroContactApplyPreviewRecord | null>(null);
   const [xeroChartTaxPreview, setXeroChartTaxPreview] =
     useState<XeroChartTaxValidationPreviewRecord | null>(null);
+  const [xeroChartTaxApplyResult, setXeroChartTaxApplyResult] =
+    useState<XeroChartTaxApplyRecord | null>(null);
   const [xeroInvoicePostingPreview, setXeroInvoicePostingPreview] =
     useState<XeroInvoicePostingPreviewRecord | null>(null);
   const [xeroInvoiceApprovalResults, setXeroInvoiceApprovalResults] = useState<
@@ -2585,6 +2589,7 @@ function SettingsWorkspace() {
     setXeroContactPreview(null);
     setXeroContactApplyResult(null);
     setXeroChartTaxPreview(null);
+    setXeroChartTaxApplyResult(null);
     setXeroInvoicePostingPreview(null);
     setXeroInvoiceApprovalResults({});
     setXeroDraftCreateResult(null);
@@ -2764,6 +2769,7 @@ function SettingsWorkspace() {
     onSuccess: () => {
       setXeroContactPreview(null);
       setXeroChartTaxPreview(null);
+      setXeroChartTaxApplyResult(null);
       setXeroInvoicePostingPreview(null);
       setXeroInvoiceApprovalResults({});
       setXeroDraftCreateResult(null);
@@ -2843,6 +2849,29 @@ function SettingsWorkspace() {
     mutationFn: () => previewXeroChartTaxValidation(selectedEntityId),
     onSuccess: (result) => {
       setXeroChartTaxPreview(result);
+      setXeroChartTaxApplyResult(null);
+      refreshXeroViews();
+    },
+  });
+
+  const xeroChartTaxApplyMutation = useMutation({
+    mutationFn: () =>
+      applyXeroChartTaxMapping(
+        selectedEntityId,
+        (xeroChartTaxPreview?.results ?? [])
+          .filter(
+            (result) =>
+              result.status !== "ready" && result.suggested_account_code,
+          )
+          .map((result) => ({
+            charge_rule_id: result.charge_rule_id,
+            account_code: result.suggested_account_code,
+            tax_type: result.suggested_tax_type,
+            source: "xero_chart_tax_preview",
+          })),
+      ),
+    onSuccess: (result) => {
+      setXeroChartTaxApplyResult(result);
       refreshXeroViews();
     },
   });
@@ -3877,6 +3906,13 @@ function SettingsWorkspace() {
             {xeroChartTaxMutation.error instanceof Error
               ? xeroChartTaxMutation.error.message
               : "Could not preview Xero chart and tax validation."}
+          </div>
+        ) : null}
+        {activeTab === "connect" && xeroChartTaxApplyMutation.error ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+            {xeroChartTaxApplyMutation.error instanceof Error
+              ? xeroChartTaxApplyMutation.error.message
+              : "Could not apply the suggested Xero chart and tax mappings."}
           </div>
         ) : null}
         {activeTab === "connect" && xeroInvoicePostingMutation.error ? (
@@ -8152,6 +8188,56 @@ function SettingsWorkspace() {
                     ))}
                   </ul>
                 </div>
+                <div className="flex flex-col gap-3 border-t border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
+                  <div className="text-xs text-muted-foreground">
+                    Applies the suggested account code and tax type to charge
+                    rules that still need review. Saved locally only — no Xero
+                    posting or mutation runs.
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={
+                      xeroChartTaxApplyMutation.isPending ||
+                      !xeroCanValidateChartTax ||
+                      chartTaxCounts.needsMapping + chartTaxCounts.notFound ===
+                        0
+                    }
+                    onClick={() => xeroChartTaxApplyMutation.mutate()}
+                  >
+                    {xeroChartTaxApplyMutation.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={15} />
+                    )}
+                    Apply suggested mappings
+                  </Button>
+                </div>
+                {xeroChartTaxApplyResult ? (
+                  <div className="border-t border-border bg-muted/25 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="success">
+                        {xeroChartTaxApplyResult.applied_mappings.length} applied
+                      </StatusBadge>
+                      <StatusBadge
+                        tone={
+                          xeroChartTaxApplyResult.skipped_mappings.length
+                            ? "warning"
+                            : "neutral"
+                        }
+                      >
+                        {xeroChartTaxApplyResult.skipped_mappings.length} skipped
+                      </StatusBadge>
+                      <span className="text-muted-foreground">
+                        {formatDateTime(xeroChartTaxApplyResult.applied_at)}
+                      </span>
+                    </div>
+                    {xeroChartTaxApplyResult.guardrails.length ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {xeroChartTaxApplyResult.guardrails.join(" ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="overflow-x-auto border-t border-border">
                   <table className="w-full border-collapse text-left text-sm tabular-nums">
                     <thead className="bg-muted text-xs uppercase text-muted-foreground">

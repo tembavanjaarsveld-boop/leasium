@@ -2156,6 +2156,35 @@ export type XeroChartTaxValidationPreviewRecord = {
   guardrails: string[];
 };
 
+export type XeroChartTaxApplyMappingPayload = {
+  charge_rule_id: string;
+  account_code?: string | null;
+  tax_type?: string | null;
+  confidence?: number | null;
+  source?: string | null;
+};
+
+export type XeroChartTaxApplyMappingResult = {
+  charge_rule_id: string;
+  charge_type: string;
+  property_name: string;
+  unit_label: string;
+  previous_account_code: string | null;
+  previous_tax_type: string | null;
+  account_code: string | null;
+  tax_type: string | null;
+  status: "applied" | "skipped";
+  reason: string;
+};
+
+export type XeroChartTaxApplyRecord = {
+  entity_id: string;
+  applied_mappings: XeroChartTaxApplyMappingResult[];
+  skipped_mappings: XeroChartTaxApplyMappingResult[];
+  applied_at: string;
+  guardrails: string[];
+};
+
 export type XeroInvoicePostingPreviewLineItemRecord = {
   description: string;
   quantity: number;
@@ -4218,6 +4247,19 @@ export function previewXeroChartTaxValidation(entityId: string) {
     `/xero/chart-tax/validate-preview/${entityId}`,
     {
       method: "POST",
+    },
+  );
+}
+
+export function applyXeroChartTaxMapping(
+  entityId: string,
+  mappings: XeroChartTaxApplyMappingPayload[],
+) {
+  return request<XeroChartTaxApplyRecord>(
+    `/xero/chart-tax/apply-preview/${entityId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ mappings }),
     },
   );
 }

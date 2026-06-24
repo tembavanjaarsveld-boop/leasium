@@ -63,6 +63,10 @@ from apps.api.routers.charge_rules import (
 )
 from apps.api.schemas.xero import (
     XeroAccountingFreshnessRead,
+    XeroChartTaxMappingApplyItem,
+    XeroChartTaxMappingApplyRead,
+    XeroChartTaxMappingApplyRequest,
+    XeroChartTaxMappingApplyResultRead,
     XeroChartTaxValidationPreviewRead,
     XeroChartTaxValidationResultRead,
     XeroConnectionDiagnosticsRead,
@@ -2665,6 +2669,221 @@ def validate_xero_chart_tax_preview(
             "This is a provider-backed validation preview only.",
             "Leasium only checks whether local account codes and tax types exist in Xero.",
             "No invoice posting, Xero mutation, tenant email, or payment reconciliation was run.",
+        ],
+    )
+
+
+def _chart_tax_mapping_metadata(
+    item: XeroChartTaxMappingApplyItem,
+    user: CurrentUser,
+    applied_at: Any,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "source": (item.source or "xero_chart_tax_preview").strip(),
+        "applied_at": applied_at.isoformat(),
+        "applied_by_user_id": str(user.id),
+    }
+    if item.account_code and item.account_code.strip():
+        metadata["account_code"] = item.account_code.strip()
+    if item.tax_type and item.tax_type.strip():
+        metadata["tax_type"] = item.tax_type.strip()
+    if item.confidence is not None:
+        metadata["confidence"] = item.confidence
+    return metadata
+
+
+def _chart_tax_mapping_result(
+    *,
+    charge_rule_id: UUID,
+    charge_type: str,
+    property_name: str,
+    unit_label: str,
+    previous_account_code: str | None,
+    previous_tax_type: str | None,
+    account_code: str | None,
+    tax_type: str | None,
+    status_label: Literal["applied", "skipped"],
+    reason: str,
+) -> XeroChartTaxMappingApplyResultRead:
+    return XeroChartTaxMappingApplyResultRead(
+        charge_rule_id=charge_rule_id,
+        charge_type=charge_type,
+        property_name=property_name,
+        unit_label=unit_label,
+        previous_account_code=previous_account_code,
+        previous_tax_type=previous_tax_type,
+        account_code=account_code,
+        tax_type=tax_type,
+        status=status_label,
+        reason=reason,
+    )
+
+
+@router.post(
+    "/chart-tax/apply-preview/{entity_id}",
+    response_model=XeroChartTaxMappingApplyRead,
+)
+def apply_xero_chart_tax_mappings(
+    entity_id: UUID,
+    payload: XeroChartTaxMappingApplyRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],  # noqa: ARG001
+) -> XeroChartTaxMappingApplyRead:
+    assert_entity_role(session, user, entity_id, WRITE_ROLES)
+    entity = session.get(Entity, entity_id)
+    if entity is None or entity.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    provider_connection = _active_xero_connection(session, entity.id)
+    if provider_connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Connect Xero through OAuth before applying reviewed chart and tax mappings.",
+        )
+
+    rows_by_rule_id = {row[0].id: row for row in _charge_rule_rows(session, entity.id)}
+    applied_at = utcnow()
+    applied: list[XeroChartTaxMappingApplyResultRead] = []
+    skipped: list[XeroChartTaxMappingApplyResultRead] = []
+    seen_rules: set[UUID] = set()
+
+    for item in payload.mappings:
+        account_code = item.account_code.strip() if item.account_code else None
+        tax_type = item.tax_type.strip() if item.tax_type else None
+        row = rows_by_rule_id.get(item.charge_rule_id)
+        if row is None:
+            skipped.append(
+                _chart_tax_mapping_result(
+                    charge_rule_id=item.charge_rule_id,
+                    charge_type="unknown",
+                    property_name="Unknown property",
+                    unit_label="",
+                    previous_account_code=None,
+                    previous_tax_type=None,
+                    account_code=account_code,
+                    tax_type=tax_type,
+                    status_label="skipped",
+                    reason="Charge rule was not found in this entity.",
+                )
+            )
+            continue
+        rule, _lease, unit, prop, _tenant = row
+        previous_account_code = rule.xero_account_code.strip() if rule.xero_account_code else None
+        previous_tax_type = rule.xero_tax_type.strip() if rule.xero_tax_type else None
+
+        if item.charge_rule_id in seen_rules:
+            skipped.append(
+                _chart_tax_mapping_result(
+                    charge_rule_id=rule.id,
+                    charge_type=rule.charge_type.value,
+                    property_name=prop.name,
+                    unit_label=unit.unit_label,
+                    previous_account_code=previous_account_code,
+                    previous_tax_type=previous_tax_type,
+                    account_code=account_code,
+                    tax_type=tax_type,
+                    status_label="skipped",
+                    reason="Duplicate reviewed mapping for this charge rule was ignored.",
+                )
+            )
+            continue
+        seen_rules.add(item.charge_rule_id)
+
+        if not account_code:
+            skipped.append(
+                _chart_tax_mapping_result(
+                    charge_rule_id=rule.id,
+                    charge_type=rule.charge_type.value,
+                    property_name=prop.name,
+                    unit_label=unit.unit_label,
+                    previous_account_code=previous_account_code,
+                    previous_tax_type=previous_tax_type,
+                    account_code=None,
+                    tax_type=tax_type,
+                    status_label="skipped",
+                    reason="An account code is required to apply this mapping.",
+                )
+            )
+            continue
+
+        if previous_account_code == account_code and previous_tax_type == tax_type:
+            skipped.append(
+                _chart_tax_mapping_result(
+                    charge_rule_id=rule.id,
+                    charge_type=rule.charge_type.value,
+                    property_name=prop.name,
+                    unit_label=unit.unit_label,
+                    previous_account_code=previous_account_code,
+                    previous_tax_type=previous_tax_type,
+                    account_code=account_code,
+                    tax_type=tax_type,
+                    status_label="skipped",
+                    reason="Charge rule already uses this account code and tax type.",
+                )
+            )
+            continue
+
+        rule.xero_account_code = account_code
+        rule.xero_tax_type = tax_type
+        rule_metadata = dict(rule.charge_rule_metadata or {})
+        rule_metadata["xero_chart_tax_mapping"] = _chart_tax_mapping_metadata(
+            item,
+            user,
+            applied_at,
+        )
+        rule.charge_rule_metadata = rule_metadata
+        applied.append(
+            _chart_tax_mapping_result(
+                charge_rule_id=rule.id,
+                charge_type=rule.charge_type.value,
+                property_name=prop.name,
+                unit_label=unit.unit_label,
+                previous_account_code=previous_account_code,
+                previous_tax_type=previous_tax_type,
+                account_code=account_code,
+                tax_type=tax_type,
+                status_label="applied",
+                reason="Reviewed chart and tax mapping was saved locally.",
+            )
+        )
+
+    connection_metadata = dict(provider_connection.connection_metadata or {})
+    connection_metadata["last_chart_tax_apply"] = {
+        "applied_at": applied_at.isoformat(),
+        "requested_mappings": len(payload.mappings),
+        "applied_mappings": len(applied),
+        "skipped_mappings": len(skipped),
+        "mode": "local_mapping_apply",
+    }
+    provider_connection.connection_metadata = connection_metadata
+    provider_connection.updated_by_user_id = user.id
+    entity.xero_last_sync_at = applied_at
+
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="apply",
+        target_table="xero_connection",
+        target_id=provider_connection.id,
+        tool_name="xero.chart_tax_mapping_apply",
+        tool_input={"entity_id": str(entity.id), "requested_mappings": len(payload.mappings)},
+        tool_output_summary=(
+            f"Applied {len(applied)} reviewed Xero chart/tax mappings to charge rules locally; "
+            f"skipped {len(skipped)}; no Xero accounts, invoices, or payments were mutated."
+        ),
+    )
+    session.commit()
+    return XeroChartTaxMappingApplyRead(
+        entity_id=entity.id,
+        applied_mappings=applied,
+        skipped_mappings=skipped,
+        applied_at=applied_at,
+        guardrails=[
+            "Only reviewed charge-rule account codes and tax types were saved locally.",
+            "No Xero accounts, tax rates, invoices, or payments were created or changed.",
+            "Account codes and tax types are checked against Xero only in the validate preview.",
         ],
     )
 
