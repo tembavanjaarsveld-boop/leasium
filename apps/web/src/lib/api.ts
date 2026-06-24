@@ -1803,6 +1803,98 @@ export type ComplianceCheckCompletePayload = {
   metadata?: Record<string, unknown>;
 };
 
+export type WorkflowTriggerType =
+  | "lease_expiring"
+  | "arrears_threshold"
+  | "compliance_due";
+
+export type WorkflowActionType =
+  | "create_task"
+  | "notify_operator"
+  | "queue_comms_draft";
+
+export type WorkflowActionConfigRecord = {
+  type: WorkflowActionType;
+  config: Record<string, unknown>;
+};
+
+export type WorkflowRuleRecord = {
+  id: string;
+  entity_id: string;
+  name: string;
+  description: string | null;
+  trigger_type: WorkflowTriggerType;
+  trigger_config: Record<string, unknown>;
+  actions: WorkflowActionConfigRecord[];
+  enabled: boolean;
+  last_evaluated_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+export type WorkflowRulePayload = {
+  entity_id: string;
+  name: string;
+  description?: string | null;
+  trigger_type: WorkflowTriggerType;
+  trigger_config: Record<string, unknown>;
+  actions: WorkflowActionConfigRecord[];
+  enabled: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+export type WorkflowProposalRecord = {
+  id: string;
+  entity_id: string;
+  rule_id: string;
+  rule_name: string;
+  trigger_type: WorkflowTriggerType;
+  action_type: WorkflowActionType;
+  dedupe_key: string;
+  target_table: string;
+  target_id: string;
+  title: string;
+  summary: string;
+  source: {
+    table: string;
+    id: string;
+    label: string;
+  };
+  evidence: Array<{ label: string; value: string }>;
+  proposed_action: WorkflowActionConfigRecord;
+  generated_at: string;
+};
+
+export type WorkflowQueueRecord = {
+  entity_id: string;
+  proposals: WorkflowProposalRecord[];
+  guardrail: string;
+  generated_at: string;
+};
+
+export type WorkflowProposalDecisionPayload = {
+  rule_id: string;
+  dedupe_key: string;
+};
+
+export type WorkflowProposalDecisionRecord = {
+  id: string;
+  entity_id: string;
+  rule_id: string;
+  dedupe_key: string;
+  target_table: string;
+  target_id: string;
+  action_type: WorkflowActionType;
+  decision: "approved" | "dismissed";
+  decided_by_user_id: string | null;
+  decided_at: string;
+  execution_result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ObligationPayload = Omit<
   ObligationRecord,
   "id" | "completed_at"
@@ -4947,6 +5039,73 @@ export function listCalendarEvents(filters: {
     params.set("entity_id", filters.entity_id);
   }
   return request<CalendarEventRecord[]>(`/calendar/events?${params.toString()}`);
+}
+
+export function listWorkflowRules(filters: {
+  entity_id?: string;
+  include_deleted?: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
+  if (filters.include_deleted) {
+    params.set("include_deleted", "true");
+  }
+  return request<WorkflowRuleRecord[]>(`/workflows/rules?${params.toString()}`);
+}
+
+export function createWorkflowRule(payload: WorkflowRulePayload) {
+  return request<WorkflowRuleRecord>("/workflows/rules", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateWorkflowRule(
+  ruleId: string,
+  payload: Partial<WorkflowRulePayload>,
+) {
+  return request<WorkflowRuleRecord>(`/workflows/rules/${ruleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteWorkflowRule(ruleId: string) {
+  return request<WorkflowRuleRecord>(`/workflows/rules/${ruleId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listWorkflowQueue(filters: {
+  entity_id: string;
+  as_of?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("entity_id", filters.entity_id);
+  if (filters.as_of) {
+    params.set("as_of", filters.as_of);
+  }
+  return request<WorkflowQueueRecord>(`/workflows/queue?${params.toString()}`);
+}
+
+export function approveWorkflowProposal(
+  payload: WorkflowProposalDecisionPayload,
+) {
+  return request<WorkflowProposalDecisionRecord>("/workflows/queue/approve", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function dismissWorkflowProposal(
+  payload: WorkflowProposalDecisionPayload,
+) {
+  return request<WorkflowProposalDecisionRecord>("/workflows/queue/dismiss", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function completeComplianceCheck(

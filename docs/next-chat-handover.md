@@ -1,6 +1,34 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-23
+Last updated: 2026-06-24
+
+## Continuation - 2026-06-24 (Property delete + Smart Intake existing-property picker)
+
+Temba imported a lease via Leasium AI that had no building in the review, typed
+an existing property's name, and apply created a *duplicate* property (the typed
+name didn't exactly match the stored one) — with no UI to delete it.
+
+What changed:
+- Property delete is wired end to end. Backend `DELETE /properties/{id}`
+  (already a soft-delete) now cascades to the property's units, their leases,
+  charge rules, and scoped obligations so nothing is orphaned; tenants are
+  entity-scoped and deliberately left intact (so a re-import reuses them). The
+  property editor gained a destructive zone (count-aware caption + red Delete
+  property action behind a `window.confirm`); `deleteProperty` added to the API
+  client.
+- Smart Intake (Leasium AI conversation review) now offers a "Link to an
+  existing property" selector when no building auto-matches, setting an explicit
+  `property_id` so the unit attaches to the chosen building instead of creating
+  a duplicate. The plan preview reflects the linked building. Backend already
+  honoured `property_id`, so this was frontend-only.
+
+Verification: `pytest tests/integration/test_register_api.py` 20 passed (2 new
+cascade/404 tests); ruff/eslint/tsc clean; Playwright smoke `properties-ux` +
+`intake-conversation` 29 passed (2 new); production `next build` clean; UX pass
+at 1440/390 (see design-governance UX Pass Log 2026-06-24).
+
+Guardrails: delete is soft + cascades only within the property; no provider
+mutation, tenant email, Xero, or payment reconciliation involved.
 
 ## Continuation - 2026-06-23 (Billing monthly invoice-run UX)
 
@@ -27,6 +55,108 @@ Guardrails:
 Next sensible follow-up:
 - Add true batch selection/dispatch once Temba approves the provider action
   contract for a batch run.
+
+## Continuation - 2026-06-21 (Workflows Builder v1 shipped locally)
+
+Temba approved the Phase 0 Figma draft and the Workflows Builder implementation
+was built against that approved Work hub placement.
+
+What changed:
+- Added backend workflow configuration and review queue support:
+  `WorkflowRule`, `WorkflowProposalDecision`, migrations
+  `20260621_0047_workflow_rules.py` and
+  `20260621_0048_workflow_proposal_decisions.py`,
+  `/api/v1/workflows/rules` CRUD, `/api/v1/workflows/queue`, and
+  approve/dismiss endpoints.
+- Evaluation is on-demand only (page load / Evaluate), not a scheduler or
+  background worker. The v1 trigger catalog is `lease_expiring`,
+  `arrears_threshold`, `compliance_due`; action catalog is `create_task`,
+  `notify_operator`, `queue_comms_draft`.
+- Added `/operations?tab=workflows` under Work with rules list, inline rule
+  editor, review queue, per-proposal Approve/Dismiss controls, and mobile
+  touch-target smoke coverage. Workflows now sits beside Approvals in the Work
+  tab order so deep-linked mobile views show the active tab.
+- Updated source-of-truth docs: `docs/product-roadmap.md`,
+  `docs/automation-strategy-2026-05-23.md`, and
+  `docs/design-governance.md` with the implementation UX pass.
+
+Guardrails:
+- Queue evaluation is read-only and subtracts existing decisions/effects.
+- Approving `create_task` creates a local Work obligation only.
+- Approving `notify_operator` records a local in-app marker only.
+- Approving `queue_comms_draft` returns a draft handoff for `/comms`; it does
+  not send email/SMS. The existing Comms review/send gate remains required.
+- Guardrail grep found only defensive/test mentions in workflow code; no
+  workflow path imports or calls SendGrid, Twilio, Xero, Basiq, payment, or
+  reconciliation helpers.
+
+Verification:
+- Red first: `NODE_ENV=development npm run test:smoke -- tests/smoke/workflows.spec.ts`
+  failed waiting for the missing Workflows tab/surface.
+- Green: `NODE_ENV=development npm run test:smoke -- tests/smoke/workflows.spec.ts`
+  — 3 passed.
+- UX capture harness for 1440/390 screenshots passed 2/2, screenshots saved in
+  `apps/web/test-results/workflows-ux-desktop-1440.png` and
+  `apps/web/test-results/workflows-ux-mobile-390.png`; temporary harness removed.
+- `cd apps/web && npm run lint -- src/app/operations/page.tsx src/lib/api.ts tests/smoke/workflows.spec.ts`
+  — passed.
+- `cd apps/web && ./node_modules/.bin/tsc --noEmit` — passed.
+- `cd apps/web && npm run build` — passed.
+- `.venv/bin/python -m pytest tests/integration/test_workflows_api.py -q`
+  — 7 passed.
+- `.venv/bin/python -m pytest tests/integration -q` — 672 passed, 1 skipped
+  (`TEST_DATABASE_URL` not configured), 10 warnings.
+- `.venv/bin/python -m ruff check stewart/core/models.py apps/api/routers/workflows.py apps/api/schemas/workflows.py apps/api/workflows_engine.py tests/integration/test_workflows_api.py migrations/versions/20260621_0047_workflow_rules.py migrations/versions/20260621_0048_workflow_proposal_decisions.py`
+  — passed.
+- `.venv/bin/alembic upgrade head` was blocked because local Postgres on
+  `localhost:5432` refused connections. The integration migration test also
+  skipped for missing `TEST_DATABASE_URL`.
+
+Next sensible follow-up:
+- Customisable reporting remains the open half of the P2 roadmap item.
+- If continuing workflow depth, prefer richer evidence/detail and more trigger
+  implementations under the same review-queue guardrail; do not add scheduler
+  or provider-direct actions without an explicit plan and approval.
+
+## Continuation - 2026-06-21 (Workflows Builder Phase 0 Figma draft)
+
+Temba moved from "what's next?" into the Workflows Builder pre-code design gate.
+This is Phase 0 only: create the Figma surface, reconcile readiness/status docs,
+and stop before implementation until Temba signs off in Figma.
+
+What changed:
+- Created Workflows Builder draft frames in the canonical Figma file
+  `PO2jOANgmqgZHfqWZXOZGU` on `03 Screens`.
+- Desktop frames: Rules list `170:850`, Rule editor `170:1168`, Review queue
+  `170:1486`.
+- Mobile frames: Rules list `170:1056`, Rule editor `170:1374`, Review queue
+  `170:1692`.
+- The draft places Workflows under the Work hub as a sub-tab, keeps the v1
+  trigger/action catalog intentionally small, and makes the review-first
+  boundary visible: workflow proposals can create local tasks, notify the
+  operator in-app, or queue a comms draft for a second review, but cannot send,
+  post, reconcile, or mutate provider/source records directly.
+- Figma screenshot evidence lives under `output/figma/workflows-*.png`.
+- Roadmap status was reconciled so Platform stabilization v2 / MVP hosted
+  readiness is no longer shown as open after the hosted proof closed on
+  2026-06-20.
+- `docs/design-governance.md` now records the draft frame node IDs and the
+  pre-code Figma screenshot pass.
+
+Verification:
+- Figma screenshots reviewed for all six draft frames; desktop and mobile
+  overflow/wrapping issues found in the first pass were fixed in Figma.
+- No production code was changed, so no frontend/backend test suite was run for
+  this Phase 0 documentation/design update.
+
+Next gate:
+- Temba needs to sign off the Figma draft, especially Work hub placement and the
+  review-first action catalog, before any Workflows Builder app/API work starts.
+
+Guardrails held: this was design/documentation only. It did not add a backend
+endpoint, scheduler, worker, Xero/Basiq write, SendGrid/Twilio send,
+tenant/owner/provider email, SMS, payment, reconciliation, Smart Intake apply,
+or source-record mutation path.
 
 ## Continuation - 2026-06-21 (Work approvals URL state v1.8)
 
@@ -10735,3 +10865,7 @@ Recent (2026-06-24): Xero setup stepper shipped to prod — Settings → Xero "C
 Recent (2026-06-24): Xero account/tax picker shipped. chart/tax validate-preview now returns live accounts[]/tax_rates[]; the preview table has per-charge-rule account + tax Select pickers (default current-or-suggested), and the suggestion is chart-aware (xero.py _suggest_charge_account_code + CHARGE_ACCOUNT_NAME_HINTS: base_rent→"Rent received", fallback hardcoded). Apply posts selected codes (review-first, no Xero write). Schemas: XeroAccountOptionRead/XeroTaxRateOptionRead. Verified ruff/34 pytest/eslint/tsc/smoke. api.ts hunk-staged so unrelated Workflows/Calendar WIP stays uncommitted.
 
 Recent (2026-06-24): Xero manual contact picker shipped. contact sync preview returns contacts[] + unmatched_targets[]; _normalise is punctuation-insensitive for more auto-matches. Contact preview has an "Assign contacts manually" section (Select per unmatched tenant/property -> applyXeroContactPreview). Backend: _contact_options + _unmatched_contact_targets; schemas XeroContactOptionRead/XeroContactTargetRead. Verified ruff/34 pytest/eslint/tsc/smoke. api.ts hunk-staged so Workflows/Calendar WIP stays uncommitted.
+
+Recent (2026-06-24): Existing-tenant portal migration slice (backend + script + tests; not yet committed). New POST /tenant-onboarding/migrated creates an `applied`, migration-marked onboarding row (`review_data.origin="migration"`) with operator attribution — migrated tenants (data imported from their existing lease) skip the confirm-details wizard and land in the working portal after claiming a login. send-portal-invite relaxed to deliver a login link for migrated `applied` rows (operator-triggered; token rotates if a prior one was consumed). Shared logic in `stewart/domain/tenant_migration.py` (is_migration_onboarding / find_active_onboarding / build_migrated_onboarding / generate_onboarding_token); the endpoint and the `_is_migration_onboarding` guard were rewired to use it (no duplicate definitions). Bulk creator `scripts/migrate_existing_tenants.py` (in-process, idempotent, dry-run by default, `--apply` to write; flags tenants with no contact/billing email since the claim verifies the login email against the record; provider-inert — never sends). Tests: +4 onboarding (applied create / migrated invite send / non-migration applied still 409 / idempotent) and +1 portal (migrated applied claims into the working portal, submit blocked 409). Verified: ruff (changed + full apps/stewart/tests/scripts) clean; `.venv/bin/python -m pytest tests/integration/test_tenant_onboarding_api.py tests/integration/test_tenant_portal_api.py -q` → **105 passed**. No frontend change (the `applied` portal renders the read-only "Applied" panel via the existing OnboardingPanel branch; confirm form gated to `sent`). Design record: docs/tenant-migration-portal-access-spec-2026-06-24.md. Deferred (UX gate): operator "Send portal invite" button for migrated `applied` rows (UI gated to `sent`, so for now send via the API); an optional migration-specific invite email variant (the existing portal-invite copy "Set up your tenant portal …" is already login-centric). Keep this slice's commit isolated from the uncommitted parked Workflows slice still in the working tree.
+
+Recent (2026-06-24): Migrate-tenant v1 thin button shipped (frontend). On the tenant record → Linked leases, each lease now offers "Set up portal login" (calls POST /tenant-onboarding/migrated) when it has no onboarding, and "Send login link" + "Copy login link" + a "Login link sent" badge on a migrated `applied` row. New api.ts client createMigratedTenantOnboarding; UI in apps/web/src/app/tenants/[tenantId]/page.tsx; smoke fixture apps/web/tests/smoke/migrate-tenant-ux.spec.ts + a POST /tenant-onboarding/migrated mock in api-mocks.ts. Verified: eslint + tsc clean; migrate-tenant-ux smoke 2 passed; desktop 1440 + mobile 390 screenshots reviewed (in apps/web/test-results/). Design sign-off was on an in-chat low-fi mock (Temba approved); UX pass logged in design-governance.md. NOTE on commit isolation: apps/web/src/lib/api.ts is entangled with the parked Workflows API client, so only the createMigratedTenantOnboarding function was hunk-staged; the tenant page, api-mocks.ts, and the new spec were committed whole. Deferred: full client-facing drop-lease→match flow (design next); operator Onboarding-workflow section still shows invite→sign steps for migrated applied rows (UX debt). Source-of-truth doc appends (roadmap/handover/governance) remain uncommitted because those files interleave with the parked Workflows docs.

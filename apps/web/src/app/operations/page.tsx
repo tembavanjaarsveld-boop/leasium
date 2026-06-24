@@ -68,12 +68,15 @@ import {
   type ArrearsEscalationStatus,
   type CalendarEventRecord,
   type ComplianceCheckRecord,
+  approveWorkflowProposal,
   completeComplianceCheck,
   createArrearsCase,
   createMaintenanceWorkOrder,
+  createWorkflowRule,
   type DocumentIntakeRecord,
   type DocumentRecord,
   type InvoiceDraftRecord,
+  dismissWorkflowProposal,
   linkComplianceCheckEvidence,
   listArrearsCases,
   listCalendarEvents,
@@ -85,6 +88,8 @@ import {
   listMaintenanceWorkOrders,
   listObligations,
   listProperties,
+  listWorkflowQueue,
+  listWorkflowRules,
   getSecurityWorkspace,
   listTenantOnboardings,
   listTenants,
@@ -108,6 +113,11 @@ import {
   type WorkAssignmentDigestCadence,
   type WorkAssignmentDigestRunRecord,
   type WorkAssignmentRenderedMessagePreviewRecord,
+  type WorkflowActionType,
+  type WorkflowProposalRecord,
+  type WorkflowQueueRecord,
+  type WorkflowRuleRecord,
+  type WorkflowTriggerType,
 } from "@/lib/api";
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
@@ -135,6 +145,8 @@ const EMPTY_ARREARS: ArrearsCaseRecord[] = [];
 const EMPTY_INVOICE_DRAFTS: InvoiceDraftRecord[] = [];
 const EMPTY_CALENDAR_EVENTS: CalendarEventRecord[] = [];
 const EMPTY_MEMBERS: SecurityMemberRecord[] = [];
+const EMPTY_WORKFLOW_RULES: WorkflowRuleRecord[] = [];
+const EMPTY_WORKFLOW_PROPOSALS: WorkflowProposalRecord[] = [];
 const WORK_MOBILE_TOAST_CLASS =
   "fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-5 right-5 z-40 rounded-2xl border border-border bg-white p-4 shadow-leasiumSm md:bottom-5 md:left-auto md:w-[420px]";
 const WORK_ASSIGNMENT_KEY = "work_assignment";
@@ -181,6 +193,11 @@ const tabs = [
     id: "approvals",
     label: "Approvals",
     description: "Review-only decision queue",
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    description: "Rules and proposals",
   },
   {
     id: "calendar",
@@ -327,6 +344,80 @@ const CALENDAR_DATE_FILTERS: Array<{
   { id: "week", label: "This week" },
   { id: "next30", label: "Next 30" },
 ];
+
+const WORKFLOW_TRIGGER_OPTIONS: Array<{
+  id: WorkflowTriggerType;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "lease_expiring",
+    label: "Lease expiring",
+    description: "Lease end date enters a review window.",
+  },
+  {
+    id: "arrears_threshold",
+    label: "Arrears threshold",
+    description: "Balance or ageing crosses a threshold.",
+  },
+  {
+    id: "compliance_due",
+    label: "Compliance due",
+    description: "Compliance check enters a due window.",
+  },
+];
+
+const WORKFLOW_ACTION_OPTIONS: Array<{
+  id: WorkflowActionType;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "create_task",
+    label: "Create task",
+    description: "Creates an internal Work item after approval.",
+  },
+  {
+    id: "notify_operator",
+    label: "Notify operator",
+    description: "Records an in-app cue after approval.",
+  },
+  {
+    id: "queue_comms_draft",
+    label: "Queue comms draft",
+    description: "Prepares a draft for later comms review.",
+  },
+];
+
+type WorkflowRuleFormState = {
+  name: string;
+  description: string;
+  trigger_type: WorkflowTriggerType;
+  days_before: string;
+  min_amount_cents: string;
+  min_days_overdue: string;
+  action_type: WorkflowActionType;
+  action_title: string;
+  action_message: string;
+  action_subject: string;
+  action_body: string;
+  enabled: boolean;
+};
+
+const emptyWorkflowRuleForm: WorkflowRuleFormState = {
+  name: "",
+  description: "",
+  trigger_type: "lease_expiring",
+  days_before: "90",
+  min_amount_cents: "",
+  min_days_overdue: "",
+  action_type: "create_task",
+  action_title: "",
+  action_message: "",
+  action_subject: "",
+  action_body: "",
+  enabled: true,
+};
 
 const horizonWorkLanes = [
   {
@@ -1005,6 +1096,101 @@ function label(value: string | null | undefined) {
 function sentenceLabel(value: string | null | undefined) {
   const text = label(value);
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function workflowTriggerLabel(triggerType: WorkflowTriggerType) {
+  return (
+    WORKFLOW_TRIGGER_OPTIONS.find((option) => option.id === triggerType)
+      ?.label ?? sentenceLabel(triggerType)
+  );
+}
+
+function workflowActionLabel(actionType: WorkflowActionType | string) {
+  return (
+    WORKFLOW_ACTION_OPTIONS.find((option) => option.id === actionType)
+      ?.label ?? sentenceLabel(actionType)
+  );
+}
+
+function workflowTriggerSummary(
+  triggerType: WorkflowTriggerType,
+  config: Record<string, unknown>,
+) {
+  if (
+    triggerType === "lease_expiring" ||
+    triggerType === "compliance_due"
+  ) {
+    return `${workflowTriggerLabel(triggerType)}: ${String(
+      config.days_before ?? "?"
+    )} days before`;
+  }
+  const parts = [
+    typeof config.min_amount_cents === "number"
+      ? `from ${formatMoney(config.min_amount_cents)}`
+      : null,
+    typeof config.min_days_overdue === "number"
+      ? `${config.min_days_overdue} days overdue`
+      : null,
+  ].filter(Boolean);
+  return parts.length
+    ? `${workflowTriggerLabel(triggerType)}: ${parts.join(" or ")}`
+    : workflowTriggerLabel(triggerType);
+}
+
+function workflowActionsSummary(actions: WorkflowRuleRecord["actions"]) {
+  return actions.map((action) => workflowActionLabel(action.type)).join(", ");
+}
+
+function workflowPositiveInteger(value: string, fallback: number) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function workflowTriggerConfigFromForm(form: WorkflowRuleFormState) {
+  if (
+    form.trigger_type === "lease_expiring" ||
+    form.trigger_type === "compliance_due"
+  ) {
+    return {
+      days_before: workflowPositiveInteger(form.days_before, 90),
+    };
+  }
+  const config: Record<string, number> = {};
+  if (form.min_amount_cents.trim()) {
+    config.min_amount_cents = workflowPositiveInteger(
+      form.min_amount_cents,
+      1,
+    );
+  }
+  if (form.min_days_overdue.trim()) {
+    config.min_days_overdue = workflowPositiveInteger(
+      form.min_days_overdue,
+      1,
+    );
+  }
+  if (!config.min_amount_cents && !config.min_days_overdue) {
+    config.min_days_overdue = 1;
+  }
+  return config;
+}
+
+function workflowActionConfigFromForm(form: WorkflowRuleFormState) {
+  if (form.action_type === "create_task") {
+    return form.action_title.trim()
+      ? { title: form.action_title.trim() }
+      : {};
+  }
+  if (form.action_type === "notify_operator") {
+    return form.action_message.trim()
+      ? { message: form.action_message.trim() }
+      : {};
+  }
+  return {
+    ...(form.action_subject.trim()
+      ? { subject: form.action_subject.trim() }
+      : {}),
+    ...(form.action_body.trim() ? { body: form.action_body.trim() } : {}),
+  };
 }
 
 async function copyTextToClipboard(value: string) {
@@ -3139,6 +3325,7 @@ function buildQueueItems(
 function OperationsWorkspace() {
   const [selectedEntityId, setSelectedEntityId] = useState("");
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
+  const activeTabButtonRef = useRef<HTMLButtonElement | null>(null);
   const [calendarLayout, setCalendarLayout] =
     useState<CalendarLayout>("agenda");
   const [calendarSourceFilter, setCalendarSourceFilter] =
@@ -3291,8 +3478,16 @@ function OperationsWorkspace() {
     }
   }, []);
 
+  useEffect(() => {
+    activeTabButtonRef.current?.scrollIntoView({
+      block: "nearest",
+      inline: "center",
+    });
+  }, [activeTab]);
+
   const [maintenanceFormOpen, setMaintenanceFormOpen] = useState(false);
   const [arrearsFormOpen, setArrearsFormOpen] = useState(false);
+  const [workflowFormOpen, setWorkflowFormOpen] = useState(false);
   const [expandedMaintenanceId, setExpandedMaintenanceId] = useState<
     string | null
   >(null);
@@ -3307,8 +3502,14 @@ function OperationsWorkspace() {
     useState<MaintenanceFormState>(emptyMaintenanceForm);
   const [arrearsForm, setArrearsForm] =
     useState<ArrearsFormState>(emptyArrearsForm);
+  const [workflowForm, setWorkflowForm] = useState<WorkflowRuleFormState>(
+    emptyWorkflowRuleForm,
+  );
   const [maintenanceInlineUndo, setMaintenanceInlineUndo] =
     useState<MaintenanceInlineUndo | null>(null);
+  const [workflowConfirmation, setWorkflowConfirmation] = useState<string | null>(
+    null,
+  );
   // Brief inline confirmation for the obligation Complete/Waive actions
   // (E6). These mutations previously gave no feedback beyond the row
   // leaving the open queue; this reuses the existing transient-status
@@ -3395,6 +3596,14 @@ function OperationsWorkspace() {
     }, 6000);
     return () => window.clearTimeout(timeout);
   }, [obligationConfirmation]);
+
+  useEffect(() => {
+    if (!workflowConfirmation) return;
+    const timeout = window.setTimeout(() => {
+      setWorkflowConfirmation(null);
+    }, 6000);
+    return () => window.clearTimeout(timeout);
+  }, [workflowConfirmation]);
 
   useEffect(() => {
     if (!complianceCompletionConfirmation) return;
@@ -3497,8 +3706,20 @@ function OperationsWorkspace() {
         from: operationsCalendarWindow.from,
         to: operationsCalendarWindow.to,
         entity_id: scopedEntityId || undefined,
-      }),
+    }),
     enabled: Boolean(selectedEntityId),
+  });
+
+  const workflowRulesQuery = useQuery({
+    queryKey: ["operations-workflow-rules", scopedEntityId],
+    queryFn: () => listWorkflowRules({ entity_id: scopedEntityId }),
+    enabled: activeTab === "workflows" && Boolean(scopedEntityId),
+  });
+
+  const workflowQueueQuery = useQuery({
+    queryKey: ["operations-workflow-queue", scopedEntityId],
+    queryFn: () => listWorkflowQueue({ entity_id: scopedEntityId }),
+    enabled: activeTab === "workflows" && Boolean(scopedEntityId),
   });
 
   // Fan-out copies of the primary list queries for all-entities mode. Each
@@ -3584,6 +3805,12 @@ function OperationsWorkspace() {
     });
     queryClient.invalidateQueries({
       queryKey: ["operations-arrears"],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-workflow-rules", scopedEntityId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-workflow-queue", scopedEntityId],
     });
   };
 
@@ -3907,9 +4134,69 @@ function OperationsWorkspace() {
     onSuccess: (result) => setDigestResult(result),
   });
 
+  const createWorkflowRuleMutation = useMutation({
+    mutationFn: createWorkflowRule,
+    onSuccess: (rule) => {
+      queryClient.setQueryData<WorkflowRuleRecord[]>(
+        ["operations-workflow-rules", scopedEntityId],
+        (current) => [...(current ?? []), rule],
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["operations-workflow-queue", scopedEntityId],
+      });
+      setWorkflowForm(emptyWorkflowRuleForm);
+      setWorkflowFormOpen(false);
+      setWorkflowConfirmation(`Saved “${rule.name}”.`);
+    },
+  });
+
+  const approveWorkflowProposalMutation = useMutation({
+    mutationFn: approveWorkflowProposal,
+    onSuccess: (decision) => {
+      queryClient.setQueryData<WorkflowQueueRecord>(
+        ["operations-workflow-queue", scopedEntityId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                proposals: current.proposals.filter(
+                  (proposal) => proposal.dedupe_key !== decision.dedupe_key,
+                ),
+              }
+            : current,
+      );
+      invalidateOperations();
+      setWorkflowConfirmation("Proposal approved.");
+    },
+  });
+
+  const dismissWorkflowProposalMutation = useMutation({
+    mutationFn: dismissWorkflowProposal,
+    onSuccess: (decision) => {
+      queryClient.setQueryData<WorkflowQueueRecord>(
+        ["operations-workflow-queue", scopedEntityId],
+        (current) =>
+          current
+            ? {
+                ...current,
+                proposals: current.proposals.filter(
+                  (proposal) => proposal.dedupe_key !== decision.dedupe_key,
+                ),
+              }
+            : current,
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["operations-workflow-queue", scopedEntityId],
+      });
+      setWorkflowConfirmation("Proposal dismissed.");
+    },
+  });
+
   const operationsLoading =
     entitiesQuery.isLoading ||
     calendarQuery.isLoading ||
+    (activeTab === "workflows" &&
+      (workflowRulesQuery.isLoading || workflowQueueQuery.isLoading)) ||
     (allMode
       ? propertiesFanOut.isLoading ||
         tenantsFanOut.isLoading ||
@@ -3991,6 +4278,10 @@ function OperationsWorkspace() {
     () => sortCalendarEvents(calendarQuery.data ?? EMPTY_CALENDAR_EVENTS),
     [calendarQuery.data],
   );
+  const workflowRules = workflowRulesQuery.data ?? EMPTY_WORKFLOW_RULES;
+  const workflowProposals =
+    workflowQueueQuery.data?.proposals ?? EMPTY_WORKFLOW_PROPOSALS;
+  const workflowEnabledCount = workflowRules.filter((rule) => rule.enabled).length;
   const sourceFilteredCalendarEvents = useMemo(
     () =>
       calendarEvents.filter(
@@ -4537,7 +4828,14 @@ function OperationsWorkspace() {
     sendObligationAssignmentNotificationMutation.error ||
     sendReadyAssignmentNotificationsMutation.error ||
     workAssignmentDigestMutation.error ||
-    securityWorkspaceQuery.error;
+    securityWorkspaceQuery.error ||
+    (activeTab === "workflows"
+      ? workflowRulesQuery.error ||
+        workflowQueueQuery.error ||
+        createWorkflowRuleMutation.error ||
+        approveWorkflowProposalMutation.error ||
+        dismissWorkflowProposalMutation.error
+      : null);
 
   const assignmentPending =
     updateMaintenanceMutation.isPending ||
@@ -4551,6 +4849,10 @@ function OperationsWorkspace() {
   function refresh() {
     securityWorkspaceQuery.refetch();
     calendarQuery.refetch();
+    if (activeTab === "workflows") {
+      workflowRulesQuery.refetch();
+      workflowQueueQuery.refetch();
+    }
     if (allMode) {
       propertiesFanOut.refetch();
       tenantsFanOut.refetch();
@@ -4572,6 +4874,45 @@ function OperationsWorkspace() {
     maintenanceQuery.refetch();
     invoiceDraftsQuery.refetch();
     arrearsQuery.refetch();
+  }
+
+  function submitWorkflowRule(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!scopedEntityId || !workflowForm.name.trim()) {
+      return;
+    }
+    createWorkflowRuleMutation.mutate({
+      entity_id: scopedEntityId,
+      name: workflowForm.name.trim(),
+      description: optionalString(workflowForm.description),
+      trigger_type: workflowForm.trigger_type,
+      trigger_config: workflowTriggerConfigFromForm(workflowForm),
+      actions: [
+        {
+          type: workflowForm.action_type,
+          config: workflowActionConfigFromForm(workflowForm),
+        },
+      ],
+      enabled: workflowForm.enabled,
+      metadata: {
+        source: "operations_workflows_tab",
+      },
+    });
+  }
+
+  function decideWorkflowProposal(
+    proposal: WorkflowProposalRecord,
+    decision: "approve" | "dismiss",
+  ) {
+    const payload = {
+      rule_id: proposal.rule_id,
+      dedupe_key: proposal.dedupe_key,
+    };
+    if (decision === "approve") {
+      approveWorkflowProposalMutation.mutate(payload);
+      return;
+    }
+    dismissWorkflowProposalMutation.mutate(payload);
   }
 
   function submitMaintenance(event: React.FormEvent<HTMLFormElement>) {
@@ -5303,12 +5644,15 @@ function OperationsWorkspace() {
             actions={<StatusBadge tone="neutral">Checking</StatusBadge>}
             className="border-primary/20 bg-primary/5"
           >
-            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-6">
+            <div className="grid gap-3 p-4 text-sm text-muted-foreground sm:grid-cols-7">
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Queue
               </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Approvals
+              </div>
+              <div className="rounded-xl border border-border bg-white px-3 py-2">
+                Workflows
               </div>
               <div className="rounded-xl border border-border bg-white px-3 py-2">
                 Calendar
@@ -5419,7 +5763,7 @@ function OperationsWorkspace() {
             ) : null}
 
             <div
-              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-6 md:gap-2 md:rounded-[12px]"
+              className="no-scrollbar flex gap-1.5 overflow-x-auto rounded-full border border-leasium-card-border bg-white p-1.5 shadow-leasiumXs md:grid md:grid-cols-7 md:gap-2 md:rounded-[12px]"
               role="tablist"
               aria-label="Operations sections"
             >
@@ -5429,6 +5773,7 @@ function OperationsWorkspace() {
                   <button
                     key={tab.id}
                     type="button"
+                    ref={isActive ? activeTabButtonRef : null}
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setActiveTab(tab.id)}
@@ -7686,6 +8031,462 @@ function OperationsWorkspace() {
               </SectionPanel>
             ) : null}
 
+            {activeTab === "workflows" ? (
+              <section className="grid gap-5" aria-label="Workflows workspace">
+                {allMode ? (
+                  <SectionPanel
+                    title="Workflows"
+                    description="Choose one entity to review rules and proposals."
+                    icon={<ClipboardList size={17} className="text-primary" />}
+                  >
+                    <EmptyState
+                      icon={<Building2 size={18} />}
+                      title="Select a single entity"
+                      description="Workflow approvals need one entity scope before rules or proposals can be changed."
+                    />
+                  </SectionPanel>
+                ) : (
+                  <>
+                    <SectionPanel
+                      title="Workflows"
+                      description="Rules evaluate existing records and queue proposed internal actions for review."
+                      icon={
+                        <ClipboardList size={17} className="text-primary" />
+                      }
+                      actions={
+                        <Button
+                          type="button"
+                          onClick={() =>
+                            setWorkflowFormOpen((open) => !open)
+                          }
+                          disabled={!scopedEntityId}
+                        >
+                          <Plus size={15} />
+                          New workflow
+                        </Button>
+                      }
+                    >
+                      <div className="border-b border-border bg-muted/30 px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge tone="primary">
+                            {workflowEnabledCount} enabled
+                          </StatusBadge>
+                          <StatusBadge tone="neutral">
+                            {workflowRules.length} rules
+                          </StatusBadge>
+                          <StatusBadge tone="warning">
+                            {workflowProposals.length} proposals
+                          </StatusBadge>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Review-only until a proposal is approved.
+                          </span>
+                        </div>
+                      </div>
+
+                      {workflowFormOpen ? (
+                        <form
+                          onSubmit={submitWorkflowRule}
+                          className="grid gap-3 border-b border-border p-4 md:grid-cols-2 xl:grid-cols-4"
+                        >
+                          <div className="md:col-span-2 xl:col-span-4">
+                            <h3 className="text-sm font-semibold text-foreground">
+                              New workflow
+                            </h3>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Fixed v1 catalog: trigger, then one reviewable
+                              action.
+                            </p>
+                          </div>
+                          <Field label="Name">
+                            <Input
+                              value={workflowForm.name}
+                              onChange={(event) =>
+                                setWorkflowForm((current) => ({
+                                  ...current,
+                                  name: event.target.value,
+                                }))
+                              }
+                              required
+                            />
+                          </Field>
+                          <Field label="Trigger">
+                            <Select
+                              value={workflowForm.trigger_type}
+                              onChange={(event) =>
+                                setWorkflowForm((current) => ({
+                                  ...current,
+                                  trigger_type: event.target
+                                    .value as WorkflowTriggerType,
+                                }))
+                              }
+                            >
+                              {WORKFLOW_TRIGGER_OPTIONS.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                          {workflowForm.trigger_type ===
+                          "arrears_threshold" ? (
+                            <>
+                              <Field label="Minimum cents">
+                                <Input
+                                  inputMode="numeric"
+                                  value={workflowForm.min_amount_cents}
+                                  onChange={(event) =>
+                                    setWorkflowForm((current) => ({
+                                      ...current,
+                                      min_amount_cents: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </Field>
+                              <Field label="Days overdue">
+                                <Input
+                                  inputMode="numeric"
+                                  value={workflowForm.min_days_overdue}
+                                  onChange={(event) =>
+                                    setWorkflowForm((current) => ({
+                                      ...current,
+                                      min_days_overdue: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </Field>
+                            </>
+                          ) : (
+                            <Field label="Days before">
+                              <Input
+                                inputMode="numeric"
+                                value={workflowForm.days_before}
+                                onChange={(event) =>
+                                  setWorkflowForm((current) => ({
+                                    ...current,
+                                    days_before: event.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
+                          )}
+                          <Field label="Action">
+                            <Select
+                              value={workflowForm.action_type}
+                              onChange={(event) =>
+                                setWorkflowForm((current) => ({
+                                  ...current,
+                                  action_type: event.target
+                                    .value as WorkflowActionType,
+                                }))
+                              }
+                            >
+                              {WORKFLOW_ACTION_OPTIONS.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                          {workflowForm.action_type === "create_task" ? (
+                            <Field label="Task title">
+                              <Input
+                                value={workflowForm.action_title}
+                                onChange={(event) =>
+                                  setWorkflowForm((current) => ({
+                                    ...current,
+                                    action_title: event.target.value,
+                                  }))
+                                }
+                                placeholder="Use proposal title"
+                              />
+                            </Field>
+                          ) : null}
+                          {workflowForm.action_type === "notify_operator" ? (
+                            <Field label="Message">
+                              <Input
+                                value={workflowForm.action_message}
+                                onChange={(event) =>
+                                  setWorkflowForm((current) => ({
+                                    ...current,
+                                    action_message: event.target.value,
+                                  }))
+                                }
+                                placeholder="Use proposal summary"
+                              />
+                            </Field>
+                          ) : null}
+                          {workflowForm.action_type ===
+                          "queue_comms_draft" ? (
+                            <>
+                              <Field label="Draft subject">
+                                <Input
+                                  value={workflowForm.action_subject}
+                                  onChange={(event) =>
+                                    setWorkflowForm((current) => ({
+                                      ...current,
+                                      action_subject: event.target.value,
+                                    }))
+                                  }
+                                  placeholder="Use proposal title"
+                                />
+                              </Field>
+                              <Field label="Draft body">
+                                <Input
+                                  value={workflowForm.action_body}
+                                  onChange={(event) =>
+                                    setWorkflowForm((current) => ({
+                                      ...current,
+                                      action_body: event.target.value,
+                                    }))
+                                  }
+                                  placeholder="Use proposal summary"
+                                />
+                              </Field>
+                            </>
+                          ) : null}
+                          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-white px-3 text-sm font-semibold">
+                            <input
+                              type="checkbox"
+                              checked={workflowForm.enabled}
+                              onChange={(event) =>
+                                setWorkflowForm((current) => ({
+                                  ...current,
+                                  enabled: event.target.checked,
+                                }))
+                              }
+                            />
+                            Enabled
+                          </label>
+                          <label className="grid gap-1.5 text-sm md:col-span-2 xl:col-span-4">
+                            <span className="font-medium text-foreground">
+                              Description
+                            </span>
+                            <textarea
+                              value={workflowForm.description}
+                              onChange={(event) =>
+                                setWorkflowForm((current) => ({
+                                  ...current,
+                                  description: event.target.value,
+                                }))
+                              }
+                              rows={2}
+                              className="w-full rounded-xl border border-border bg-white px-3 py-3 text-sm outline-none transition-colors duration-200 ease-leasium focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+                            />
+                          </label>
+                          <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-4">
+                            <Button
+                              type="submit"
+                              disabled={
+                                !workflowForm.name.trim() ||
+                                createWorkflowRuleMutation.isPending
+                              }
+                            >
+                              {createWorkflowRuleMutation.isPending ? (
+                                <RefreshCw
+                                  size={15}
+                                  className="animate-spin"
+                                />
+                              ) : (
+                                <CheckCircle2 size={15} />
+                              )}
+                              Save rule
+                            </Button>
+                            <SecondaryButton
+                              type="button"
+                              onClick={() => setWorkflowFormOpen(false)}
+                            >
+                              Cancel
+                            </SecondaryButton>
+                          </div>
+                        </form>
+                      ) : null}
+
+                      <div className="divide-y divide-border">
+                        {workflowRules.map((rule) => (
+                          <article
+                            key={rule.id}
+                            className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-sm font-semibold text-foreground">
+                                  {rule.name}
+                                </h3>
+                                <StatusBadge
+                                  tone={rule.enabled ? "success" : "neutral"}
+                                >
+                                  {rule.enabled ? "Enabled" : "Paused"}
+                                </StatusBadge>
+                                <StatusBadge tone="primary">
+                                  {workflowActionLabel(
+                                    rule.actions[0]?.type ?? "create_task",
+                                  )}
+                                </StatusBadge>
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {rule.description ||
+                                  workflowTriggerSummary(
+                                    rule.trigger_type,
+                                    rule.trigger_config,
+                                  )}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <span className="rounded-full bg-muted px-2 py-1">
+                                  {workflowTriggerSummary(
+                                    rule.trigger_type,
+                                    rule.trigger_config,
+                                  )}
+                                </span>
+                                <span className="rounded-full bg-muted px-2 py-1">
+                                  {workflowActionsSummary(rule.actions)}
+                                </span>
+                                <span className="rounded-full bg-muted px-2 py-1">
+                                  Evaluated{" "}
+                                  {rule.last_evaluated_at
+                                    ? formatDateTime(rule.last_evaluated_at)
+                                    : "on demand"}
+                                </span>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                        {!workflowRulesQuery.isLoading &&
+                        workflowRules.length === 0 ? (
+                          <EmptyState
+                            icon={<ClipboardList size={18} />}
+                            title="No workflow rules"
+                            description="Create a rule to start queueing reviewable workflow proposals."
+                          />
+                        ) : null}
+                        {workflowRulesQuery.isLoading ? (
+                          <div className="p-4 text-sm text-muted-foreground">
+                            Checking workflow rules.
+                          </div>
+                        ) : null}
+                      </div>
+                    </SectionPanel>
+
+                    <SectionPanel
+                      title="Review queue"
+                      description="Proposed actions from enabled workflow rules. Approval is per proposal."
+                      icon={<ShieldCheck size={17} className="text-primary" />}
+                      actions={
+                        <SecondaryButton
+                          type="button"
+                          onClick={() => workflowQueueQuery.refetch()}
+                          disabled={workflowQueueQuery.isFetching}
+                        >
+                          {workflowQueueQuery.isFetching ? (
+                            <RefreshCw size={15} className="animate-spin" />
+                          ) : (
+                            <RefreshCw size={15} />
+                          )}
+                          Evaluate
+                        </SecondaryButton>
+                      }
+                    >
+                      <div className="border-b border-border bg-muted/30 px-4 py-3">
+                        <p className="text-sm text-muted-foreground">
+                          {workflowQueueQuery.data?.guardrail ??
+                            "Workflow proposals are review-only until an operator approves one."}
+                        </p>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {workflowProposals.map((proposal) => (
+                          <article
+                            key={proposal.id}
+                            className="grid gap-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <StatusBadge tone="warning">
+                                  Review
+                                </StatusBadge>
+                                <StatusBadge tone="primary">
+                                  {workflowActionLabel(proposal.action_type)}
+                                </StatusBadge>
+                                <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
+                                  {proposal.rule_name}
+                                </span>
+                              </div>
+                              <h3 className="mt-2 text-sm font-semibold text-foreground">
+                                {proposal.title}
+                              </h3>
+                              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                                {proposal.summary}
+                              </p>
+                              <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                                <div className="rounded-xl border border-border bg-white px-3 py-2">
+                                  <span className="block font-semibold text-foreground">
+                                    Source
+                                  </span>
+                                  {proposal.source.label}
+                                </div>
+                                {proposal.evidence.map((item) => (
+                                  <div
+                                    key={`${proposal.id}-${item.label}`}
+                                    className="rounded-xl border border-border bg-white px-3 py-2"
+                                  >
+                                    <span className="block font-semibold text-foreground">
+                                      {item.label}
+                                    </span>
+                                    {item.value}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 xl:justify-end">
+                              <Button
+                                type="button"
+                                className="min-h-11"
+                                onClick={() =>
+                                  decideWorkflowProposal(proposal, "approve")
+                                }
+                                disabled={
+                                  approveWorkflowProposalMutation.isPending ||
+                                  dismissWorkflowProposalMutation.isPending
+                                }
+                              >
+                                <CheckCircle2 size={15} />
+                                Approve proposal
+                              </Button>
+                              <SecondaryButton
+                                type="button"
+                                className="min-h-11"
+                                onClick={() =>
+                                  decideWorkflowProposal(proposal, "dismiss")
+                                }
+                                disabled={
+                                  approveWorkflowProposalMutation.isPending ||
+                                  dismissWorkflowProposalMutation.isPending
+                                }
+                              >
+                                <Ban size={15} />
+                                Dismiss proposal
+                              </SecondaryButton>
+                            </div>
+                          </article>
+                        ))}
+                        {!workflowQueueQuery.isLoading &&
+                        workflowProposals.length === 0 ? (
+                          <EmptyState
+                            icon={<ShieldCheck size={18} />}
+                            title="No workflow proposals."
+                            description="Enabled rules with matching records will appear here for approval."
+                          />
+                        ) : null}
+                        {workflowQueueQuery.isLoading ? (
+                          <div className="p-4 text-sm text-muted-foreground">
+                            Checking workflow proposals.
+                          </div>
+                        ) : null}
+                      </div>
+                    </SectionPanel>
+                  </>
+                )}
+              </section>
+            ) : null}
+
             {activeTab === "maintenance" ? (
               <div className="grid gap-5">
                 {maintenanceFormOpen ? (
@@ -8573,6 +9374,25 @@ function OperationsWorkspace() {
           </>
         ) : null}
       </div>
+      {workflowConfirmation ? (
+        <div className={WORK_MOBILE_TOAST_CLASS} role="status">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2">
+              <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" />
+              <div className="text-sm font-semibold text-foreground">
+                {workflowConfirmation}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+              onClick={() => setWorkflowConfirmation(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
       {maintenanceInlineUndo ? (
         <div
           className={WORK_MOBILE_TOAST_CLASS}

@@ -52,6 +52,7 @@ from apps.api.routers import (
     tenants,
     vendor_portal,
     work_assignment_notifications,
+    workflows,
     xero,
 )
 from apps.api.schemas.system import ApiHealthRead
@@ -186,3 +187,4 @@ app.include_router(vendor_portal.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(platform.router, prefix="/api/v1")
 app.include_router(mailbox_aliases.router, prefix="/api/v1")
+app.include_router(workflows.router, prefix="/api/v1")

@@ -317,6 +317,23 @@ class ArrearsEscalationStatus(enum.StrEnum):
     closed = "closed"
 
 
+class WorkflowTriggerType(enum.StrEnum):
+    lease_expiring = "lease_expiring"
+    arrears_threshold = "arrears_threshold"
+    compliance_due = "compliance_due"
+
+
+class WorkflowActionType(enum.StrEnum):
+    create_task = "create_task"
+    notify_operator = "notify_operator"
+    queue_comms_draft = "queue_comms_draft"
+
+
+class WorkflowProposalDecisionStatus(enum.StrEnum):
+    approved = "approved"
+    dismissed = "dismissed"
+
+
 class AuditOutcome(enum.StrEnum):
     success = "success"
     error = "error"
@@ -404,6 +421,7 @@ class Entity(Base):
     basiq_connections: Mapped[list["BasiqConnection"]] = relationship(back_populates="entity")
     insights_snapshots: Mapped[list["InsightsSnapshot"]] = relationship(back_populates="entity")
     owners: Mapped[list["Owner"]] = relationship(back_populates="entity")
+    workflow_rules: Mapped[list["WorkflowRule"]] = relationship(back_populates="entity")
 
 
 Index("entity_org_idx", Entity.organisation_id, postgresql_where=Entity.deleted_at.is_(None))
@@ -1163,6 +1181,118 @@ Index(
     "compliance_check_current_obligation_idx",
     ComplianceCheck.current_obligation_id,
     postgresql_where=ComplianceCheck.deleted_at.is_(None),
+)
+
+
+class WorkflowRule(Base):
+    """Review-first workflow configuration.
+
+    Stores the rule catalog configuration only. Evaluation is request-driven in
+    the workflow queue layer; rule CRUD never sends messages, posts to providers,
+    reconciles payments, or mutates source records.
+    """
+
+    __tablename__ = "workflow_rule"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    trigger_type: Mapped[WorkflowTriggerType] = mapped_column(
+        Enum(WorkflowTriggerType, name="workflow_trigger_type"),
+        nullable=False,
+    )
+    trigger_config: Mapped[dict[str, Any]] = mapped_column(
+        JsonbCompat, nullable=False, default=dict
+    )
+    actions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JsonbCompat, nullable=False, default=list
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    workflow_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity: Mapped[Entity] = relationship(back_populates="workflow_rules")
+    proposal_decisions: Mapped[list["WorkflowProposalDecision"]] = relationship(
+        back_populates="rule"
+    )
+
+
+Index(
+    "workflow_rule_entity_enabled_idx",
+    WorkflowRule.entity_id,
+    WorkflowRule.enabled,
+    postgresql_where=WorkflowRule.deleted_at.is_(None),
+)
+Index(
+    "workflow_rule_entity_idx",
+    WorkflowRule.entity_id,
+    postgresql_where=WorkflowRule.deleted_at.is_(None),
+)
+
+
+class WorkflowProposalDecision(Base):
+    """Operator decision for a generated workflow proposal."""
+
+    __tablename__ = "workflow_proposal_decision"
+    __table_args__ = (
+        UniqueConstraint("rule_id", "dedupe_key", name="uq_workflow_proposal_decision"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    entity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("entity.id"), nullable=False
+    )
+    rule_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("workflow_rule.id"), nullable=False
+    )
+    dedupe_key: Mapped[str] = mapped_column(Text, nullable=False)
+    target_table: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    action_type: Mapped[WorkflowActionType] = mapped_column(
+        Enum(WorkflowActionType, name="workflow_action_type"),
+        nullable=False,
+    )
+    decision: Mapped[WorkflowProposalDecisionStatus] = mapped_column(
+        Enum(WorkflowProposalDecisionStatus, name="workflow_proposal_decision_status"),
+        nullable=False,
+    )
+    decided_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_user.id")
+    )
+    decided_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    execution_result: Mapped[dict[str, Any] | None] = mapped_column(JsonbCompat)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    entity: Mapped[Entity] = relationship()
+    rule: Mapped[WorkflowRule] = relationship(back_populates="proposal_decisions")
+    decided_by_user: Mapped[AppUser | None] = relationship()
+
+
+Index("workflow_proposal_decision_entity_idx", WorkflowProposalDecision.entity_id)
+Index("workflow_proposal_decision_rule_idx", WorkflowProposalDecision.rule_id)
+Index(
+    "workflow_proposal_decision_target_idx",
+    WorkflowProposalDecision.target_table,
+    WorkflowProposalDecision.target_id,
 )
 
 

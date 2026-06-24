@@ -132,6 +132,11 @@ map for agents:
 | 03 Screens / Platform admin · Mailbox aliases 109:812 + Mobile 109:908 | `apps/web/src/app/admin/page.tsx` + `apps/web/src/components/app-shell.tsx` — platform-admin alias reserve/list/label/status controls v1 |
 | 03 Screens / Comms · Template preview density 116:812 + Mobile 116:933 | `apps/web/src/app/comms/page.tsx` — send-time template preview density and kind-to-template mapping v1 |
 
+2026-06-21 Workflows Builder frames are now in 03 Screens and were approved
+for implementation by Temba before production code: Rules list
+`170:850` + Mobile `170:1056`; Rule editor `170:1168` + Mobile `170:1374`;
+Review queue `170:1486` + Mobile `170:1692`.
+
 **Dev tools and AI agents must treat the Figma file as the design source for core
 surfaces.** When implementing design-facing work on Dashboard/Work (web or mobile),
 pull the target design from Figma (file key `PO2jOANgmqgZHfqWZXOZGU`, node IDs above)
@@ -678,7 +683,23 @@ fixes · deferrals.
   approve, apply, complete, send email/SMS, dispatch providers, post to
   Xero/Basiq, create payments, reconcile, mutate source records, or mutate
   provider history · none deferred.
-
+- 2026-06-21 · Workflows Builder Phase 0 Figma draft (pre-code) · draft
+  desktop frames `170:850`, `170:1168`, `170:1486` and mobile frames
+  `170:1056`, `170:1374`, `170:1692` checked from Figma screenshots
+  (`output/figma/workflows-*.png`) · fixes in Figma: tightened the review
+  queue metric overflow, mobile stats, and stacked action wrapping at 390px ·
+  deferred: Temba sign-off in Figma and all app/backend implementation; no
+  production code, provider call, comms send, payment, reconciliation, or
+  source-record mutation path was changed.
+- 2026-06-21 · Workflows Builder v1 implementation · Figma-approved Work hub
+  sub-tab, rules list/editor, and review queue frames
+  `170:850`/`170:1056`, `170:1168`/`170:1374`, `170:1486`/`170:1692` ·
+  screens checked at 1440 and 390 from Playwright captures
+  (`apps/web/test-results/workflows-ux-desktop-1440.png`,
+  `apps/web/test-results/workflows-ux-mobile-390.png`) · fixes in-slice:
+  moved Workflows beside Approvals in the Work tab order and auto-scroll the
+  active tab so deep-linked mobile views show the current section; proposal
+  actions remain 44px+ and stack cleanly at 390px · no UX debt deferred.
 - 2026-06-23 · Settings Xero invoice preview handoff · existing Horizon
   Settings surface; screens checked at desktop 1432 and mobile 390 from
   Playwright captures
@@ -726,6 +747,27 @@ fixes · deferrals.
   below the invoice list; no tenant email, Xero posting, provider dispatch,
   payment reconciliation, or provider-state mutation runs from loading the
   screen · no UX debt deferred.
+- 2026-06-23 · Billing Readiness one-run simplification · existing Horizon
+  Money / Billing Readiness surface; screens checked at desktop 1440 and
+  mobile 390 from local Playwright captures
+  (`apps/web/test-results/ux-review/review-desktop.png`,
+  `apps/web/test-results/ux-review/send-desktop.png`,
+  `apps/web/test-results/ux-review/review-mobile.png`) · fixes in-slice:
+  collapsed the duplicate run widgets (top stepper + Codex's delivery-only
+  strip) into one plain-English "Monthly invoice run" panel — status, a single
+  next-action button, three steps (Review & approve → Send → Get paid), and the
+  guardrail line; reduced the four jargon tabs to three plain steps (Fix issues
+  / Review & approve / Send & get paid); added a one-click "Approve & prepare to
+  send" action (per row plus a batch "Approve & prepare all") that runs only the
+  Leasium-internal staging — approve draft → create invoice draft → prepare
+  preview → approve invoice — so operators approve once instead of four times;
+  folded the old "Approve invoices" tab into a "Prepared invoices" panel under
+  review; rewrote run-guide and section copy in plain English · provider safety
+  unchanged: no tenant email, Xero posting/sync, provider dispatch, or payment
+  reconciliation runs without the explicit existing buttons, and loading the
+  page mutates nothing · verified eslint, tsc, billing-readiness-ux smoke (9
+  passed), app-flows billing subset (9 passed), and production next build · no
+  UX debt deferred.
 - 2026-06-23 · Property lease rent editor conversion · existing Horizon
   Properties lease drawer; screens checked at desktop 1440 and mobile 390 from
   local Playwright captures (`/tmp/leasium-rent-editor-desktop.png`,
@@ -735,6 +777,17 @@ fixes · deferrals.
   mobile drawer body scroll so rent controls and 44px+ actions remain reachable
   · no provider calls, tenant email, Xero sync, payment reconciliation, or UX
   debt deferred.
+- 2026-06-24 · Properties delete affordance + Smart Intake existing-property
+  picker · existing Horizon Properties editor + Leasium AI intake review edit
+  form; screens checked at desktop 1440 and mobile 390 from local Playwright
+  captures · the property editor now carries a destructive zone below Save (a
+  muted, count-aware "removes this property along with N unit(s)/M lease(s) ·
+  tenants kept" caption + a red Delete property action gated behind a
+  window.confirm); the intake review edit form now offers a "Link to an
+  existing property" selector when nothing auto-matches, so a unit attaches to
+  the chosen building instead of spawning a duplicate property · reuses
+  Field/Select + SecondaryButton, no new tokens · no fixes needed · no provider
+  calls, tenant email, Xero sync, or payment reconciliation · none deferred.
 
 ## UX Debt Register
 
@@ -3386,3 +3439,7 @@ UX pass — 2026-06-24 · Xero setup stepper. Surface: Settings → Xero "Connec
 UX pass — 2026-06-24 · Xero account/tax picker. Surface: Settings → Xero chart/tax preview. Account + Tax table cells are now Select pickers populated from the live Xero chart, defaulting to current-or-suggested; Apply posts the chosen codes. Reuses the established Select component (pre-styled, responsive). Suggestion is now chart-aware (name-match, fallback to default). Verified: ruff, pytest (34), eslint, tsc, settings-xero-ux (6) + Xero readiness flow (1) render and interact the pickers at desktop width. Recommend a live eyeball of the multi-row table on mobile.
 
 UX pass — 2026-06-24 · Xero manual contact picker. Surface: Settings → Xero contact preview. Added an "Assign contacts manually" section listing unmatched tenants/properties, each with a Xero-contact Select from the fetched list; Apply posts via the existing contact-apply endpoint (review-first). Reuses Select/Button. Verified: ruff, pytest (34), eslint, tsc, settings-xero-ux (6) + Xero readiness flow (1) render and select the manual picker. Recommend a live eyeball on mobile.
+
+UX debt — 2026-06-24 · Existing-tenant migration. The migration slice (POST /tenant-onboarding/migrated + relaxed send-portal-invite) shipped backend-only with no frontend change: migrated `applied` onboardings already render the read-only "Applied. Your contact details are now confirmed in Leasium." panel (no confirm wizard) via the existing OnboardingPanel branch (`editable = status === "sent"`), and no stray lease-agreement "sign" CTA appears because migration never arms the lease-agreement section. Deferred, design-facing (needs Figma-first sign-off before code): the operator "Send portal invite" / resend controls on the tenant record are gated to `sent` rows, so migrated login links are sent via the API for now — exposing those controls for migrated `applied` rows is the follow-up. Optional: a migration-specific invite email copy variant (the current portal-invite template "Set up your tenant portal …" is already login-centric, so not required for function).
+
+UX pass — 2026-06-24 · Migrate-tenant v1 thin button. Surface: tenant record → Linked leases (per-lease actions). Added "Set up portal login" when a lease has no onboarding (creates the migrated applied row, skipping the wizard), and "Send login link" + "Copy login link" + a "Login link sent" badge on a migrated applied row. Reuses Button / SecondaryButton / StatusBadge (44px touch targets by construction); no new tokens or components. Screens reviewed: desktop 1440 + mobile 390 via Playwright screenshots (apps/web/test-results/migrate-tenant-desktop-1440.png, migrate-tenant-mobile-390.png) — buttons render in the lease row and stack cleanly full-width on mobile. Slop test: pass. Verified: eslint + tsc clean; migrate-tenant-ux smoke 2 passed. Deferred to UX debt: the top Onboarding workflow section still renders the full invite→sign step list for a migrated applied row (lease-pack / sign steps are noise for an already-renting tenant); and the full client-facing drop-lease→match flow stays a separate design.

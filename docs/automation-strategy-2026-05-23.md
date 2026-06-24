@@ -28,6 +28,15 @@ Honest read of the current state. Most of these are review-first — they surfac
 - **Tenant portal maintenance.** Tenant submits work orders with photos directly.
 - **Branded communication templates foundation.** `branded_communication_template` table exists; not yet consumed by send pipes.
 - **Operator notifications.** Rendered message previews, channel receipts, provider history.
+- **Workflows Builder v1.** On-demand, review-first rule engine in Work
+  (`/operations?tab=workflows`) with fixed trigger catalog
+  `lease_expiring` / `arrears_threshold` / `compliance_due` and fixed action
+  catalog `create_task` / `notify_operator` / `queue_comms_draft`. Evaluation
+  mirrors the comms queue pattern: page load or explicit Evaluate derives
+  proposals from existing records, never sends, never posts to Xero/Basiq,
+  never reconciles, and never mutates source/provider records. Operator
+  approval is required per proposal; comms drafts still go through the existing
+  Comms review/send gate.
 - **Saved views, inline edit cells, mobile card view.** Reduce navigation friction.
 
 What is not yet automated: scheduled comms loops, inbound messaging, document folder watchers, bank-feed reconciliation, calendar/inspection scheduling, lease renewal prep, annual rent increases, owner statements, compliance reminders, contractor coordination beyond a single send, vacancy marketing, voice/call intake.

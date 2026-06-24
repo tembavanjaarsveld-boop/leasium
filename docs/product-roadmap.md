@@ -16,6 +16,21 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-24 Property delete + Smart Intake existing-property picker:**
+  Fixes the duplicate-property trap from importing a lease whose building wasn't
+  auto-matched. `DELETE /properties/{id}` now cascades its soft-delete to the
+  property's units, leases, charge rules, and scoped obligations (tenants are
+  entity-scoped and left intact so a re-import reuses them); the property editor
+  exposes a count-aware destructive zone with a `window.confirm` Delete property
+  action, and `deleteProperty` was added to the API client. The Leasium AI
+  intake review now offers a "Link to an existing property" selector when no
+  building auto-matches, sending an explicit `property_id` so a unit attaches to
+  the chosen building instead of spawning a duplicate (the backend already
+  honoured `property_id`, so this was frontend-only). Backend `pytest` +2
+  (cascade + missing-id 404), Playwright smoke +2 (`properties-ux` delete,
+  `intake-conversation` picker); ruff/eslint/tsc clean; production `next build`
+  clean; UX pass at 1440/390. No provider, tenant email, Xero, or
+  payment-reconciliation mutation added.
 - [x] **2026-06-21 Work approvals URL state v1.8:** The Work approvals inbox
   now restores and persists decision-state, source, search, and sort controls
   through `/operations?tab=approvals` URL parameters:
@@ -101,6 +116,13 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   send, dispatch, Xero/Basiq, payment, reconciliation, or provider-history
   mutation controls. Smoke coverage locks the candidate mix, source links,
   local export, and forbidden provider/comms/payment mutations.
+- [x] **2026-06-20 Platform stabilization v2 / MVP hosted readiness:** Hosted
+  readiness proof is closed: Sentry is live, the read-only live-register
+  integrity sweep is clean, the six-hub golden-path read sweep completed, and
+  `docs/mvp-readiness-punchlist-2026-06-19.md` records no hard blockers.
+  Remaining items are operator housekeeping/data-review tasks only: Gorilla
+  Grind billing email, Xero exception confirmation, and optional Sentry
+  source-map polish.
 - [x] **2026-06-20 Compliance evidence detail v1.1:** The Work compliance tab
   now has a per-check `Review evidence detail` disclosure that brings linked
   source document state, current obligation id, latest completion, approval
@@ -1405,15 +1427,10 @@ Tier 2 follows after the highest-leverage Tier 1 items land.
   full frontend Playwright suite is green locally: 370 passed, 16 skipped on
   2026-06-19. Remaining proof point before moving this to Built: commit/push so
   GitHub Actions proves the new workflow on `main`.
-- [ ] **Platform stabilization v2 / MVP hosted readiness:** Repo-side work is
-  locally verified for PII-scrubbed backend/frontend Sentry wiring, a read-only
-  live-register integrity report, smoke stability under the Sentry bundle, and
-  the operator evidence ledger at
-  `docs/mvp-readiness-punchlist-2026-06-19.md`. Remaining proof before moving
-  to Built is hosted/operator-run: Render backend Sentry event + alert, Vercel
-  frontend Sentry event + source maps, hosted Neon dry-run/review/backup/apply
-  discipline, and the six production golden paths with Blockers reproduced as
-  tests before fixes.
+- [x] **Platform stabilization v2 / MVP hosted readiness:** Closed 2026-06-20
+  and moved to Built. Hosted proof is complete in
+  `docs/mvp-readiness-punchlist-2026-06-19.md`; remaining items are operator
+  housekeeping/data-review tasks, not MVP blockers.
 
 ### DoorLoop benchmark refocus (2026-05-31) — current top priority
 
@@ -1606,6 +1623,21 @@ Equifax/illion; RTBA/state RTAs).
   optional template preview/variable substitution and reviewed send-time
   consumption. Pending Remba/prototype review.
 - [ ] Customisable reporting and a Workflows builder.
+  - [x] **Workflows Builder v1 shipped 2026-06-21:** Work now has
+    `/operations?tab=workflows` with enabled rule list, inline rule editor,
+    and review queue. Backend adds `WorkflowRule` and
+    `WorkflowProposalDecision` plus `/api/v1/workflows/rules` CRUD,
+    read-only on-demand queue evaluation, and approve/dismiss writes.
+    Trigger catalog v1 is `lease_expiring`, `arrears_threshold`, and
+    `compliance_due`; action catalog v1 is `create_task`,
+    `notify_operator`, and `queue_comms_draft`. There is no scheduler or
+    direct provider action: workflow evaluation is read-only, create-task
+    approval creates a local Work obligation, operator notification is local,
+    and comms drafts still require the existing Comms review/send gate.
+    Figma-approved frames are recorded in
+    `docs/design-governance.md`; focused backend, frontend, full integration,
+    and production-build verification passed locally. Remaining: customisable
+    reporting.
 
 **P3 — product-for-the-AU-market bets (low value while SKJ-internal/commercial):**
 
@@ -1847,3 +1879,5 @@ Shipped 2026-06-24 — Xero setup stepper: the Settings → Xero "Connect Xero" 
 Shipped 2026-06-24 — Xero account/tax picker: the chart/tax preview now lets operators pick the Xero account and tax type per charge rule from the live chart (validate-preview now returns accounts[]/tax_rates[]), defaulting to current-or-suggested, and the suggestion is now chart-aware — it name-matches (base rent → "Rent received") instead of the old hardcoded 200, falling back to the built-in default. Apply persists the chosen codes locally (review-first, no Xero write).
 
 Shipped 2026-06-24 — Xero manual contact picker: contact sync preview now returns the fetched Xero contacts and the unmatched tenants/properties, and contact-name matching is punctuation-insensitive (more auto-matches). The contact preview has an "Assign contacts manually" section so operators can link tenants/properties that didn't auto-match to a Xero contact from the live list; Apply saves locally (review-first, no Xero write). Clears the "Tenant Xero contact mapping missing" invoice blocker.
+
+Shipped 2026-06-24 — Existing-tenant migration into the portal (no re-onboarding): new POST /tenant-onboarding/migrated creates an onboarding row already in `applied` state with a migration provenance marker (`review_data.origin = "migration"`) and operator attribution, so a migrated tenant — whose details were imported from their existing lease — skips the confirm-details wizard and lands straight in the working portal once they claim their login. The confirm wizard stays gated on `status == "sent"`; nothing else changed there. Provider-inert on create; the existing send-portal-invite is relaxed to deliver a login link for migrated `applied` rows (still operator-triggered = explicit approval, §2.1 intact). Shared logic in `stewart/domain/tenant_migration.py`; bulk creator `scripts/migrate_existing_tenants.py` (in-process, idempotent, dry-run by default, flags tenants missing a contact/billing email since the portal claim verifies it). Verified: ruff (changed + full), pytest 105 across the onboarding + portal suites. Design record: [tenant-migration-portal-access-spec-2026-06-24.md](tenant-migration-portal-access-spec-2026-06-24.md). Follow-up (UX gate): expose the operator "Send portal invite" button for migrated `applied` rows (currently shown only for `sent`).
