@@ -8328,6 +8328,38 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/tenant-onboarding/migrated") {
+      const payload = request.postDataJSON() as { lease_id?: string };
+      const row = rentRoll.find((item) => item.lease_id === payload.lease_id);
+      const lease = leases.find((item) => item.id === payload.lease_id);
+      const createdAt = "2026-05-21T00:20:00.000Z";
+      const created = {
+        id: `onboarding-migrated-${tenantOnboardings.length + 1}`,
+        entity_id: entityId,
+        lease_id: payload.lease_id ?? "lease-created",
+        tenant_id: row?.tenant_id ?? lease?.tenant_id ?? tenantId,
+        token: `tenant-token-migrated-${tenantOnboardings.length + 1}`,
+        status: "applied",
+        due_date: null,
+        expires_at: null,
+        last_sent_at: null,
+        resent_at: null,
+        cancel_reason: null,
+        onboarding_url: `http://127.0.0.1:3000/onboarding/tenant-token-migrated-${tenantOnboardings.length + 1}`,
+        portal_url: `http://127.0.0.1:3000/tenant-portal/tenant-token-migrated-${tenantOnboardings.length + 1}`,
+        submitted_data: {},
+        submitted_at: createdAt,
+        review_data: { origin: "migration" },
+        delivery_data: {},
+        created_at: createdAt,
+        updated_at: createdAt,
+        deleted_at: null,
+      } as (typeof tenantOnboardings)[number];
+      tenantOnboardings.push(created);
+      await fulfillJson(route, created, 201);
+      return;
+    }
+
     if (
       method === "POST" &&
       path === "/tenant-onboarding/onboarding-1/fresh-link"

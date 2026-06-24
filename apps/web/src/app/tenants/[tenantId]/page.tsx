@@ -59,6 +59,7 @@ import {
   cancelTenantOnboarding,
   applyTenantOnboarding,
   createDocumentIntakeFromDocument,
+  createMigratedTenantOnboarding,
   createTenantOnboarding,
   deleteDocument,
   deleteTenant,
@@ -1863,6 +1864,16 @@ function TenantDetail() {
         lease_id: leaseId,
         due_date: dateOnly(new Date(Date.now() + 7 * 86_400_000)),
       }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-onboardings", tenant?.entity_id],
+      });
+    },
+  });
+
+  const createMigratedOnboardingMutation = useMutation({
+    mutationFn: (leaseId: string) =>
+      createMigratedTenantOnboarding({ lease_id: leaseId }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
@@ -4312,21 +4323,74 @@ function TenantDetail() {
                             <RefreshCw size={15} />
                             Fresh link
                           </SecondaryButton>
+                        ) : activeOnboarding &&
+                          activeOnboarding.status === "applied" &&
+                          (activeOnboarding.review_data as { origin?: string })
+                            .origin === "migration" ? (
+                          <>
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                sendPortalInviteMutation.mutate(
+                                  activeOnboarding.id,
+                                )
+                              }
+                              disabled={sendPortalInviteMutation.isPending}
+                            >
+                              <Send size={16} />
+                              {activeOnboarding.last_sent_at
+                                ? "Resend login link"
+                                : "Send login link"}
+                            </Button>
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                navigator.clipboard.writeText(
+                                  activeOnboarding.portal_url,
+                                )
+                              }
+                            >
+                              <ClipboardCopy size={15} />
+                              Copy login link
+                            </SecondaryButton>
+                            {activeOnboarding.last_sent_at ? (
+                              <StatusBadge tone="success">
+                                Login link sent
+                              </StatusBadge>
+                            ) : null}
+                          </>
                         ) : activeOnboarding ? (
                           <StatusBadge tone="neutral">
                             Onboarding{" "}
                             {activeOnboarding.status.replaceAll("_", " ")}
                           </StatusBadge>
                         ) : (
-                          <Button
-                            type="button"
-                            onClick={() =>
-                              createOnboardingMutation.mutate(lease.lease_id)
-                            }
-                          >
-                            <Plus size={16} />
-                            Send onboarding
-                          </Button>
+                          <>
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                createOnboardingMutation.mutate(lease.lease_id)
+                              }
+                            >
+                              <Plus size={16} />
+                              Send onboarding
+                            </Button>
+                            <SecondaryButton
+                              type="button"
+                              onClick={() =>
+                                createMigratedOnboardingMutation.mutate(
+                                  lease.lease_id,
+                                )
+                              }
+                              disabled={
+                                createMigratedOnboardingMutation.isPending
+                              }
+                              title="Already renting — give them a portal login without the onboarding form."
+                            >
+                              <ShieldCheck size={15} />
+                              Set up portal login
+                            </SecondaryButton>
+                          </>
                         )}
                       </div>
                     </div>

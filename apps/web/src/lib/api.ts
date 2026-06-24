@@ -4725,6 +4725,17 @@ export function createTenantOnboarding(payload: {
   });
 }
 
+export function createMigratedTenantOnboarding(payload: {
+  lease_id: string;
+  due_date?: string | null;
+  expires_at?: string | null;
+}) {
+  return request<TenantOnboardingRecord>("/tenant-onboarding/migrated", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function cancelTenantOnboarding(onboardingId: string) {
   return request<TenantOnboardingRecord>(
     `/tenant-onboarding/${onboardingId}/cancel`,
