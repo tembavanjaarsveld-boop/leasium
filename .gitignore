@@ -21,3 +21,5 @@ build/
 *.egg-info/
 *.tsbuildinfo
 .DS_Store
+.env.neon
+.vercel

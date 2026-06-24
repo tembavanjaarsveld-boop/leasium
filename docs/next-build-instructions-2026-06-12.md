@@ -24,10 +24,12 @@
 >   `vendor_portal.py:1060` is only an **optional** operator-direction
 >   email/SMS escalation when a contractor replies; v1 deliberately keeps
 >   that in-app-only. Treat as a product decision, not an open gap.
-> - **Ticket 2 (tenant payments AU rail): OPEN but BLOCKED.** Step-1
->   decision brief is drafted (`docs/payment-rail-provider-comparison-2026-06-12.md`,
->   has a recommendation + trust-account decision gates). Step-2 adapter is
->   blocked on Temba's provider decision — no code until then.
+> - **Ticket 2 (tenant payments AU rail): PARKED / deprioritised (2026-06-16,
+>   Temba).** On hold until the business decides what it wants to do on
+>   payments. Step-1 decision brief stays captured
+>   (`docs/payment-rail-provider-comparison-2026-06-12.md`). Do NOT start the
+>   Step-2 adapter, draft provider outreach, or re-prioritise this — Temba will
+>   raise it again when it becomes relevant.
 > - **Ticket 4 (owner disbursement/trust): PARKED** until managing-agent GTM.
 >
 > **Net genuinely-open backend work = none that isn't parked or blocked.**

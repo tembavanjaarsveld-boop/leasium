@@ -134,7 +134,7 @@ were NOT exercised — read-only only.
 
 | Severity | Golden path | Finding | Evidence | Status |
 | --- | --- | --- | --- | --- |
-| Review | Properties vs Dashboard/Money | Properties header reads "$0 monthly rent roll · occupancy pending" while Dashboard shows 100% occupancy and Money has $38,670 drafted across 3 invoices. Likely the onboarding/pending Gorilla Grind lease being excluded from rent roll — confirm intended vs a display gap on the Properties header. | /properties vs / and /money (2026-06-20) | Open |
+| Review | Properties vs Dashboard/Money | ~~Properties header read "$0 monthly rent roll · occupancy pending"~~ — **RESOLVED 2026-06-20: transient loading state** (the "Preparing property workspace" banner was still fetching). After load, Properties reads 100% occupied · $38,670/mo (B3 205 Leitchs 1/1 $15,832; Building 6 2/2 $22,838), reconciling exactly with Money and Dashboard. Not a bug. Minor optional polish: show a skeleton/"calculating…" instead of "$0" while loading. | /properties loaded (2026-06-20) | Resolved |
 | Data task | Money / People | Gorilla Grind Pty Ltd has no billing email → its $15,832 invoice routes to portal not email; flagged consistently on Dashboard/People/Money. Operator to add the billing email. | /people, /money | Open (operator) |
 | Review | Money / Xero | Xero shows "needs review — 3 exceptions per entity". Confirm benign before any approved posting. | /money, Settings → Xero | Open |
 | Note | Work vs Dashboard | Work shows "Open 4"; Dashboard work queue shows "2 open". Likely scope/range difference (Work all-open vs dashboard maintenance) — sanity-check the counts agree. | /operations vs / | Open (low) |
