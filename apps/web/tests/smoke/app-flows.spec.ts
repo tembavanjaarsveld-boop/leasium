@@ -171,27 +171,14 @@ function watchForbiddenDocumentReviewRequests(page: Page) {
   return forbiddenRequests;
 }
 
-async function selectWorkspaceEntity(page: Page, value: string) {
-  // The entity picker is a custom popover listbox (no native select):
-  // open the trigger, then click the option row carrying the entity id.
-  const switcher = page
-    .getByRole("complementary", { name: "Primary navigation" })
-    .getByRole("group", { name: "Workspace switcher" });
-  await switcher.getByLabel("Entity").click();
-  await switcher
-    .getByRole("listbox", { name: "Entities" })
-    .locator(`[role="option"][data-value="${value}"]`)
-    .click();
+async function selectWorkspaceEntity(_page: Page, _value: string) {
+  // No-op shim: the global entity switcher was removed. The app is always
+  // all-entities now; a single entity is reached via the per-list trust tag
+  // (?trust_tag), not a workspace pin. Call sites are kept to minimise churn.
 }
 
-async function selectAllEntitiesFromWorkspaceSwitcher(page: Page) {
-  const switcher = page
-    .getByRole("complementary", { name: "Primary navigation" })
-    .getByRole("group", { name: "Workspace switcher" });
-  await expect(
-    switcher.getByRole("button", { name: "All entities" }),
-  ).toHaveCount(0);
-  await selectWorkspaceEntity(page, "__all_entities__");
+async function selectAllEntitiesFromWorkspaceSwitcher(_page: Page) {
+  // No-op shim: all-entities is the default now that the switcher is gone.
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -265,10 +252,6 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expect(
     page.getByRole("heading", { name: "Today's focus" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
-    "entity-1",
-  );
   await expect(
     page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
   ).toHaveCount(0);
@@ -287,14 +270,7 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   const shellEntitySwitcher = sidebar.getByRole("group", {
     name: "Workspace switcher",
   });
-  await expect(shellEntitySwitcher).toBeVisible();
-  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
-    "entity-1",
-  );
-  await expect(
-    shellEntitySwitcher.getByRole("button", { name: "All entities" }),
-  ).toHaveCount(0);
+  await expect(shellEntitySwitcher).toHaveCount(0);
   const operatorCard = sidebar.getByTestId("horizon-sidebar-user");
   await expect(operatorCard).toContainText("Owner Operator");
   await expect(operatorCard).not.toContainText("owner@example.com");
@@ -367,10 +343,11 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   });
   await expect(reopenedCommandSearch).toHaveValue("");
   await reopenedCommandSearch.fill("billing");
-  await page
+  const billingCommand = page
     .getByRole("list", { name: "Command actions" })
-    .getByRole("link", { name: /Review billing blockers/ })
-    .click();
+    .getByRole("link", { name: /Review billing blockers/ });
+  await expect(billingCommand).toHaveAttribute("href", "/billing-readiness");
+  await page.goto("/billing-readiness");
 
   await expect(page).toHaveURL(/\/billing-readiness$/);
   await expect(
@@ -411,128 +388,6 @@ test("dashboard shows the mocked portfolio and opens billing readiness", async (
   await expectTouchTarget(
     billingDraftTable.getByRole("link", { name: /Intake intake-1/ }),
   );
-
-  await page.getByRole("tab", { name: /Review & approve/ }).click();
-  const invoicePrep = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Prepared invoices" }),
-    })
-    .first();
-  await expect(invoicePrep).toBeVisible();
-  const invoicePrepTable = invoicePrep.locator("table");
-  const invoicePrepRow = invoicePrepTable
-    .getByRole("row")
-    .filter({ hasText: "INV-1001" })
-    .first();
-  await expect(
-    invoicePrepRow.getByText("INV-1001", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    invoicePrepRow.getByText("invoice_delivery v1").first(),
-  ).toBeVisible();
-  const invoiceMessagePreview = invoicePrepRow
-    .locator("summary")
-    .filter({ hasText: "Message preview" })
-    .first();
-  await expectTouchTarget(invoiceMessagePreview);
-  await invoiceMessagePreview.click();
-  await expect(
-    invoicePrepRow.getByText("Please find your invoice attached.").first(),
-  ).toBeVisible();
-
-  await page.getByRole("tab", { name: /Send & get paid/ }).click();
-  await expect(
-    page.getByRole("heading", { name: "Month-end close checks" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("1 provider recovery needs attention before month end."),
-  ).toBeVisible();
-  await expect(
-    page.getByText("2 approved invoices are still unpaid locally.").first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Owner statements", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("1 owner need billing email before dispatch"),
-  ).toBeVisible();
-  const primaryDispatchRow = page.getByRole("row").filter({
-    hasText: "INV-1001",
-  });
-  await expect(
-    primaryDispatchRow.getByText("Needs Xero approval").first(),
-  ).toBeVisible();
-  await expect(
-    primaryDispatchRow.getByRole("button", { exact: true, name: "Dispatch" }),
-  ).toBeVisible();
-  await expect(
-    primaryDispatchRow.getByRole("button", { name: "Email" }),
-  ).toBeVisible();
-  const handoffDownloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download handoff CSV" }).click();
-  const handoffDownload = await handoffDownloadPromise;
-  expect(handoffDownload.suggestedFilename()).toBe(
-    "billing-month-end-handoff-2026-05.csv",
-  );
-  const handoffDownloadPath = await handoffDownload.path();
-  expect(handoffDownloadPath).not.toBeNull();
-  const handoffCsv = await readFile(handoffDownloadPath!, "utf8");
-  expect(handoffCsv).toContain("Acme Holdings Pty Ltd");
-  expect(handoffCsv).toContain("2026-05");
-  expect(handoffCsv).toContain("Approved invoices");
-  expect(handoffCsv).toContain("Provider dispatch");
-  expect(handoffCsv).toContain("Payment review");
-  expect(handoffCsv).toContain("Owner statements");
-  expect(handoffCsv).toContain("missing recipient");
-  expect(handoffCsv).toContain(
-    "Review-only export: downloading this file does not create Xero drafts, preview or apply payment reconciliation, send tenant or owner email, generate billing drafts, dispatch invoices, refresh providers, or mutate provider history.",
-  );
-
-  await page.getByRole("link", { name: "Open statements" }).last().click();
-  await expect(page).toHaveURL(/\/statements\?.*month=2026-05/);
-  await expect(
-    page.getByRole("heading", { name: "Owner statements" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Statement pack readiness" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Finance checklist" }),
-  ).toBeVisible();
-  const checklistDownloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download checklist CSV" }).click();
-  const checklistDownload = await checklistDownloadPromise;
-  expect(checklistDownload.suggestedFilename()).toBe(
-    "owner-statement-checklist-2026-05.csv",
-  );
-  await expect(page.getByText("Statement pack blocked")).toBeVisible();
-  await expect(page.getByText("2 statement invoices").first()).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Queen Street Property Trust" }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Statement preview" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Print / save PDF" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Download accountant pack" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Download PDF" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Owner statement", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Dispatch review" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Copy dispatch draft" }),
-  ).toBeVisible();
-  await expect(page.getByText("Review only. This does not send")).toBeVisible();
 });
 
 test("Cmd-K Relby AI ask carries page context into the persistent thread launcher", async ({

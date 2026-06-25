@@ -42,9 +42,7 @@ import { IntakeConversationPanel } from "@/components/intake/IntakeConversationP
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  ENTITY_CHANGED_EVENT,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -124,15 +122,17 @@ type ReviewQueueFilter =
   | "lease";
 
 function initialSelectedEntityId(mode: "dashboard" | "intake") {
+  // Dashboard is a portfolio surface: it always opens on the all-entities view
+  // (the global entity switcher is gone; the entity is a per-list trust tag).
+  if (mode === "dashboard") return ALL_ENTITIES_VALUE;
   if (typeof window === "undefined") return "";
+  // Relby AI (intake) is a single-entity flow: a conversation thread / document
+  // intake binds to one trust. Honour an explicit ?entity_id deep link (e.g. a
+  // ⌘K ask carrying a record's entity), but otherwise start with NO entity and
+  // make the operator pick one in the composer — never silently inherit a pin,
+  // which is the recurring wrong-trust hazard.
   const params = new URLSearchParams(window.location.search);
-  const requestedEntityId = mode === "intake" ? params.get("entity_id") : null;
-  const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY) ?? "";
-  // Intake is a single-entity document-review flow: never seed it from the
-  // all-entities sentinel. Dashboard mode treats the sentinel as a valid value.
-  const resolvedStored =
-    mode === "intake" && isAllEntities(stored) ? "" : stored;
-  return requestedEntityId ?? resolvedStored;
+  return params.get("entity_id") ?? "";
 }
 type LeaseAutoMatchField = {
   field: string;
@@ -1572,7 +1572,13 @@ export function Dashboard({
   >([]);
   const handleLandingAsk = async (override?: string) => {
     const trimmed = (override ?? landingQuestion).trim();
-    if (!trimmed || landingAsking || !selectedEntityId) return;
+    // The Relby AI ask is entity-scoped (the backend builds answer context from
+    // one trust's records and asserts a role on it), so with the global switcher
+    // gone it targets the first accessible entity. TODO: surface a trust picker
+    // in the composer so the operator chooses which trust to ask about.
+    const askEntityId =
+      scopeEntityId(selectedEntityId) || entitiesQuery.data?.[0]?.id || "";
+    if (!trimmed || landingAsking || !askEntityId) return;
     setLandingAsking(true);
     setLandingQuestion("");
     const index = landingAsks.length;
@@ -1585,14 +1591,14 @@ export function Dashboard({
       const contextRoute = params.get("context_route") || "/intake";
       const contextRefs = queryRecordRefs(params);
       const thread = await createConversationThread({
-        entity_id: selectedEntityId,
+        entity_id: askEntityId,
         source: params.get("context_route") ? "cmdk" : "intake",
         context_route: contextRoute,
         context_record_refs: contextRefs,
         title: trimmed.slice(0, 120),
       });
       const result = await askLeasium({
-        entity_id: selectedEntityId,
+        entity_id: askEntityId,
         question: trimmed,
         thread_id: thread.id,
       });
@@ -1653,58 +1659,22 @@ export function Dashboard({
     if (!entitiesQuery.data) {
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    const requestedEntityId = isIntakeWorkspace
-      ? params.get("entity_id")
-      : null;
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
+    // Dashboard mode is pinned to All entities — nothing to reconcile.
+    if (!isIntakeWorkspace) return;
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
-    const firstEntity = entitiesQuery.data?.[0]?.id ?? "";
-    // The All-entities sentinel is a valid restore target in dashboard mode only
-    // (it survives navigation/reload there); intake stays single-entity.
-    const storedIsRestorable = Boolean(
-      stored &&
-        ((!isIntakeWorkspace && isAllEntities(stored)) ||
-          accessibleIds.has(stored)),
-    );
-    // Fresh selection: multi-entity orgs default to All entities in dashboard
-    // mode; intake stays single-entity, so it keeps the first entity.
-    const fallbackEntity = isIntakeWorkspace
-      ? firstEntity
-      : defaultEntitySelection(entitiesQuery.data ?? []);
-    const next =
-      requestedEntityId && accessibleIds.has(requestedEntityId)
-        ? requestedEntityId
-        : storedIsRestorable
-          ? (stored as string)
-          : fallbackEntity;
-    const selectionValid =
-      (!isIntakeWorkspace && isAllEntities(selectedEntityId)) ||
-      accessibleIds.has(selectedEntityId);
-    if (next) {
-      if (!selectedEntityId || !selectionValid) {
-        setSelectedEntityId(next);
-      }
-    } else if (selectedEntityId && !selectionValid) {
-      // No accessible entity to fall back to and the stored selection is not
-      // valid for this account — e.g. a brand-new account with no entities, or
-      // one switched from a different login in the same browser (the entity id
-      // is persisted in a shared localStorage key). Clear it so entity-scoped
-      // queries stay disabled and we never query an entity this account cannot
-      // access (which would 403 as "you do not have access to this entity").
+    // Intake binds to one trust. Keep an explicit, accessible selection; drop
+    // anything stale (e.g. an entity from a different login in this shared
+    // browser, or the all-entities sentinel) so the composer falls back to an
+    // explicit pick rather than querying an inaccessible entity.
+    if (
+      selectedEntityId &&
+      (isAllEntities(selectedEntityId) || !accessibleIds.has(selectedEntityId))
+    ) {
       setSelectedEntityId("");
-      window.localStorage.removeItem(ENTITY_STORAGE_KEY);
     }
   }, [entitiesQuery.data, isIntakeWorkspace, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-      window.dispatchEvent(new Event(ENTITY_CHANGED_EVENT));
-    }
-  }, [selectedEntityId]);
 
   useEffect(() => {
     window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, String(demoMode));
@@ -1751,11 +1721,13 @@ export function Dashboard({
       ),
     [entitiesQuery.data],
   );
+  const dashboardAskEntityId =
+    scopedEntityId || (!isIntakeWorkspace ? entitiesQuery.data?.[0]?.id ?? "" : "");
 
   const dashboardOverviewQuery = useQuery<DashboardOverviewRecord>({
     queryKey: ["dashboard-overview", scopedEntityId, asOf],
     queryFn: () => getDashboardOverview(scopedEntityId, asOf || undefined),
-    enabled: !demoMode && Boolean(scopedEntityId),
+    enabled: !demoMode && (allMode || Boolean(scopedEntityId)),
   });
   const dashboardOverview = demoMode
     ? null
@@ -1784,7 +1756,8 @@ export function Dashboard({
     queryKey: ["dashboard-insights-overview", scopedEntityId, asOf],
     queryFn: () => getInsightsOverview(scopedEntityId, asOf || undefined),
     // Feeds UpcomingLeaseEventsPanel + CompliancePanel, both hidden in intake.
-    enabled: !isIntakeWorkspace && Boolean(scopedEntityId),
+    enabled:
+      !demoMode && !isIntakeWorkspace && (allMode || Boolean(scopedEntityId)),
   });
   const onboardingQuery = useQuery({
     queryKey: ["dashboard-onboarding", scopedEntityId],
@@ -2416,13 +2389,17 @@ export function Dashboard({
   };
   const commandCenterDetailsReady =
     demoMode ||
-    allMode ||
-    Boolean(
-      documentIntakesQuery.data &&
-      rentRollQuery.data &&
-      onboardingQuery.data &&
-      obligationsQuery.data,
-    );
+    (allMode
+      ? !documentIntakesFanOut.isLoading &&
+        !rentRollFanOut.isLoading &&
+        !onboardingFanOut.isLoading &&
+        !obligationsFanOut.isLoading
+      : Boolean(
+          documentIntakesQuery.data &&
+            rentRollQuery.data &&
+            onboardingQuery.data &&
+            obligationsQuery.data,
+        ));
   const displayedCommandCenterItems =
     commandCenterDetailsReady || !dashboardOverview
       ? commandCenterItems
@@ -2468,8 +2445,11 @@ export function Dashboard({
     );
   }
   const billingMetricLoading = rentRollLoading && !dashboardOverview;
+  const billingDetailsReady =
+    demoMode ||
+    (allMode ? !rentRollFanOut.isLoading : Boolean(rentRollQuery.data));
   const billingMetricCount =
-    demoMode || allMode || rentRollQuery.data
+    billingDetailsReady
       ? billingIssues.length
       : overviewBillingBlockerCount;
   const billingMetricNextAction =
@@ -2497,6 +2477,8 @@ export function Dashboard({
   // disabled there) and through the single-entity queries otherwise.
   function refreshDashboardData() {
     if (allMode) {
+      dashboardOverviewQuery.refetch();
+      insightsOverviewQuery.refetch();
       dashboardFanOuts.forEach((fanOut) => fanOut.refetch());
       return;
     }
@@ -2659,9 +2641,10 @@ export function Dashboard({
     : billingReady
       ? "No blockers from current data."
       : billingMetricNextAction;
-  const overviewLeaseEvents = !allMode
-    ? (insightsOverviewQuery.data?.lease_event_snapshot.next_events ?? [])
-    : [];
+  const overviewLeaseEvents =
+    !isIntakeWorkspace
+      ? (insightsOverviewQuery.data?.lease_event_snapshot.next_events ?? [])
+      : [];
   const dashboardOverviewEvents = dashboardOverview?.upcoming_lease_events ?? [];
   const dashboardHorizonEvents: HorizonDashboardEvent[] = overviewLeaseEvents
     .slice(0, 4)
@@ -2702,7 +2685,6 @@ export function Dashboard({
     );
   }
   const leaseHorizonLoading =
-    !allMode &&
     !isIntakeWorkspace &&
     insightsOverviewQuery.isLoading &&
     !insightsOverviewQuery.data &&
@@ -2719,15 +2701,7 @@ export function Dashboard({
   if (zeroEntities) {
     return (
       <main className="min-h-screen bg-leasium-canvas">
-        <AppHeader>
-          <EntityPicker
-            entities={entitiesQuery.data}
-            loading={entitiesQuery.isLoading}
-            value={selectedEntityId}
-            onChange={setSelectedEntityId}
-            allowAllEntities={false}
-          />
-        </AppHeader>
+        <AppHeader />
         <div className="mx-auto grid max-w-none gap-[18px] px-5 py-5 lg:px-9 lg:py-7">
           <h1 className="sr-only">Dashboard</h1>
           <SectionPanel
@@ -2767,15 +2741,7 @@ export function Dashboard({
 
   return (
     <main className="min-h-screen bg-leasium-canvas">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-          allowAllEntities={!isIntakeWorkspace}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-none gap-3 px-4 py-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:gap-[18px] sm:px-5 sm:py-5 md:pb-7 lg:px-9 lg:py-7">
         {isIntakeWorkspace ? (
@@ -3218,10 +3184,25 @@ export function Dashboard({
                         )}
                         Files
                       </button>
-                      <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-accent/25 bg-white px-3 text-sm font-medium text-leasium-teal-strong shadow-leasiumXs">
-                        <Building2 size={16} />
-                        <span className="sm:hidden">Portfolio</span>
-                        <span className="hidden sm:inline">Current portfolio</span>
+                      {/* Conversation threads + document intakes bind to one
+                          trust. With no global switcher the operator names it
+                          here before asking — explicit, never a silent pin
+                          (the wrong-trust guardrail). */}
+                      <span className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-accent/25 bg-white px-3 text-sm font-medium text-leasium-teal-strong shadow-leasiumXs">
+                        <Building2 size={16} className="shrink-0" />
+                        <span className="shrink-0 text-muted-foreground">
+                          Adding to
+                        </span>
+                        <span className="min-w-[7.5rem] max-w-[12rem]">
+                          <EntityPicker
+                            entities={entitiesQuery.data}
+                            loading={entitiesQuery.isLoading}
+                            value={selectedEntityId}
+                            onChange={setSelectedEntityId}
+                            allowAllEntities={false}
+                            tone="inline"
+                          />
+                        </span>
                       </span>
                       <span className="hidden min-h-11 items-center gap-2 rounded-full border border-warning/25 bg-white px-3 text-sm font-medium text-warning-strong shadow-leasiumXs sm:inline-flex">
                         <ShieldCheck size={16} />
@@ -3695,40 +3676,27 @@ export function Dashboard({
         ) : null}
 
         {/* UpcomingLeaseEventsPanel + CompliancePanel are driven by the
-            single-entity insights rollup (getInsightsOverview), which is not
-            a safely additive cross-entity number. In all-mode we scope them off
-            with a clear note rather than fabricating a merged value. */}
-        {!isIntakeWorkspace && allMode ? (
-          <SectionPanel
-            title="Lease events & compliance"
-            icon={<CalendarClock size={17} className="text-primary" />}
-          >
-            <div className="p-4 text-sm text-muted-foreground">
-              Lease events and compliance roll-ups are shown when a single entity
-              is selected.
-            </div>
-          </SectionPanel>
-        ) : null}
-
-        {!isIntakeWorkspace && !allMode ? (
+            insights overview. With no entity id, that endpoint scopes to every
+            readable entity and returns the org-wide portfolio summary. */}
+        {!isIntakeWorkspace ? (
           <UpcomingLeaseEventsPanel
             overview={insightsOverviewQuery.data}
             isLoading={insightsOverviewQuery.isLoading}
           />
         ) : null}
 
-        {!isIntakeWorkspace && !allMode ? (
+        {!isIntakeWorkspace ? (
           <CompliancePanel
             overview={insightsOverviewQuery.data}
             isLoading={insightsOverviewQuery.isLoading}
           />
         ) : null}
 
-        {/* Ask Relby is a single-entity scoped surface. In all-mode we pass
-            the empty scoped id so it falls back to its "select an entity"
-            state rather than firing with the sentinel. */}
+        {/* Ask Relby is a single-entity scoped surface. In all-mode, use the
+            first accessible entity so the ask endpoint never receives the
+            all-entities sentinel. */}
         {!isIntakeWorkspace ? (
-          <AskLeasiumPanel entityId={scopedEntityId} />
+          <AskLeasiumPanel entityId={dashboardAskEntityId} />
         ) : null}
       </div>
     </main>

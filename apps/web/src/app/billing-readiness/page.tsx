@@ -23,7 +23,6 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -66,8 +65,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -2179,7 +2177,10 @@ function BillingReadinessWorkspace() {
   const queryClient = useQueryClient();
   const { operatingMode } = useOperatingMode();
   const showOwnerDispatch = isManagingAgentOperatingMode(operatingMode);
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag. The org-wide read path
+  // always runs; a single entity is reached via the tag, not a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
   const [asOf, setAsOf] = useState(() => dateOnly(new Date()));
   const [activeBillingTab, setActiveBillingTab] =
     useState<BillingWorkspaceTab>("readiness");
@@ -2201,31 +2202,8 @@ function BillingReadinessWorkspace() {
     if (filter) {
       setDeliveryFilter(filter);
     }
-    setSelectedEntityId(params.get("entity_id") ?? "");
     setHighlightInvoiceDraftId(params.get("invoice_id") ?? "");
   }, []);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set(
-      (entitiesQuery.data ?? []).map((entity) => entity.id),
-    );
-    // The All-entities sentinel is a valid restore target even though it is not
-    // a real entity id, so the cross-entity view survives navigation/reload.
-    const next =
-      stored && (isAllEntities(stored) || accessibleIds.has(stored))
-        ? stored
-        : defaultEntitySelection(entitiesQuery.data ?? []);
-    if (!selectedEntityId && next) {
-      setSelectedEntityId(next);
-    }
-  }, [entitiesQuery.data, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    }
-  }, [selectedEntityId]);
 
   // All-entities mode: entity-scoped queries use scopedEntityId (empty in
   // all-mode, so they stay disabled) and the page reads merged fan-out results.
@@ -2984,14 +2962,7 @@ function BillingReadinessWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
@@ -3432,7 +3403,7 @@ function BillingReadinessWorkspace() {
                             {source.intakeId && draft.document_intake_id ? (
                               <Link
                                 href={intakeReviewHref(
-                                  selectedEntityId,
+                                  draft.entity_id,
                                   draft.document_intake_id,
                                 )}
                                 className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
@@ -3522,7 +3493,7 @@ function BillingReadinessWorkspace() {
                                 {source.intakeId && draft.document_intake_id ? (
                                   <Link
                                     href={intakeReviewHref(
-                                      selectedEntityId,
+                                      draft.entity_id,
                                       draft.document_intake_id,
                                     )}
                                     className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 font-medium text-primary transition hover:bg-primary/5 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"

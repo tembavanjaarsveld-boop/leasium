@@ -42,11 +42,7 @@ import {
   type AppearanceMode,
   type ResolvedAppearance,
 } from "@/lib/appearance";
-import {
-  getCommsQueueCounts,
-  getCurrentOperator,
-  listEntities,
-} from "@/lib/api";
+import { getCommsQueueCounts, getCurrentOperator } from "@/lib/api";
 import type { SecurityMeRecord } from "@/lib/api";
 import { clerkUserButtonTouchTargetAppearance } from "@/lib/clerk-appearance";
 import { isAllEntities } from "@/lib/entity-selection";
@@ -552,7 +548,7 @@ function AppearanceToggle() {
   );
 }
 
-export function AppHeader({ children }: { children?: React.ReactNode }) {
+export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const clerkConfigured = Boolean(
@@ -579,12 +575,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
     queryFn: () => getCurrentOperator(),
     staleTime: 300_000,
   });
-  const entitiesQuery = useQuery({
-    queryKey: ["entities"],
-    queryFn: () => listEntities(),
-    staleTime: 300_000,
-  });
-  const [shellEntityId, setShellEntityId] = useState<string | null>(null);
   const shortcutTimeoutRef = useRef<number | null>(null);
 
   // Client operators never see the /admin entry; platform admins get it as an
@@ -634,28 +624,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
       ),
     [visibleNavItems],
   );
-  const shellEntity = useMemo(
-    () =>
-      entitiesQuery.data?.find((entity) => entity.id === shellEntityId) ??
-      null,
-    [entitiesQuery.data, shellEntityId],
-  );
-  const shellEntityLabel =
-    isAllEntities(shellEntityId)
-      ? "All entities"
-      : shellEntity?.name ??
-        currentOperatorQuery.data?.organisation.name ??
-        "Relby";
   const orgName = currentOperatorQuery.data?.organisation.name ?? "Relby";
-  const entityCount = entitiesQuery.data?.length ?? 0;
   const isPlatformAdminRoute = pathname.startsWith("/admin");
-  const entityCountLabel = entitiesQuery.isLoading
-    ? "Checking entities"
-    : entityCount > 0
-      ? `${entityCount} ${entityCount === 1 ? "entity" : "entities"}${
-          children ? " - switch" : ""
-        }`
-      : "Workspace switcher";
 
   useEffect(() => {
     function syncLocationSearch() {
@@ -715,25 +685,6 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         window.clearTimeout(shortcutTimeoutRef.current);
         shortcutTimeoutRef.current = null;
       }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    function syncEntityId() {
-      setShellEntityId(window.localStorage.getItem(COMMS_BADGE_ENTITY_KEY));
-    }
-    syncEntityId();
-    function onStorage(event: StorageEvent) {
-      if (event.key === COMMS_BADGE_ENTITY_KEY) {
-        setShellEntityId(event.newValue);
-      }
-    }
-    window.addEventListener("storage", onStorage);
-    window.addEventListener(ENTITY_CHANGED_EVENT, syncEntityId);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener(ENTITY_CHANGED_EVENT, syncEntityId);
     };
   }, []);
 
@@ -885,33 +836,24 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   // desktop sizes, with the page-owned entity picker housed in the top card.
   const sidebarContent = (
     <>
+      {/* Brand + account card. The portfolio is all-entities by default and the
+          entity is now a filterable trust tag on each list (?trust_tag), so the
+          shell no longer hosts a global entity switcher — it just identifies the
+          account. Entity-scoped surfaces (Settings, Statements, Money, …) render
+          their own in-page picker. */}
       <div
         role="group"
-        aria-label="Workspace switcher"
+        aria-label="Account"
         className="mx-3 mt-4 grid min-h-[50px] grid-cols-[28px_minmax(0,1fr)] items-center gap-2 rounded-xl bg-white/[0.06] px-3 py-2 text-white"
       >
         <LeasiumMark className="h-7 w-7 rounded-lg" />
         <div className="min-w-0">
-          {children ? (
-            <>
-              <p className="truncate text-[12px] font-semibold leading-4">
-                {orgName}
-              </p>
-              {/* The page-owned EntityPicker renders its own Horizon trigger
-                  and popover; no style overrides needed here. The card must
-                  not be overflow-hidden or the popover would clip. */}
-              {children}
-            </>
-          ) : (
-            <>
-              <p className="truncate text-[13px] font-semibold leading-4">
-                {shellEntityLabel}
-              </p>
-              <p className="truncate text-[10px] leading-3 text-leasium-slate-300">
-                {entityCountLabel}
-              </p>
-            </>
-          )}
+          <p className="truncate text-[13px] font-semibold leading-4">
+            {orgName}
+          </p>
+          <p className="truncate text-[10px] leading-3 text-leasium-slate-300">
+            Account
+          </p>
         </div>
       </div>
       <nav
@@ -1260,9 +1202,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                         <Link
                           {...shellLinkProps}
                           href={action.href}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            router.push(action.href);
+                          onClick={() => {
                             setCommandOpen(false);
                           }}
                           className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-sm transition hover:bg-muted"

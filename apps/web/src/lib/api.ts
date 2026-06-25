@@ -4655,8 +4655,11 @@ export function revokeBasiqConnection(entityId: string) {
   );
 }
 
-export function getInsightsOverview(entityId: string, asOf?: string) {
-  const params = new URLSearchParams({ entity_id: entityId });
+export function getInsightsOverview(entityId?: string, asOf?: string) {
+  const params = new URLSearchParams();
+  if (entityId) {
+    params.set("entity_id", entityId);
+  }
   if (asOf) {
     params.set("as_of", asOf);
   }
@@ -4665,8 +4668,11 @@ export function getInsightsOverview(entityId: string, asOf?: string) {
   );
 }
 
-export function getDashboardOverview(entityId: string, asOf?: string) {
-  const params = new URLSearchParams({ entity_id: entityId });
+export function getDashboardOverview(entityId?: string, asOf?: string) {
+  const params = new URLSearchParams();
+  if (entityId) {
+    params.set("entity_id", entityId);
+  }
   if (asOf) {
     params.set("as_of", asOf);
   }

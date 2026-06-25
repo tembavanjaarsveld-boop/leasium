@@ -172,7 +172,11 @@ test("dashboard renders Horizon bento frame without provider writes", async ({
   await expect(bentoStrip.getByText("2 of 5")).toBeVisible();
   await expect(bentoStrip.getByText("Arrears")).toBeVisible();
   await expect(bentoStrip.getByText("Work queue")).toBeVisible();
-  await expect(bentoStrip.getByText("Insurance certificate renewal")).toBeVisible();
+  await expect(
+    bentoStrip.locator("a").filter({
+      hasText: "Insurance certificate renewal",
+    }).first(),
+  ).toBeVisible();
   await expect(bentoStrip.getByText("Billing")).toBeVisible();
   await expect(bentoStrip.getByText(/\d+ blockers/)).toBeVisible();
 
@@ -193,7 +197,7 @@ test("dashboard renders Horizon bento frame without provider writes", async ({
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("entity bootstrap stays warm across operator navigation", async ({
+test("entity bootstrap stays warm without the shell switcher", async ({
   page,
 }) => {
   const entityRequests: string[] = [];
@@ -213,22 +217,22 @@ test("entity bootstrap stays warm across operator navigation", async ({
   await expect(
     page.getByRole("heading", { name: "Today's focus" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
-    "entity-1",
-  );
+  await expect(
+    page
+      .getByRole("complementary", { name: "Primary navigation" })
+      .getByRole("group", { name: "Workspace switcher" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("horizon-sidebar-user"),
+  ).toContainText("Owner Operator");
   await expect(
     page.getByRole("heading", { name: "Acme Holdings Pty Ltd" }),
   ).toHaveCount(0);
 
-  await page.locator('nav a[href="/people"]').first().click();
-  await expect(page).toHaveURL(/\/people$/);
-  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
-
   await expect.poll(() => entityRequests.length).toBe(1);
 });
 
-test("stored entity lets dashboard data start before entities refresh settles", async ({
+test("dashboard org-wide reads start before entities refresh settles", async ({
   page,
 }) => {
   const requestEvents: string[] = [];
@@ -249,19 +253,45 @@ test("stored entity lets dashboard data start before entities refresh settles", 
   });
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (url.pathname === "/api/v1/premises/by-entity/entity-1") {
-      requestEvents.push("portfolio-start");
+    if (
+      url.pathname === "/api/v1/dashboard/overview" &&
+      !url.searchParams.has("entity_id")
+    ) {
+      requestEvents.push("overview-start");
     }
   });
 
   await page.goto("/");
 
   await expect
-    .poll(() => requestEvents.includes("portfolio-start"))
+    .poll(() => requestEvents.includes("overview-start"))
     .toBeTruthy();
   expect(requestEvents).not.toContain("entities-release");
   releaseEntities?.();
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("dashboard single-entity premises reads stay disabled in org-wide mode", async ({
+  page,
+}) => {
+  const requestEvents: string[] = [];
+  await page.addInitScript(() => {
+    window.localStorage.setItem("leasium.demo_mode", "false");
+    window.localStorage.setItem("leasium.entity_id", "entity-1");
+  });
+  await mockLeasiumApi(page);
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/v1/premises/by-entity/")) {
+      requestEvents.push(url.pathname);
+    }
+  });
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Today's focus" }),
+  ).toBeVisible();
+  expect(requestEvents).toEqual([]);
 });
 
 test("dashboard groups upcoming lease events under a date-bucket header", async ({
