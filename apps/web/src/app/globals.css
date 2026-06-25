@@ -254,6 +254,10 @@
   background-color: var(--leasium-danger-soft) !important;
 }
 
+:root[data-theme="dark"] .bg-info-soft {
+  background-color: var(--leasium-info-soft) !important;
+}
+
 /* Ask Relby (dashboard) and the AI Inbox hero share one light hero
    gradient: from-primary-soft/40 via-white to-accent-soft/25. All three
    stops are static light hexes, so remap the whole gradient to the dark
@@ -324,6 +328,11 @@
 :root[data-theme="dark"] .text-danger,
 :root[data-theme="dark"] .text-danger-strong {
   color: var(--leasium-danger) !important;
+}
+
+:root[data-theme="dark"] .text-info,
+:root[data-theme="dark"] .text-info-strong {
+  color: var(--leasium-info) !important;
 }
 
 :root[data-theme="dark"] .text-primary-foreground {
