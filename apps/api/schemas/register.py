@@ -153,6 +153,80 @@ class OwnershipSplitApplyResult(ApiModel):
     notes: list[str]
 
 
+class PropertyReassignRequest(BaseModel):
+    """Move one or more properties to an existing target entity.
+
+    A single property is just a one-item list; the batch-by-owner-label fix
+    resolves the matching property ids on the client and sends them together.
+    """
+
+    property_ids: list[UUID] = Field(min_length=1)
+    target_entity_id: UUID
+
+
+class ReassignHistoryFlagRead(ApiModel):
+    kind: str
+    count: int
+
+
+class ReassignPropertyPlanRead(ApiModel):
+    property_id: UUID
+    property_name: str
+    current_entity_id: UUID
+    current_entity_name: str | None
+    target_entity_id: UUID
+    target_entity_name: str
+    obligation_count: int
+    history_flags: list[ReassignHistoryFlagRead]
+
+
+class ReassignTenantPlanRead(ApiModel):
+    tenant_id: UUID
+    tenant_name: str
+    disposition: Literal["move", "flag"]
+    reason: str | None
+
+
+class ReassignSkippedRead(ApiModel):
+    property_id: UUID
+    reason: str
+
+
+class PropertyReassignPreviewRead(ApiModel):
+    properties: list[ReassignPropertyPlanRead]
+    tenants: list[ReassignTenantPlanRead]
+    skipped: list[ReassignSkippedRead]
+    moved_property_count: int
+    moved_obligation_count: int
+    moved_tenant_count: int
+    flagged_tenant_count: int
+    skipped_property_count: int
+    has_history: bool
+    warnings: list[str]
+
+
+class PropertyReassignApplyResult(ApiModel):
+    moved_property_count: int
+    moved_obligation_count: int
+    moved_tenant_count: int
+    flagged_tenant_count: int
+    skipped_property_count: int
+    notes: list[str]
+
+
+class EntityReassignSuggestionGroupRead(ApiModel):
+    target_entity_id: UUID
+    target_entity_name: str
+    owner_label: str
+    property_ids: list[UUID]
+    property_count: int
+
+
+class EntityReassignSuggestionsRead(ApiModel):
+    groups: list[EntityReassignSuggestionGroupRead]
+    suggested_property_count: int
+
+
 class PropertyCreate(BaseModel):
     entity_id: UUID
     name: str

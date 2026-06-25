@@ -1,5 +1,6 @@
 """Entity CRUD routes."""
 
+from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -21,12 +22,20 @@ from stewart.core.models import (
     UserRole,
     XeroConnection,
 )
+from stewart.domain.entity_reassignment import apply_reassignment, plan_reassignment
 
-from apps.api.deps import CurrentUser, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.branding import EntityBrandingRead, EntityBrandingUpdate
 from apps.api.schemas.register import (
     EntityCreate,
     EntityRead,
+    EntityReassignSuggestionGroupRead,
+    EntityReassignSuggestionsRead,
     EntityUpdate,
     EntityXeroOverviewRead,
     EntityXeroOverviewSummary,
@@ -37,6 +46,9 @@ from apps.api.schemas.register import (
     OwnershipSplitGroupRead,
     OwnershipSplitPlanRead,
     OwnershipSplitPropertyRead,
+    PropertyReassignApplyResult,
+    PropertyReassignPreviewRead,
+    PropertyReassignRequest,
 )
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -487,6 +499,111 @@ def entities_ownership_split_apply(
         skipped_property_count=skipped_property_count,
         flagged_tenant_count=flagged_tenant_count,
         notes=notes,
+    )
+
+
+@router.post("/reassign-properties/preview", response_model=PropertyReassignPreviewRead)
+def reassign_properties_preview(
+    payload: PropertyReassignRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> PropertyReassignPreviewRead:
+    """Review-first preview of moving properties to an existing target entity.
+
+    Reports what would move (property, its obligations, tenants entirely within
+    the move) and what is left in place and flagged (tenants spanning the move,
+    plus any invoices/billing/work/arrears history under the current entity).
+    Mutates nothing and makes no provider call.
+    """
+    writable = set(readable_entity_ids(session, user, WRITE_ROLES))
+    targets = {property_id: payload.target_entity_id for property_id in payload.property_ids}
+    preview = plan_reassignment(session, targets=targets, writable_entity_ids=writable)
+    return PropertyReassignPreviewRead.model_validate(preview)
+
+
+@router.post(
+    "/reassign-properties/apply",
+    response_model=PropertyReassignApplyResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def reassign_properties_apply(
+    payload: PropertyReassignRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> PropertyReassignApplyResult:
+    """Reviewed apply: re-file properties under the target entity.
+
+    Moves the property, its property/unit/lease-scoped obligations, its owner
+    label (synced to the target entity name), and tenants entirely within the
+    move. Tenants spanning the move boundary are left in place. Runs in one
+    transaction; writes a reversible audit row per property; no provider call.
+    """
+    writable = set(readable_entity_ids(session, user, WRITE_ROLES))
+    targets = {property_id: payload.target_entity_id for property_id in payload.property_ids}
+    result = apply_reassignment(
+        session,
+        targets=targets,
+        writable_entity_ids=writable,
+        actor=user.actor,
+        user_id=user.id,
+    )
+    session.commit()
+    return PropertyReassignApplyResult.model_validate(result)
+
+
+@router.get("/reassign-suggestions", response_model=EntityReassignSuggestionsRead)
+def reassign_suggestions(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> EntityReassignSuggestionsRead:
+    """Properties whose owning-entity label points at a different existing entity.
+
+    Auto-matches each property's owner label to an entity of the same name; where
+    that differs from where the property is currently filed, it suggests moving
+    it. This catches import mistakes — a batch filed under one entity whose rows
+    actually name other trusts — and feeds the reviewed reassignment. Read-only:
+    nothing moves until the operator applies a reassignment.
+    """
+    writable_ids = readable_entity_ids(session, user, WRITE_ROLES)
+    if not writable_ids:
+        return EntityReassignSuggestionsRead(groups=[], suggested_property_count=0)
+    entities = list(
+        session.scalars(
+            select(Entity).where(Entity.id.in_(writable_ids), Entity.deleted_at.is_(None))
+        )
+    )
+    entity_by_norm = {_normalise_owner_label(entity.name): entity for entity in entities}
+    properties = session.scalars(
+        select(Property).where(
+            Property.entity_id.in_(writable_ids), Property.deleted_at.is_(None)
+        )
+    )
+
+    grouped: dict[UUID, list[UUID]] = defaultdict(list)
+    targets: dict[UUID, Entity] = {}
+    for prop in properties:
+        label = _property_owning_label(prop)
+        if label is None:
+            continue
+        target = entity_by_norm.get(_normalise_owner_label(label))
+        if target is None or target.id == prop.entity_id:
+            continue
+        grouped[target.id].append(prop.id)
+        targets[target.id] = target
+
+    groups = [
+        EntityReassignSuggestionGroupRead(
+            target_entity_id=target.id,
+            target_entity_name=target.name,
+            owner_label=target.name,
+            property_ids=grouped[target.id],
+            property_count=len(grouped[target.id]),
+        )
+        for _id, target in sorted(targets.items(), key=lambda kv: kv[1].name)
+    ]
+    return EntityReassignSuggestionsRead(
+        groups=groups,
+        suggested_property_count=sum(len(ids) for ids in grouped.values()),
     )
 
 

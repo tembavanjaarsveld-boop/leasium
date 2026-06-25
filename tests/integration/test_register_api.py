@@ -292,6 +292,238 @@ def test_entities_ownership_split_apply_moves_properties_and_clean_tenants(
     assert repeat_result["moved_property_count"] == 0
 
 
+def _reassign_target_entity(client: TestClient, session: Session, name: str) -> str:
+    """Create a writable target entity in the dev org and return its id."""
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    response = client.post(
+        "/api/v1/entities",
+        json={
+            "organisation_id": str(skj.organisation_id),
+            "name": name,
+            "entity_type": "trust",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def _reassign_make_property(
+    client: TestClient, entity_id: str, name: str, **extra: Any
+) -> str:
+    payload: dict[str, Any] = {
+        "entity_id": entity_id,
+        "name": name,
+        "street_address": f"{name} Road",
+        "property_type": "commercial_office",
+    }
+    payload.update(extra)
+    response = client.post("/api/v1/properties", json=payload)
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_reassign_single_property_moves_entity_label_and_obligation(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    target_id = _reassign_target_entity(client, session, "SJI No 5 Trust")
+    property_id = _reassign_make_property(
+        client, str(skj.id), "Property 1642", owner_legal_name="SNI No 1"
+    )
+    session.add(
+        Obligation(
+            entity_id=skj.id,
+            property_id=UUID(property_id),
+            title="Insurance 1642",
+            due_date=date(2026, 7, 1),
+        )
+    )
+    session.commit()
+
+    body = {"property_ids": [property_id], "target_entity_id": target_id}
+
+    preview = client.post("/api/v1/entities/reassign-properties/preview", json=body)
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["moved_property_count"] == 1
+    assert preview_body["moved_obligation_count"] == 1
+    assert preview_body["has_history"] is False
+    assert preview_body["warnings"] == []
+    assert preview_body["properties"][0]["target_entity_name"] == "SJI No 5 Trust"
+    assert preview_body["properties"][0]["current_entity_name"] == "SKJ Property Pty Ltd"
+
+    apply_response = client.post("/api/v1/entities/reassign-properties/apply", json=body)
+    assert apply_response.status_code == 201
+    apply_body = apply_response.json()
+    assert apply_body["moved_property_count"] == 1
+    assert apply_body["moved_obligation_count"] == 1
+
+    session.expire_all()
+    moved = session.get(Property, UUID(property_id))
+    assert str(moved.entity_id) == target_id
+    # Owner label is synced to the target entity so chip and filing agree.
+    assert moved.owner_legal_name == "SJI No 5 Trust"
+    history = moved.property_metadata["reassignment_history"]
+    assert history[0]["previous_owner_legal_name"] == "SNI No 1"
+    obligation = session.scalar(
+        select(Obligation).where(Obligation.property_id == UUID(property_id))
+    )
+    assert str(obligation.entity_id) == target_id
+    audit = session.scalar(
+        select(AuditAction).where(
+            AuditAction.action == "entity_reassign",
+            AuditAction.target_id == UUID(property_id),
+        )
+    )
+    assert audit is not None
+
+    # Idempotent: the property already sits under the target now.
+    repeat = client.post("/api/v1/entities/reassign-properties/apply", json=body)
+    assert repeat.status_code == 201
+    repeat_body = repeat.json()
+    assert repeat_body["moved_property_count"] == 0
+    assert repeat_body["skipped_property_count"] == 1
+
+
+def test_reassign_batch_moves_clean_tenant_and_flags_spanning(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    target_id = _reassign_target_entity(client, session, "Rivergum Trust")
+    prop_a = _reassign_make_property(client, str(skj.id), "Reassign A")
+    prop_b = _reassign_make_property(client, str(skj.id), "Reassign B")
+    prop_c = _reassign_make_property(client, str(skj.id), "Reassign C")  # stays put
+
+    unit_a = TenancyUnit(property_id=UUID(prop_a), unit_label="RA")
+    unit_c = TenancyUnit(property_id=UUID(prop_c), unit_label="RC")
+    session.add_all([unit_a, unit_c])
+    session.flush()
+    tenant_clean = Tenant(entity_id=skj.id, legal_name="Clean Tenant")
+    tenant_span = Tenant(entity_id=skj.id, legal_name="Spanning Tenant")
+    session.add_all([tenant_clean, tenant_span])
+    session.flush()
+    session.add_all(
+        [
+            Lease(tenancy_unit_id=unit_a.id, tenant_id=tenant_clean.id),
+            Lease(tenancy_unit_id=unit_a.id, tenant_id=tenant_span.id),
+            Lease(tenancy_unit_id=unit_c.id, tenant_id=tenant_span.id),
+        ]
+    )
+    session.commit()
+
+    body = {"property_ids": [prop_a, prop_b], "target_entity_id": target_id}
+    preview = client.post("/api/v1/entities/reassign-properties/preview", json=body)
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["moved_property_count"] == 2
+    assert preview_body["moved_tenant_count"] == 1
+    assert preview_body["flagged_tenant_count"] == 1
+
+    apply_response = client.post("/api/v1/entities/reassign-properties/apply", json=body)
+    assert apply_response.status_code == 201
+
+    session.expire_all()
+    assert str(session.get(Property, UUID(prop_a)).entity_id) == target_id
+    assert str(session.get(Property, UUID(prop_b)).entity_id) == target_id
+    assert session.get(Property, UUID(prop_c)).entity_id == skj.id
+    assert str(session.get(Tenant, tenant_clean.id).entity_id) == target_id
+    # Spanning tenant also leases prop C (staying), so it is left in place.
+    assert session.get(Tenant, tenant_span.id).entity_id == skj.id
+
+
+def test_reassign_preview_flags_history_under_current_entity(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    target_id = _reassign_target_entity(client, session, "History Trust")
+    property_id = _reassign_make_property(
+        client, str(skj.id), "History Prop", xero_contact_id="XERO-CONTACT-1"
+    )
+    session.commit()
+
+    body = {"property_ids": [property_id], "target_entity_id": target_id}
+    preview = client.post("/api/v1/entities/reassign-properties/preview", json=body)
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["has_history"] is True
+    kinds = {flag["kind"] for flag in preview_body["properties"][0]["history_flags"]}
+    assert "xero_contact" in kinds
+    assert preview_body["warnings"]  # records left behind are called out
+
+
+def test_reassign_skips_target_without_write_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    # Created directly: the dev user holds no role on it, so it is not writable.
+    roleless = Entity(organisation_id=skj.organisation_id, name="No Access Trust")
+    session.add(roleless)
+    session.flush()
+    property_id = _reassign_make_property(client, str(skj.id), "Blocked Prop")
+    session.commit()
+
+    body = {"property_ids": [property_id], "target_entity_id": str(roleless.id)}
+    preview = client.post("/api/v1/entities/reassign-properties/preview", json=body)
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["moved_property_count"] == 0
+    assert preview_body["skipped_property_count"] == 1
+    assert "target" in preview_body["skipped"][0]["reason"].lower()
+
+    apply_response = client.post("/api/v1/entities/reassign-properties/apply", json=body)
+    assert apply_response.status_code == 201
+    assert apply_response.json()["moved_property_count"] == 0
+    session.expire_all()
+    assert session.get(Property, UUID(property_id)).entity_id == skj.id
+
+
+def test_reassign_suggestions_matches_label_to_existing_entity(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    target_id = _reassign_target_entity(client, session, "SJI No 5 Trust")
+    # Filed under SKJ but its owning-entity label names the SJI No 5 trust.
+    mismatch = _reassign_make_property(
+        client, str(skj.id), "Import 1642", owner_legal_name="SJI No 5 Trust"
+    )
+    # Filed under SKJ and labelled SKJ — already correct, no suggestion.
+    _reassign_make_property(
+        client, str(skj.id), "Correctly Filed", owner_legal_name="SKJ Property Pty Ltd"
+    )
+    session.commit()
+
+    response = client.get("/api/v1/entities/reassign-suggestions")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["suggested_property_count"] == 1
+    assert len(body["groups"]) == 1
+    group = body["groups"][0]
+    assert group["target_entity_id"] == target_id
+    assert group["property_ids"] == [mismatch]
+
+    # The suggestion feeds the reviewed apply, which then clears it.
+    apply_response = client.post(
+        "/api/v1/entities/reassign-properties/apply",
+        json={"property_ids": group["property_ids"], "target_entity_id": target_id},
+    )
+    assert apply_response.status_code == 201
+    assert apply_response.json()["moved_property_count"] == 1
+
+    cleared = client.get("/api/v1/entities/reassign-suggestions")
+    assert cleared.json()["suggested_property_count"] == 0
+
+
 def test_property_crud_writes_audit_and_filters_soft_deleted(
     client: TestClient,
     session: Session,

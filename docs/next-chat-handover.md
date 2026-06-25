@@ -1,6 +1,47 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-24
+Last updated: 2026-06-25
+
+## Continuation - 2026-06-25 (Property entity reassignment — backend)
+
+Temba needed to change a property's owning Trust/entity: an import had filed
+property 1642 under "SNI No 1" when it belongs to "SJI No 5", with no way to
+reassign. Root cause: `Property.entity_id` is the owning-trust FK, but
+`PropertyUpdate` omits it and no endpoint/UI moved it — the only mover was the
+bulk ownership-split derived from owner labels.
+
+Backend shipped (this commit); operator UI to follow to-spec same session:
+- `stewart/domain/entity_reassignment.py` — cascade-aware engine. Moves a
+  property's `entity_id`, its property/unit/lease-scoped obligations, the owner
+  label (synced to the target entity name so the chip and the filing agree), and
+  tenants whose leases sit entirely within the move; tenants spanning the move
+  are left in place and flagged, never split. Detects but does NOT move
+  accounting/operational history (billing/invoice drafts, work orders, arrears,
+  an existing Xero contact) and surfaces it as a preview warning. Reversible
+  audit row per property (`entity_reassign`: source entity + previous label).
+  One transaction, no provider calls.
+- `POST /entities/reassign-properties/preview` and `/apply` (single or batch by
+  property ids; WRITE role required on source and target).
+- `GET /entities/reassign-suggestions` — auto-matches each property's owning
+  label to an existing entity of the same name and flags mis-filings. This is
+  the chosen "map at import" answer: lower-risk than threading per-row entity
+  through the importer, and it retro-fixes existing mis-imports (e.g. 1642 once
+  the SJI No 5 entity exists), not just future ones. The deeper inline
+  import-review mapping stays a later gated slice.
+
+Verification: `pytest tests/integration/test_register_api.py` 25 passed (+5 new:
+single move + label sync + obligation, batch + spanning-tenant flag, history
+warning, target-access denial, suggester); full backend suite 749 passed /
+1 skipped; ruff clean. No migration (uses existing columns + `property_metadata`
+JSONB).
+
+Guardrails: reassignment is a local re-filing — no Xero write, email, SMS, or
+payment reconciliation; review-first preview before apply.
+
+Next this session: build the operator UI to spec (Figma waived for these
+internal admin surfaces) — a "Move to entity" control on the property detail and
+a suggester-driven "Looks mis-filed" panel near Ownership tags — then eslint/tsc
++ smoke + build + 1440/390 UX pass, and a second commit.
 
 ## Continuation - 2026-06-24 (Property delete + Smart Intake existing-property picker)
 
