@@ -5204,11 +5204,13 @@ export function deleteWorkflowRule(ruleId: string) {
 }
 
 export function listWorkflowQueue(filters: {
-  entity_id: string;
+  entity_id?: string;
   as_of?: string;
 }) {
   const params = new URLSearchParams();
-  params.set("entity_id", filters.entity_id);
+  if (filters.entity_id) {
+    params.set("entity_id", filters.entity_id);
+  }
   if (filters.as_of) {
     params.set("as_of", filters.as_of);
   }

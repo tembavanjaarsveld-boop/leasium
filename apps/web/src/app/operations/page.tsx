@@ -122,8 +122,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -3323,7 +3322,11 @@ function buildQueueItems(
 }
 
 function OperationsWorkspace() {
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag (?trust_tag, below). The
+  // org-wide read path always runs; a single entity is reached via the tag, not
+  // a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
   const [activeTab, setActiveTab] = useState<OperationsTab>("queue");
   const activeTabButtonRef = useRef<HTMLButtonElement | null>(null);
   const [calendarLayout, setCalendarLayout] =
@@ -3505,6 +3508,8 @@ function OperationsWorkspace() {
   const [workflowForm, setWorkflowForm] = useState<WorkflowRuleFormState>(
     emptyWorkflowRuleForm,
   );
+  const [workflowActionEntityOverride, setWorkflowActionEntityOverride] =
+    useState("");
   const [maintenanceInlineUndo, setMaintenanceInlineUndo] =
     useState<MaintenanceInlineUndo | null>(null);
   const [workflowConfirmation, setWorkflowConfirmation] = useState<string | null>(
@@ -3554,28 +3559,6 @@ function OperationsWorkspace() {
     queryKey: ["operations-security-workspace"],
     queryFn: getSecurityWorkspace,
   });
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set(
-      (entitiesQuery.data ?? []).map((entity) => entity.id),
-    );
-    // The All-entities sentinel is a valid restore target even though it is
-    // not a real entity id, so the cross-entity view survives navigation.
-    const next =
-      stored && (isAllEntities(stored) || accessibleIds.has(stored))
-        ? stored
-        : defaultEntitySelection(entitiesQuery.data ?? []);
-    if (!selectedEntityId && next) {
-      setSelectedEntityId(next);
-    }
-  }, [entitiesQuery.data, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    }
-  }, [selectedEntityId]);
 
   useEffect(() => {
     if (!maintenanceInlineUndo || maintenanceInlineUndo.undoing) return;
@@ -3631,6 +3614,10 @@ function OperationsWorkspace() {
       ),
     [entitiesQuery.data],
   );
+  const entityOptions = entitiesQuery.data ?? [];
+  const workflowActionEntityId =
+    workflowActionEntityOverride || entityOptions[0]?.id || "";
+  const workflowScopeKey = allMode ? "org-wide" : scopedEntityId;
   // Trust-as-tag filter for the Work queue: clicking a row's trust tag scopes
   // the queue to that entity; clicking the active tag clears it. Held in
   // ?trust_tag so it is shareable. Only meaningful in all-entities mode.
@@ -3732,15 +3719,17 @@ function OperationsWorkspace() {
   });
 
   const workflowRulesQuery = useQuery({
-    queryKey: ["operations-workflow-rules", scopedEntityId],
-    queryFn: () => listWorkflowRules({ entity_id: scopedEntityId }),
-    enabled: activeTab === "workflows" && Boolean(scopedEntityId),
+    queryKey: ["operations-workflow-rules", workflowScopeKey],
+    queryFn: () =>
+      listWorkflowRules({ entity_id: scopedEntityId || undefined }),
+    enabled: activeTab === "workflows" && Boolean(workflowScopeKey),
   });
 
   const workflowQueueQuery = useQuery({
-    queryKey: ["operations-workflow-queue", scopedEntityId],
-    queryFn: () => listWorkflowQueue({ entity_id: scopedEntityId }),
-    enabled: activeTab === "workflows" && Boolean(scopedEntityId),
+    queryKey: ["operations-workflow-queue", workflowScopeKey],
+    queryFn: () =>
+      listWorkflowQueue({ entity_id: scopedEntityId || undefined }),
+    enabled: activeTab === "workflows" && Boolean(workflowScopeKey),
   });
 
   // Fan-out copies of the primary list queries for all-entities mode. Each
@@ -4159,11 +4148,11 @@ function OperationsWorkspace() {
     mutationFn: createWorkflowRule,
     onSuccess: (rule) => {
       queryClient.setQueryData<WorkflowRuleRecord[]>(
-        ["operations-workflow-rules", scopedEntityId],
+        ["operations-workflow-rules", workflowScopeKey],
         (current) => [...(current ?? []), rule],
       );
       queryClient.invalidateQueries({
-        queryKey: ["operations-workflow-queue", scopedEntityId],
+        queryKey: ["operations-workflow-queue", workflowScopeKey],
       });
       setWorkflowForm(emptyWorkflowRuleForm);
       setWorkflowFormOpen(false);
@@ -4175,7 +4164,7 @@ function OperationsWorkspace() {
     mutationFn: approveWorkflowProposal,
     onSuccess: (decision) => {
       queryClient.setQueryData<WorkflowQueueRecord>(
-        ["operations-workflow-queue", scopedEntityId],
+        ["operations-workflow-queue", workflowScopeKey],
         (current) =>
           current
             ? {
@@ -4195,7 +4184,7 @@ function OperationsWorkspace() {
     mutationFn: dismissWorkflowProposal,
     onSuccess: (decision) => {
       queryClient.setQueryData<WorkflowQueueRecord>(
-        ["operations-workflow-queue", scopedEntityId],
+        ["operations-workflow-queue", workflowScopeKey],
         (current) =>
           current
             ? {
@@ -4207,7 +4196,7 @@ function OperationsWorkspace() {
             : current,
       );
       queryClient.invalidateQueries({
-        queryKey: ["operations-workflow-queue", scopedEntityId],
+        queryKey: ["operations-workflow-queue", workflowScopeKey],
       });
       setWorkflowConfirmation("Proposal dismissed.");
     },
@@ -4902,11 +4891,11 @@ function OperationsWorkspace() {
 
   function submitWorkflowRule(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!scopedEntityId || !workflowForm.name.trim()) {
+    if (!workflowActionEntityId || !workflowForm.name.trim()) {
       return;
     }
     createWorkflowRuleMutation.mutate({
-      entity_id: scopedEntityId,
+      entity_id: workflowActionEntityId,
       name: workflowForm.name.trim(),
       description: optionalString(workflowForm.description),
       trigger_type: workflowForm.trigger_type,
@@ -5592,14 +5581,7 @@ function OperationsWorkspace() {
 
   return (
     <main className="min-h-screen bg-leasium-canvas">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <section className="flex flex-wrap items-start justify-between gap-4">
@@ -8073,20 +8055,7 @@ function OperationsWorkspace() {
 
             {activeTab === "workflows" ? (
               <section className="grid gap-5" aria-label="Workflows workspace">
-                {allMode ? (
-                  <SectionPanel
-                    title="Workflows"
-                    description="Choose one entity to review rules and proposals."
-                    icon={<ClipboardList size={17} className="text-primary" />}
-                  >
-                    <EmptyState
-                      icon={<Building2 size={18} />}
-                      title="Select a single entity"
-                      description="Workflow approvals need one entity scope before rules or proposals can be changed."
-                    />
-                  </SectionPanel>
-                ) : (
-                  <>
+                <>
                     <SectionPanel
                       title="Workflows"
                       description="Rules evaluate existing records and queue proposed internal actions for review."
@@ -8099,7 +8068,7 @@ function OperationsWorkspace() {
                           onClick={() =>
                             setWorkflowFormOpen((open) => !open)
                           }
-                          disabled={!scopedEntityId}
+                          disabled={!workflowActionEntityId}
                         >
                           <Plus size={15} />
                           New workflow
@@ -8137,6 +8106,16 @@ function OperationsWorkspace() {
                               action.
                             </p>
                           </div>
+                          <Field label="File under trust">
+                            <EntityPicker
+                              entities={entitiesQuery.data}
+                              loading={entitiesQuery.isLoading}
+                              value={workflowActionEntityId}
+                              onChange={setWorkflowActionEntityOverride}
+                              allowAllEntities={false}
+                              tone="inline"
+                            />
+                          </Field>
                           <Field label="Name">
                             <Input
                               value={workflowForm.name}
@@ -8522,8 +8501,7 @@ function OperationsWorkspace() {
                         ) : null}
                       </div>
                     </SectionPanel>
-                  </>
-                )}
+                </>
               </section>
             ) : null}
 
