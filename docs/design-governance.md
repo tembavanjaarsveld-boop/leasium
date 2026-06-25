@@ -851,6 +851,16 @@ fixes · deferrals.
   All-entities org-wide smokes (no regression); a dedicated queue click-filter
   assertion and the full 1440/390 visual eyeball fold into the consolidated
   Track C pass with the switcher removal · none deferred.
+- 2026-06-25 · Comms trust-chip filter (Track C slice 3, entity-as-tag) · in
+  all-entities mode a "Filter comms by trust" chip row (All trusts + a chip per
+  present trust) scopes both the draft queue and the outbound log to one entity
+  (`?trust_tag`) at the data chokepoint · reuses chip styling/tokens, no new
+  Figma frame; chosen over per-card clickable labels because comms renders the
+  entity label through several sub-components · read-only filter, no
+  provider/write change, the top-left switcher is untouched · verified eslint +
+  tsc + the comms smoke suite (16 green, no regression); the full 1440/390
+  visual eyeball folds into the consolidated Track C pass with the switcher
+  removal · none deferred.
 
 ## UX Debt Register
 

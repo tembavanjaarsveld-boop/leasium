@@ -923,15 +923,48 @@ function CommsContent() {
   useEffect(() => {
     setSettledCandidateIds(new Set());
   }, [selectedEntityId]);
+  // Trust-as-tag filter: in all-entities mode a row of trust chips scopes the
+  // comms queue + outbound log to one entity (?trust_tag). "All trusts" clears.
+  const [trustTagFilter, setTrustTagFilter] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tag = new URL(window.location.href).searchParams.get("trust_tag");
+    setTrustTagFilter(tag ?? "");
+  }, []);
+  const applyTrustTag = (entityId: string) => {
+    setTrustTagFilter(entityId);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (entityId) url.searchParams.set("trust_tag", entityId);
+    else url.searchParams.delete("trust_tag");
+    window.history.replaceState({}, "", url);
+  };
+  const trustChips = useMemo(() => {
+    if (!allMode) return [] as { id: string; name: string }[];
+    const seen = new Map<string, string>();
+    for (const row of queueFanOut.data) {
+      if (!seen.has(row.entityId)) {
+        seen.set(
+          row.entityId,
+          entityNameById.get(row.entityId) ?? "Unknown entity",
+        );
+      }
+    }
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allMode, queueFanOut.data, entityNameById]);
   // Merged candidate list the UI reads regardless of single- vs all-entity
   // mode. In all-mode the fan-out rows are concatenated (already per-entity
   // tagged); the entity label for each candidate id is looked up below.
   const candidates = useMemo<CommsCandidateRecord[]>(
     () =>
       allMode
-        ? queueFanOut.data.map((row) => row.candidate)
+        ? queueFanOut.data
+            .filter((row) => !trustTagFilter || row.entityId === trustTagFilter)
+            .map((row) => row.candidate)
         : (queueQuery.data?.candidates ?? []),
-    [allMode, queueFanOut.data, queueQuery.data?.candidates],
+    [allMode, trustTagFilter, queueFanOut.data, queueQuery.data?.candidates],
   );
   const candidateEntityNameById = useMemo(() => {
     if (!allMode) return new Map<string, string>();
@@ -1005,9 +1038,16 @@ function CommsContent() {
   const outboundLogEvents = useMemo<CommsCorrespondenceEventRecord[]>(
     () =>
       allMode
-        ? outboundLogFanOut.data.map((row) => row.event)
+        ? outboundLogFanOut.data
+            .filter((row) => !trustTagFilter || row.entityId === trustTagFilter)
+            .map((row) => row.event)
         : (outboundLogQuery.data?.events ?? []),
-    [allMode, outboundLogFanOut.data, outboundLogQuery.data?.events],
+    [
+      allMode,
+      trustTagFilter,
+      outboundLogFanOut.data,
+      outboundLogQuery.data?.events,
+    ],
   );
   const outboundEventEntityNameById = useMemo(() => {
     if (!allMode) return new Map<string, string>();
@@ -1288,6 +1328,41 @@ function CommsContent() {
           copyReceipt={outboundLogCsvCopyReceipt}
           downloadDisabled={!outboundLogLoaded || outboundLogEvents.length === 0}
         />
+        {allMode && trustChips.length > 1 ? (
+          <div className="rounded-md border border-border bg-white p-2">
+            <div
+              className="flex flex-wrap items-center gap-2"
+              role="group"
+              aria-label="Filter comms by trust"
+            >
+              <button
+                type="button"
+                onClick={() => applyTrustTag("")}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                  trustTagFilter
+                    ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : "bg-foreground text-white"
+                }`}
+              >
+                All trusts
+              </button>
+              {trustChips.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => applyTrustTag(chip.id)}
+                  className={`max-w-full truncate rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                    trustTagFilter === chip.id
+                      ? "bg-primary-soft text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {chip.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {candidates.length ? (
           <div className="rounded-md border border-border bg-white p-2">
             <div
