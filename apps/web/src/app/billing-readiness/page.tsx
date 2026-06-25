@@ -23,6 +23,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
+import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -2100,10 +2101,12 @@ function KpiCard({
 function InvoiceRunGuidePanel({
   guide,
   actionPending = false,
+  actionScope,
   onAction,
 }: {
   guide: InvoiceRunGuide;
   actionPending?: boolean;
+  actionScope?: ReactNode;
   onAction: (action: InvoiceRunGuideAction) => void;
 }) {
   const action = guide.action;
@@ -2127,19 +2130,22 @@ function InvoiceRunGuidePanel({
           </p>
         </div>
         {action ? (
-          <Button
-            type="button"
-            onClick={() => onAction(action)}
-            disabled={actionPending}
-            className="shrink-0"
-          >
-            {actionPending ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <ArrowUpRight size={15} />
-            )}
-            {action.label}
-          </Button>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end">
+            {actionScope}
+            <Button
+              type="button"
+              onClick={() => onAction(action)}
+              disabled={actionPending}
+              className="shrink-0"
+            >
+              {actionPending ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <ArrowUpRight size={15} />
+              )}
+              {action.label}
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -2186,6 +2192,8 @@ function BillingReadinessWorkspace() {
     useState<BillingWorkspaceTab>("readiness");
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all");
   const [highlightInvoiceDraftId, setHighlightInvoiceDraftId] = useState("");
+  const [billingActionEntityOverride, setBillingActionEntityOverride] =
+    useState("");
 
   const entitiesQuery = useQuery({
     queryKey: ["entities"],
@@ -2216,6 +2224,8 @@ function BillingReadinessWorkspace() {
       ),
     [entitiesQuery.data],
   );
+  const billingActionEntityId =
+    billingActionEntityOverride || entitiesQuery.data?.[0]?.id || "";
 
   const rentRollQuery = useQuery({
     queryKey: ["billing-readiness-rent-roll", scopedEntityId, asOf],
@@ -2583,10 +2593,17 @@ function BillingReadinessWorkspace() {
       ),
     [rentRows],
   );
+  const draftableBillingRowsForAction = useMemo(
+    () =>
+      draftableBillingRows.filter(
+        (row) => row.entity_id === billingActionEntityId,
+      ),
+    [billingActionEntityId, draftableBillingRows],
+  );
   const draftableBillingLeaseIds = useMemo(() => {
     const leaseIds: string[] = [];
     const seen = new Set<string>();
-    for (const row of draftableBillingRows) {
+    for (const row of draftableBillingRowsForAction) {
       if (!row.lease_id || seen.has(row.lease_id)) {
         continue;
       }
@@ -2594,7 +2611,7 @@ function BillingReadinessWorkspace() {
       leaseIds.push(row.lease_id);
     }
     return leaseIds;
-  }, [draftableBillingRows]);
+  }, [draftableBillingRowsForAction]);
   const invoiceDrafts = useMemo(
     () =>
       allMode
@@ -2750,7 +2767,9 @@ function BillingReadinessWorkspace() {
         selectedEntityId,
         blockerCount: blockerRows.length,
         readyRentRows: counts.ready,
-        draftableRentRows: scopedEntityId ? draftableBillingRows.length : 0,
+        draftableRentRows: billingActionEntityId
+          ? draftableBillingRowsForAction.length
+          : 0,
         billingDrafts,
         invoiceDrafts,
         invoiceDraftByBillingDraftId,
@@ -2761,11 +2780,11 @@ function BillingReadinessWorkspace() {
       billingDrafts,
       billingReadinessLoading,
       blockerRows.length,
+      billingActionEntityId,
       counts.ready,
-      draftableBillingRows.length,
+      draftableBillingRowsForAction.length,
       invoiceDraftByBillingDraftId,
       invoiceDrafts,
-      scopedEntityId,
       selectedEntityId,
     ],
   );
@@ -2773,12 +2792,12 @@ function BillingReadinessWorkspace() {
     if (action.kind === "create_billing_drafts") {
       setActiveBillingTab("billing-drafts");
       if (
-        scopedEntityId &&
+        billingActionEntityId &&
         draftableBillingLeaseIds.length > 0 &&
         !createBillingDraftsMutation.isPending
       ) {
         createBillingDraftsMutation.mutate({
-          entityId: scopedEntityId,
+          entityId: billingActionEntityId,
           leaseIds: draftableBillingLeaseIds,
         });
       }
@@ -2804,12 +2823,12 @@ function BillingReadinessWorkspace() {
     }
   };
   const renderCreateBillingDraftsAction = () =>
-    scopedEntityId && draftableBillingLeaseIds.length > 0 ? (
+    billingActionEntityId && draftableBillingLeaseIds.length > 0 ? (
       <SecondaryButton
         type="button"
         onClick={() =>
           createBillingDraftsMutation.mutate({
-            entityId: scopedEntityId,
+            entityId: billingActionEntityId,
             leaseIds: draftableBillingLeaseIds,
           })
         }
@@ -2826,6 +2845,7 @@ function BillingReadinessWorkspace() {
   const renderRecreateBillingDraftAction = (draft: BillingDraftRecord) => {
     const source = draft.metadata?.source;
     const leaseId = draft.lease_id;
+    const draftEntityId = draft.entity_id || scopedEntityId;
     if (
       draft.status !== "void" ||
       source !== "charge_rule_batch" ||
@@ -2841,18 +2861,18 @@ function BillingReadinessWorkspace() {
         type="button"
         className="min-h-11 rounded-lg px-3"
         onClick={() =>
-          scopedEntityId
+          draftEntityId
             ? createBillingDraftsMutation.mutate({
-                entityId: scopedEntityId,
+                entityId: draftEntityId,
                 leaseIds: [leaseId],
               })
             : undefined
         }
-        disabled={allMode || !scopedEntityId || createBillingDraftsMutation.isPending}
+        disabled={!draftEntityId || createBillingDraftsMutation.isPending}
         title={
-          allMode
-            ? "Select a single entity to recreate a billing draft"
-            : "Creates a fresh local billing draft from current charge rules. No PDF, tenant email, or Xero sync."
+          draftEntityId
+            ? "Creates a fresh local billing draft from current charge rules. No PDF, tenant email, or Xero sync."
+            : "Choose a trust before recreating this billing draft"
         }
       >
         {isRecreating ? (
@@ -3113,6 +3133,23 @@ function BillingReadinessWorkspace() {
 
         <InvoiceRunGuidePanel
           guide={invoiceRunGuide}
+          actionScope={
+            invoiceRunGuide.action?.kind === "create_billing_drafts" ? (
+              <div className="grid gap-1 sm:w-64">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  File invoice run under
+                </span>
+                <EntityPicker
+                  entities={entitiesQuery.data}
+                  loading={entitiesQuery.isLoading}
+                  value={billingActionEntityId}
+                  onChange={setBillingActionEntityOverride}
+                  allowAllEntities={false}
+                  tone="inline"
+                />
+              </div>
+            ) : null
+          }
           actionPending={
             invoiceRunGuide.action?.kind === "create_billing_drafts" &&
             createBillingDraftsMutation.isPending
