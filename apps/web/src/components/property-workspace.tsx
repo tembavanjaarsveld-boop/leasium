@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -2227,6 +2228,7 @@ function Workspace({
     queryKey: ["properties", scopedEntityId],
     queryFn: () => listProperties(scopedEntityId),
     enabled: Boolean(scopedEntityId),
+    placeholderData: keepPreviousData,
   });
   // In all-mode, fan out one properties query per accessible entity and merge
   // client-side. Each query shares the single-entity cache key, so switching
@@ -2246,6 +2248,7 @@ function Workspace({
     queryKey: ["properties", "org-wide"],
     queryFn: () => listProperties(),
     enabled: isAllEntities,
+    placeholderData: keepPreviousData,
   });
   const allPropertiesRecords = useMemo(
     () =>
@@ -2260,9 +2263,15 @@ function Workspace({
     : null;
   const propertyRecords = useMemo(() => {
     if (isAllEntities) {
-      return allPropertiesError ? [] : allPropertiesRecords;
+      // Keep the last good rows if a background refetch errors transiently;
+      // only fall back to empty when we genuinely have no data yet.
+      return allPropertiesError && allPropertiesRecords.length === 0
+        ? []
+        : allPropertiesRecords;
     }
-    return propertiesQuery.error ? [] : (propertiesQuery.data ?? []);
+    return propertiesQuery.error && !propertiesQuery.data
+      ? []
+      : (propertiesQuery.data ?? []);
   }, [
     isAllEntities,
     allPropertiesError,
