@@ -75,6 +75,8 @@ import {
   dispatchCommsDraft,
   getCommsOutboundLog,
   getCommsQueue,
+  getOrgWideCommsOutboundLog,
+  getOrgWideCommsQueue,
   listBrandedCommunicationTemplates,
   listEntities,
   previewCommsTemplate,
@@ -814,6 +816,13 @@ function CommsContent() {
       const record = await getCommsQueue(entityId);
       return record.candidates.map((candidate) => ({ entityId, candidate }));
     },
+    orgWideQueryFn: async () => {
+      const record = await getOrgWideCommsQueue();
+      return record.candidates.map((candidate) => ({
+        entityId: candidate.entity_id,
+        candidate,
+      }));
+    },
   });
   const outboundLogFanOut = useEntityFanOut<EntityTaggedCommsEvent>({
     entities: entitiesQuery.data,
@@ -822,6 +831,10 @@ function CommsContent() {
     queryFn: async (entityId) => {
       const record = await getCommsOutboundLog(entityId);
       return record.events.map((event) => ({ entityId, event }));
+    },
+    orgWideQueryFn: async () => {
+      const record = await getOrgWideCommsOutboundLog();
+      return record.events.map((event) => ({ entityId: event.entity_id, event }));
     },
   });
   const [templateEditorState, setTemplateEditorState] = useState<{

@@ -30,12 +30,14 @@ import {
   type StatusTone,
 } from "@/components/ui";
 import {
+  getOrgWideWorkAssignmentNotificationCenter,
   getWorkAssignmentNotificationCenter,
   listEntities,
   markWorkAssignmentNotificationCenterRead,
   runWorkAssignmentDigest,
   sendWorkAssignmentNoticeEmail,
   sendWorkAssignmentNoticeSms,
+  type OrgWideWorkAssignmentNotificationCenterRecord,
   type WorkAssignmentNoticeChannelReceiptRecord,
   type WorkAssignmentNotificationCenterDigestRecord,
   type WorkAssignmentNotificationCenterItemRecord,
@@ -61,6 +63,10 @@ import { cn } from "@/lib/utils";
 // do not embed an entity id). The tag drives the small entity label on each
 // row; it is undefined in single-entity mode.
 type EntityTag = { __entityId?: string };
+type AllModeNotificationCenter = Omit<
+  WorkAssignmentNotificationCenterRecord,
+  "entity_id"
+> & { entity_id: string | null };
 type TaggedNotice = WorkAssignmentNotificationCenterItemRecord & EntityTag;
 type TaggedDigestReceipt = WorkAssignmentNotificationCenterDigestRecord &
   EntityTag;
@@ -1832,12 +1838,15 @@ function NotificationsWorkspace() {
   // each per-entity queryFn returns a single-element array holding that
   // entity's whole center record; merged notice/receipt arrays are derived
   // below. The per-entity key matches the single-entity query, sharing cache.
-  const centerFanOut = useEntityFanOut<WorkAssignmentNotificationCenterRecord>({
+  const centerFanOut = useEntityFanOut<AllModeNotificationCenter>({
     entities: entitiesQuery.data,
     enabled: allMode,
     keyPrefix: ["work-assignment-notification-center"],
     queryFn: async (entityId) => [
       await getWorkAssignmentNotificationCenter(entityId),
+    ],
+    orgWideQueryFn: async () => [
+      await getOrgWideWorkAssignmentNotificationCenter(),
     ],
   });
 
@@ -1913,7 +1922,7 @@ function NotificationsWorkspace() {
       centerFanOut.data.flatMap((entityCenter) =>
         entityCenter.notices.map((notice) => ({
           ...notice,
-          __entityId: entityCenter.entity_id,
+          __entityId: notice.entity_id ?? entityCenter.entity_id ?? undefined,
         })),
       ),
     [centerFanOut.data],
@@ -1923,7 +1932,7 @@ function NotificationsWorkspace() {
       centerFanOut.data.flatMap((entityCenter) =>
         entityCenter.digest_receipts.map((receipt) => ({
           ...receipt,
-          __entityId: entityCenter.entity_id,
+          __entityId: receipt.entity_id ?? entityCenter.entity_id ?? undefined,
         })),
       ),
     [centerFanOut.data],
