@@ -30,4 +30,4 @@ class IntegrationStatusRead(BaseModel):
     sendgrid: ProviderStatus
     twilio: ProviderStatus
     xero: ProviderStatus
-    docusign: ProviderStatus
+    opensign: ProviderStatus

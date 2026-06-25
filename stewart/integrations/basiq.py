@@ -57,7 +57,7 @@ class BasiqTransaction:
 class BasiqFetchResult:
     """Outcome of a Basiq bank-feed fetch attempt.
 
-    ``skipped`` mirrors the DocuSign soft-skip: credentials missing, nothing
+    ``skipped`` mirrors the OpenSign soft-skip: credentials missing, nothing
     fetched, no error surfaced to the operator beyond the setup hint.
     ``failed`` carries a provider/network error for a 502 surface.
     """

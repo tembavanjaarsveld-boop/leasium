@@ -823,7 +823,7 @@ export type LeasePackDeliveryData = {
   template_key?: string | null;
   template_version?: string | null;
   receipts?: Array<Record<string, unknown>>;
-  docusign?: {
+  esign?: {
     status?: string | null;
     provider?: string | null;
     envelope_id?: string | null;
@@ -3766,7 +3766,7 @@ export type IntegrationStatusRecord = {
   sendgrid: ProviderStatusRecord;
   twilio: ProviderStatusRecord;
   xero: ProviderStatusRecord;
-  docusign: ProviderStatusRecord;
+  opensign: ProviderStatusRecord;
 };
 
 export function getIntegrationStatus() {

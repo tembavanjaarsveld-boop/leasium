@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     twilio_api_base_url: str = "https://api.twilio.com"
     # Basiq (AU) bank-feed reconciliation is review-first and OFF by default.
     # Inert without these: the adapter soft-skips like the SendGrid / Xero /
-    # DocuSign adapters until an operator enables it. No real money movement.
+    # OpenSign adapters until an operator enables it. No real money movement.
     basiq_enabled: bool = False
     basiq_api_key: str = ""
     basiq_api_base_url: str = "https://au-api.basiq.io"
@@ -147,17 +147,14 @@ class Settings(BaseSettings):
     tenant_portal_invite_template_version: str = "v1"
     tenant_lease_pack_template_key: str = "tenant_lease_pack"
     tenant_lease_pack_template_version: str = "v1"
-    # DocuSign integration. Empty by default — operators populate when the
-    # DocuSign developer account is provisioned. send_lease_for_signature in
-    # stewart.integrations.docusign soft-fails with a clear "DocuSign is not
-    # configured" message until all four are present.
-    docusign_account_id: str = ""
-    docusign_integration_key: str = ""
-    docusign_user_id: str = ""
-    docusign_rsa_private_key: str = ""
-    docusign_base_url: str = "https://demo.docusign.net/restapi"
-    docusign_auth_base_url: str = "https://account-d.docusign.com"
-    docusign_webhook_secret: str = ""
+    # OpenSign e-signature (Cloud). Empty by default — operators populate the
+    # API token when the paid OpenSign plan is provisioned. send_lease_for_signature
+    # in stewart.integrations.opensign soft-skips with a clear "OpenSign is not
+    # configured" message until the token is present. The default base URL is the
+    # sandbox; set OPENSIGN_BASE_URL to https://app.opensignlabs.com/api/v1.2 for live.
+    opensign_api_token: str = ""
+    opensign_base_url: str = "https://sandbox.opensignlabs.com/api/v1.2"
+    opensign_webhook_secret: str = ""
     slack_webhook_url: str = ""
 
     @field_validator("database_url", "test_database_url", mode="before")

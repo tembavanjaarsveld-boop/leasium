@@ -2029,7 +2029,7 @@ def _seed_lifecycle_onboarding(
     }
 
 
-def test_comms_queue_returns_pending_docusign_waiting_candidate(
+def test_comms_queue_returns_pending_opensign_waiting_candidate(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -2037,7 +2037,7 @@ def test_comms_queue_returns_pending_docusign_waiting_candidate(
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "sent",
             "envelope_id": "envelope-waiting-1",
             "sent_at": sent_at,
@@ -2062,12 +2062,12 @@ def test_comms_queue_returns_pending_docusign_waiting_candidate(
     assert candidate["tenant_id"] == scope["tenant_id"]
     assert candidate["recipient_email"] == "life@example.com"
     assert candidate["severity"] == "warning"
-    assert "DocuSign envelope waiting" in candidate["subject"]
+    assert "Signature request waiting" in candidate["subject"]
     assert "envelope-waiting-1" in (candidate["detail"] or "")
 
 
 @pytest.mark.parametrize("signing_status", ["declined", "failed"])
-def test_comms_queue_returns_declined_or_failed_docusign_retry_candidate(
+def test_comms_queue_returns_declined_or_failed_opensign_retry_candidate(
     client: TestClient,
     session: Session,
     signing_status: str,
@@ -2075,7 +2075,7 @@ def test_comms_queue_returns_declined_or_failed_docusign_retry_candidate(
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": signing_status,
             "envelope_id": f"envelope-{signing_status}-1",
             "last_event": f"envelope-{signing_status}",
@@ -2099,24 +2099,23 @@ def test_comms_queue_returns_declined_or_failed_docusign_retry_candidate(
     assert candidate["target_kind"] == "tenant_onboarding"
     assert candidate["target_id"] == scope["onboarding_id"]
     assert candidate["severity"] == "danger"
-    assert "DocuSign retry needed" in candidate["subject"]
+    assert "Signature retry needed" in candidate["subject"]
     assert signing_status in (candidate["detail"] or "")
 
 
-def test_comms_queue_returns_skipped_docusign_setup_retry_candidate(
+def test_comms_queue_returns_skipped_opensign_setup_retry_candidate(
     client: TestClient,
     session: Session,
 ) -> None:
     error = (
-        "DocuSign production endpoints are not configured. Set "
-        "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
-        "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending "
-        "live lease envelopes."
+        "OpenSign is not configured. Set OPENSIGN_API_TOKEN (and "
+        "OPENSIGN_BASE_URL) on the API service to enable "
+        "lease-send-for-signature. See docs/deployment.md."
     )
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "skipped",
             "document_id": "lease-doc-skipped-1",
             "error": error,
@@ -2140,30 +2139,28 @@ def test_comms_queue_returns_skipped_docusign_setup_retry_candidate(
     assert candidate["target_kind"] == "tenant_onboarding"
     assert candidate["target_id"] == scope["onboarding_id"]
     assert candidate["severity"] == "danger"
-    assert "DocuSign setup needed" in candidate["subject"]
+    assert "Signature setup needed" in candidate["subject"]
     assert "skipped" in (candidate["detail"] or "")
-    assert "DOCUSIGN_BASE_URL" in (candidate["detail"] or "")
+    assert "OPENSIGN_API_TOKEN" in (candidate["detail"] or "")
     assert "provider setup needs attention" in candidate["body"]
-    assert "DOCUSIGN_BASE_URL" not in candidate["body"]
-    assert "DOCUSIGN_AUTH_BASE_URL" not in candidate["body"]
-    assert "before sending live lease envelopes" not in candidate["body"]
+    assert "OPENSIGN_API_TOKEN" not in candidate["body"]
 
 
-def test_comms_queue_suppresses_docusign_setup_after_agreement_signed(
+def test_comms_queue_suppresses_opensign_setup_after_agreement_signed(
     client: TestClient,
     session: Session,
 ) -> None:
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "skipped",
             "document_id": "lease-doc-skipped-then-signed-1",
-            "error": "DocuSign production endpoints are not configured.",
+            "error": "OpenSign is not configured.",
             "sent_at": (date.today() - timedelta(days=4)).isoformat(),
             "signed_at": (date.today() - timedelta(days=1)).isoformat(),
-            "signed_by_actor": "provider:docusign",
-            "source": "docusign_webhook",
+            "signed_by_actor": "provider:opensign",
+            "source": "opensign_webhook",
         },
     )
 
@@ -2188,7 +2185,7 @@ def test_comms_queue_returns_completed_signing_pending_activation_candidate(
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "completed",
             "envelope_id": "envelope-completed-1",
             "signed_at": (date.today() - timedelta(days=2)).isoformat(),
@@ -2263,16 +2260,16 @@ def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
     client: TestClient,
     session: Session,
 ) -> None:
-    docusign_scope = _seed_lifecycle_onboarding(
+    opensign_scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "declined",
             "envelope_id": "envelope-counts-declined-1",
             "last_event": "envelope-declined",
             "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
         },
-        contact_email="counts-docusign@example.com",
+        contact_email="counts-opensign@example.com",
     )
     _seed_lifecycle_onboarding(
         session,
@@ -2292,10 +2289,10 @@ def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
     _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "skipped",
             "document_id": "lease-doc-counts-skipped-1",
-            "error": "DocuSign production endpoints are not configured.",
+            "error": "OpenSign is not configured.",
             "sent_at": (date.today() - timedelta(days=1)).isoformat(),
         },
         contact_email="counts-skipped@example.com",
@@ -2303,7 +2300,7 @@ def test_comms_queue_counts_include_urgent_tenant_lifecycle_reviews(
 
     response = client.get(
         "/api/v1/comms/queue/counts",
-        params={"entity_id": docusign_scope["entity_id"]},
+        params={"entity_id": opensign_scope["entity_id"]},
     )
 
     assert response.status_code == 200
@@ -2327,7 +2324,7 @@ def test_comms_queue_counts_are_cached_per_entity(
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "declined",
             "envelope_id": "envelope-counts-cache-1",
             "last_event": "envelope-declined",
@@ -2384,13 +2381,13 @@ def test_comms_queue_counts_match_full_queue_grouping(
     from apps.api.routers import comms as comms_router
 
     # Span multiple kinds with both an urgent (danger) and a non-urgent
-    # candidate. Arrears with a 90+ balance is danger; a DocuSign envelope
-    # waiting past the window is warning; a declined envelope is danger.
+    # candidate. Arrears with a 90+ balance is danger; an OpenSign signing
+    # request waiting past the window is warning; a declined request is danger.
     arrears = _seed_arrears(session)
     _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "sent",
             "envelope_id": "envelope-parity-waiting-1",
             "sent_at": (date.today() - timedelta(days=8)).isoformat(),
@@ -2400,7 +2397,7 @@ def test_comms_queue_counts_match_full_queue_grouping(
     _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "declined",
             "envelope_id": "envelope-parity-declined-1",
             "last_event": "envelope-declined",
@@ -2463,7 +2460,7 @@ def test_comms_dismiss_tenant_lifecycle_stall_defers_candidate(
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "declined",
             "envelope_id": "envelope-dismissed-1",
             "last_event_at": (date.today() - timedelta(days=1)).isoformat(),
@@ -2508,7 +2505,7 @@ def test_comms_dispatch_tenant_lifecycle_stall_defers_candidate(
     scope = _seed_lifecycle_onboarding(
         session,
         signing={
-            "provider": "docusign",
+            "provider": "opensign",
             "status": "completed",
             "envelope_id": "envelope-dispatched-1",
             "signed_at": (date.today() - timedelta(days=2)).isoformat(),

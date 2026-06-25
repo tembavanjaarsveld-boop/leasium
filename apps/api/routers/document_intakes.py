@@ -93,7 +93,7 @@ SUPPORTED_CONTENT_TYPES = {
     "text/markdown",
     "text/plain",
 }
-ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
+ACTIVE_SIGNING_STATUSES = {"queued", "sent", "delivered"}
 AI_OPPORTUNITY_SESSION_KEY = "ai_opportunity_session"
 
 
@@ -1114,6 +1114,28 @@ def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str
     }
 
 
+def _resolve_filing_entity(
+    intake: DocumentIntake,
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> UUID:
+    """Entity the apply should file + link records under.
+
+    Defaults to the document's current entity (behaviour unchanged when no
+    ``target_entity_id`` is sent). When an operator picks a different trust at
+    review time, require WRITE on that trust and re-point the document + intake
+    so the stored document and the records it creates stay on the same entity.
+    """
+    target = payload.target_entity_id
+    if target is None or target == intake.document.entity_id:
+        return intake.document.entity_id
+    assert_entity_role(session, user, target, WRITE_ROLES)
+    intake.document.entity_id = target
+    intake.entity_id = target
+    return target
+
+
 def _apply_lease_document_intake(
     intake: DocumentIntake,
     data: dict[str, Any],
@@ -1121,6 +1143,7 @@ def _apply_lease_document_intake(
     user: CurrentUser,
     session: Session,
 ) -> tuple[LeaseIntake, Property, TenancyUnit, Tenant, Lease, list[Obligation]]:
+    filing_entity_id = _resolve_filing_entity(intake, payload, user, session)
     existing = next(
         (
             candidate
@@ -1163,7 +1186,7 @@ def _apply_lease_document_intake(
     lease_data["source_document_intake_id"] = str(intake.id)
     lease_data["source_document_id"] = str(intake.document_id)
     lease_intake = existing or LeaseIntake(
-        entity_id=intake.entity_id,
+        entity_id=filing_entity_id,
         filename=intake.document.filename,
         content_type=intake.document.content_type,
         byte_size=intake.document.byte_size,
@@ -1244,14 +1267,14 @@ def _mark_tenant_uploaded_lease_match_signed(
     )
 
 
-def _active_docusign_signing_for_onboarding(
+def _active_signing_for_onboarding(
     onboarding: TenantOnboarding,
 ) -> bool:
     signing = lease_agreement_section(onboarding).get("signing")
     signing_data = dict(signing) if isinstance(signing, dict) else {}
-    return (
-        signing_data.get("provider") == "docusign"
-        and signing_data.get("status") in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+    return bool(
+        signing_data.get("provider")
+        and signing_data.get("status") in ACTIVE_SIGNING_STATUSES
         and not signing_data.get("signed_at")
     )
 
@@ -3764,11 +3787,11 @@ def accept_document_intake_lease_match(
             status_code=status.HTTP_409_CONFLICT,
             detail="Lease agreement is already signed.",
         )
-    if onboarding is not None and _active_docusign_signing_for_onboarding(onboarding):
+    if onboarding is not None and _active_signing_for_onboarding(onboarding):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Resolve the active DocuSign envelope before accepting a "
+                "Resolve the active e-signature request before accepting a "
                 "tenant-uploaded lease."
             ),
         )

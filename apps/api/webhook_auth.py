@@ -178,3 +178,24 @@ def twilio_signature_valid(
         if secrets.compare_digest(supplied, base64.b64encode(digest).decode()):
             return True
     return False
+
+
+def opensign_signature_valid(
+    request: Request,
+    body: bytes,
+    secret: str,
+) -> bool:
+    """Verify an OpenSign webhook request.
+
+    OpenSign signs the raw request body with HMAC-SHA256 using the webhook
+    security key and sends the hex digest in the ``x-webhook-signature``
+    header. Uses the raw body bytes (not a re-serialised payload) so the
+    digest matches what OpenSign computed. Returns ``False`` on any missing
+    header, missing secret, or mismatch.
+    """
+
+    supplied = request.headers.get("x-webhook-signature", "").strip()
+    if not supplied or not secret.strip():
+        return False
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(supplied, expected)

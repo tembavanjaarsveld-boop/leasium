@@ -5,7 +5,7 @@ a review-only payment-intent preview describing how a tenant would pay an
 invoice (amount, reference, available manual methods) and reports that online
 payment is not enabled. A future provider adapter (Monoova / Zai / Stripe AU)
 plugs in behind ``configured_rail`` / ``build_payment_intent_preview`` without
-changing call sites. Mirrors the soft-skip pattern of the DocuSign / Basiq
+changing call sites. Mirrors the soft-skip pattern of the OpenSign / Basiq
 adapters: inert until explicitly configured, and even then creating a real
 charge stays an explicit, reviewed step — never automatic here.
 """

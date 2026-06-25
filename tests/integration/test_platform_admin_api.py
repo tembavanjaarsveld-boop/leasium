@@ -100,7 +100,7 @@ def test_integration_status_allows_platform_admin(client: TestClient) -> None:
     # Default dev auth is a platform admin (dev_is_platform_admin defaults True).
     response = client.get("/api/v1/system/integration-status")
     assert response.status_code == 200
-    assert "docusign" in response.json()
+    assert "opensign" in response.json()
 
 
 def test_integration_status_blocks_client_operator(

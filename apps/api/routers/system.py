@@ -79,24 +79,23 @@ def get_integration_status(
                 " complete the per-entity OAuth flow before posting invoices."
             ),
         ),
-        docusign=_status(
-            configured=_docusign_credentials_configured(settings),
-            live_ready=_docusign_live_ready(settings),
-            label="DocuSign",
-            purpose="Lease signature envelopes and signed lease retention",
+        opensign=_status(
+            configured=_opensign_configured(settings),
+            live_ready=_opensign_live_ready(settings),
+            label="OpenSign",
+            purpose="Lease e-signature requests and signed lease retention",
             unconfigured_detail=(
-                "Set DOCUSIGN_ACCOUNT_ID, DOCUSIGN_INTEGRATION_KEY, "
-                "DOCUSIGN_USER_ID, and DOCUSIGN_RSA_PRIVATE_KEY on the API service "
-                "before sending lease envelopes."
+                "Set OPENSIGN_API_TOKEN on the API service before sending lease "
+                "e-signature requests."
             ),
             configured_detail=(
-                _docusign_configured_detail(settings)
+                _opensign_configured_detail(settings)
             ),
             webhook_url=_webhook_url(
                 settings,
-                "/api/v1/tenant-onboarding/webhooks/docusign",
+                "/api/v1/tenant-onboarding/webhooks/opensign",
             ),
-            missing_config=_missing_docusign_config(settings),
+            missing_config=_missing_opensign_config(settings),
         ),
     )
 
@@ -135,72 +134,50 @@ def _webhook_url(settings: Settings, path: str) -> str | None:
     return f"{base_url}{path}"
 
 
-def _docusign_credentials_configured(settings: Settings) -> bool:
-    return bool(
-        settings.docusign_account_id
-        and settings.docusign_integration_key
-        and settings.docusign_user_id
-        and settings.docusign_rsa_private_key
+def _opensign_configured(settings: Settings) -> bool:
+    return bool(settings.opensign_api_token)
+
+
+def _opensign_production_endpoint_configured(settings: Settings) -> bool:
+    return (
+        settings.opensign_base_url.strip().rstrip("/")
+        == "https://app.opensignlabs.com/api/v1.2"
     )
 
 
-def _docusign_live_ready(settings: Settings) -> bool:
-    return _docusign_credentials_configured(settings) and not _missing_docusign_config(
-        settings
-    )
+def _opensign_live_ready(settings: Settings) -> bool:
+    return _opensign_configured(settings) and not _missing_opensign_config(settings)
 
 
-def _docusign_configured_detail(settings: Settings) -> str:
-    if not settings.docusign_webhook_secret:
+def _opensign_configured_detail(settings: Settings) -> str:
+    if not settings.opensign_webhook_secret:
         return (
-            "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live "
-            "Connect testing so completed envelopes can be verified."
+            "API token is set; add OPENSIGN_WEBHOOK_SECRET before live testing so "
+            "completed signing webhooks can be verified."
         )
-    if not _docusign_production_endpoints_configured(settings):
+    if not _opensign_production_endpoint_configured(settings):
         return (
-            "Credentials and webhook are set; switch DocuSign REST and auth URLs "
-            "to production before live envelope testing."
+            "Token and webhook secret are set; switch OPENSIGN_BASE_URL to the "
+            "production endpoint before live signing."
         )
     if not settings.public_api_url.strip():
         return (
-            "Credentials, webhook secret, and production DocuSign endpoints are set; "
-            "add PUBLIC_API_URL so Connect can reach the Leasium webhook."
+            "Token, webhook secret, and production endpoint are set; add "
+            "PUBLIC_API_URL so OpenSign can reach the Relby webhook."
         )
-    return "Configured for envelope creation and completed signed-document retention."
+    return "Configured for signature requests and completed signed-document retention."
 
 
-def _docusign_production_endpoints_configured(settings: Settings) -> bool:
-    return (
-        settings.docusign_base_url.strip().rstrip("/")
-        == "https://www.docusign.net/restapi"
-        and settings.docusign_auth_base_url.strip().rstrip("/")
-        == "https://account.docusign.com"
-    )
-
-
-def _missing_docusign_config(settings: Settings) -> list[str]:
+def _missing_opensign_config(settings: Settings) -> list[str]:
     missing: list[str] = []
-    if not settings.docusign_account_id:
-        missing.append("DOCUSIGN_ACCOUNT_ID")
-    if not settings.docusign_integration_key:
-        missing.append("DOCUSIGN_INTEGRATION_KEY")
-    if not settings.docusign_user_id:
-        missing.append("DOCUSIGN_USER_ID")
-    if not settings.docusign_rsa_private_key:
-        missing.append("DOCUSIGN_RSA_PRIVATE_KEY")
-    if not settings.docusign_webhook_secret:
-        missing.append("DOCUSIGN_WEBHOOK_SECRET")
+    if not settings.opensign_api_token:
+        missing.append("OPENSIGN_API_TOKEN")
+    if not settings.opensign_webhook_secret:
+        missing.append("OPENSIGN_WEBHOOK_SECRET")
     if not settings.public_api_url.strip():
         missing.append("PUBLIC_API_URL")
-    if _docusign_credentials_configured(settings):
-        if (
-            settings.docusign_base_url.strip().rstrip("/")
-            != "https://www.docusign.net/restapi"
-        ):
-            missing.append("DOCUSIGN_BASE_URL")
-        if (
-            settings.docusign_auth_base_url.strip().rstrip("/")
-            != "https://account.docusign.com"
-        ):
-            missing.append("DOCUSIGN_AUTH_BASE_URL")
+    if _opensign_configured(settings) and not _opensign_production_endpoint_configured(
+        settings
+    ):
+        missing.append("OPENSIGN_BASE_URL")
     return missing

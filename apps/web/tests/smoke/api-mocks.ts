@@ -2902,9 +2902,9 @@ function multipartFilename(body: string) {
 
 type MockLeasiumApiOptions = {
   apiHealthUnavailable?: boolean;
-  docusignDemoEndpoints?: boolean;
-  docusignSkippedLeasePack?: boolean;
-  docusignSignedLeasePackNoEmail?: boolean;
+  opensignDemoEndpoints?: boolean;
+  opensignSkippedLeasePack?: boolean;
+  opensignSignedLeasePackNoEmail?: boolean;
   leaseMatchAcceptConflict?: boolean;
   tenantAccountLinked?: boolean;
   tenantAccountLinkedToDifferentTenant?: boolean;
@@ -3465,25 +3465,25 @@ export async function mockLeasiumApi(
   let tenantOnboardings = initialTenantOnboardings.map((onboarding) => ({
     ...onboarding,
     status:
-      (options.docusignSkippedLeasePack ||
-        options.docusignSignedLeasePackNoEmail) &&
+      (options.opensignSkippedLeasePack ||
+        options.opensignSignedLeasePackNoEmail) &&
       onboarding.id === "onboarding-1"
         ? "applied"
         : onboarding.status,
     submitted_at:
-      (options.docusignSkippedLeasePack ||
-        options.docusignSignedLeasePackNoEmail) &&
+      (options.opensignSkippedLeasePack ||
+        options.opensignSignedLeasePackNoEmail) &&
       onboarding.id === "onboarding-1"
         ? "2026-05-21T01:00:00.000Z"
         : onboarding.submitted_at,
     applied_at:
-      (options.docusignSkippedLeasePack ||
-        options.docusignSignedLeasePackNoEmail) &&
+      (options.opensignSkippedLeasePack ||
+        options.opensignSignedLeasePackNoEmail) &&
       onboarding.id === "onboarding-1"
         ? "2026-05-21T01:10:00.000Z"
         : onboarding.applied_at,
     submitted_data:
-      options.docusignSkippedLeasePack && onboarding.id === "onboarding-1"
+      options.opensignSkippedLeasePack && onboarding.id === "onboarding-1"
         ? {
             legal_name: "Bright Cafe Pty Ltd",
             contact_name: "Mia Hart",
@@ -3492,7 +3492,7 @@ export async function mockLeasiumApi(
           }
         : onboarding.submitted_data,
     delivery_data:
-      options.docusignSignedLeasePackNoEmail && onboarding.id === "onboarding-1"
+      options.opensignSignedLeasePackNoEmail && onboarding.id === "onboarding-1"
         ? {
             last_attempted_at: null,
             channels: {},
@@ -3503,12 +3503,12 @@ export async function mockLeasiumApi(
               signed_at: "2026-05-21T02:01:00.000Z",
               signed_by_actor: "tenant",
               signing: {
-                provider: "docusign",
+                provider: "opensign",
                 status: "completed",
                 envelope_id: "envelope-signed-1",
                 signed_at: "2026-05-21T02:01:00.000Z",
               },
-              signing_provider: "docusign",
+              signing_provider: "opensign",
               signing_status: "completed",
               signing_envelope_id: "envelope-signed-1",
               signing_document_id: null,
@@ -3530,7 +3530,7 @@ export async function mockLeasiumApi(
   if (
     tenantPortalLeaseReady ||
     tenantPortalLeaseSigned ||
-    options.docusignSkippedLeasePack
+    options.opensignSkippedLeasePack
   ) {
     tenantPortalDocuments.unshift({
       id: "portal-lease-document-1",
@@ -5948,28 +5948,28 @@ export async function mockLeasiumApi(
             "Configured. Provider sends still require explicit reviewed actions.",
           missing_config: [],
         },
-        docusign: options.docusignDemoEndpoints
+        opensign: options.opensignDemoEndpoints
           ? {
               configured: true,
               live_ready: false,
-              label: "DocuSign",
-              purpose: "Lease signature envelopes and signed lease retention",
+              label: "OpenSign",
+              purpose: "Lease e-signature requests and signed lease retention",
               detail:
-                "Credentials and webhook are set; switch DocuSign REST and auth URLs to production before live envelope testing.",
-              missing_config: ["DOCUSIGN_BASE_URL", "DOCUSIGN_AUTH_BASE_URL"],
+                "Credentials and webhook are set; verify OPENSIGN_API_TOKEN and webhook URL before live signing request testing.",
+              missing_config: ["OPENSIGN_API_TOKEN"],
               webhook_url:
-                "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+                "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/opensign",
             }
           : {
               configured: true,
               live_ready: false,
-              label: "DocuSign",
-              purpose: "Lease signature envelopes and signed lease retention",
+              label: "OpenSign",
+              purpose: "Lease e-signature requests and signed lease retention",
               detail:
-                "Credentials are set; add DOCUSIGN_WEBHOOK_SECRET before live Connect testing so completed envelopes can be verified.",
-              missing_config: ["DOCUSIGN_WEBHOOK_SECRET"],
+                "Credentials are set; add OPENSIGN_WEBHOOK_SECRET before live webhook testing so completed signing requests can be verified.",
+              missing_config: ["OPENSIGN_WEBHOOK_SECRET"],
               webhook_url:
-                "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/docusign",
+                "https://api.leasium.test/api/v1/tenant-onboarding/webhooks/opensign",
             },
       });
       return;
@@ -6066,14 +6066,14 @@ export async function mockLeasiumApi(
             summary: "tenant lifecycle email queued",
             body_preview: null,
             target_kind: "tenant_onboarding",
-            target_id: "tenant-onboarding-docusign-retry-1",
+            target_id: "tenant-onboarding-opensign-retry-1",
             status: "success",
             occurred_at: "2026-05-27T02:04:00.000Z",
             metadata: {
               kind: "tenant_lifecycle_stall",
               tenant_id: tenantId,
               candidate_id:
-                "tenant_lifecycle_stall:tenant_onboarding:tenant-onboarding-docusign-retry-1",
+                "tenant_lifecycle_stall:tenant_onboarding:tenant-onboarding-opensign-retry-1",
             },
           },
           {
@@ -6209,37 +6209,37 @@ export async function mockLeasiumApi(
             id: "comms-tenant-lifecycle-stall-1",
             kind: "tenant_lifecycle_stall",
             target_kind: "tenant_onboarding",
-            target_id: "tenant-onboarding-docusign-retry-1",
+            target_id: "tenant-onboarding-opensign-retry-1",
             tenant_id: tenantId,
             tenant_name: "Bright Cafe Pty Ltd",
             property_name: "Queen Street Retail Centre",
             unit_label: "Shop 3",
             recipient_email: "tenant@example.com",
             recipient_phone: null,
-            subject: "DocuSign retry needed for your lease activation",
-            body: "Hi Bright Cafe team, your lease activation is waiting on a DocuSign retry review. We are checking the envelope status now and will confirm the next step before anything is sent.",
+            subject: "OpenSign retry needed for your lease activation",
+            body: "Hi Bright Cafe team, your lease activation is waiting on an OpenSign retry review. We are checking the signing request status now and will confirm the next step before anything is sent.",
             severity: "danger",
             due_at: "2026-05-28T00:00:00.000Z",
-            detail: "DocuSign retry review: envelope stalled before activation",
+            detail: "OpenSign retry review: signing request stalled before activation",
             generated_at: "2026-05-27T02:00:00.000Z",
           },
           {
             id: "comms-tenant-lifecycle-stall-setup-1",
             kind: "tenant_lifecycle_stall",
             target_kind: "tenant_onboarding",
-            target_id: "tenant-onboarding-docusign-skipped-1",
+            target_id: "tenant-onboarding-opensign-skipped-1",
             tenant_id: tenantId,
             tenant_name: "Bright Cafe Pty Ltd",
             property_name: "Queen Street Retail Centre",
             unit_label: "Shop 3",
             recipient_email: "tenant@example.com",
             recipient_phone: null,
-            subject: "DocuSign setup needed before lease signing",
-            body: "Hi Bright Cafe team, the DocuSign signing request could not be sent because provider setup needs attention. We are fixing the signing setup before sending a fresh lease pack.",
+            subject: "OpenSign setup needed before lease signing",
+            body: "Hi Bright Cafe team, the OpenSign signing request could not be sent because provider setup needs attention. We are fixing the signing setup before sending a fresh lease pack.",
             severity: "danger",
             due_at: "2026-05-28T00:00:00.000Z",
             detail:
-              "DocuSign skipped, DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes",
+              "OpenSign skipped, OPENSIGN_API_TOKEN and OPENSIGN_WEBHOOK_SECRET required before sending live lease signing requests",
             generated_at: "2026-05-27T02:00:00.000Z",
           },
           {
@@ -8534,8 +8534,8 @@ export async function mockLeasiumApi(
       path === "/tenant-onboarding/onboarding-1/send-lease-pack"
     ) {
       const sentAt = "2026-05-21T00:20:00.000Z";
-      const docusignSkippedError =
-        "DocuSign production endpoints are not configured. Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes.";
+      const opensignSkippedError =
+        "OpenSign production endpoints are not configured. Add OPENSIGN_API_TOKEN and OPENSIGN_WEBHOOK_SECRET before sending live lease signing requests.";
       tenantOnboardings = tenantOnboardings.map((onboarding) =>
         onboarding.id === "onboarding-1"
           ? {
@@ -8558,18 +8558,18 @@ export async function mockLeasiumApi(
                       metadata: { template_key: "tenant_lease_pack" },
                     },
                   ],
-                  docusign: options.docusignSkippedLeasePack
+                  esign: options.opensignSkippedLeasePack
                     ? {
                         status: "skipped",
-                        provider: "docusign",
+                        provider: "opensign",
                         envelope_id: null,
                         signer_email: "mi***@example.com",
                         document_id: "portal-lease-document-1",
-                        error: docusignSkippedError,
+                        error: opensignSkippedError,
                       }
                     : undefined,
                 },
-                lease_agreement: options.docusignSkippedLeasePack
+                lease_agreement: options.opensignSkippedLeasePack
                   ? onboarding.delivery_data.lease_agreement
                   : {
                       status: "ready_to_sign",
@@ -11973,7 +11973,7 @@ export async function mockLeasiumApi(
           route,
           {
             detail:
-              "Resolve the active DocuSign envelope before accepting a tenant-uploaded lease.",
+              "An e-signature request is waiting for completion. Complete the signing request instead of signing inside Relby.",
           },
           409,
         );

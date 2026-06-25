@@ -50,8 +50,8 @@ function signedLeaseAgreement(data: OnboardingDeliveryData | null | undefined) {
 }
 
 function signedViaLabel(provider: string | null | undefined) {
-  if (provider === "docusign") {
-    return "Signed via DocuSign";
+  if (provider === "opensign") {
+    return "Signed via OpenSign";
   }
   if (provider === "tenant_upload") {
     return "Signed via tenant upload";
@@ -156,8 +156,8 @@ export function onboardingDeliveryDetail(
   }
   const signed = signedLeaseAgreement(data);
   if (signed && !rows.length) {
-    return signed.signing_provider === "docusign"
-      ? "Lease pack was completed through DocuSign; no email delivery was needed."
+    return signed.signing_provider === "opensign"
+      ? "Lease pack was completed through OpenSign; no email delivery was needed."
       : "Lease agreement is signed; no email delivery was needed.";
   }
   return "Delivery has not been attempted yet.";

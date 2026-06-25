@@ -86,8 +86,8 @@ from apps.api.schemas.tenant_portal import (
     TenantPortalTenantRead,
 )
 from apps.api.tenant_lease_agreement import (
-    ACTIVE_DOCUSIGN_SIGNING_STATUSES,
-    DOCUSIGN_SIGNING_LOCKED_REASON,
+    ACTIVE_SIGNING_STATUSES,
+    SIGNING_LOCKED_REASON,
     append_lease_question,
     blocking_lease_question_count,
     lease_agreement_read,
@@ -2355,13 +2355,13 @@ def sign_tenant_portal_lease_agreement(
     signing = lease_agreement_section(scope.onboarding).get("signing")
     signing_data = dict(signing) if isinstance(signing, dict) else {}
     if (
-        signing_data.get("provider") == "docusign"
-        and signing_data.get("status") in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+        signing_data.get("provider")
+        and signing_data.get("status") in ACTIVE_SIGNING_STATUSES
         and not signing_data.get("signed_at")
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=DOCUSIGN_SIGNING_LOCKED_REASON,
+            detail=SIGNING_LOCKED_REASON,
         )
     mark_lease_agreement_signed(scope.onboarding, actor=scope.auth.actor)
     audit_log(

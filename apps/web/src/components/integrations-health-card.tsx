@@ -17,13 +17,13 @@ import {
 import { saveBlob } from "@/lib/download";
 
 // Relocated from client Settings to the platform-admin /admin surface
-// (docs/platform-admin-tier-ia.md). Read-only provider status + DocuSign
+// (docs/platform-admin-tier-ia.md). Read-only provider status + OpenSign
 // setup packet over the existing /system/integration-status payload. No
 // secrets are returned; copying/downloading the packet does not call any
 // provider (CLAUDE.md §2.1).
 
-const DOCUSIGN_SETUP_PACKET_GUARDRAIL =
-  "Review-only export: copying or downloading this packet does not call DocuSign, send envelopes, accept Connect events, download signed PDFs, activate leases, or mutate provider history.";
+const OPENSIGN_SETUP_PACKET_GUARDRAIL =
+  "Review-only export: copying or downloading this packet does not call OpenSign, send signing requests, accept webhook events, download signed PDFs, activate leases, or mutate provider history.";
 
 async function copyTextToClipboard(text: string) {
   if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -49,21 +49,18 @@ async function copyTextToClipboard(text: string) {
   return copied;
 }
 
-function docusignProviderSetupPacket(status: ProviderStatusRecord) {
+function opensignProviderSetupPacket(status: ProviderStatusRecord) {
   return [
-    "DocuSign provider setup packet",
+    "OpenSign provider setup packet",
     "",
     `Status: ${status.live_ready ? "Live ready" : status.configured ? "Setup needed" : "Not configured"}`,
     `Detail: ${status.detail}`,
     "",
-    `Webhook URL: ${status.webhook_url ?? "Set PUBLIC_API_URL on the API service to expose the Connect webhook URL."}`,
+    `Webhook URL: ${status.webhook_url ?? "Set PUBLIC_API_URL on the API service to expose the OpenSign webhook URL."}`,
     "",
     "Required env vars:",
-    "- DOCUSIGN_ACCOUNT_ID",
-    "- DOCUSIGN_INTEGRATION_KEY",
-    "- DOCUSIGN_USER_ID",
-    "- DOCUSIGN_RSA_PRIVATE_KEY",
-    "- DOCUSIGN_WEBHOOK_SECRET",
+    "- OPENSIGN_API_TOKEN",
+    "- OPENSIGN_WEBHOOK_SECRET",
     "- PUBLIC_API_URL",
     "",
     "Missing production setup:",
@@ -71,17 +68,13 @@ function docusignProviderSetupPacket(status: ProviderStatusRecord) {
       ? status.missing_config.map((envVar) => `- ${envVar}`)
       : ["- None"]),
     "",
-    "Production endpoints:",
-    "- Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi for live envelopes.",
-    "- Set DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com for live JWT grants.",
-    "",
-    "DocuSign Connect:",
-    "- Subscribe to completed envelope events.",
-    "- Send DOCUSIGN_WEBHOOK_SECRET as x-docusign-webhook-secret or token query parameter.",
-    "- Keep signer, envelope, and custom-field review in Relby before activating leases.",
+    "OpenSign webhook:",
+    "- Subscribe to completed signing request events.",
+    "- Send OPENSIGN_WEBHOOK_SECRET as x-opensign-webhook-secret or token query parameter.",
+    "- Keep signer and document review in Relby before activating leases.",
     "",
     "Guardrails:",
-    `- ${DOCUSIGN_SETUP_PACKET_GUARDRAIL}`,
+    `- ${OPENSIGN_SETUP_PACKET_GUARDRAIL}`,
   ].join("\n");
 }
 
@@ -106,11 +99,11 @@ export function IntegrationsHealthCard({
         { key: "sendgrid", data: integrations.sendgrid },
         { key: "twilio", data: integrations.twilio },
         { key: "xero", data: integrations.xero },
-        { key: "docusign", data: integrations.docusign },
+        { key: "opensign", data: integrations.opensign },
       ]
     : [];
   const release = apiHealth?.release;
-  const [docusignPacketReceipt, setDocusignPacketReceipt] = useState<
+  const [opensignPacketReceipt, setOpensignPacketReceipt] = useState<
     string | null
   >(null);
   const releaseIsLocal =
@@ -129,22 +122,22 @@ export function IntegrationsHealthCard({
         label: isApiHealthLoading ? "Checking release" : "Release unavailable",
         tone: isApiHealthLoading ? "neutral" : "danger",
       };
-  const copyDocusignSetupPacket = async (data: ProviderStatusRecord) => {
-    const copied = await copyTextToClipboard(docusignProviderSetupPacket(data));
-    setDocusignPacketReceipt(
+  const copyOpensignSetupPacket = async (data: ProviderStatusRecord) => {
+    const copied = await copyTextToClipboard(opensignProviderSetupPacket(data));
+    setOpensignPacketReceipt(
       copied
-        ? "DocuSign setup packet copied."
+        ? "OpenSign setup packet copied."
         : "Copy unavailable in this browser.",
     );
   };
-  const downloadDocusignSetupPacket = (data: ProviderStatusRecord) => {
+  const downloadOpensignSetupPacket = (data: ProviderStatusRecord) => {
     saveBlob(
-      new Blob([docusignProviderSetupPacket(data)], {
+      new Blob([opensignProviderSetupPacket(data)], {
         type: "text/plain;charset=utf-8",
       }),
-      "docusign-provider-setup-packet.txt",
+      "opensign-provider-setup-packet.txt",
     );
-    setDocusignPacketReceipt("DocuSign setup packet downloaded.");
+    setOpensignPacketReceipt("OpenSign setup packet downloaded.");
   };
   return (
     <SectionPanel
@@ -237,34 +230,34 @@ export function IntegrationsHealthCard({
                 {data.webhook_url ? (
                   <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-2 text-xs">
                     <span className="font-medium text-foreground">
-                      DocuSign Connect webhook
+                      OpenSign webhook
                     </span>
                     <code className="break-all font-mono text-[11px] text-muted-foreground">
                       {data.webhook_url}
                     </code>
                   </div>
                 ) : null}
-                {key === "docusign" ? (
+                {key === "opensign" ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <SecondaryButton
                       type="button"
                       className="min-h-11 rounded-md px-2.5 text-xs"
-                      onClick={() => void copyDocusignSetupPacket(data)}
+                      onClick={() => void copyOpensignSetupPacket(data)}
                     >
                       <Copy size={14} />
-                      Copy DocuSign setup packet
+                      Copy OpenSign setup packet
                     </SecondaryButton>
                     <SecondaryButton
                       type="button"
                       className="min-h-11 rounded-md px-2.5 text-xs"
-                      onClick={() => downloadDocusignSetupPacket(data)}
+                      onClick={() => downloadOpensignSetupPacket(data)}
                     >
                       <Download size={14} />
-                      Download DocuSign setup packet
+                      Download OpenSign setup packet
                     </SecondaryButton>
-                    {docusignPacketReceipt ? (
+                    {opensignPacketReceipt ? (
                       <span className="text-xs text-muted-foreground">
-                        {docusignPacketReceipt}
+                        {opensignPacketReceipt}
                       </span>
                     ) : null}
                   </div>

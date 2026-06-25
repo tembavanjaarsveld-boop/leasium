@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from apps.api.webhook_auth import (
     assert_webhook_secret,
+    opensign_signature_valid,
     twilio_signature_valid,
     webhook_secret_valid,
 )
@@ -103,29 +104,29 @@ def test_assert_webhook_secret_rejects_missing_or_wrong_secret() -> None:
 def test_assert_webhook_secret_accepts_provider_specific_headers() -> None:
     assert_webhook_secret(
         _request(
-            "/api/v1/tenant-onboarding/webhooks/docusign",
-            headers={"x-docusign-webhook-secret": "docu-secret"},
+            "/api/v1/tenant-onboarding/webhooks/opensign",
+            headers={"x-opensign-webhook-secret": "opensign-secret"},
         ),
-        "docu-secret",
-        header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
+        "opensign-secret",
+        header_names=("x-opensign-webhook-secret", "x-leasium-webhook-secret"),
     )
     assert_webhook_secret(
         _request(
-            "/api/v1/tenant-onboarding/webhooks/docusign",
-            headers={"x-leasium-webhook-secret": "docu-secret"},
+            "/api/v1/tenant-onboarding/webhooks/opensign",
+            headers={"x-leasium-webhook-secret": "opensign-secret"},
         ),
-        "docu-secret",
-        header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
+        "opensign-secret",
+        header_names=("x-opensign-webhook-secret", "x-leasium-webhook-secret"),
     )
 
     with pytest.raises(HTTPException) as wrong_header_error:
         assert_webhook_secret(
             _request(
-                "/api/v1/tenant-onboarding/webhooks/docusign",
-                headers={"x-docusign-webhook-secret": "wrong-secret"},
+                "/api/v1/tenant-onboarding/webhooks/opensign",
+                headers={"x-opensign-webhook-secret": "wrong-secret"},
             ),
-            "docu-secret",
-            header_names=("x-docusign-webhook-secret", "x-leasium-webhook-secret"),
+            "opensign-secret",
+            header_names=("x-opensign-webhook-secret", "x-leasium-webhook-secret"),
         )
     assert wrong_header_error.value.status_code == 401
 
@@ -153,4 +154,29 @@ def test_twilio_signature_valid_accepts_public_api_url_signature() -> None:
         payload,
         auth_token,
         public_url,
+    )
+
+
+def test_opensign_signature_valid_accepts_raw_body_hmac() -> None:
+    body = b'{"event":"completed","documentId":"doc-123"}'
+    secret = "opensign-secret"
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    path = "/api/v1/tenant-onboarding/webhooks/opensign"
+
+    assert opensign_signature_valid(
+        _request(path, headers={"x-webhook-signature": signature}),
+        body,
+        secret,
+    )
+    # Wrong signature, missing header, and empty secret all reject.
+    assert not opensign_signature_valid(
+        _request(path, headers={"x-webhook-signature": "deadbeef"}),
+        body,
+        secret,
+    )
+    assert not opensign_signature_valid(_request(path), body, secret)
+    assert not opensign_signature_valid(
+        _request(path, headers={"x-webhook-signature": signature}),
+        body,
+        "",
     )

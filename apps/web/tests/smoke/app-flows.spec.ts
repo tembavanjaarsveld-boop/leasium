@@ -203,7 +203,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   }
   await mockLeasiumApi(page, {
     leaseMatchAcceptConflict: testInfo.title.includes(
-      "active DocuSign conflict",
+      "active e-signature conflict",
     ),
   });
 });
@@ -1983,10 +1983,10 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   expect(commsReviewCsv).toContain("tenant@example.com");
   expect(commsReviewCsv).toContain("1 attachment routed to Smart Intake");
   expect(commsReviewCsv).toContain(
-    "DocuSign retry needed for your lease activation",
+    "OpenSign retry needed for your lease activation",
   );
   expect(commsReviewCsv).toContain(
-    "DocuSign setup needed before lease signing",
+    "OpenSign setup needed before lease signing",
   );
   expect(commsReviewCsv).toContain(
     "Lease activation review for tenant-uploaded lease",
@@ -2046,14 +2046,14 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(lifecycleCard).toBeVisible();
   await expect(
     lifecycleCard.getByText(
-      "DocuSign retry review: envelope stalled before activation",
+      "OpenSign retry review: signing request stalled before activation",
     ),
   ).toBeVisible();
   await expect(lifecycleCard.getByLabel("Subject")).toHaveValue(
-    "DocuSign retry needed for your lease activation",
+    "OpenSign retry needed for your lease activation",
   );
   await expect(lifecycleCard.getByLabel("Body")).toHaveValue(
-    "Hi Bright Cafe team, your lease activation is waiting on a DocuSign retry review. We are checking the envelope status now and will confirm the next step before anything is sent.",
+    "Hi Bright Cafe team, your lease activation is waiting on an OpenSign retry review. We are checking the signing request status now and will confirm the next step before anything is sent.",
   );
   await expect(lifecycleCard.getByText("SendGrid email")).toBeVisible();
   await expect(
@@ -2063,23 +2063,23 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
   await expect(
     lifecycleCard.getByRole("link", { name: "Open tenant review" }),
   ).toHaveAttribute("href", "/tenants/tenant-1");
-  const skippedDocusignLifecycleCard = page
+  const skippedOpensignLifecycleCard = page
     .locator("section")
-    .filter({ hasText: "DocuSign skipped" })
+    .filter({ hasText: "OpenSign skipped" })
     .first();
-  await expect(skippedDocusignLifecycleCard).toBeVisible();
+  await expect(skippedOpensignLifecycleCard).toBeVisible();
   await expect(
-    skippedDocusignLifecycleCard.getByText("DOCUSIGN_BASE_URL"),
+    skippedOpensignLifecycleCard.getByText("OPENSIGN_API_TOKEN"),
   ).toBeVisible();
-  await expect(skippedDocusignLifecycleCard.getByLabel("Subject")).toHaveValue(
-    "DocuSign setup needed before lease signing",
+  await expect(skippedOpensignLifecycleCard.getByLabel("Subject")).toHaveValue(
+    "OpenSign setup needed before lease signing",
   );
-  await expect(skippedDocusignLifecycleCard.getByLabel("Body")).toHaveValue(
-    "Hi Bright Cafe team, the DocuSign signing request could not be sent because provider setup needs attention. We are fixing the signing setup before sending a fresh lease pack.",
+  await expect(skippedOpensignLifecycleCard.getByLabel("Body")).toHaveValue(
+    "Hi Bright Cafe team, the OpenSign signing request could not be sent because provider setup needs attention. We are fixing the signing setup before sending a fresh lease pack.",
   );
-  await expect(skippedDocusignLifecycleCard.getByText("Urgent")).toBeVisible();
+  await expect(skippedOpensignLifecycleCard.getByText("Urgent")).toBeVisible();
   await expect(
-    skippedDocusignLifecycleCard.getByRole("link", {
+    skippedOpensignLifecycleCard.getByRole("link", {
       name: "Open tenant review",
     }),
   ).toHaveAttribute("href", "/tenants/tenant-1");
@@ -5449,9 +5449,9 @@ test("tenant detail sends lease pack after onboarding approval", async ({
                   metadata: { template_key: "tenant_lease_pack" },
                 },
               ],
-              docusign: {
+              esign: {
                 status: "queued",
-                provider: "docusign",
+                provider: "opensign",
                 envelope_id: "envelope-smoke-1",
                 signer_email: "mi***@example.com",
                 document_id: "document-lease-smoke-1",
@@ -5466,7 +5466,7 @@ test("tenant detail sends lease pack after onboarding approval", async ({
               signed_by_actor: null,
               signing_locked_reason: null,
               signing: {
-                provider: "docusign",
+                provider: "opensign",
                 status: "queued",
                 envelope_id: "envelope-smoke-1",
                 signer_email: "mi***@example.com",
@@ -5474,7 +5474,7 @@ test("tenant detail sends lease pack after onboarding approval", async ({
                 sent_at: "2026-05-21T00:20:00.000Z",
                 sent_by_user_id: "user-temba",
               },
-              signing_provider: "docusign",
+              signing_provider: "opensign",
               signing_status: "queued",
               signing_envelope_id: "envelope-smoke-1",
               signing_document_id: "document-lease-smoke-1",
@@ -5556,9 +5556,9 @@ test("tenant detail sends lease pack after onboarding approval", async ({
 
   await page.getByRole("button", { name: "Send lease pack" }).click();
   await expect(
-    page.getByText("Lease pack sent. DocuSign is waiting for signature."),
+    page.getByText("Lease pack sent. OpenSign is waiting for signature."),
   ).toBeVisible();
-  await expect(page.getByText("DocuSign pending").first()).toBeVisible();
+  await expect(page.getByText("OpenSign pending").first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Lease pack sent" }),
   ).toBeDisabled();
@@ -5572,24 +5572,24 @@ test("tenant detail sends lease pack after onboarding approval", async ({
         ...(deliveryData.lease_agreement as Record<string, unknown>),
         status: "signed",
         signed_at: "2026-05-21T00:25:00.000Z",
-        signed_by_actor: "provider:docusign",
+        signed_by_actor: "provider:opensign",
         signing_locked_reason: null,
         signing: {
-          provider: "docusign",
+          provider: "opensign",
           status: "completed",
           envelope_id: "envelope-smoke-1",
           signed_at: "2026-05-21T00:25:00.000Z",
-          signed_by_actor: "provider:docusign",
+          signed_by_actor: "provider:opensign",
           signed_document_id: "document-signed-smoke-1",
           lease_activation_review: {
             status: "ready_for_review",
             current_lease_status: "pending",
             recommended_status: "active",
             guardrail:
-              "DocuSign completion does not activate a lease automatically; review and activate explicitly.",
+              "OpenSign completion does not activate a lease automatically; review and activate explicitly.",
           },
         },
-        signing_provider: "docusign",
+        signing_provider: "opensign",
         signing_status: "completed",
         signing_envelope_id: "envelope-smoke-1",
         signing_document_id: "document-lease-smoke-1",
@@ -5606,7 +5606,7 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   ).toBeVisible();
   await expect(
     page.getByText(
-      "DocuSign completion does not activate a lease automatically; review and activate explicitly.",
+      "OpenSign completion does not activate a lease automatically; review and activate explicitly.",
     ),
   ).toBeVisible();
   await expect(
@@ -5978,42 +5978,42 @@ test("tenant detail blocks onboarding apply until lease questions are resolved",
   await expect.poll(() => applied).toBe(true);
 });
 
-test("tenant detail shows skipped DocuSign setup after lease pack send", async ({
+test("tenant detail shows skipped OpenSign setup after lease pack send", async ({
   page,
 }) => {
-  await mockLeasiumApi(page, { docusignSkippedLeasePack: true });
+  await mockLeasiumApi(page, { opensignSkippedLeasePack: true });
 
   await page.goto("/tenants/tenant-1");
 
   await expect(page.getByText("custom-lease.pdf").first()).toBeVisible();
   await page.getByRole("button", { name: "Send lease pack" }).click();
   await expect(
-    page.getByText("Lease pack sent. DocuSign setup needs attention."),
+    page.getByText("Lease pack sent. OpenSign setup needs attention."),
   ).toBeVisible();
-  await expect(page.getByText("DocuSign not sent").first()).toBeVisible();
+  await expect(page.getByText("OpenSign not sent").first()).toBeVisible();
   await expect(
     page
       .getByText(
-        "DocuSign production endpoints are not configured. Set DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before sending live lease envelopes.",
+        "OpenSign production endpoints are not configured. Add OPENSIGN_API_TOKEN and OPENSIGN_WEBHOOK_SECRET before sending live lease signing requests.",
       )
       .last(),
   ).toBeVisible();
-  await expect(page.getByText("DocuSign pending")).toHaveCount(0);
+  await expect(page.getByText("OpenSign pending")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send again" })).toBeVisible();
 });
 
-test("tenant detail reports signed DocuSign delivery instead of Not sent", async ({
+test("tenant detail reports signed OpenSign delivery instead of Not sent", async ({
   page,
 }) => {
-  await mockLeasiumApi(page, { docusignSignedLeasePackNoEmail: true });
+  await mockLeasiumApi(page, { opensignSignedLeasePackNoEmail: true });
 
   await page.goto("/tenants/tenant-1");
 
-  await expect(page.getByText("Signed via DocuSign").first()).toBeVisible();
+  await expect(page.getByText("Signed via OpenSign").first()).toBeVisible();
   await expect(
     page
       .getByText(
-        "Lease pack was completed through DocuSign; no email delivery was needed.",
+        "Lease pack was completed through OpenSign; no email delivery was needed.",
       )
       .first(),
   ).toBeVisible();
@@ -6022,7 +6022,7 @@ test("tenant detail reports signed DocuSign delivery instead of Not sent", async
   ).toHaveCount(0);
 });
 
-test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
+test("tenant detail flags declined OpenSign signing request", async ({ page }) => {
   await page.unroute("**/api/v1/**");
   await mockLeasiumApi(page, { tenantPortalLeaseReady: true });
   let onboardingRow = {
@@ -6050,8 +6050,8 @@ test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
     delivery_data: {
       lease_pack: {
         sent_at: "2026-05-21T00:20:00.000Z",
-        docusign: {
-          provider: "docusign",
+        esign: {
+          provider: "opensign",
           status: "queued",
           envelope_id: "envelope-declined-smoke",
           document_id: "document-lease-smoke-1",
@@ -6065,13 +6065,13 @@ test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
         signed_by_actor: null,
         signing_locked_reason: null,
         signing: {
-          provider: "docusign",
+          provider: "opensign",
           status: "declined",
           envelope_id: "envelope-declined-smoke",
           last_event: "envelope-declined",
           last_event_at: "2026-05-21T00:30:00.000Z",
         },
-        signing_provider: "docusign",
+        signing_provider: "opensign",
         signing_status: "declined",
         signing_envelope_id: "envelope-declined-smoke",
         signing_document_id: "document-lease-smoke-1",
@@ -6111,8 +6111,8 @@ test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
             ...onboardingRow.delivery_data,
             lease_pack: {
               sent_at: "2026-05-21T00:40:00.000Z",
-              docusign: {
-                provider: "docusign",
+              esign: {
+                provider: "opensign",
                 status: "queued",
                 envelope_id: "fresh-resend-smoke",
                 document_id: "document-lease-smoke-1",
@@ -6121,13 +6121,13 @@ test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
             lease_agreement: {
               ...onboardingRow.delivery_data.lease_agreement,
               signing: {
-                provider: "docusign",
+                provider: "opensign",
                 status: "queued",
                 envelope_id: "fresh-resend-smoke",
                 document_id: "document-lease-smoke-1",
                 sent_at: "2026-05-21T00:40:00.000Z",
               },
-              signing_provider: "docusign",
+              signing_provider: "opensign",
               signing_status: "queued",
               signing_envelope_id: "fresh-resend-smoke",
               signing_document_id: "document-lease-smoke-1",
@@ -6150,14 +6150,14 @@ test("tenant detail flags declined DocuSign envelope", async ({ page }) => {
   await page.goto("/tenants/tenant-1");
 
   await expect(
-    page.getByText("DocuSign needs attention").first(),
+    page.getByText("OpenSign needs attention").first(),
   ).toBeVisible();
-  await expect(page.getByText("Envelope declined.").first()).toBeVisible();
+  await expect(page.getByText("Signing request declined.").first()).toBeVisible();
   await page.getByRole("button", { name: "Send again" }).click();
   await expect(
-    page.getByText("Lease pack sent. DocuSign is waiting for signature."),
+    page.getByText("Lease pack sent. OpenSign is waiting for signature."),
   ).toBeVisible();
-  await expect(page.getByText("DocuSign pending").first()).toBeVisible();
+  await expect(page.getByText("OpenSign pending").first()).toBeVisible();
   await expect(page.getByText("fresh-re")).toBeVisible();
 });
 

@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -24,7 +25,7 @@ from stewart.core.models import (
     TenantOnboarding,
 )
 from stewart.integrations.communications import DeliveryResult
-from stewart.integrations.docusign import LeaseSignatureResult, SignedLeaseDocumentResult
+from stewart.integrations.opensign import LeaseSignatureResult, SignedLeaseDocumentResult
 
 
 def _entity_id(session: Session) -> str:
@@ -39,16 +40,26 @@ def _twilio_signature(url: str, data: dict[str, str], auth_token: str) -> str:
     return base64.b64encode(digest).decode()
 
 
-def _docusign_webhook_headers(monkeypatch) -> dict[str, str]:  # noqa: ANN001
+def _opensign_webhook_secret(monkeypatch) -> str:  # noqa: ANN001
     original_get_settings = tenant_onboarding_router.get_settings
     monkeypatch.setattr(
         tenant_onboarding_router,
         "get_settings",
         lambda: original_get_settings().model_copy(
-            update={"docusign_webhook_secret": "docu-secret"}
+            update={"opensign_webhook_secret": "opensign-secret"}
         ),
     )
-    return {"x-docusign-webhook-secret": "docu-secret"}
+    return "opensign-secret"
+
+
+def _opensign_webhook_post(client, payload, secret, *, raw=None):  # noqa: ANN001
+    body = raw if raw is not None else json.dumps(payload).encode()
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return client.post(
+        "/api/v1/tenant-onboarding/webhooks/opensign",
+        content=body,
+        headers={"content-type": "application/json", "x-webhook-signature": signature},
+    )
 
 
 def _lease_id(client: TestClient, session: Session) -> str:
@@ -963,14 +974,14 @@ def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
         "send_tenant_lease_pack_invite",
         fake_lease_pack_send,
     )
-    docusign_requests = []
+    signature_requests = []
 
     def fake_signature_send(request, settings):  # noqa: ANN001, ARG001
-        docusign_requests.append(request)
+        signature_requests.append(request)
         return LeaseSignatureResult(
             status="queued",
             signer_email=request.signer_email,
-            envelope_id="envelope-lease-pack-1",
+            envelope_id="opensign-doc-lease-pack-1",
         )
 
     monkeypatch.setattr(
@@ -1010,23 +1021,23 @@ def test_tenant_onboarding_send_lease_pack_after_apply_records_delivery(
     assert sends[0][1].endswith("/tenant-portal/lease")
     assert f"/tenant-portal/{token}/lease" not in sends[0][1]
     assert sends[0][2] is None
-    assert docusign_requests[0].document_filename == "lease-pack.txt"
-    assert docusign_requests[0].document_bytes == b"lease pack"
-    assert str(docusign_requests[0].tenant_onboarding_id) == onboarding_id
-    assert docusign_requests[0].document_id == lease_document.id
-    assert str(docusign_requests[0].lease_id) == lease_id
-    assert lease_pack["docusign"]["status"] == "queued"
-    assert lease_pack["docusign"]["envelope_id"] == "envelope-lease-pack-1"
-    assert lease_pack["docusign"]["document_id"] == str(lease_document.id)
+    assert signature_requests[0].document_filename == "lease-pack.txt"
+    assert signature_requests[0].document_bytes == b"lease pack"
+    assert str(signature_requests[0].tenant_onboarding_id) == onboarding_id
+    assert signature_requests[0].document_id == lease_document.id
+    assert str(signature_requests[0].lease_id) == lease_id
+    assert lease_pack["esign"]["status"] == "queued"
+    assert lease_pack["esign"]["envelope_id"] == "opensign-doc-lease-pack-1"
+    assert lease_pack["esign"]["document_id"] == str(lease_document.id)
     signing = body["delivery_data"]["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "queued"
-    assert signing["envelope_id"] == "envelope-lease-pack-1"
+    assert signing["envelope_id"] == "opensign-doc-lease-pack-1"
     history = body["delivery_data"].get("lease_pack_history") or []
     assert len(history) == 1
 
 
-def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
+def test_tenant_onboarding_send_lease_pack_audits_skipped_opensign_as_error(
     client: TestClient,
     session: Session,
     monkeypatch,
@@ -1038,7 +1049,7 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
                 status="queued",
                 provider="sendgrid",
                 recipient="tenant@example.com",
-                provider_message_id="lease-pack-skipped-docusign",
+                provider_message_id="lease-pack-skipped-opensign",
                 metadata={"template_key": invite.template_key},
             )
         ]
@@ -1054,10 +1065,9 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
             status="skipped",
             signer_email=request.signer_email,
             error=(
-                "DocuSign production endpoints are not configured. Set "
-                "DOCUSIGN_BASE_URL=https://www.docusign.net/restapi and "
-                "DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com before "
-                "sending live lease envelopes."
+                "OpenSign is not configured. Set OPENSIGN_API_TOKEN (and "
+                "OPENSIGN_BASE_URL) on the API service to enable "
+                "lease-send-for-signature. See docs/deployment.md."
             ),
         )
 
@@ -1075,13 +1085,13 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
 
     assert response.status_code == 200
     lease_pack = response.json()["delivery_data"]["lease_pack"]
-    assert lease_pack["docusign"]["status"] == "skipped"
-    assert lease_pack["docusign"]["document_id"] == str(lease_document.id)
+    assert lease_pack["esign"]["status"] == "skipped"
+    assert lease_pack["esign"]["document_id"] == str(lease_document.id)
     signing = response.json()["delivery_data"]["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "skipped"
     assert signing["document_id"] == str(lease_document.id)
-    assert signing["error"] == lease_pack["docusign"]["error"]
+    assert signing["error"] == lease_pack["esign"]["error"]
     assert signing["sent_at"] is not None
     audit = session.scalar(
         select(AuditAction)
@@ -1093,7 +1103,7 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
     )
     assert audit is not None
     assert audit.outcome == AuditOutcome.error
-    assert audit.error_message == lease_pack["docusign"]["error"]
+    assert audit.error_message == lease_pack["esign"]["error"]
     queue_response = client.get(
         "/api/v1/comms/queue",
         params={"entity_id": _entity_id(session)},
@@ -1105,11 +1115,11 @@ def test_tenant_onboarding_send_lease_pack_audits_skipped_docusign_as_error(
         if candidate["kind"] == "tenant_lifecycle_stall"
     ]
     assert len(lifecycle_candidates) == 1
-    assert "DocuSign setup needed" in lifecycle_candidates[0]["subject"]
-    assert "DOCUSIGN_BASE_URL" in (lifecycle_candidates[0]["detail"] or "")
+    assert "Signature setup needed" in lifecycle_candidates[0]["subject"]
+    assert "OPENSIGN_API_TOKEN" in (lifecycle_candidates[0]["detail"] or "")
 
 
-def test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue(
+def test_tenant_onboarding_failed_opensign_send_enters_lifecycle_queue(
     client: TestClient,
     session: Session,
     monkeypatch,
@@ -1121,7 +1131,7 @@ def test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue(
                 status="queued",
                 provider="sendgrid",
                 recipient="tenant@example.com",
-                provider_message_id="lease-pack-failed-docusign",
+                provider_message_id="lease-pack-failed-opensign",
                 metadata={"template_key": invite.template_key},
             )
         ]
@@ -1136,7 +1146,7 @@ def test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue(
         return LeaseSignatureResult(
             status="failed",
             signer_email=request.signer_email,
-            error="DocuSign envelope create failed: timeout",
+            error="OpenSign document create failed: timeout",
         )
 
     monkeypatch.setattr(
@@ -1153,12 +1163,12 @@ def test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue(
 
     assert response.status_code == 200
     lease_pack = response.json()["delivery_data"]["lease_pack"]
-    assert lease_pack["docusign"]["status"] == "failed"
+    assert lease_pack["esign"]["status"] == "failed"
     signing = response.json()["delivery_data"]["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "failed"
     assert signing["document_id"] == str(lease_document.id)
-    assert signing["error"] == "DocuSign envelope create failed: timeout"
+    assert signing["error"] == "OpenSign document create failed: timeout"
     queue_response = client.get(
         "/api/v1/comms/queue",
         params={"entity_id": _entity_id(session)},
@@ -1170,13 +1180,13 @@ def test_tenant_onboarding_failed_docusign_send_enters_lifecycle_queue(
         if candidate["kind"] == "tenant_lifecycle_stall"
     ]
     assert len(lifecycle_candidates) == 1
-    assert "DocuSign retry needed" in lifecycle_candidates[0]["subject"]
-    assert "DocuSign envelope create failed: timeout" in (
+    assert "Signature retry needed" in lifecycle_candidates[0]["subject"]
+    assert "OpenSign document create failed: timeout" in (
         lifecycle_candidates[0]["detail"] or ""
     )
 
 
-def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(
+def test_tenant_onboarding_send_lease_pack_retries_after_declined_opensign(
     client: TestClient,
     session: Session,
     monkeypatch,
@@ -1203,7 +1213,7 @@ def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(
         return LeaseSignatureResult(
             status="queued",
             signer_email=request.signer_email,
-            envelope_id="envelope-retry-1",
+            envelope_id="opensign-doc-retry-1",
         )
 
     monkeypatch.setattr(
@@ -1217,10 +1227,10 @@ def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(
     assert onboarding is not None
     prior_pack = {
         "sent_at": "2026-05-21T00:20:00+00:00",
-        "docusign": {
+        "esign": {
             "status": "queued",
-            "provider": "docusign",
-            "envelope_id": "envelope-declined-1",
+            "provider": "opensign",
+            "envelope_id": "opensign-doc-declined-1",
             "document_id": str(lease_document.id),
         },
     }
@@ -1229,11 +1239,11 @@ def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(
         "lease_pack_history": [prior_pack],
         "lease_agreement": {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "declined",
-                "envelope_id": "envelope-declined-1",
+                "envelope_id": "opensign-doc-declined-1",
                 "document_id": str(lease_document.id),
-                "last_event": "envelope-declined",
+                "last_event": "declined",
             }
         },
     }
@@ -1246,33 +1256,33 @@ def test_tenant_onboarding_send_lease_pack_retries_after_declined_docusign(
     assert response.status_code == 200
     delivery_data = response.json()["delivery_data"]
     lease_pack = delivery_data["lease_pack"]
-    assert lease_pack["docusign"]["status"] == "queued"
-    assert lease_pack["docusign"]["envelope_id"] == "envelope-retry-1"
-    assert lease_pack["docusign"]["document_id"] == str(lease_document.id)
+    assert lease_pack["esign"]["status"] == "queued"
+    assert lease_pack["esign"]["envelope_id"] == "opensign-doc-retry-1"
+    assert lease_pack["esign"]["document_id"] == str(lease_document.id)
     signing = delivery_data["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "queued"
-    assert signing["envelope_id"] == "envelope-retry-1"
+    assert signing["envelope_id"] == "opensign-doc-retry-1"
     assert "signed_at" not in signing
     history = delivery_data["lease_pack_history"]
     assert len(history) == 2
-    assert history[0]["docusign"]["envelope_id"] == "envelope-declined-1"
-    assert history[1]["docusign"]["envelope_id"] == "envelope-retry-1"
+    assert history[0]["esign"]["envelope_id"] == "opensign-doc-declined-1"
+    assert history[1]["esign"]["envelope_id"] == "opensign-doc-retry-1"
 
 
-def test_tenant_onboarding_send_lease_pack_rejects_active_docusign_envelope(
+def test_tenant_onboarding_send_lease_pack_rejects_active_opensign_request(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    docusign_requests: list[object] = []
+    signature_requests: list[object] = []
 
     def fake_signature_send(request, settings):  # noqa: ANN001, ARG001
-        docusign_requests.append(request)
+        signature_requests.append(request)
         return LeaseSignatureResult(
             status="queued",
             signer_email=request.signer_email,
-            envelope_id="duplicate-envelope",
+            envelope_id="duplicate-opensign-doc",
         )
 
     monkeypatch.setattr(
@@ -1288,9 +1298,9 @@ def test_tenant_onboarding_send_lease_pack_rejects_active_docusign_envelope(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "queued",
-                "envelope_id": "active-envelope-1",
+                "envelope_id": "active-opensign-doc-1",
                 "sent_at": utcnow().isoformat(),
             }
         },
@@ -1303,24 +1313,23 @@ def test_tenant_onboarding_send_lease_pack_rejects_active_docusign_envelope(
 
     assert response.status_code == 409
     assert response.json()["detail"] == (
-        "A DocuSign envelope is already waiting for completion."
+        "An e-signature request is already waiting for completion."
     )
-    assert docusign_requests == []
+    assert signature_requests == []
 
 
-def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
+def test_tenant_onboarding_opensign_webhook_marks_lease_signed(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
     downloads: list[str] = []
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    secret = _opensign_webhook_secret(monkeypatch)
 
-    def fake_download(envelope_id, settings):  # noqa: ANN001, ARG001
-        downloads.append(envelope_id)
+    def fake_download(signed_file_url, settings):  # noqa: ANN001, ARG001
+        downloads.append(signed_file_url)
         return SignedLeaseDocumentResult(
             status="downloaded",
-            filename=f"signed-{envelope_id}.pdf",
             content_type="application/pdf",
             file_data=b"%PDF signed lease",
         )
@@ -1340,9 +1349,9 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "sent",
-                "envelope_id": "envelope-complete-1",
+                "envelope_id": "opensign-doc-complete-1",
                 "document_id": "document-1",
                 "sent_at": utcnow().isoformat(),
             },
@@ -1350,34 +1359,34 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
     )
     session.commit()
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={
-            "event": "envelope-completed",
-            "data": {
-                "envelopeId": "envelope-complete-1",
-                "envelopeSummary": {"status": "completed"},
-            },
+    response = _opensign_webhook_post(
+        client,
+        {
+            "event": "completed",
+            "type": "request-sign",
+            "objectId": "opensign-doc-complete-1",
+            "file": "https://files.opensign.test/signed-complete-1.pdf",
+            "certificate": "https://files.opensign.test/cert-complete-1.pdf",
         },
+        secret,
     )
 
     assert response.status_code == 204
     session.refresh(onboarding)
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "completed"
-    assert signing["envelope_id"] == "envelope-complete-1"
+    assert signing["envelope_id"] == "opensign-doc-complete-1"
     assert signing["signed_at"] is not None
-    assert signing["signed_by_actor"] == "provider:docusign"
-    assert signing["source"] == "docusign_webhook"
-    assert signing["last_event"] == "envelope-completed"
+    assert signing["signed_by_actor"] == "provider:opensign"
+    assert signing["source"] == "opensign_webhook"
+    assert signing["last_event"] == "completed"
     assert signing["signed_document_retention"]["status"] == "downloaded"
     assert signing["lease_activation_review"]["status"] == "ready_for_review"
     assert signing["lease_activation_review"]["current_lease_status"] == "pending"
     assert signing["lease_activation_review"]["recommended_status"] == "active"
     assert signing["lease_activation_review"]["guardrail"] == (
-        "DocuSign completion does not activate a lease automatically; "
+        "E-signature completion does not activate a lease automatically; "
         "review and activate explicitly."
     )
     session.refresh(lease)
@@ -1385,14 +1394,14 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
     signed_document_id = signing["signed_document_id"]
     signed_document = session.get(StoredDocument, UUID(signed_document_id))
     assert signed_document is not None
-    assert signed_document.filename == "signed-envelope-complete-1.pdf"
+    assert signed_document.filename == "signed-lease-opensign-doc-complete-1.pdf"
     assert signed_document.content_type == "application/pdf"
     assert signed_document.file_data == b"%PDF signed lease"
     assert signed_document.category == DocumentCategory.lease
     assert signed_document.tenant_id == onboarding.tenant_id
     assert signed_document.tenant_onboarding_id == onboarding.id
-    assert signed_document.document_metadata["source"] == "docusign_signed_lease"
-    assert signed_document.document_metadata["docusign_envelope_id"] == "envelope-complete-1"
+    assert signed_document.document_metadata["source"] == "opensign_signed_lease"
+    assert signed_document.document_metadata["opensign_object_id"] == "opensign-doc-complete-1"
     assert signed_document.document_metadata["original_lease_document_id"] == "document-1"
     webhook_audit = session.scalar(
         select(AuditAction).where(
@@ -1404,8 +1413,8 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
     assert webhook_audit is not None
     assert webhook_audit.tool_input == {
         "status": "completed",
-        "event": "envelope-completed",
-        "envelope_id": "envelope-complete-1",
+        "event": "completed",
+        "object_id": "opensign-doc-complete-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(lease.id),
         "document_id": "document-1",
@@ -1413,14 +1422,15 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
         "applied": True,
     }
 
-    replay_response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={
-            "envelopeId": "envelope-complete-1",
-            "status": "completed",
-            "event": "envelope-completed",
+    replay_response = _opensign_webhook_post(
+        client,
+        {
+            "event": "completed",
+            "type": "request-sign",
+            "objectId": "opensign-doc-complete-1",
+            "file": "https://files.opensign.test/signed-complete-1.pdf",
         },
+        secret,
     )
 
     assert replay_response.status_code == 204
@@ -1439,10 +1449,10 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
                 StoredDocument.category == DocumentCategory.lease,
             )
         ).all()
-        if document.document_metadata.get("source") == "docusign_signed_lease"
+        if document.document_metadata.get("source") == "opensign_signed_lease"
     ]
     assert len(signed_documents) == 1
-    assert downloads == ["envelope-complete-1"]
+    assert downloads == ["https://files.opensign.test/signed-complete-1.pdf"]
     replay_audits = session.scalars(
         select(AuditAction)
         .where(
@@ -1455,8 +1465,8 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
     assert len(replay_audits) == 2
     assert replay_audits[1].tool_input == {
         "status": "completed",
-        "event": "envelope-completed",
-        "envelope_id": "envelope-complete-1",
+        "event": "completed",
+        "object_id": "opensign-doc-complete-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(lease.id),
         "document_id": "document-1",
@@ -1464,11 +1474,11 @@ def test_tenant_onboarding_docusign_webhook_marks_lease_signed(
         "applied": False,
         "ignored_reason": "already_completed",
         "current_signing_status": "completed",
-        "current_last_event": "envelope-completed",
+        "current_last_event": "completed",
     }
 
 
-def test_tenant_onboarding_docusign_webhook_rejects_unconfigured_secret(
+def test_tenant_onboarding_opensign_webhook_rejects_unconfigured_secret(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -1479,17 +1489,21 @@ def test_tenant_onboarding_docusign_webhook_rejects_unconfigured_secret(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "sent",
-                "envelope_id": "envelope-no-secret-1",
+                "envelope_id": "opensign-doc-no-secret-1",
             },
         },
     )
     session.commit()
 
     response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        json={"envelopeId": "envelope-no-secret-1", "status": "completed"},
+        "/api/v1/tenant-onboarding/webhooks/opensign",
+        json={
+            "event": "completed",
+            "objectId": "opensign-doc-no-secret-1",
+            "file": "https://files.opensign.test/signed.pdf",
+        },
     )
 
     assert response.status_code == 401
@@ -1498,25 +1512,71 @@ def test_tenant_onboarding_docusign_webhook_rejects_unconfigured_secret(
     assert "signed_at" not in signing
 
 
-def test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope(
+def test_tenant_onboarding_opensign_webhook_rejects_invalid_signature(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    _opensign_webhook_secret(monkeypatch)
     body = _create_applied_onboarding(client, session)
     onboarding = session.get(TenantOnboarding, UUID(body["id"]))
     assert onboarding is not None
     set_lease_agreement_section(
         onboarding,
-        {"signing": {"provider": "docusign", "envelope_id": "known-envelope"}},
+        {
+            "signing": {
+                "provider": "opensign",
+                "status": "sent",
+                "envelope_id": "opensign-doc-bad-sig-1",
+            },
+        },
     )
     session.commit()
 
     response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={"envelopeId": "unknown-envelope", "status": "completed"},
+        "/api/v1/tenant-onboarding/webhooks/opensign",
+        content=json.dumps(
+            {
+                "event": "completed",
+                "objectId": "opensign-doc-bad-sig-1",
+                "file": "https://files.opensign.test/signed.pdf",
+            }
+        ).encode(),
+        headers={
+            "content-type": "application/json",
+            "x-webhook-signature": "deadbeef",
+        },
+    )
+
+    assert response.status_code == 401
+    session.refresh(onboarding)
+    signing = onboarding.delivery_data["lease_agreement"]["signing"]
+    assert "signed_at" not in signing
+
+
+def test_tenant_onboarding_opensign_webhook_ignores_unknown_object(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    secret = _opensign_webhook_secret(monkeypatch)
+    body = _create_applied_onboarding(client, session)
+    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
+    assert onboarding is not None
+    set_lease_agreement_section(
+        onboarding,
+        {"signing": {"provider": "opensign", "envelope_id": "known-opensign-doc"}},
+    )
+    session.commit()
+
+    response = _opensign_webhook_post(
+        client,
+        {
+            "event": "completed",
+            "objectId": "unknown-opensign-doc",
+            "file": "https://files.opensign.test/signed.pdf",
+        },
+        secret,
     )
 
     assert response.status_code == 204
@@ -1533,131 +1593,50 @@ def test_tenant_onboarding_docusign_webhook_ignores_unknown_envelope(
     assert webhook_audit.entity_id is None
     assert webhook_audit.tool_input == {
         "status": "completed",
-        "event": None,
-        "envelope_id": "unknown-envelope",
+        "event": "completed",
+        "object_id": "unknown-opensign-doc",
         "applied": False,
-        "ignored_reason": "unknown_envelope",
+        "ignored_reason": "unknown_object",
     }
 
 
-def test_tenant_onboarding_docusign_webhook_audits_malformed_payload(
+def test_tenant_onboarding_opensign_webhook_audits_missing_object_id(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    secret = _opensign_webhook_secret(monkeypatch)
 
-    missing_envelope_response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={"event": "envelope-completed", "status": "completed"},
-    )
-    missing_status_response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={"envelopeId": "missing-status-envelope"},
+    response = _opensign_webhook_post(
+        client,
+        {"event": "completed"},
+        secret,
     )
 
-    assert missing_envelope_response.status_code == 204
-    assert missing_status_response.status_code == 204
-    webhook_audits = session.scalars(
-        select(AuditAction)
-        .where(
+    assert response.status_code == 204
+    webhook_audit = session.scalar(
+        select(AuditAction).where(
             AuditAction.action == "signature_receipt",
             AuditAction.target_table == "tenant_onboarding",
             AuditAction.target_id.is_(None),
         )
-        .order_by(AuditAction.occurred_at.asc(), AuditAction.id.asc())
-    ).all()
-    assert [audit.entity_id for audit in webhook_audits] == [None, None]
-    assert [audit.tool_input for audit in webhook_audits] == [
-        {
-            "status": "completed",
-            "event": "envelope-completed",
-            "applied": False,
-            "ignored_reason": "missing_envelope_id",
-        },
-        {
-            "envelope_id": "missing-status-envelope",
-            "applied": False,
-            "ignored_reason": "missing_status",
-        },
-    ]
-
-
-def test_tenant_onboarding_docusign_webhook_scopes_missing_envelope_from_custom_fields(
-    client: TestClient,
-    session: Session,
-    monkeypatch,
-) -> None:
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
-    body = _create_applied_onboarding(client, session)
-    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
-    assert onboarding is not None
-    set_lease_agreement_section(
-        onboarding,
-        {
-            "signing": {
-                "provider": "docusign",
-                "status": "sent",
-                "envelope_id": "known-envelope-from-custom-fields",
-                "document_id": "document-1",
-            },
-        },
-    )
-    session.commit()
-
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={
-            "event": "envelope-completed",
-            "status": "completed",
-            "data": {
-                "envelopeSummary": {
-                    "customFields": {
-                        "textCustomFields": [
-                            {
-                                "name": "tenant_onboarding_id",
-                                "value": str(onboarding.id),
-                            },
-                            {"name": "lease_id", "value": str(onboarding.lease_id)},
-                            {"name": "document_id", "value": "document-1"},
-                            {"name": "entity_id", "value": str(onboarding.entity_id)},
-                        ]
-                    }
-                }
-            },
-        },
-    )
-
-    assert response.status_code == 204
-    webhook_audit = session.scalar(
-        select(AuditAction).where(
-            AuditAction.action == "signature_receipt",
-            AuditAction.target_table == "tenant_onboarding",
-            AuditAction.target_id == onboarding.id,
-        )
     )
     assert webhook_audit is not None
-    assert webhook_audit.entity_id == onboarding.entity_id
+    assert webhook_audit.entity_id is None
     assert webhook_audit.tool_input == {
-        "status": "completed",
-        "event": "envelope-completed",
-        "tenant_onboarding_id": str(onboarding.id),
-        "lease_id": str(onboarding.lease_id),
-        "document_id": "document-1",
         "applied": False,
-        "ignored_reason": "missing_envelope_id",
+        "ignored_reason": "missing_object_id",
+        "event": "completed",
+        "status": "completed",
     }
 
 
-def test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt(
+def test_tenant_onboarding_opensign_webhook_audits_missing_status(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    secret = _opensign_webhook_secret(monkeypatch)
     body = _create_applied_onboarding(client, session)
     onboarding = session.get(TenantOnboarding, UUID(body["id"]))
     assert onboarding is not None
@@ -1665,19 +1644,19 @@ def test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "sent",
-                "envelope_id": "missing-status-known-envelope",
+                "envelope_id": "opensign-doc-missing-status-1",
                 "document_id": "document-1",
             },
         },
     )
     session.commit()
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={"envelopeId": "missing-status-known-envelope"},
+    response = _opensign_webhook_post(
+        client,
+        {"objectId": "opensign-doc-missing-status-1"},
+        secret,
     )
 
     assert response.status_code == 204
@@ -1691,7 +1670,7 @@ def test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt(
     assert webhook_audit is not None
     assert webhook_audit.entity_id == onboarding.entity_id
     assert webhook_audit.tool_input == {
-        "envelope_id": "missing-status-known-envelope",
+        "object_id": "opensign-doc-missing-status-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(onboarding.lease_id),
         "document_id": "document-1",
@@ -1700,17 +1679,17 @@ def test_tenant_onboarding_docusign_webhook_scopes_missing_status_receipt(
     }
 
 
-def test_tenant_onboarding_docusign_webhook_audits_non_object_payload(
+def test_tenant_onboarding_opensign_webhook_audits_non_object_payload(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    secret = _opensign_webhook_secret(monkeypatch)
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json=["envelope-completed"],
+    response = _opensign_webhook_post(
+        client,
+        ["completed"],
+        secret,
     )
 
     assert response.status_code == 204
@@ -1730,20 +1709,18 @@ def test_tenant_onboarding_docusign_webhook_audits_non_object_payload(
     }
 
 
-def test_tenant_onboarding_docusign_webhook_audits_invalid_json(
+def test_tenant_onboarding_opensign_webhook_audits_invalid_json(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    webhook_headers = {
-        **_docusign_webhook_headers(monkeypatch),
-        "content-type": "application/json",
-    }
+    secret = _opensign_webhook_secret(monkeypatch)
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        content="{",
+    response = _opensign_webhook_post(
+        client,
+        None,
+        secret,
+        raw=b"{",
     )
 
     assert response.status_code == 204
@@ -1762,12 +1739,12 @@ def test_tenant_onboarding_docusign_webhook_audits_invalid_json(
     }
 
 
-def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
+def test_tenant_onboarding_opensign_webhook_ignores_completed_after_declined(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    secret = _opensign_webhook_secret(monkeypatch)
     body = _create_applied_onboarding(client, session)
     onboarding = session.get(TenantOnboarding, UUID(body["id"]))
     assert onboarding is not None
@@ -1775,32 +1752,31 @@ def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "declined",
-                "envelope_id": "envelope-declined-then-complete-1",
-                "last_event": "envelope-declined",
+                "envelope_id": "opensign-doc-declined-then-complete-1",
+                "last_event": "declined",
             },
         },
     )
     session.commit()
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={
-            "event": "envelope-completed",
-            "data": {
-                "envelopeId": "envelope-declined-then-complete-1",
-                "envelopeSummary": {"status": "completed"},
-            },
+    response = _opensign_webhook_post(
+        client,
+        {
+            "event": "completed",
+            "type": "request-sign",
+            "objectId": "opensign-doc-declined-then-complete-1",
+            "file": "https://files.opensign.test/signed.pdf",
         },
+        secret,
     )
 
     assert response.status_code == 204
     session.refresh(onboarding)
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
     assert signing["status"] == "declined"
-    assert signing["last_event"] == "envelope-declined"
+    assert signing["last_event"] == "declined"
     assert "signed_at" not in signing
     assert "lease_activation_review" not in signing
     webhook_audit = session.scalar(
@@ -1813,30 +1789,29 @@ def test_tenant_onboarding_docusign_webhook_ignores_completed_after_declined(
     assert webhook_audit is not None
     assert webhook_audit.tool_input == {
         "status": "completed",
-        "event": "envelope-completed",
-        "envelope_id": "envelope-declined-then-complete-1",
+        "event": "completed",
+        "object_id": "opensign-doc-declined-then-complete-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(onboarding.lease_id),
         "applied": False,
         "ignored_reason": "event_not_allowed",
         "current_signing_status": "declined",
-        "current_last_event": "envelope-declined",
+        "current_last_event": "declined",
     }
 
 
-def test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields(
+def test_tenant_onboarding_opensign_webhook_records_declined_object(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
     downloads: list[str] = []
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
+    secret = _opensign_webhook_secret(monkeypatch)
 
-    def fake_download(envelope_id, settings):  # noqa: ANN001, ARG001
-        downloads.append(envelope_id)
+    def fake_download(signed_file_url, settings):  # noqa: ANN001, ARG001
+        downloads.append(signed_file_url)
         return SignedLeaseDocumentResult(
             status="downloaded",
-            filename=f"signed-{envelope_id}.pdf",
             content_type="application/pdf",
             file_data=b"%PDF signed lease",
         )
@@ -1853,9 +1828,9 @@ def test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "sent",
-                "envelope_id": "envelope-custom-field-mismatch-1",
+                "envelope_id": "opensign-doc-declined-1",
                 "document_id": "document-1",
                 "sent_at": utcnow().isoformat(),
             },
@@ -1863,116 +1838,25 @@ def test_tenant_onboarding_docusign_webhook_ignores_mismatched_custom_fields(
     )
     session.commit()
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={
-            "event": "envelope-completed",
-            "data": {
-                "envelopeId": "envelope-custom-field-mismatch-1",
-                "envelopeSummary": {
-                    "status": "completed",
-                    "customFields": {
-                        "textCustomFields": [
-                            {
-                                "name": "tenant_onboarding_id",
-                                "value": str(UUID(int=0)),
-                            },
-                            {"name": "lease_id", "value": str(onboarding.lease_id)},
-                            {"name": "document_id", "value": "document-1"},
-                        ]
-                    },
-                },
-            },
-        },
-    )
-
-    assert response.status_code == 204
-    session.refresh(onboarding)
-    signing = onboarding.delivery_data["lease_agreement"]["signing"]
-    assert signing["status"] == "sent"
-    assert "signed_at" not in signing
-    assert "lease_activation_review" not in signing
-    assert downloads == []
-    webhook_audit = session.scalar(
-        select(AuditAction).where(
-            AuditAction.action == "signature_receipt",
-            AuditAction.target_table == "tenant_onboarding",
-            AuditAction.target_id == onboarding.id,
-        )
-    )
-    assert webhook_audit is not None
-    assert webhook_audit.tool_input == {
-        "status": "completed",
-        "event": "envelope-completed",
-        "envelope_id": "envelope-custom-field-mismatch-1",
-        "tenant_onboarding_id": str(onboarding.id),
-        "lease_id": str(onboarding.lease_id),
-        "document_id": "document-1",
-        "applied": False,
-        "ignored_reason": "custom_fields_mismatch",
-    }
-
-
-def test_tenant_onboarding_docusign_webhook_records_declined_envelope(
-    client: TestClient,
-    session: Session,
-    monkeypatch,
-) -> None:
-    downloads: list[str] = []
-    webhook_headers = _docusign_webhook_headers(monkeypatch)
-
-    def fake_download(envelope_id, settings):  # noqa: ANN001, ARG001
-        downloads.append(envelope_id)
-        return SignedLeaseDocumentResult(
-            status="downloaded",
-            filename=f"signed-{envelope_id}.pdf",
-            content_type="application/pdf",
-            file_data=b"%PDF signed lease",
-        )
-
-    monkeypatch.setattr(
-        tenant_onboarding_router,
-        "download_signed_lease_document",
-        fake_download,
-    )
-    body = _create_applied_onboarding(client, session)
-    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
-    assert onboarding is not None
-    set_lease_agreement_section(
-        onboarding,
+    response = _opensign_webhook_post(
+        client,
         {
-            "signing": {
-                "provider": "docusign",
-                "status": "sent",
-                "envelope_id": "envelope-declined-1",
-                "document_id": "document-1",
-                "sent_at": utcnow().isoformat(),
-            },
+            "event": "declined",
+            "objectId": "opensign-doc-declined-1",
+            "declinedReason": "Tenant rejected the terms.",
         },
-    )
-    session.commit()
-
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers=webhook_headers,
-        json={
-            "event": "envelope-declined",
-            "data": {
-                "envelopeId": "envelope-declined-1",
-                "envelopeSummary": {"status": "declined"},
-            },
-        },
+        secret,
     )
 
     assert response.status_code == 204
     session.refresh(onboarding)
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "declined"
-    assert signing["envelope_id"] == "envelope-declined-1"
-    assert signing["last_event"] == "envelope-declined"
+    assert signing["envelope_id"] == "opensign-doc-declined-1"
+    assert signing["last_event"] == "declined"
     assert signing["last_event_at"] is not None
+    assert signing["error"] == "Tenant rejected the terms."
     assert signing["provider_events"][0]["status"] == "declined"
     assert "signed_at" not in signing
     assert "signed_document_id" not in signing
@@ -1988,8 +1872,8 @@ def test_tenant_onboarding_docusign_webhook_records_declined_envelope(
     assert webhook_audit is not None
     assert webhook_audit.tool_input == {
         "status": "declined",
-        "event": "envelope-declined",
-        "envelope_id": "envelope-declined-1",
+        "event": "declined",
+        "object_id": "opensign-doc-declined-1",
         "tenant_onboarding_id": str(onboarding.id),
         "lease_id": str(onboarding.lease_id),
         "document_id": "document-1",
@@ -1997,7 +1881,7 @@ def test_tenant_onboarding_docusign_webhook_records_declined_envelope(
     }
 
 
-def test_tenant_onboarding_activate_lease_after_docusign_completion(
+def test_tenant_onboarding_activate_lease_after_opensign_completion(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -2011,12 +1895,12 @@ def test_tenant_onboarding_activate_lease_after_docusign_completion(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "completed",
-                "envelope_id": "envelope-activate-1",
+                "envelope_id": "opensign-doc-activate-1",
                 "signed_at": utcnow().isoformat(),
-                "signed_by_actor": "provider:docusign",
-                "source": "docusign_webhook",
+                "signed_by_actor": "provider:opensign",
+                "source": "opensign_webhook",
                 "signed_document_id": "document-signed-1",
                 "lease_activation_review": {
                     "status": "ready_for_review",
@@ -2037,10 +1921,10 @@ def test_tenant_onboarding_activate_lease_after_docusign_completion(
     session.refresh(onboarding)
     assert lease.status == LeaseStatus.active
     activation = lease.lease_metadata["activation"]
-    assert activation["source"] == "tenant_onboarding_docusign"
+    assert activation["source"] == "tenant_onboarding_opensign"
     assert activation["tenant_onboarding_id"] == body["id"]
     assert activation["signed_document_id"] == "document-signed-1"
-    assert activation["envelope_id"] == "envelope-activate-1"
+    assert activation["envelope_id"] == "opensign-doc-activate-1"
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
     assert signing["lease_activation_review"]["status"] == "activated"
     assert signing["lease_activation_review"]["current_lease_status"] == "active"
@@ -2055,9 +1939,9 @@ def test_tenant_onboarding_activate_lease_after_docusign_completion(
     assert onboarding_activation_audit is not None
     assert onboarding_activation_audit.tool_input == {
         "lease_id": str(lease.id),
-        "source": "tenant_onboarding_docusign",
+        "source": "tenant_onboarding_opensign",
         "signed_document_id": "document-signed-1",
-        "envelope_id": "envelope-activate-1",
+        "envelope_id": "opensign-doc-activate-1",
     }
     lease_activation_audit = session.scalar(
         select(AuditAction).where(
@@ -2069,9 +1953,9 @@ def test_tenant_onboarding_activate_lease_after_docusign_completion(
     assert lease_activation_audit is not None
     assert lease_activation_audit.tool_input == {
         "tenant_onboarding_id": body["id"],
-        "source": "tenant_onboarding_docusign",
+        "source": "tenant_onboarding_opensign",
         "signed_document_id": "document-signed-1",
-        "envelope_id": "envelope-activate-1",
+        "envelope_id": "opensign-doc-activate-1",
     }
 
 
@@ -2103,16 +1987,16 @@ def test_tenant_onboarding_activate_lease_rejects_missing_signed_document(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "completed",
-                "envelope_id": "envelope-missing-document-1",
+                "envelope_id": "opensign-doc-missing-document-1",
                 "signed_at": utcnow().isoformat(),
-                "signed_by_actor": "provider:docusign",
-                "source": "docusign_webhook",
+                "signed_by_actor": "provider:opensign",
+                "source": "opensign_webhook",
                 "signed_document_retention": {
                     "status": "skipped",
-                    "provider": "docusign",
-                    "error": "DocuSign download is not configured.",
+                    "provider": "opensign",
+                    "error": "OpenSign download is not configured.",
                 },
                 "lease_activation_review": {
                     "status": "ready_for_review",
@@ -2150,12 +2034,12 @@ def test_tenant_onboarding_activate_lease_rejects_missing_activation_review(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "completed",
-                "envelope_id": "envelope-no-review-1",
+                "envelope_id": "opensign-doc-no-review-1",
                 "signed_at": utcnow().isoformat(),
-                "signed_by_actor": "provider:docusign",
-                "source": "docusign_webhook",
+                "signed_by_actor": "provider:opensign",
+                "source": "opensign_webhook",
                 "signed_document_id": "document-signed-1",
             },
         },
@@ -2174,70 +2058,38 @@ def test_tenant_onboarding_activate_lease_rejects_missing_activation_review(
     assert lease.status == LeaseStatus.pending
 
 
-def test_tenant_onboarding_docusign_webhook_rejects_invalid_secret(
+def test_tenant_onboarding_opensign_webhook_records_signed_declined_event(
     client: TestClient,
     session: Session,
     monkeypatch,
 ) -> None:
-    original_get_settings = tenant_onboarding_router.get_settings
-    monkeypatch.setattr(
-        tenant_onboarding_router,
-        "get_settings",
-        lambda: original_get_settings().model_copy(
-            update={"docusign_webhook_secret": "docu-secret"}
-        ),
-    )
+    secret = _opensign_webhook_secret(monkeypatch)
     body = _create_applied_onboarding(client, session)
     onboarding = session.get(TenantOnboarding, UUID(body["id"]))
     assert onboarding is not None
     set_lease_agreement_section(
         onboarding,
-        {"signing": {"provider": "docusign", "envelope_id": "envelope-secret-1"}},
+        {
+            "signing": {
+                "provider": "opensign",
+                "status": "sent",
+                "envelope_id": "opensign-doc-signed-declined-1",
+            }
+        },
     )
     session.commit()
 
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers={"x-docusign-webhook-secret": "wrong"},
-        json={"envelopeId": "envelope-secret-1", "status": "completed"},
-    )
-
-    assert response.status_code == 401
-
-
-def test_tenant_onboarding_docusign_webhook_accepts_shared_secret_header(
-    client: TestClient,
-    session: Session,
-    monkeypatch,
-) -> None:
-    original_get_settings = tenant_onboarding_router.get_settings
-    monkeypatch.setattr(
-        tenant_onboarding_router,
-        "get_settings",
-        lambda: original_get_settings().model_copy(
-            update={"docusign_webhook_secret": "docu-secret"}
-        ),
-    )
-    body = _create_applied_onboarding(client, session)
-    onboarding = session.get(TenantOnboarding, UUID(body["id"]))
-    assert onboarding is not None
-    set_lease_agreement_section(
-        onboarding,
-        {"signing": {"provider": "docusign", "envelope_id": "envelope-shared-1"}},
-    )
-    session.commit()
-
-    response = client.post(
-        "/api/v1/tenant-onboarding/webhooks/docusign",
-        headers={"x-leasium-webhook-secret": "docu-secret"},
-        json={"envelopeId": "envelope-shared-1", "status": "declined"},
+    response = _opensign_webhook_post(
+        client,
+        {"event": "declined", "objectId": "opensign-doc-signed-declined-1"},
+        secret,
     )
 
     assert response.status_code == 204
     session.refresh(onboarding)
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
     assert signing["status"] == "declined"
-    assert signing["envelope_id"] == "envelope-shared-1"
+    assert signing["envelope_id"] == "opensign-doc-signed-declined-1"
 
 
 def test_tenant_onboarding_send_lease_pack_rejects_before_apply(

@@ -1163,15 +1163,15 @@ def _rent_review_candidates(
     return candidates
 
 
-ACTIVE_DOCUSIGN_SIGNING_STATUSES = {"queued", "sent", "delivered"}
-RETRY_DOCUSIGN_SIGNING_STATUSES = {
+ACTIVE_SIGNING_STATUSES = {"queued", "sent", "delivered"}
+RETRY_SIGNING_STATUSES = {
     "declined",
     "failed",
     "skipped",
     "voided",
     "deleted",
 }
-DOCUSIGN_WAITING_DAYS = 7
+SIGNING_WAITING_DAYS = 7
 
 
 def _tenant_lifecycle_stall_candidates(
@@ -1209,7 +1209,7 @@ def _tenant_lifecycle_stall_candidates(
             continue
         agreement_signed = lease_agreement_signed(onboarding)
         signing_provider = signing.get("provider")
-        if signing_provider not in {"docusign", "tenant_upload"}:
+        if signing_provider not in {"opensign", "tenant_upload"}:
             continue
 
         tenant = session.get(Tenant, onboarding.tenant_id)
@@ -1232,7 +1232,7 @@ def _tenant_lifecycle_stall_candidates(
         raw_status = signing.get("status")
         signing_status = raw_status if isinstance(raw_status, str) else ""
         provider_label = (
-            "DocuSign" if signing_provider == "docusign" else "tenant upload"
+            "OpenSign" if signing_provider == "opensign" else "tenant upload"
         )
         envelope_id = signing.get("envelope_id")
         envelope_label = envelope_id if isinstance(envelope_id, str) else "unknown"
@@ -1256,8 +1256,8 @@ def _tenant_lifecycle_stall_candidates(
         detail_parts: list[str] = [
             f"{provider_label} {signing_status or 'unknown'}",
         ]
-        if signing_provider == "docusign":
-            detail_parts.append(f"envelope {envelope_label}")
+        if signing_provider == "opensign":
+            detail_parts.append(f"request {envelope_label}")
         else:
             signed_document_id = signing.get("signed_document_id")
             if isinstance(signed_document_id, str):
@@ -1266,8 +1266,8 @@ def _tenant_lifecycle_stall_candidates(
         due_at: date | None = None
 
         if (
-            signing_provider == "docusign"
-            and signing_status in ACTIVE_DOCUSIGN_SIGNING_STATUSES
+            signing_provider == "opensign"
+            and signing_status in ACTIVE_SIGNING_STATUSES
             and not signing.get("signed_at")
         ):
             sent_at = _parse_iso_datetime(
@@ -1276,7 +1276,7 @@ def _tenant_lifecycle_stall_candidates(
             if sent_at is None:
                 continue
             days_waiting = (today - sent_at.date()).days
-            if days_waiting < DOCUSIGN_WAITING_DAYS:
+            if days_waiting < SIGNING_WAITING_DAYS:
                 continue
             due_at = sent_at.date()
             detail_parts.append(f"waiting {days_waiting} days")
@@ -1284,19 +1284,19 @@ def _tenant_lifecycle_stall_candidates(
                 subject = ""
                 body = ""
             else:
-                subject = f"DocuSign envelope waiting ({prop.name})"
+                subject = f"Signature request waiting ({prop.name})"
                 body = (
                     f"{greeting}\n\n"
-                    f"The DocuSign envelope for your lease at {location} is still "
+                    f"The e-signature request for your lease at {location} is still "
                     "waiting for completion.\n\n"
-                    "Please review the DocuSign email and complete signing, or reply "
+                    "Please review the OpenSign email and complete signing, or reply "
                     "if you need the request resent or have questions about the lease "
                     "pack.\n\n"
                     "Thanks,\nThe property team"
                 )
         elif (
-            signing_provider == "docusign"
-            and signing_status in RETRY_DOCUSIGN_SIGNING_STATUSES
+            signing_provider == "opensign"
+            and signing_status in RETRY_SIGNING_STATUSES
             and not agreement_signed
         ):
             event_at = _parse_iso_datetime(
@@ -1314,10 +1314,10 @@ def _tenant_lifecycle_stall_candidates(
                 subject = ""
                 body = ""
             elif signing_status == "skipped":
-                subject = f"DocuSign setup needed ({prop.name})"
+                subject = f"Signature setup needed ({prop.name})"
                 body = (
                     f"{greeting}\n\n"
-                    f"The DocuSign signing request for your lease at {location} "
+                    f"The e-signature request for your lease at {location} "
                     "could not be sent because provider setup needs attention."
                     "\n\n"
                     "We are fixing the signing setup before sending a fresh "
@@ -1326,10 +1326,10 @@ def _tenant_lifecycle_stall_candidates(
                     "Thanks,\nThe property team"
                 )
             else:
-                subject = f"DocuSign retry needed ({prop.name})"
+                subject = f"Signature retry needed ({prop.name})"
                 body = (
                     f"{greeting}\n\n"
-                    f"The DocuSign signing request for your lease at {location} "
+                    f"The e-signature request for your lease at {location} "
                     f"was marked {signing_status}.\n\n"
                     "We are reviewing the lease pack before sending a fresh signing "
                     "request. Please reply if there is anything we should correct "

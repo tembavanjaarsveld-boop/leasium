@@ -810,6 +810,15 @@ fixes · deferrals.
   the compact card prefers the trust over "Ownership unknown" · verified by
   properties-ux + reassign smoke (27 passed, no regression) and production build;
   no provider, comms, or accounting path touched · none deferred.
+- 2026-06-25 · Lease e-signature provider swap (DocuSign → OpenSign) · copy-only
+  change on existing surfaces: tenant detail signing card, tenant lease page,
+  Settings Integrations health card, and the lease-pack/lifecycle cue copy
+  ("DocuSign envelope" → "e-signature request", "DocuSign" → "OpenSign", envelope
+  → signing request) · no new or restructured surface, so no new Figma frame ·
+  slop test on the new strings (plain English, no provider jargon) · verified by
+  eslint + tsc clean and the OpenSign lease-signing smoke (4 passed) at desktop
+  chromium · 1440/390 capture not run (copy-only on already-approved surfaces) ·
+  none deferred.
 
 ## UX Debt Register
 

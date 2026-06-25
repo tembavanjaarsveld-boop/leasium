@@ -1135,7 +1135,7 @@ def test_tenant_portal_account_session_keeps_lease_scoped_signed_documents(
         byte_size=16,
         file_data=b"signed-lease-pdf",
         category=DocumentCategory.lease,
-        document_metadata={"source": "docusign_signed_lease"},
+        document_metadata={"source": "opensign_signed_lease"},
     )
     session.add(signed_lease)
     session.commit()
@@ -3170,7 +3170,7 @@ def test_document_intake_accept_lease_match_rejects_differences(
     assert response.json()["detail"] == "Resolve lease match differences before accepting."
 
 
-def test_document_intake_accept_lease_match_rejects_active_docusign_envelope(
+def test_document_intake_accept_lease_match_rejects_active_opensign_request(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -3183,7 +3183,7 @@ def test_document_intake_accept_lease_match_rejects_active_docusign_envelope(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "sent",
                 "envelope_id": "active-envelope-lease-match",
                 "sent_at": datetime.now(UTC).isoformat(),
@@ -3233,7 +3233,7 @@ def test_document_intake_accept_lease_match_rejects_active_docusign_envelope(
 
     assert response.status_code == 409
     assert response.json()["detail"] == (
-        "Resolve the active DocuSign envelope before accepting a tenant-uploaded lease."
+        "Resolve the active e-signature request before accepting a tenant-uploaded lease."
     )
     session.refresh(intake)
     session.refresh(document)
@@ -3255,12 +3255,12 @@ def test_document_intake_accept_lease_match_rejects_already_signed_lease_agreeme
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "completed",
                 "envelope_id": "completed-envelope-lease-match",
                 "signed_at": signed_at,
-                "signed_by_actor": "provider:docusign",
-                "source": "docusign_webhook",
+                "signed_by_actor": "provider:opensign",
+                "source": "opensign_webhook",
                 "signed_document_id": "signed-document-lease-match",
             }
         },
@@ -3314,7 +3314,7 @@ def test_document_intake_accept_lease_match_rejects_already_signed_lease_agreeme
     assert intake.status == DocumentIntakeStatus.ready_for_review
     assert document.document_metadata.get("accepted_lease_match") is None
     signing = onboarding.delivery_data["lease_agreement"]["signing"]
-    assert signing["provider"] == "docusign"
+    assert signing["provider"] == "opensign"
     assert signing["status"] == "completed"
     assert signing["signed_at"] == signed_at
     assert signing["signed_document_id"] == "signed-document-lease-match"
@@ -3639,7 +3639,7 @@ def test_tenant_portal_lease_questions_gate_signing_and_apply(
     assert signed_agreement["signed_at"] is not None
 
 
-def test_tenant_portal_lease_signing_rejects_pending_docusign_envelope(
+def test_tenant_portal_lease_signing_rejects_pending_opensign_request(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -3659,7 +3659,7 @@ def test_tenant_portal_lease_signing_rejects_pending_docusign_envelope(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "queued",
                 "envelope_id": "envelope-pending",
                 "document_id": scope["document_id"],
@@ -3676,12 +3676,12 @@ def test_tenant_portal_lease_signing_rejects_pending_docusign_envelope(
 
     assert response.status_code == 409
     assert response.json()["detail"] == (
-        "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
-        "instead of signing inside Leasium."
+        "An e-signature request is waiting for completion. Complete the signing "
+        "request instead of signing inside Relby."
     )
 
 
-def test_tenant_portal_session_locks_leasium_signing_for_active_docusign_envelope(
+def test_tenant_portal_session_locks_leasium_signing_for_active_opensign_request(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -3701,7 +3701,7 @@ def test_tenant_portal_session_locks_leasium_signing_for_active_docusign_envelop
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "queued",
                 "envelope_id": "envelope-pending",
                 "document_id": scope["document_id"],
@@ -3714,16 +3714,16 @@ def test_tenant_portal_session_locks_leasium_signing_for_active_docusign_envelop
 
     assert response.status_code == 200
     agreement = response.json()["lease_agreement"]
-    assert agreement["signing_provider"] == "docusign"
+    assert agreement["signing_provider"] == "opensign"
     assert agreement["signing_status"] == "queued"
     assert agreement["status"] == "not_ready"
     assert agreement["signing_locked_reason"] == (
-        "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
-        "instead of signing inside Leasium."
+        "An e-signature request is waiting for completion. Complete the signing "
+        "request instead of signing inside Relby."
     )
 
 
-def test_tenant_portal_lease_signing_rejects_delivered_docusign_envelope(
+def test_tenant_portal_lease_signing_rejects_delivered_opensign_request(
     client: TestClient,
     session: Session,
 ) -> None:
@@ -3743,7 +3743,7 @@ def test_tenant_portal_lease_signing_rejects_delivered_docusign_envelope(
         onboarding,
         {
             "signing": {
-                "provider": "docusign",
+                "provider": "opensign",
                 "status": "delivered",
                 "envelope_id": "envelope-delivered",
                 "document_id": scope["document_id"],
@@ -3760,8 +3760,8 @@ def test_tenant_portal_lease_signing_rejects_delivered_docusign_envelope(
 
     assert response.status_code == 409
     assert response.json()["detail"] == (
-        "A DocuSign envelope is waiting for completion. Complete the DocuSign request "
-        "instead of signing inside Leasium."
+        "An e-signature request is waiting for completion. Complete the signing "
+        "request instead of signing inside Relby."
     )
 
 

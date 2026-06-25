@@ -443,10 +443,10 @@ function leasePackSentAt(item: TenantOnboardingRecord) {
   return item.delivery_data.lease_pack?.sent_at ?? null;
 }
 
-function docusignReceipt(
+function esignReceipt(
   deliveryData: TenantOnboardingRecord["delivery_data"],
 ) {
-  const receipt = deliveryData.lease_pack?.docusign;
+  const receipt = deliveryData.lease_pack?.esign;
   return isRecord(receipt) ? receipt : null;
 }
 
@@ -519,7 +519,7 @@ function leaseSigningStatus({
   leaseAgreement: TenantLeaseAgreementRecord | null;
 }) {
   const signing = signingRecord(leaseAgreement);
-  const receipt = docusignReceipt(deliveryData);
+  const receipt = esignReceipt(deliveryData);
   const provider =
     leaseAgreement?.signing_provider ??
     metadataString(signing.provider) ??
@@ -538,8 +538,8 @@ function leaseSigningStatus({
 
   if (leaseAgreement?.status === "signed") {
     const signedLabel =
-      provider === "docusign"
-        ? "DocuSign completed"
+      provider === "opensign"
+        ? "OpenSign completed"
         : provider === "tenant_upload"
           ? "Tenant upload accepted"
           : "Signed";
@@ -557,7 +557,7 @@ function leaseSigningStatus({
       status,
     };
   }
-  if (provider === "docusign") {
+  if (provider === "opensign") {
     if (
       status === "failed" ||
       status === "declined" ||
@@ -565,13 +565,13 @@ function leaseSigningStatus({
       status === "deleted"
     ) {
       return {
-        label: "DocuSign needs attention",
+        label: "OpenSign needs attention",
         detail:
           status === "declined"
-            ? "Envelope declined."
+            ? "Signing request declined."
             : status === "voided"
-              ? "Envelope voided."
-              : error ?? "Envelope could not be completed.",
+              ? "Signing request voided."
+              : error ?? "Signing request could not be completed.",
         tone: "danger" as const,
         envelopeId,
         signedDocumentId,
@@ -583,7 +583,7 @@ function leaseSigningStatus({
     }
     if (status === "skipped") {
       return {
-        label: "DocuSign not sent",
+        label: "OpenSign not sent",
         detail: error ?? "Provider setup is not ready.",
         tone: "warning" as const,
         envelopeId,
@@ -596,8 +596,8 @@ function leaseSigningStatus({
     }
     if (status === "queued" || status === "sent" || status === "delivered") {
       return {
-        label: "DocuSign pending",
-        detail: "Waiting for DocuSign completion.",
+        label: "OpenSign pending",
+        detail: "Waiting for OpenSign completion.",
         tone: "primary" as const,
         envelopeId,
         signedDocumentId,
@@ -1918,16 +1918,16 @@ function TenantDetail() {
       queryClient.invalidateQueries({
         queryKey: ["tenant-onboardings", tenant?.entity_id],
       });
-      const receipt = docusignReceipt(updated.delivery_data);
+      const receipt = esignReceipt(updated.delivery_data);
       const status = metadataString(receipt?.status);
       if (status === "queued" || status === "sent") {
         setLeasePackNotice(
-          "Lease pack sent. DocuSign is waiting for signature.",
+          "Lease pack sent. OpenSign is waiting for signature.",
         );
       } else if (status === "skipped") {
-        setLeasePackNotice("Lease pack sent. DocuSign setup needs attention.");
+        setLeasePackNotice("Lease pack sent. OpenSign setup needs attention.");
       } else if (status === "failed") {
-        setLeasePackNotice("Lease pack sent. DocuSign could not start.");
+        setLeasePackNotice("Lease pack sent. OpenSign could not start.");
       } else {
         setLeasePackNotice("Lease pack sent to tenant.");
       }
@@ -3301,13 +3301,13 @@ function TenantDetail() {
                   const canResendLeasePack =
                     leasePackSent &&
                     latestLeaseDocument &&
-                    signingStatus?.provider === "docusign" &&
+                    signingStatus?.provider === "opensign" &&
                     ["declined", "voided", "deleted", "failed", "skipped"].includes(
                       signingStatus.status ?? "",
                     );
                   const activationReviewStatus =
                     leaseActivationReviewStatus(leaseAgreement);
-                  const leasePackDocusign = docusignReceipt(item.delivery_data);
+                  const leasePackEsign = esignReceipt(item.delivery_data);
                   const progressSteps = onboardingProgressSteps({
                     item,
                     leaseAgreement,
@@ -3935,11 +3935,11 @@ function TenantDetail() {
                                 </StatusBadge>
                                 {signingStatus.envelopeId ? (
                                   <span className="text-xs text-muted-foreground">
-                                    Envelope {shortId(signingStatus.envelopeId)}
+                                    Request {shortId(signingStatus.envelopeId)}
                                   </span>
                                 ) : null}
                                 {metadataString(
-                                  leasePackDocusign?.document_id,
+                                  leasePackEsign?.document_id,
                                 ) ? (
                                   <span className="text-xs text-muted-foreground">
                                     Lease document attached
@@ -4000,7 +4000,7 @@ function TenantDetail() {
                               </StatusBadge>
                               {signingStatus?.envelopeId ? (
                                 <span className="text-xs text-muted-foreground">
-                                  Envelope {shortId(signingStatus.envelopeId)}
+                                  Request {shortId(signingStatus.envelopeId)}
                                 </span>
                               ) : null}
                               {signingStatus?.signedDocumentId ? (

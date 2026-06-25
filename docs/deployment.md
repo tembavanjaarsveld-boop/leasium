@@ -370,38 +370,38 @@ also accepts Twilio's signed `X-Twilio-Signature` header against either the
 request URL or `PUBLIC_API_URL`; unsigned callbacks are rejected before receipt
 metadata changes.
 
-**DocuSign integration.** When the DocuSign developer account is provisioned,
+**OpenSign integration.** When the paid OpenSign Cloud plan is provisioned,
 set on the API service:
 
-- `DOCUSIGN_ACCOUNT_ID` — DocuSign Account GUID
-- `DOCUSIGN_INTEGRATION_KEY` — Integration Key from the DocuSign console
-- `DOCUSIGN_USER_ID` — User GUID for the JWT grant (operator service account)
-- `DOCUSIGN_RSA_PRIVATE_KEY` — full PEM-encoded RSA private key
-- `DOCUSIGN_WEBHOOK_SECRET` — shared secret for verifying Connect webhook events
-- `DOCUSIGN_BASE_URL` (optional) — overrides the demo `https://demo.docusign.net/restapi`; production is `https://www.docusign.net/restapi`
-- `DOCUSIGN_AUTH_BASE_URL` (optional) — overrides the demo auth host `https://account-d.docusign.com`; production is `https://account.docusign.com`
+- `OPENSIGN_API_TOKEN` — the Live API token from OpenSign (Settings → API Token → Generate Live API Token; requires a paid Professional/Teams plan). A Sandbox token works against the sandbox base URL for pre-go-live testing.
+- `OPENSIGN_BASE_URL` — `https://app.opensignlabs.com/api/v1.2` for production (the default is the sandbox `https://sandbox.opensignlabs.com/api/v1.2`).
+- `OPENSIGN_WEBHOOK_SECRET` — the webhook security key generated in OpenSign (Settings → Webhook → Enable Authentication → Generate), used to verify the HMAC-SHA256 signature on inbound events.
 
-Until the four DocuSign JWT values are set, `stewart.integrations.docusign.send_lease_for_signature` returns `status="skipped"` with a clear `not_configured` error and never calls DocuSign. Settings > Organisation > Integrations also reports DocuSign readiness without exposing secrets, including a reminder to add `DOCUSIGN_WEBHOOK_SECRET` before live Connect testing and the exact Connect webhook URL when `PUBLIC_API_URL` is set. When configured, the helper uses JWT Grant with `signature impersonation` scope and creates a remote-signing envelope from the attached lease document, including hidden custom fields for the lease, tenant onboarding, source document, entity, property, and unit. Configure DocuSign Connect to post envelope events to `<PUBLIC_API_URL>/api/v1/tenant-onboarding/webhooks/docusign`; the API rejects Connect events until `DOCUSIGN_WEBHOOK_SECRET` is configured and supplied as `x-docusign-webhook-secret` or a `token` query parameter. Completed envelope events are only accepted for the matching active DocuSign signing record; when Connect includes Leasium custom fields, the present tenant onboarding, lease, source document, and entity ids must also match before Leasium marks `lease_agreement.signing` signed and downloads the completed `combined` PDF back into tenant documents as a signed lease. Lease status is not activated by the webhook; an operator must explicitly use the tenant-detail Activate lease action, which calls `POST /api/v1/tenant-onboarding/{id}/activate-lease`.
+Until `OPENSIGN_API_TOKEN` is set, `stewart.integrations.opensign.send_lease_for_signature` returns `status="skipped"` with a clear `not_configured` error and never calls OpenSign. Settings > Organisation > Integrations reports OpenSign readiness without exposing secrets, including reminders to add `OPENSIGN_WEBHOOK_SECRET` and to switch `OPENSIGN_BASE_URL` to the production host before live signing, plus the exact webhook URL when `PUBLIC_API_URL` is set. When configured, the helper calls `POST /createdocument` with the base64 lease PDF and a single signature widget on the lease's last page, sets `merge_certificate: true` so the completion certificate is embedded in the signed PDF, and stores the returned document `objectId` as the signing reference (persisted as `signing.envelope_id`). Configure the OpenSign webhook (Settings → Webhook) to post events to `<PUBLIC_API_URL>/api/v1/tenant-onboarding/webhooks/opensign`; the API rejects events whose `x-webhook-signature` HMAC-SHA256 (over the raw body, keyed by `OPENSIGN_WEBHOOK_SECRET`) does not match. A `completed` event is only accepted for the matching active OpenSign signing record (matched by `objectId`); terminal states (declined/failed) are not silently completed. On completion Relby marks `lease_agreement.signing` signed and downloads the signed (certificate-merged) PDF from the event's presigned `file` URL into tenant documents as a signed lease. Lease status is not activated by the webhook; an operator must explicitly use the tenant-detail Activate lease action, which calls `POST /api/v1/tenant-onboarding/{id}/activate-lease`. Note: each signature request via the API consumes an OpenSign Premium credit — monitor the balance under Settings → API Token.
 
 Live console verification:
 
 For the repeatable production go-live smoke, use
 [`docs/tenant-lifecycle-production-smoke.md`](tenant-lifecycle-production-smoke.md).
 
-1. In DocuSign, create or confirm the JWT app, RSA key pair, API account GUID,
-   integration key, and impersonated service-user GUID. Grant consent for the
-   JWT app before testing.
-2. Set the four required JWT variables plus `DOCUSIGN_WEBHOOK_SECRET` on the
-   API service. Use the production DocuSign base/auth hosts only after the app
-   is promoted out of demo.
-3. In DocuSign Connect, point envelope events at
-   `https://api.leasium.ai/api/v1/tenant-onboarding/webhooks/docusign` and pass
-   the same webhook secret as a header or token query parameter. Do not expose
-   API keys or private keys in Connect payloads or operator-facing diagnostics.
+1. In OpenSign, confirm the paid plan and generate a Live API token. Validate the
+   full send → webhook → download round-trip in the **sandbox** first (Sandbox
+   token + `https://sandbox.opensignlabs.com/api/v1.2` + a separate Sandbox
+   webhook); Live and Sandbox tokens/webhooks are not interchangeable.
+2. Set `OPENSIGN_API_TOKEN`, `OPENSIGN_BASE_URL` (production host), and
+   `OPENSIGN_WEBHOOK_SECRET` on the API service.
+3. In OpenSign Settings → Webhook, add the endpoint
+   `<PUBLIC_API_URL>/api/v1/tenant-onboarding/webhooks/opensign` (currently
+   `https://api.leasium.ai/api/v1/tenant-onboarding/webhooks/opensign`), enable
+   authentication, generate the security key, and paste the same value into
+   `OPENSIGN_WEBHOOK_SECRET`. Never expose the API token or webhook secret in
+   operator-facing diagnostics.
 4. With operator approval and the correct lease file attached, send one lease
-   pack, complete the envelope in DocuSign, and confirm Leasium records the
+   pack, complete the signing request in OpenSign, and confirm Relby records the
    signing status and retains exactly one completed signed PDF under the tenant,
-   onboarding, and lease scope.
+   onboarding, and lease scope. Calibrate the signature widget position against a
+   real lease pack with OpenSign's Debug UI (https://app.opensignlabs.com/debugpdf)
+   before the first live send.
 5. Review the signed lease on the tenant detail page, then explicitly click
    **Activate lease** only after the operator accepts the completion evidence.
 
