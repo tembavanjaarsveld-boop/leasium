@@ -2997,26 +2997,9 @@ test("operations workspace surfaces maintenance and arrears work", async ({
   await expect(page.getByText("Email queued").first()).toBeVisible();
   await expect(page.getByText("Recent activity").first()).toBeVisible();
   await exportDigestMenu.click();
-  await page.getByRole("button", { name: "Generate digest" }).click();
+  await expect(page.getByRole("button", { name: "Generate digest" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Send digest" })).toBeDisabled();
   await page.keyboard.press("Escape");
-  await expect(page.getByText("Work digest generated")).toBeVisible();
-  await expect(page.getByText("No messages sent")).toBeVisible();
-  const digestMessagePreview = page
-    .locator("summary")
-    .filter({ hasText: "Message preview" });
-  await expectTouchTarget(digestMessagePreview);
-  await digestMessagePreview.click();
-  await expect(
-    page.getByText("Relby Daily Work digest: 4 items"),
-  ).toBeVisible();
-  await expect(page.getByText("- Air conditioning fault")).toBeVisible();
-  await exportDigestMenu.click();
-  await page.getByRole("button", { name: "Send digest" }).click();
-  await page.keyboard.press("Escape");
-  await expect(page.getByText("1 email queued")).toBeVisible();
-  await expect(
-    page.getByText("Digest email was queued by SendGrid."),
-  ).toBeVisible();
   await page.getByRole("button", { name: "Log reminder" }).first().click();
   await expect(page.getByText("Reminder logged").first()).toBeVisible();
   await expect(

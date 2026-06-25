@@ -712,6 +712,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   `Reminder trust` for the reminder run. These are review-first/local action
   selections only: no provider send, Xero/Basiq, payment, or reconciliation
   path changed.
+- [x] **2026-06-26 Switcher removal slice 9 — Operations row-trust actions:**
+  Operations compliance and UX row actions now stay available in all-entities
+  mode without adding action trust pickers. Compliance completion, evidence
+  linking/upload, maintenance inline status/priority/actions, assignment
+  controls, and arrears promise-to-pay/actions use each row's own `entity_id`
+  for row context, document loading, uploads, and local cache updates.
+  Standalone Work digest generation remains single-entity-gated as a deferred
+  product/API decision. No provider send, Xero/Basiq, payment, reconciliation,
+  or dispatch path changed.
 - [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
   `/maintenance/work-orders` now accepts omitted `entity_id` as an
   organisation-wide read scoped to the operator's readable entities, while

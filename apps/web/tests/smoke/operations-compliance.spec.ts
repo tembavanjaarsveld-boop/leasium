@@ -276,6 +276,7 @@ test("operations compliance tab links reviewed evidence to a needs-evidence chec
   await mockLeasiumApi(page, { operationsComplianceDemo: true });
 
   const evidenceLinkPayloads: unknown[] = [];
+  const evidenceDocumentEntityRequests: string[] = [];
   const forbiddenMutationCalls: string[] = [];
   const forbiddenPathPatterns = [
     "/providers",
@@ -299,6 +300,13 @@ test("operations compliance tab links reviewed evidence to a needs-evidence chec
     const path = new URL(request.url()).pathname;
     const apiPath = path.replace("/api/v1", "");
     if (
+      request.method() === "GET" &&
+      apiPath === "/documents"
+    ) {
+      evidenceDocumentEntityRequests.push(
+        new URL(request.url()).searchParams.get("entity_id") ?? "",
+      );
+    } else if (
       request.method() === "POST" &&
       apiPath === "/compliance/checks/compliance-check-bank-1/evidence"
     ) {
@@ -341,6 +349,7 @@ test("operations compliance tab links reviewed evidence to a needs-evidence chec
   await expect(
     documentSelect.locator("option", { hasText: "bright-cafe-insurance.pdf" }),
   ).toHaveCount(1);
+  expect(evidenceDocumentEntityRequests).toContain("entity-1");
   await documentSelect.selectOption("portal-document-1");
   await checkRow
     .getByLabel("Certificate expiry (optional)")
@@ -375,6 +384,7 @@ test("operations compliance tab uploads a new file and links it as evidence", as
 
   const evidenceLinkPayloads: unknown[] = [];
   const documentUploadContentTypes: string[] = [];
+  const documentUploadBodies: string[] = [];
   const uploadedDocumentIds: string[] = [];
   const forbiddenMutationCalls: string[] = [];
 
@@ -397,6 +407,7 @@ test("operations compliance tab uploads a new file and links it as evidence", as
     const apiPath = path.replace("/api/v1", "");
     if (request.method() === "POST" && apiPath === "/documents") {
       documentUploadContentTypes.push(request.headers()["content-type"] ?? "");
+      documentUploadBodies.push(request.postData() ?? "");
     } else if (
       request.method() === "POST" &&
       apiPath === "/compliance/checks/compliance-check-bank-1/evidence"
@@ -447,6 +458,8 @@ test("operations compliance tab uploads a new file and links it as evidence", as
 
   expect(documentUploadContentTypes).toHaveLength(1);
   expect(documentUploadContentTypes[0]).toContain("multipart/form-data");
+  expect(documentUploadBodies[0]).toContain('name="entity_id"');
+  expect(documentUploadBodies[0]).toContain("entity-1");
   expect(uploadedDocumentIds).toHaveLength(1);
   expect(uploadedDocumentIds[0]).toMatch(/^operator-document-upload-/);
   expect(evidenceLinkPayloads).toHaveLength(1);

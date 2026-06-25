@@ -188,6 +188,12 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Operations compliance + UX actions · existing desktop/mobile
+  smoke surfaces checked through `operations-compliance`, `operations-ux`, and
+  the relevant `app-flows` slice · fixes: row-backed compliance, maintenance,
+  assignment, and arrears actions now use each row's trust in all-entities mode
+  without adding action selectors · deferred: standalone Work digest
+  generation/send remains single-entity-gated pending product/API decision.
 - 2026-06-26 · Contractors + Tenants · existing desktop/mobile smoke surfaces
   checked through `contractors`, `tenants-ux`, and the relevant `app-flows`
   subset · fixes: added compact default-first trust selectors for Add

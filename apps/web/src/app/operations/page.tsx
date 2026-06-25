@@ -34,6 +34,7 @@ import Link from "next/link";
 import {
   type KeyboardEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -1345,6 +1346,13 @@ function memberLabel(member: SecurityMemberRecord) {
 function memberCanReceiveWork(member: SecurityMemberRecord, entityId: string) {
   const role = memberEntityRole(member, entityId);
   return Boolean(member.is_active && role && role !== "viewer");
+}
+
+function memberCanReceiveAnyWork(member: SecurityMemberRecord) {
+  return Boolean(
+    member.is_active &&
+      member.roles.some((role) => role.role && role.role !== "viewer"),
+  );
 }
 
 function isAssignableQueueItem(item: QueueItem): item is AssignableQueueItem {
@@ -3538,6 +3546,7 @@ function OperationsWorkspace() {
   // the check and never calls a provider.
   const [evidenceLinkForm, setEvidenceLinkForm] = useState<{
     checkId: string;
+    entityId: string;
     documentId: string;
     certificateExpiresOn: string;
     file: File | null;
@@ -3604,7 +3613,8 @@ function OperationsWorkspace() {
 
   // All-entities mode: entity-scoped queries use scopedEntityId (empty in
   // all-mode, so they stay disabled) and the page reads merged fan-out
-  // results. Single-entity writes are gated off while allMode is on.
+  // results. Row-backed actions use each row's own entity_id; standalone
+  // creates remain separate action-scope decisions.
   const allMode = isAllEntities(selectedEntityId);
   const scopedEntityId = scopeEntityId(selectedEntityId);
   const entityNameById = useMemo(
@@ -3679,9 +3689,10 @@ function OperationsWorkspace() {
 
   // Stored documents are only fetched while an evidence-link form is open.
   const evidenceDocumentsQuery = useQuery({
-    queryKey: ["operations-evidence-documents", scopedEntityId],
-    queryFn: () => listDocuments({ entity_id: scopedEntityId }),
-    enabled: Boolean(scopedEntityId) && evidenceLinkForm !== null,
+    queryKey: ["operations-evidence-documents", evidenceLinkForm?.entityId ?? ""],
+    queryFn: () =>
+      listDocuments({ entity_id: evidenceLinkForm?.entityId ?? "" }),
+    enabled: Boolean(evidenceLinkForm?.entityId),
   });
 
   const maintenanceQuery = useQuery({
@@ -3872,7 +3883,7 @@ function OperationsWorkspace() {
       }),
     onSuccess: (completedCheck, check) => {
       queryClient.setQueryData<ComplianceCheckRecord[]>(
-        ["operations-compliance-checks", scopedEntityId],
+        ["operations-compliance-checks", check.entity_id],
         (current) =>
           current?.map((row) =>
             row.id === completedCheck.id ? completedCheck : row,
@@ -3899,7 +3910,7 @@ function OperationsWorkspace() {
       let documentId = input.documentId;
       if (input.file) {
         const uploaded = await uploadDocument({
-          entityId: scopedEntityId,
+          entityId: input.check.entity_id,
           propertyId: input.check.property_id ?? undefined,
           tenantId: input.check.tenant_id ?? undefined,
           leaseId: input.check.lease_id ?? undefined,
@@ -3921,7 +3932,7 @@ function OperationsWorkspace() {
     },
     onSuccess: (linkedCheck, input) => {
       queryClient.setQueryData<ComplianceCheckRecord[]>(
-        ["operations-compliance-checks", scopedEntityId],
+        ["operations-compliance-checks", input.check.entity_id],
         (current) =>
           current?.map((row) =>
             row.id === linkedCheck.id ? linkedCheck : row,
@@ -3990,7 +4001,7 @@ function OperationsWorkspace() {
     if (next == null) return;
     const previousValue = workOrder[field];
     if (next === previousValue) return;
-    const queryKey = ["operations-maintenance", scopedEntityId];
+    const queryKey = ["operations-maintenance", workOrder.entity_id];
     const previous =
       queryClient.getQueryData<MaintenanceWorkOrderRecord[]>(queryKey) ?? null;
     if (previous) {
@@ -4007,7 +4018,7 @@ function OperationsWorkspace() {
       } as Parameters<typeof updateMaintenanceWorkOrder>[1]);
       setMaintenanceInlineUndo({
         id: `${workOrder.id}-${field}-${Date.now()}`,
-        entityId: scopedEntityId,
+        entityId: workOrder.entity_id,
         workOrderId: workOrder.id,
         title: workOrder.title,
         field,
@@ -4377,9 +4388,20 @@ function OperationsWorkspace() {
   const assignableMembers = useMemo(
     () =>
       securityMembers
-        .filter((member) => memberCanReceiveWork(member, scopedEntityId))
+        .filter((member) =>
+          allMode
+            ? memberCanReceiveAnyWork(member)
+            : memberCanReceiveWork(member, scopedEntityId),
+        )
         .sort((a, b) => memberLabel(a).localeCompare(memberLabel(b))),
-    [securityMembers, scopedEntityId],
+    [allMode, securityMembers, scopedEntityId],
+  );
+  const assignableMembersForEntity = useCallback(
+    (entityId: string) =>
+      securityMembers
+        .filter((member) => memberCanReceiveWork(member, entityId))
+        .sort((a, b) => memberLabel(a).localeCompare(memberLabel(b))),
+    [securityMembers],
   );
 
   const queueItems = useMemo(() => {
@@ -5012,13 +5034,15 @@ function OperationsWorkspace() {
   function nextAssignmentMetadata(
     metadata: Record<string, unknown>,
     assigneeId: string,
+    entityId: string,
     title: string,
     kind: string,
     dueDate: string | null | undefined,
     tone: StatusTone,
   ) {
+    const entityMembers = assignableMembersForEntity(entityId);
     const assignee = assigneeId
-      ? (assignableMembers.find((member) => member.id === assigneeId) ?? null)
+      ? (entityMembers.find((member) => member.id === assigneeId) ?? null)
       : null;
     if (assigneeId && !assignee) {
       return null;
@@ -5027,7 +5051,7 @@ function OperationsWorkspace() {
       metadata,
       assignee,
       currentUser,
-      entityId: scopedEntityId,
+      entityId,
       title,
       kind,
       dueDate,
@@ -5042,6 +5066,7 @@ function OperationsWorkspace() {
     const metadata = nextAssignmentMetadata(
       workOrder.metadata,
       assigneeId,
+      workOrder.entity_id,
       workOrder.title,
       "Maintenance",
       workOrder.due_date,
@@ -5079,6 +5104,7 @@ function OperationsWorkspace() {
     const metadata = nextAssignmentMetadata(
       arrearsCase.metadata,
       assigneeId,
+      arrearsCase.entity_id,
       title,
       "Arrears",
       arrearsCase.next_reminder_on,
@@ -5118,6 +5144,7 @@ function OperationsWorkspace() {
     const metadata = nextAssignmentMetadata(
       obligation.metadata,
       assigneeId,
+      obligation.entity_id,
       obligation.title,
       "Critical date",
       obligation.due_date,
@@ -5193,6 +5220,7 @@ function OperationsWorkspace() {
     itemId,
     title,
     metadata,
+    entityId,
     onAssign,
     onAction,
     onNotify,
@@ -5202,6 +5230,7 @@ function OperationsWorkspace() {
     itemId: string;
     title: string;
     metadata: Record<string, unknown>;
+    entityId: string;
     onAssign: (assigneeId: string) => void;
     onAction: (action: WorkAssignmentAction) => void;
     onNotify: () => void;
@@ -5214,13 +5243,13 @@ function OperationsWorkspace() {
         assigneeAriaLabel={assigneeAriaLabel}
         collapsible={collapsible}
         assignment={workAssignment(metadata)}
-        members={assignableMembers}
+        members={assignableMembersForEntity(entityId)}
         value={assignmentValue(itemId, metadata)}
         onChange={(value) => setAssignmentValue(itemId, value)}
         onAssign={onAssign}
         onAction={onAction}
         onNotify={onNotify}
-        disabled={assignmentPending || allMode}
+        disabled={assignmentPending}
         membersLoading={securityWorkspaceQuery.isLoading}
       />
     );
@@ -5235,6 +5264,7 @@ function OperationsWorkspace() {
       itemId: item.id,
       title: item.title,
       metadata: item.record.metadata,
+      entityId: item.record.entity_id,
       assigneeAriaLabel,
       collapsible,
       onAssign: (assigneeId) => assignQueueItem(item, assigneeId),
@@ -5251,6 +5281,7 @@ function OperationsWorkspace() {
       itemId: `maintenance-${workOrder.id}`,
       title: workOrder.title,
       metadata: workOrder.metadata,
+      entityId: workOrder.entity_id,
       assigneeAriaLabel,
       onAssign: (assigneeId) => assignMaintenance(workOrder, assigneeId),
       onAction: (action) => actionMaintenance(workOrder, action),
@@ -5283,7 +5314,7 @@ function OperationsWorkspace() {
                 status: "completed",
               })
             }
-            disabled={updateObligationMutation.isPending || allMode}
+            disabled={updateObligationMutation.isPending}
           >
             <CheckCircle2 size={15} className="text-success" />
             Complete
@@ -5301,7 +5332,7 @@ function OperationsWorkspace() {
                     status: "waived",
                   });
                 }}
-                disabled={updateObligationMutation.isPending || allMode}
+                disabled={updateObligationMutation.isPending}
               >
                 Confirm
               </button>
@@ -5323,7 +5354,7 @@ function OperationsWorkspace() {
                   : undefined
               }
               onClick={() => setWaiveConfirmId(item.id)}
-              disabled={updateObligationMutation.isPending || allMode}
+              disabled={updateObligationMutation.isPending}
             >
               Waive
             </button>
@@ -5360,7 +5391,7 @@ function OperationsWorkspace() {
           onUpdate={(data) =>
             updateMaintenanceMutation.mutate({ id: item.record.id, data })
           }
-          disabled={updateMaintenanceMutation.isPending || allMode}
+          disabled={updateMaintenanceMutation.isPending}
           compactLabels={options?.compactLabels}
         />
       );
@@ -5371,7 +5402,7 @@ function OperationsWorkspace() {
         onUpdate={(data) =>
           updateArrearsMutation.mutate({ id: item.record.id, data })
         }
-        disabled={updateArrearsMutation.isPending || allMode}
+        disabled={updateArrearsMutation.isPending}
         compactLabels={options?.compactLabels}
       />
     );
@@ -5492,7 +5523,7 @@ function OperationsWorkspace() {
               status: "completed",
             })
           }
-          disabled={updateObligationMutation.isPending || allMode}
+          disabled={updateObligationMutation.isPending}
         >
           Complete
         </button>
@@ -7352,13 +7383,7 @@ function OperationsWorkspace() {
                                   className="min-h-11 w-full px-3 sm:w-auto"
                                   disabled={
                                     !canCompleteComplianceCheck(check) ||
-                                    completeComplianceCheckMutation.isPending ||
-                                    allMode
-                                  }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to complete a check"
-                                      : undefined
+                                    completeComplianceCheckMutation.isPending
                                   }
                                   onClick={() =>
                                     completeComplianceCheckMutation.mutate(check)
@@ -7382,18 +7407,13 @@ function OperationsWorkspace() {
                                   <SecondaryButton
                                     type="button"
                                     className="min-h-11 w-full px-3 sm:w-auto"
-                                    disabled={allMode}
-                                    title={
-                                      allMode
-                                        ? "Select a single entity to add evidence"
-                                        : undefined
-                                    }
                                     onClick={() =>
                                       setEvidenceLinkForm((current) =>
                                         current?.checkId === check.id
                                           ? null
                                           : {
                                               checkId: check.id,
+                                              entityId: check.entity_id,
                                               documentId: "",
                                               certificateExpiresOn: "",
                                               file: null,
@@ -8844,7 +8864,6 @@ function OperationsWorkspace() {
                                 ariaLabel={`Status for ${workOrder.title}`}
                                 placeholder="Set status"
                                 options={MAINTENANCE_STATUS_OPTIONS}
-                                disabled={allMode}
                                 onSave={(next) =>
                                   saveWorkOrderField(workOrder, "status", next)
                                 }
@@ -8859,7 +8878,6 @@ function OperationsWorkspace() {
                                 ariaLabel={`Priority for ${workOrder.title}`}
                                 placeholder="Set priority"
                                 options={MAINTENANCE_PRIORITY_OPTIONS}
-                                disabled={allMode}
                                 onSave={(next) =>
                                   saveWorkOrderField(
                                     workOrder,
@@ -8931,7 +8949,7 @@ function OperationsWorkspace() {
                                 data,
                               })
                             }
-                            disabled={updateMaintenanceMutation.isPending || allMode}
+                            disabled={updateMaintenanceMutation.isPending}
                             expanded={expandedMaintenanceId === workOrder.id}
                             onToggleDetails={() =>
                               setExpandedMaintenanceId((current) =>
@@ -8957,7 +8975,7 @@ function OperationsWorkspace() {
                                 data,
                               })
                             }
-                            disabled={updateMaintenanceMutation.isPending || allMode}
+                            disabled={updateMaintenanceMutation.isPending}
                             expanded={expandedMaintenanceId === workOrder.id}
                             onToggleDetails={() =>
                               setExpandedMaintenanceId((current) =>
@@ -8974,7 +8992,7 @@ function OperationsWorkspace() {
                               properties={properties}
                               tenants={tenants}
                               invoiceDrafts={invoiceDrafts}
-                              disabled={updateMaintenanceMutation.isPending || allMode}
+                              disabled={updateMaintenanceMutation.isPending}
                               onUpdate={(data) =>
                                 updateMaintenanceMutation.mutate({
                                   id: workOrder.id,
@@ -9319,6 +9337,7 @@ function OperationsWorkspace() {
                             itemId: `arrears-${arrearsCase.id}`,
                             title: `${tenantName(tenants, arrearsCase.tenant_id)} arrears`,
                             metadata: arrearsCase.metadata,
+                            entityId: arrearsCase.entity_id,
                             onAssign: (assigneeId) =>
                               assignArrears(arrearsCase, assigneeId),
                             onAction: (action) =>
@@ -9336,7 +9355,7 @@ function OperationsWorkspace() {
                                 data,
                               })
                             }
-                            disabled={updateArrearsMutation.isPending || allMode}
+                            disabled={updateArrearsMutation.isPending}
                           />
                         </div>
                         <div className="xl:col-span-2">
@@ -9362,8 +9381,7 @@ function OperationsWorkspace() {
                               })
                             }
                             disabled={
-                              recordArrearsPromiseToPayMutation.isPending ||
-                              allMode
+                              recordArrearsPromiseToPayMutation.isPending
                             }
                           />
                         </div>

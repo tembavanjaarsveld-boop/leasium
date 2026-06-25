@@ -2,6 +2,25 @@
 
 Last updated: 2026-06-26
 
+## Continuation - 2026-06-26 (Switcher removal slice 9: Operations row-trust actions)
+
+Slice 9 is committed locally on `main`: Operations compliance and row-backed
+UX actions now use the row's own trust instead of a global switcher or a new
+action picker. Compliance completion and evidence linking/upload stay available
+in all-entities mode; stored-document loads and document uploads use the
+compliance row `entity_id`. Maintenance status/priority inline edits,
+maintenance/arrears row actions, assignment controls, and arrears
+promise-to-pay are no longer all-mode-disabled. Assignment member options are
+computed from the row entity. Standalone Work digest generation/send remains
+single-entity-gated and is explicitly left as a product/API decision.
+
+Verification: red-first smokes failed on disabled compliance complete/add
+evidence/upload and disabled arrears promise-to-pay. Final checks passed:
+focused Operations action smokes — 4 passed; full
+`operations-compliance.spec.ts` + `operations-ux.spec.ts` — 25 passed;
+`app-flows` Operations slice pointer — 1 passed; eslint on touched web files
+passed; `tsc --noEmit` passed.
+
 ## Continuation - 2026-06-26 (Switcher removal slice 8: Contractors + Tenants actions)
 
 Slice 8 is committed locally on `main`: Contractors and Tenants remain
@@ -58,9 +77,9 @@ tests/smoke/portfolio-qa-ux.spec.ts --reporter=line` — 16 passed;
 tests/smoke/portfolio-qa-guided.spec.ts tests/smoke/portfolio-qa-ux.spec.ts`
 passed; `./node_modules/.bin/tsc --noEmit` passed; `git diff --check` passed.
 
-Next switcher-removal slice: Contractors + Tenants actions
-(`contractors`, `tenants-ux`, `app-flows`). Keep Portfolio-QA's exception in
-mind: cross-portfolio cleanup rows own their entity, so do not retrofit a global
+Next switcher-removal slice after slice 9: Comms template
+editor/catalog/preview/versioning. Keep the slice 9 nuance in mind:
+Operations row-backed actions own their row entity; do not retrofit a global
 action trust picker there.
 
 ## Continuation - 2026-06-25 (Entity-as-dimension backend last mile)
