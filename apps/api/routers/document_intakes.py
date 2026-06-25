@@ -30,6 +30,7 @@ from stewart.core.models import (
     DocumentCategory,
     DocumentIntake,
     DocumentIntakeStatus,
+    Entity,
     GstTreatment,
     Lease,
     LeaseIntake,
@@ -50,6 +51,7 @@ from stewart.core.models import (
     TenancyUnit,
     Tenant,
     TenantOnboarding,
+    UserEntityRole,
     UserRole,
 )
 from stewart.core.settings import get_settings
@@ -97,7 +99,63 @@ ACTIVE_SIGNING_STATUSES = {"queued", "sent", "delivered"}
 AI_OPPORTUNITY_SESSION_KEY = "ai_opportunity_session"
 
 
-def _read_intake(intake: DocumentIntake) -> DocumentIntakeRead:
+def _normalise_entity_name(value: str) -> str:
+    """Case/punctuation-insensitive key for matching trust names.
+
+    Builds on the whitespace/``&``→``and`` normalisation used for owner labels
+    in entities.py, then drops punctuation so "SJI No. 5" matches "SJI No 5".
+    """
+    lowered = value.lower().replace("&", " and ")
+    cleaned = "".join(char if char.isalnum() or char.isspace() else " " for char in lowered)
+    return " ".join(cleaned.split())
+
+
+def _extracted_trust_name(intake: DocumentIntake) -> str | None:
+    """The lessor/trust name the lease extraction landed on the property row.
+
+    Prefers reviewed data (operator edits) over the raw extraction, matching how
+    the apply path resolves reviewed fields.
+    """
+    data = _reviewed_data(intake)
+    for row in _records(data.get("properties")):
+        trust_name = _str(row.get("trust_name"))
+        if trust_name is not None:
+            return trust_name
+    return None
+
+
+def _suggested_entity_id(intake: DocumentIntake, session: Session) -> UUID | None:
+    """Match the extracted trust name to an existing Entity in the document's org.
+
+    Read-only: surfaces which trust the lease likely belongs to so the review UI
+    can default the "File under trust" selector. Null when no confident match.
+    """
+    trust_name = _extracted_trust_name(intake)
+    if trust_name is None:
+        return None
+    target_key = _normalise_entity_name(trust_name)
+    if not target_key:
+        return None
+    organisation_id = session.scalar(
+        select(Entity.organisation_id).where(Entity.id == intake.entity_id)
+    )
+    if organisation_id is None:
+        return None
+    for entity_id, name in session.execute(
+        select(Entity.id, Entity.name).where(
+            Entity.organisation_id == organisation_id,
+            Entity.deleted_at.is_(None),
+        )
+    ):
+        if _normalise_entity_name(name) == target_key:
+            return entity_id
+    return None
+
+
+def _read_intake(
+    intake: DocumentIntake,
+    session: Session | None = None,
+) -> DocumentIntakeRead:
     document = intake.document
     return DocumentIntakeRead.model_validate(
         {
@@ -122,6 +180,9 @@ def _read_intake(intake: DocumentIntake) -> DocumentIntakeRead:
             "content_type": document.content_type,
             "byte_size": document.byte_size,
             "category": document.category,
+            "suggested_entity_id": (
+                _suggested_entity_id(intake, session) if session is not None else None
+            ),
         }
     )
 
@@ -1114,6 +1175,41 @@ def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str
     }
 
 
+def _create_filing_entity(
+    intake: DocumentIntake,
+    name: str,
+    user: CurrentUser,
+    session: Session,
+) -> UUID:
+    """Create a brand-new trust (Entity) at apply time and file under it.
+
+    Mirrors the create path + auth of ``entities.create_entity``: the new trust
+    lands in the same organisation as the document's current entity (asserting
+    that org matches the caller's, the only auth rule the create endpoint
+    enforces), the caller is granted the owner role on it, and a create audit
+    row is written. Provider-inert: a new trust starts unconnected to Xero.
+    """
+    source = session.get(Entity, intake.document.entity_id)
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found.")
+    if source.organisation_id != user.organisation_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organisation denied.")
+    entity = Entity(organisation_id=source.organisation_id, name=name)
+    session.add(entity)
+    session.flush()
+    session.add(UserEntityRole(user_id=user.id, entity_id=entity.id, role=UserRole.owner))
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=entity.id,
+        action="create",
+        target_table="entity",
+        target_id=entity.id,
+    )
+    return entity.id
+
+
 def _resolve_filing_entity(
     intake: DocumentIntake,
     payload: DocumentIntakeApplyRequest,
@@ -1123,17 +1219,26 @@ def _resolve_filing_entity(
     """Entity the apply should file + link records under.
 
     Defaults to the document's current entity (behaviour unchanged when no
-    ``target_entity_id`` is sent). When an operator picks a different trust at
-    review time, require WRITE on that trust and re-point the document + intake
-    so the stored document and the records it creates stay on the same entity.
+    ``target_entity_id`` or ``create_entity_name`` is sent). When an operator
+    picks a different existing trust at review time, require WRITE on that trust;
+    when they ask to create a new trust, create it in the same org. In both cases
+    re-point the document + intake so the stored document and the records it
+    creates stay on the same entity. ``target_entity_id`` wins if both are given.
     """
     target = payload.target_entity_id
-    if target is None or target == intake.document.entity_id:
-        return intake.document.entity_id
-    assert_entity_role(session, user, target, WRITE_ROLES)
-    intake.document.entity_id = target
-    intake.entity_id = target
-    return target
+    if target is not None and target != intake.document.entity_id:
+        assert_entity_role(session, user, target, WRITE_ROLES)
+        intake.document.entity_id = target
+        intake.entity_id = target
+        return target
+    if target is None:
+        name = _str(payload.create_entity_name)
+        if name is not None:
+            created = _create_filing_entity(intake, name, user, session)
+            intake.document.entity_id = created
+            intake.entity_id = created
+            return created
+    return intake.document.entity_id
 
 
 def _apply_lease_document_intake(
@@ -3100,7 +3205,7 @@ def list_document_intakes(
         .where(entity_scope, DocumentIntake.deleted_at.is_(None))
         .order_by(DocumentIntake.created_at.desc())
     ).all()
-    return [_read_intake(intake) for intake in intakes]
+    return [_read_intake(intake, session) for intake in intakes]
 
 
 @router.post("", response_model=DocumentIntakeRead, status_code=status.HTTP_201_CREATED)
@@ -3173,7 +3278,7 @@ def get_document_intake(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> DocumentIntakeRead:
-    return _read_intake(_get_intake(intake_id, user, session, READ_ROLES))
+    return _read_intake(_get_intake(intake_id, user, session, READ_ROLES), session)
 
 
 @router.post("/from-document/{document_id}", response_model=DocumentIntakeRead)
@@ -3262,7 +3367,7 @@ def extract_document_intake(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=intake.error_message or "Document extraction failed.",
         )
-    return _read_intake(intake)
+    return _read_intake(intake, session)
 
 
 @router.post("/{intake_id}/review", response_model=DocumentIntakeRead)
@@ -3300,7 +3405,7 @@ def review_document_intake(
     )
     session.commit()
     session.refresh(intake)
-    return _read_intake(intake)
+    return _read_intake(intake, session)
 
 
 @router.post("/{intake_id}/ai-opportunity-session", response_model=DocumentIntakeRead)

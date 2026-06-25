@@ -64,6 +64,7 @@ class DocumentIntakeApplyRequest(ApiModel):
     lease_id: UUID | None = None
     thread_id: UUID | None = None
     target_entity_id: UUID | None = None
+    create_entity_name: str | None = None
 
 
 class DocumentIntakeRead(ApiModel):
@@ -88,3 +89,4 @@ class DocumentIntakeRead(ApiModel):
     content_type: str | None
     byte_size: int
     category: DocumentCategory
+    suggested_entity_id: UUID | None = None

@@ -22,6 +22,7 @@ from stewart.core.models import (
     LeaseIntake,
     MaintenanceWorkOrder,
     Obligation,
+    Organisation,
     Property,
     RentChargeRule,
     StoredDocument,
@@ -3239,6 +3240,296 @@ def test_document_intake_apply_lease_target_entity_requires_write_role(
     assert intake is not None
     assert str(intake.entity_id) == upload_entity_id
     assert intake.status != DocumentIntakeStatus.applied
+
+
+def _fake_smart_lease_extraction_with_trust(trust_name: str | None) -> dict[str, Any]:
+    """Smart lease extraction whose single property row carries a trust name."""
+    extraction = _fake_smart_lease_extraction()
+    extraction["properties"] = [
+        {**extraction["properties"][0], "trust_name": trust_name},
+    ]
+    return extraction
+
+
+def test_document_intake_apply_lease_creates_new_trust(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """Apply with create_entity_name spins up a new trust in the same org and
+    files the document + every created record under it in one step."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_create_trust_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+    organisation_id = _organisation_id(session)
+    entities_before = _row_count(session, Entity)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id},
+        files={"file": ("new-trust-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "create_entity_name": "Freshly Minted Trust",
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+
+    new_entity_id = body["entity_id"]
+    assert new_entity_id != upload_entity_id
+    assert _row_count(session, Entity) == entities_before + 1
+
+    new_entity = session.get(Entity, UUID(new_entity_id))
+    assert new_entity is not None
+    assert new_entity.name == "Freshly Minted Trust"
+    assert str(new_entity.organisation_id) == organisation_id
+    # Provider-inert: a new trust starts unconnected to Xero.
+    assert new_entity.xero_tenant_id is None
+
+    role = session.scalar(
+        select(UserEntityRole.role).where(
+            UserEntityRole.user_id == get_settings().dev_user_id,
+            UserEntityRole.entity_id == new_entity.id,
+        )
+    )
+    assert role == UserRole.owner
+
+    lease = session.get(Lease, UUID(body["review_data"]["applied"]["lease_id"]))
+    assert lease is not None
+    tenant = session.get(Tenant, lease.tenant_id)
+    assert tenant is not None
+    assert str(tenant.entity_id) == new_entity_id
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    assert unit is not None
+    prop = session.get(Property, unit.property_id)
+    assert prop is not None
+    assert str(prop.entity_id) == new_entity_id
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert str(document.entity_id) == new_entity_id
+
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    assert intake is not None
+    assert str(intake.entity_id) == new_entity_id
+
+
+def test_document_intake_apply_lease_create_trust_requires_org_match(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """Creating a trust on import reuses the entities.create_entity org rule:
+    if the document's entity sits in another org, the create is denied (403) and
+    no entity is created."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_create_trust_foreign_org"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    # An entity in a *different* organisation that the dev user can still write to
+    # (cross-org role), so the apply passes the WRITE check but the create path's
+    # org-match assertion fails — exactly the entities.create_entity auth rule.
+    foreign_org = Organisation(name="Foreign Org Pty Ltd")
+    session.add(foreign_org)
+    session.flush()
+    foreign_entity = Entity(organisation_id=foreign_org.id, name="Foreign Upload Trust")
+    session.add(foreign_entity)
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=get_settings().dev_user_id,
+            entity_id=foreign_entity.id,
+            role=UserRole.owner,
+        )
+    )
+    session.commit()
+    entities_before = _row_count(session, Entity)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(foreign_entity.id)},
+        files={"file": ("foreign-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "create_entity_name": "Should Not Exist Trust",
+        },
+    )
+    assert apply_response.status_code == 403
+    assert _row_count(session, Entity) == entities_before
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert str(document.entity_id) == str(foreign_entity.id)
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    assert intake is not None
+    assert str(intake.entity_id) == str(foreign_entity.id)
+    assert intake.status != DocumentIntakeStatus.applied
+
+
+def test_document_intake_apply_lease_target_entity_wins_over_create_name(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """When both target_entity_id and create_entity_name are sent, the existing
+    target wins and no new trust is created."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_both_params_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+    target_entity_id = _writable_entity(session, "Existing Target Trust")
+    entities_before = _row_count(session, Entity)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id},
+        files={"file": ("both-params-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "target_entity_id": target_entity_id,
+            "create_entity_name": "Ignored New Trust",
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["entity_id"] == target_entity_id
+    # No extra entity created — create_entity_name was ignored in favour of target.
+    assert _row_count(session, Entity) == entities_before
+
+
+def test_document_intake_suggested_entity_id_matches_extracted_trust(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """A lease whose trust_name normalise-matches an existing entity surfaces that
+    entity as suggested_entity_id on the review response."""
+    target_entity_id = _writable_entity(session, "SJI No 5")
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        # Punctuation/case differ from the entity name to exercise normalisation.
+        return _fake_smart_lease_extraction_with_trust("sji no. 5"), "resp_suggest_match"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id, "extract": "false"},
+        files={"file": ("suggest-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    extract_response = client.post(f"/api/v1/document-intakes/{intake_id}/extract")
+    assert extract_response.status_code == 200
+    assert extract_response.json()["suggested_entity_id"] == target_entity_id
+
+    get_response = client.get(f"/api/v1/document-intakes/{intake_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["suggested_entity_id"] == target_entity_id
+
+
+def test_document_intake_suggested_entity_id_null_without_trust_match(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """No trust name (and an unknown trust name) yields suggested_entity_id null."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return (
+            _fake_smart_lease_extraction_with_trust("Totally Unknown Trust"),
+            "resp_suggest_unknown",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id, "extract": "false"},
+        files={"file": ("no-suggest-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    extract_response = client.post(f"/api/v1/document-intakes/{intake_id}/extract")
+    assert extract_response.status_code == 200
+    assert extract_response.json()["suggested_entity_id"] is None
 
 
 def test_document_intake_apply_lease_reuses_selected_records(
