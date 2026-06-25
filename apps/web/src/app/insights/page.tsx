@@ -23,10 +23,9 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -61,8 +60,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -1305,7 +1303,10 @@ function AllEntitiesInsights({
 
 function InsightsWorkspace() {
   const queryClient = useQueryClient();
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag. The org-wide read path
+  // always runs; a single entity is reached via the tag, not a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
   const [snapshotType, setSnapshotType] = useState<InsightsSnapshotType>("owner");
   const [latestSnapshot, setLatestSnapshot] =
     useState<InsightsSnapshotCreateRecord | null>(null);
@@ -1321,39 +1322,6 @@ function InsightsWorkspace() {
   });
   const entities = useMemo(() => entitiesQuery.data ?? [], [entitiesQuery.data]);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    // The All-entities sentinel is a valid restore target even though it is not
-    // a real entity id, so the cross-entity view survives navigation/reload.
-    if (stored) {
-      setSelectedEntityId(stored);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!entitiesQuery.isSuccess) {
-      return;
-    }
-    if (!entities.length) {
-      if (selectedEntityId) {
-        setSelectedEntityId("");
-        window.localStorage.removeItem(ENTITY_STORAGE_KEY);
-      }
-      return;
-    }
-    // The All-entities sentinel is a valid selection even though it is not a
-    // real entity id, so leave it in place when restoring the cross-entity view.
-    if (
-      !selectedEntityId ||
-      (!isAllEntities(selectedEntityId) &&
-        !entities.some((entity) => entity.id === selectedEntityId))
-    ) {
-      const fallbackEntityId = defaultEntitySelection(entities);
-      setSelectedEntityId(fallbackEntityId);
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, fallbackEntityId);
-    }
-  }, [entities, entitiesQuery.isSuccess, selectedEntityId]);
-
   // All-entities mode: every entity-scoped query uses scopedEntityId (empty in
   // all-mode, so those queries stay disabled) and the page surfaces the
   // cross-entity portfolio rollup instead.
@@ -1366,11 +1334,12 @@ function InsightsWorkspace() {
 
   const selectedEntity = entities.find((entity) => entity.id === scopedEntityId);
   const activeEntityId = selectedEntity?.id ?? "";
+  const overviewScopeActive = allMode || Boolean(activeEntityId);
 
   const overviewQuery = useQuery({
-    queryKey: ["insights-overview", activeEntityId, asOf],
-    queryFn: () => getInsightsOverview(activeEntityId, asOf),
-    enabled: Boolean(activeEntityId),
+    queryKey: ["insights-overview", scopedEntityId, asOf],
+    queryFn: () => getInsightsOverview(scopedEntityId || undefined, asOf),
+    enabled: overviewScopeActive,
   });
 
   const snapshotsQuery = useQuery({
@@ -1416,12 +1385,12 @@ function InsightsWorkspace() {
   const entityError = entitiesQuery.error;
   const overviewError = overviewQuery.error;
   const isOverviewLoading =
-    Boolean(activeEntityId) &&
+    overviewScopeActive &&
     !overview &&
     (overviewQuery.isLoading || overviewQuery.isFetching);
-  const isOverviewFetching = Boolean(activeEntityId) && overviewQuery.isFetching;
+  const isOverviewFetching = overviewScopeActive && overviewQuery.isFetching;
   const showOverviewEmpty =
-    Boolean(activeEntityId) && overviewQuery.isSuccess && !overview;
+    overviewScopeActive && overviewQuery.isSuccess && !overview;
 
   const health = overview?.portfolio_health;
   const billing = overview?.billing_risk;
@@ -1520,19 +1489,7 @@ function InsightsWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={(next) => {
-            setSelectedEntityId(next);
-            if (next) {
-              window.localStorage.setItem(ENTITY_STORAGE_KEY, next);
-            }
-          }}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -1549,11 +1506,6 @@ function InsightsWorkspace() {
               type="button"
               onClick={() => void copyReviewPacket()}
               disabled={!overview}
-              title={
-                allMode
-                  ? "Select a single entity to copy its review packet"
-                  : undefined
-              }
               className={horizonActionButtonClass}
             >
               <Copy size={15} />
@@ -1563,11 +1515,6 @@ function InsightsWorkspace() {
               type="button"
               onClick={downloadReviewCsv}
               disabled={!overview}
-              title={
-                allMode
-                  ? "Select a single entity to download its review CSV"
-                  : undefined
-              }
               className={horizonActionButtonClass}
             >
               <Download size={15} />
@@ -1587,7 +1534,7 @@ function InsightsWorkspace() {
           </div>
         ) : null}
 
-        {overviewError && activeEntityId && !overview ? (
+        {overviewError && overviewScopeActive && !overview ? (
           <SectionPanel>
             <EmptyState
               icon={<AlertTriangle size={18} />}
@@ -1616,17 +1563,7 @@ function InsightsWorkspace() {
           </SectionPanel>
         ) : null}
 
-        {allMode ? (
-          <AllEntitiesInsights
-            rollup={portfolioRollup}
-            loading={portfolioRollupQuery.isLoading}
-            error={portfolioRollupQuery.error}
-            onRetry={() => void portfolioRollupQuery.refetch()}
-            entityNameById={entityNameById}
-          />
-        ) : null}
-
-        {!allMode && isOverviewLoading ? (
+        {isOverviewLoading ? (
           <SectionPanel
             title="Checking live insights"
             description="Preparing the latest portfolio, exception, billing, and owner/entity view."
@@ -1655,6 +1592,16 @@ function InsightsWorkspace() {
               ))}
             </div>
           </SectionPanel>
+        ) : null}
+
+        {allMode && !overview && !isOverviewLoading ? (
+          <AllEntitiesInsights
+            rollup={portfolioRollup}
+            loading={portfolioRollupQuery.isLoading}
+            error={portfolioRollupQuery.error}
+            onRetry={() => void portfolioRollupQuery.refetch()}
+            entityNameById={entityNameById}
+          />
         ) : null}
 
         {showOverviewEmpty ? (

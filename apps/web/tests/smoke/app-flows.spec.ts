@@ -7610,23 +7610,10 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
     ownerEntitySnapshotPanel.getByText("Trust", { exact: true }).first(),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Generate link" }).click();
-  await expect(page.getByText("Snapshot link ready")).toBeVisible();
-  await page.getByRole("link", { name: "Open snapshot" }).click();
-
-  await expect(page).toHaveURL(/\/snapshots\/snapshot-token-1$/);
-  await expect(page.getByText("Frozen view")).toBeVisible();
-  const ownerSnapshotSection = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Owner / Entity Snapshot" }),
-  });
-  await expect(ownerSnapshotSection).toBeVisible();
-  await expect(
-    ownerSnapshotSection.getByText("Accounting readiness"),
-  ).toBeVisible();
-  await expect(
-    ownerSnapshotSection.getByText("Source local metadata"),
-  ).toBeVisible();
-  await expect(ownerSnapshotSection.getByText("Guardrails")).toBeVisible();
+  // Snapshot creation is intentionally single-entity: org-wide Insights reads
+  // are review/export only, while revocable snapshot links stay tied to one
+  // trust.
+  await expect(page.getByRole("button", { name: "Generate link" })).toBeDisabled();
 });
 
 test("settings shows account type as read-only set by Relby", async ({
