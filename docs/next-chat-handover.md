@@ -58,6 +58,20 @@ created there never appeared in the entity selector. A standalone "Add entity"
 affordance in Settings, and untangling the Owner-vs-Entity co-location in that
 tab, remain sensible future tidy-ups (smoke +1 for the inline-create path).
 
+Status: confirmed working in production by Temba — 1642 now reads "SJI No 5
+Trust" and Properties shows "3 properties across 2 entities". One more polish
+landed: the all-entities Properties cards were tidied — the property type no
+longer prints twice, and the owner chip now hides when it just repeats the trust
+line or would read "Ownership unknown" beside a known filing entity, so it only
+shows when the owner label genuinely diverges. Commits this session: `1164cac`
+(backend engine + endpoints + tests), `4b6b86a` (UI + smoke + docs), `8d2d9c0`
+(inline create-trust), `7a8c270` (multi-entity card tidy) — all on main; backend
+deploys on Render, web on Vercel (gmail author identity).
+
+Known IA debt (logged, not blocking): no standalone "Add entity" in Settings,
+and Owner records ("Add owner") live inside the Entities tab — the co-location
+that sent the trust-creation down the wrong path. A small future tidy.
+
 ## Continuation - 2026-06-24 (Property delete + Smart Intake existing-property picker)
 
 Temba imported a lease via Leasium AI that had no building in the review, typed

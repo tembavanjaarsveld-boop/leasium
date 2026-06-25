@@ -37,6 +37,12 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   frontend eslint/tsc clean, Playwright smoke +2, production `next build` clean,
   UX pass at 1440/390 (Figma waived for these internal admin surfaces). The move
   is a local re-filing — no Xero write, email, SMS, or payment reconciliation.
+  Same-session follow-ups: the drawer can create a trust inline (entities were
+  previously only creatable while adding a new property, so a trust made via
+  "Add owner" — an Owner record — never appeared in the entity selector), and
+  the all-entities Properties cards were tidied (property type no longer doubles;
+  the owner chip shows only when it diverges from the filing trust). Confirmed
+  working in production.
 - [x] **2026-06-24 Property delete + Smart Intake existing-property picker:**
   Fixes the duplicate-property trap from importing a lease whose building wasn't
   auto-matched. `DELETE /properties/{id}` now cascades its soft-delete to the
