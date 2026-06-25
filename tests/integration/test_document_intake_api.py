@@ -27,8 +27,10 @@ from stewart.core.models import (
     StoredDocument,
     TenancyUnit,
     Tenant,
+    UserEntityRole,
+    UserRole,
 )
-from stewart.core.settings import Settings
+from stewart.core.settings import Settings, get_settings
 from stewart.integrations.communications import DeliveryResult
 from tests.support.provider_guardrail import (
     provider_mutation_audit_rows as _provider_mutation_audit_rows,
@@ -3040,6 +3042,203 @@ def test_document_intake_apply_lease_creates_register_records(
     assert document is not None
     assert document.lease_id == lease.id
     assert document.document_metadata["applied_lease_id"] == str(lease.id)
+
+
+def _writable_entity(session: Session, name: str) -> str:
+    """A second entity in the dev org the dev user can write to."""
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+    other = Entity(organisation_id=seeded.organisation_id, name=name)
+    session.add(other)
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=get_settings().dev_user_id,
+            entity_id=other.id,
+            role=UserRole.owner,
+        )
+    )
+    session.commit()
+    return str(other.id)
+
+
+def test_document_intake_apply_lease_files_under_target_entity(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """Apply with target_entity_id files the document + every created record
+    (property/unit/tenant/lease) under the chosen trust, not the upload trust."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_target_entity_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+    target_entity_id = _writable_entity(session, "Target Trust")
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id},
+        files={"file": ("target-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "target_entity_id": target_entity_id,
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["entity_id"] == target_entity_id
+
+    lease = session.get(Lease, UUID(body["review_data"]["applied"]["lease_id"]))
+    assert lease is not None
+    tenant = session.get(Tenant, lease.tenant_id)
+    assert tenant is not None
+    assert str(tenant.entity_id) == target_entity_id
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    assert unit is not None
+    prop = session.get(Property, unit.property_id)
+    assert prop is not None
+    assert str(prop.entity_id) == target_entity_id
+
+    obligations = session.scalars(select(Obligation).where(Obligation.lease_id == lease.id)).all()
+    assert obligations
+    assert {str(obligation.entity_id) for obligation in obligations} == {target_entity_id}
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert str(document.entity_id) == target_entity_id
+
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    assert intake is not None
+    assert str(intake.entity_id) == target_entity_id
+
+
+def test_document_intake_apply_lease_without_target_keeps_upload_entity(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """Default path (no target_entity_id) still files under the document's
+    upload entity — behaviour unchanged."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_default_entity_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id},
+        files={"file": ("default-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": _fake_smart_lease_extraction()},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["entity_id"] == upload_entity_id
+
+    lease = session.get(Lease, UUID(body["review_data"]["applied"]["lease_id"]))
+    assert lease is not None
+    unit = session.get(TenancyUnit, lease.tenancy_unit_id)
+    assert unit is not None
+    prop = session.get(Property, unit.property_id)
+    assert prop is not None
+    assert str(prop.entity_id) == upload_entity_id
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert str(document.entity_id) == upload_entity_id
+
+
+def test_document_intake_apply_lease_target_entity_requires_write_role(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """A target_entity_id the user has no role on is rejected, and nothing is
+    filed or re-pointed."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_forbidden_entity_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+    forbidden = Entity(organisation_id=seeded.organisation_id, name="Forbidden Trust")
+    session.add(forbidden)
+    session.commit()
+    forbidden_id = str(forbidden.id)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id},
+        files={"file": ("forbidden-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    document_id = create_response.json()["document_id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "target_entity_id": forbidden_id,
+        },
+    )
+    assert apply_response.status_code == 403
+
+    document = session.get(StoredDocument, UUID(document_id))
+    assert document is not None
+    assert str(document.entity_id) == upload_entity_id
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    assert intake is not None
+    assert str(intake.entity_id) == upload_entity_id
+    assert intake.status != DocumentIntakeStatus.applied
 
 
 def test_document_intake_apply_lease_reuses_selected_records(

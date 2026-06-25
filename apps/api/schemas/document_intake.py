@@ -63,6 +63,7 @@ class DocumentIntakeApplyRequest(ApiModel):
     tenant_id: UUID | None = None
     lease_id: UUID | None = None
     thread_id: UUID | None = None
+    target_entity_id: UUID | None = None
 
 
 class DocumentIntakeRead(ApiModel):
