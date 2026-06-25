@@ -861,6 +861,15 @@ fixes · deferrals.
   tsc + the comms smoke suite (16 green, no regression); the full 1440/390
   visual eyeball folds into the consolidated Track C pass with the switcher
   removal · none deferred.
+- 2026-06-25 · Notifications trust-chip filter (Track C slice 4, entity-as-tag)
+  · in all-entities mode a "Filter notifications by trust" chip row scopes the
+  Work notice center (notices + digest receipts, desktop and mobile) to one
+  entity (`?trust_tag`) at the notices/digestReceipts chokepoint; "All trusts"
+  clears · reuses chip styling/tokens, no new Figma frame · read-only filter, no
+  provider/write change, the top-left switcher is untouched · verified eslint +
+  tsc + the notifications smoke suite (11 green, no regression); the full
+  1440/390 visual eyeball folds into the consolidated Track C pass with the
+  switcher removal · none deferred.
 
 ## UX Debt Register
 

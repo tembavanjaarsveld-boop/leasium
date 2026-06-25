@@ -1938,17 +1938,55 @@ function NotificationsWorkspace() {
     [centerFanOut.data],
   );
 
+  // Trust-as-tag filter: in all-entities mode a row of trust chips scopes the
+  // notice center to one entity (?trust_tag). "All trusts" clears.
+  const [trustTagFilter, setTrustTagFilter] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tag = new URL(window.location.href).searchParams.get("trust_tag");
+    setTrustTagFilter(tag ?? "");
+  }, []);
+  const applyTrustTag = (entityId: string) => {
+    setTrustTagFilter(entityId);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (entityId) url.searchParams.set("trust_tag", entityId);
+    else url.searchParams.delete("trust_tag");
+    window.history.replaceState({}, "", url);
+  };
+  const trustChips = useMemo(() => {
+    if (!allMode) return [] as { id: string; name: string }[];
+    const seen = new Map<string, string>();
+    for (const id of [
+      ...mergedNotices.map((notice) => notice.__entityId),
+      ...mergedDigestReceipts.map((receipt) => receipt.__entityId),
+    ]) {
+      if (id && !seen.has(id)) {
+        seen.set(id, entityNameById.get(id) ?? "Unknown entity");
+      }
+    }
+    return [...seen.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allMode, mergedNotices, mergedDigestReceipts, entityNameById]);
+
   // Unified accessors so the filter/count/render code below works the same way
   // in single- and all-entity mode. In single mode these fall back to the
   // composite center payload; in all mode they read the merged arrays.
-  const notices = useMemo<TaggedNotice[]>(
-    () => (allMode ? mergedNotices : (center?.notices ?? [])),
-    [allMode, center?.notices, mergedNotices],
-  );
-  const digestReceipts = useMemo<TaggedDigestReceipt[]>(
-    () => (allMode ? mergedDigestReceipts : (center?.digest_receipts ?? [])),
-    [allMode, center?.digest_receipts, mergedDigestReceipts],
-  );
+  const notices = useMemo<TaggedNotice[]>(() => {
+    if (!allMode) return center?.notices ?? [];
+    return trustTagFilter
+      ? mergedNotices.filter((notice) => notice.__entityId === trustTagFilter)
+      : mergedNotices;
+  }, [allMode, trustTagFilter, center?.notices, mergedNotices]);
+  const digestReceipts = useMemo<TaggedDigestReceipt[]>(() => {
+    if (!allMode) return center?.digest_receipts ?? [];
+    return trustTagFilter
+      ? mergedDigestReceipts.filter(
+          (receipt) => receipt.__entityId === trustTagFilter,
+        )
+      : mergedDigestReceipts;
+  }, [allMode, trustTagFilter, center?.digest_receipts, mergedDigestReceipts]);
   // In all-mode the center scalar payload is unavailable; treat presence of
   // fan-out data as "have something to show" for empty-state gating.
   const hasCenterData = allMode ? centerFanOut.data.length > 0 : Boolean(center);
@@ -2270,6 +2308,40 @@ function NotificationsWorkspace() {
             </div>
           ) : null}
         </section>
+
+        {allMode && trustChips.length > 1 ? (
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Filter notifications by trust"
+          >
+            <button
+              type="button"
+              onClick={() => applyTrustTag("")}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                trustTagFilter
+                  ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "bg-foreground text-white"
+              }`}
+            >
+              All trusts
+            </button>
+            {trustChips.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => applyTrustTag(chip.id)}
+                className={`max-w-full truncate rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                  trustTagFilter === chip.id
+                    ? "bg-primary-soft text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {chip.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <NotificationsMobileSummary
           allMode={allMode}
