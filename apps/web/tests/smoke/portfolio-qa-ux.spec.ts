@@ -1,13 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
-
-// The two-entity fixture defaults fresh storage to All entities; pin these
-// single-entity specs to the primary entity.
-test.beforeEach(async ({ page }) => {
-  await seedPrimaryEntitySelection(page);
-});
+import { mockLeasiumApi } from "./api-mocks";
 
 test("portfolio QA loading metrics use contextual labels", async ({ page }) => {
   await mockLeasiumApi(page);
@@ -308,7 +302,7 @@ test("portfolio QA bulk fix review applies staged rows in one reviewed request a
           },
           {
             id: "tenant-3",
-            entity_id: "entity-1",
+            entity_id: "entity-2",
             legal_name: "Harbour Yoga Pty Ltd",
             trading_name: "Harbour Yoga",
             abn: null,
@@ -368,6 +362,7 @@ test("portfolio QA bulk fix review applies staged rows in one reviewed request a
     ),
   ).toBeVisible();
   expect(bulkFixCalls).toHaveLength(1);
+  expect(bulkFixCalls[0]).not.toHaveProperty("entity_id");
   expect(bulkFixCalls[0].issue_class).toBe("tenant_contact");
   const changes = bulkFixCalls[0].changes as Array<Record<string, unknown>>;
   expect(changes).toHaveLength(2);

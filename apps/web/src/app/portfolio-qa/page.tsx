@@ -24,7 +24,6 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import {
   EvidenceSourceTrail,
   type EvidenceFieldChange,
@@ -76,8 +75,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -2924,7 +2922,6 @@ function BlockerTriagePanel({
 function EnrichmentCandidateCard({
   candidate,
   review,
-  allMode,
   entityName,
   onPreview,
   onApply,
@@ -2933,7 +2930,6 @@ function EnrichmentCandidateCard({
 }: {
   candidate: EnrichmentCandidate;
   review: EnrichmentReviewState | undefined;
-  allMode: boolean;
   entityName: string | null;
   onPreview: (candidate: EnrichmentCandidate) => void;
   onApply: (
@@ -2981,10 +2977,6 @@ function EnrichmentCandidateCard({
             type="button"
             className="min-h-11 rounded-lg px-3"
             onClick={() => onPreview(candidate)}
-            disabled={allMode}
-            title={
-              allMode ? "Select a single entity to apply fixes" : undefined
-            }
           >
             <Sparkles size={14} />
             Suggest fixes
@@ -3085,10 +3077,7 @@ function EnrichmentCandidateCard({
                 type="button"
                 className="min-h-11"
                 onClick={() => onApply(candidate, suggestions)}
-                disabled={review.status === "applying" || allMode}
-                title={
-                  allMode ? "Select a single entity to apply fixes" : undefined
-                }
+                disabled={review.status === "applying"}
               >
                 {review.status === "applying" ? (
                   <Loader2 size={15} className="animate-spin" />
@@ -4004,7 +3993,6 @@ function PortfolioCompletionPanel({
                     key={candidate.id}
                     candidate={candidate}
                     review={enrichmentReviews[candidate.id]}
-                    allMode={allMode}
                     entityName={
                       allMode
                         ? (entityNameById.get(candidate.entityId) ??
@@ -4081,7 +4069,10 @@ function PortfolioCompletionPanel({
 
 function PortfolioQaWorkspace() {
   const queryClient = useQueryClient();
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag. The org-wide read path
+  // always runs; a single entity is reached via the tag, not a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
   const [activeTab, setActiveTab] = useState<QaTab>("issues");
   const [search, setSearch] = useState("");
   const [selectedLeaseIds, setSelectedLeaseIds] = useState<string[]>([]);
@@ -4107,41 +4098,6 @@ function PortfolioQaWorkspace() {
     () => entitiesQuery.data ?? [],
     [entitiesQuery.data],
   );
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) {
-      setSelectedEntityId(stored);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!entitiesQuery.isSuccess) {
-      return;
-    }
-    const fallback = defaultEntitySelection(entities);
-    if (!selectedEntityId && fallback) {
-      setSelectedEntityId(fallback);
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, fallback);
-    } else if (
-      selectedEntityId &&
-      // The All-entities sentinel is a valid selection even though it is not a
-      // real entity id, so the cross-entity view survives navigation/reload.
-      !isAllEntities(selectedEntityId) &&
-      !entities.some((entity) => entity.id === selectedEntityId)
-    ) {
-      setSelectedEntityId(fallback);
-      if (fallback) {
-        window.localStorage.setItem(ENTITY_STORAGE_KEY, fallback);
-      }
-    }
-  }, [entities, entitiesQuery.isSuccess, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    }
-  }, [selectedEntityId]);
 
   // All-entities mode: entity-scoped queries use scopedEntityId (empty in
   // all-mode, so they stay disabled) and the page reads merged fan-out results.
@@ -4456,7 +4412,7 @@ function PortfolioQaWorkspace() {
         queryKey: ["tenants"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["rent-roll", selectedEntityId],
+        queryKey: ["rent-roll"],
       });
     },
   });
@@ -4491,7 +4447,7 @@ function PortfolioQaWorkspace() {
         queryKey: ["tenants"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["rent-roll", selectedEntityId],
+        queryKey: ["rent-roll"],
       });
     },
   });
@@ -4517,7 +4473,7 @@ function PortfolioQaWorkspace() {
         queryKey: ["properties"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["rent-roll", selectedEntityId],
+        queryKey: ["rent-roll"],
       });
       queryClient.invalidateQueries({
         queryKey: ["billing-drafts"],
@@ -4555,7 +4511,7 @@ function PortfolioQaWorkspace() {
         queryKey: ["properties"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["rent-roll", selectedEntityId],
+        queryKey: ["rent-roll"],
       });
       queryClient.invalidateQueries({
         queryKey: ["billing-drafts"],
@@ -4588,7 +4544,7 @@ function PortfolioQaWorkspace() {
       );
       setSelectedLeaseIds([]);
       queryClient.invalidateQueries({
-        queryKey: ["tenant-onboardings", selectedEntityId],
+        queryKey: ["tenant-onboardings"],
       });
     },
   });
@@ -4737,14 +4693,7 @@ function PortfolioQaWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
@@ -4920,12 +4869,7 @@ function PortfolioQaWorkspace() {
                   <SecondaryButton
                     type="button"
                     onClick={stagePropertySuggestions}
-                    disabled={!propertiesNeedingBillingFix.length || allMode}
-                    title={
-                      allMode
-                        ? "Select a single entity to apply fixes"
-                        : undefined
-                    }
+                    disabled={!propertiesNeedingBillingFix.length}
                   >
                     <Sparkles size={15} />
                     Stage suggestions
@@ -4942,13 +4886,7 @@ function PortfolioQaWorkspace() {
                     }
                     disabled={
                       !stagedPropertyRows.length ||
-                      updatePropertyBatchMutation.isPending ||
-                      allMode
-                    }
-                    title={
-                      allMode
-                        ? "Select a single entity to apply fixes"
-                        : undefined
+                      updatePropertyBatchMutation.isPending
                     }
                   >
                     {updatePropertyBatchMutation.isPending ? (
@@ -5080,12 +5018,7 @@ function PortfolioQaWorkspace() {
                               draft: propertyDrafts[property.id] ?? {},
                             })
                           }
-                          disabled={updatePropertyMutation.isPending || allMode}
-                          title={
-                            allMode
-                              ? "Select a single entity to apply fixes"
-                              : undefined
-                          }
+                          disabled={updatePropertyMutation.isPending}
                         >
                           {updatePropertyMutation.isPending ? (
                             <Loader2 size={15} className="animate-spin" />
@@ -5119,12 +5052,7 @@ function PortfolioQaWorkspace() {
                 <SecondaryButton
                   type="button"
                   onClick={stageTenantSuggestions}
-                  disabled={!tenantsNeedingContact.length || allMode}
-                  title={
-                    allMode
-                      ? "Select a single entity to apply fixes"
-                      : undefined
-                  }
+                  disabled={!tenantsNeedingContact.length}
                 >
                   <Sparkles size={15} />
                   Stage suggestions
@@ -5141,13 +5069,7 @@ function PortfolioQaWorkspace() {
                   }
                   disabled={
                     !stagedTenantRows.length ||
-                    updateTenantBatchMutation.isPending ||
-                    allMode
-                  }
-                  title={
-                    allMode
-                      ? "Select a single entity to apply fixes"
-                      : undefined
+                    updateTenantBatchMutation.isPending
                   }
                 >
                   {updateTenantBatchMutation.isPending ? (
@@ -5271,12 +5193,7 @@ function PortfolioQaWorkspace() {
                             draft: tenantDrafts[tenant.id] ?? {},
                           })
                         }
-                        disabled={updateTenantMutation.isPending || allMode}
-                        title={
-                          allMode
-                            ? "Select a single entity to apply fixes"
-                            : undefined
-                        }
+                        disabled={updateTenantMutation.isPending}
                       >
                         {updateTenantMutation.isPending ? (
                           <Loader2 size={15} className="animate-spin" />
@@ -5409,12 +5326,7 @@ function PortfolioQaWorkspace() {
                         .filter((id): id is string => Boolean(id)),
                     )
                   }
-                  disabled={!readyPrepRows.length || allMode}
-                  title={
-                    allMode
-                      ? "Select a single entity to apply fixes"
-                      : undefined
-                  }
+                  disabled={!readyPrepRows.length}
                 >
                   <CheckCircle2 size={15} />
                   Select ready
@@ -5430,13 +5342,7 @@ function PortfolioQaWorkspace() {
                   }
                   disabled={
                     !selectedReadyRows.length ||
-                    batchOnboardingMutation.isPending ||
-                    allMode
-                  }
-                  title={
-                    allMode
-                      ? "Select a single entity to apply fixes"
-                      : undefined
+                    batchOnboardingMutation.isPending
                   }
                 >
                   {batchOnboardingMutation.isPending ? (
@@ -5472,7 +5378,7 @@ function PortfolioQaWorkspace() {
                     checked={Boolean(
                       row.leaseId && selectedLeaseIds.includes(row.leaseId),
                     )}
-                    disabled={!row.ready || !row.leaseId || allMode}
+                    disabled={!row.ready || !row.leaseId}
                     onChange={(event) =>
                       row.leaseId &&
                       toggleLease(row.leaseId, event.target.checked)
@@ -5512,12 +5418,7 @@ function PortfolioQaWorkspace() {
                             batchOnboardingMutation.mutate([row.leaseId]);
                           }
                         }}
-                        disabled={batchOnboardingMutation.isPending || allMode}
-                        title={
-                          allMode
-                            ? "Select a single entity to apply fixes"
-                            : undefined
-                        }
+                        disabled={batchOnboardingMutation.isPending}
                         className="min-h-11 px-3"
                       >
                         {batchOnboardingMutation.isPending ? (

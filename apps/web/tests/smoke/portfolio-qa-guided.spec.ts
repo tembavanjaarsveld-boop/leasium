@@ -1,12 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
-
-// The two-entity fixture defaults fresh storage to All entities; pin these
-// single-entity specs to the primary entity.
-test.beforeEach(async ({ page }) => {
-  await seedPrimaryEntitySelection(page);
-});
+import { mockLeasiumApi } from "./api-mocks";
 
 // The guided fix queue is a frontend-only orchestration layer over the
 // already-shipped Portfolio QA capabilities. These smokes assert the
@@ -181,7 +175,7 @@ test("portfolio QA guided flow drives the shipped bulk-fix apply unchanged", asy
           },
           {
             id: "tenant-3",
-            entity_id: "entity-1",
+            entity_id: "entity-2",
             legal_name: "Harbour Yoga Pty Ltd",
             trading_name: "Harbour Yoga",
             abn: null,
@@ -234,6 +228,7 @@ test("portfolio QA guided flow drives the shipped bulk-fix apply unchanged", asy
     ),
   ).toBeVisible();
   expect(bulkFixCalls).toHaveLength(1);
+  expect(bulkFixCalls[0]).not.toHaveProperty("entity_id");
   expect(bulkFixCalls[0].issue_class).toBe("tenant_contact");
   const changes = bulkFixCalls[0].changes as Array<Record<string, unknown>>;
   expect(changes).toHaveLength(2);
@@ -392,6 +387,21 @@ test("portfolio QA guided flow reports complete when every category is clear", a
       },
     );
   }
+  await page.route(
+    (url) => url.pathname.endsWith("/api/v1/properties"),
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify([]),
+      });
+    },
+  );
   await page.route(
     (url) => url.pathname.includes("/api/v1/premises/by-entity/"),
     async (route) => {

@@ -685,6 +685,16 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   no provider send, email/SMS, Xero/Basiq, payment, reconciliation,
   Smart Intake apply, billing draft generation, invoice draft creation, invoice
   dispatch, or workflow mutation path changed by viewing the list.
+- [x] **2026-06-26 Switcher removal slice 7 — Portfolio QA row-scoped actions:**
+  `/portfolio-qa` stays an all-entities cleanup workspace. Reviewed
+  tenant-contact and owner-billing staging/saves, sourced enrichment
+  preview/apply, and onboarding invite creation now operate from each flagged
+  row's own record or lease identity instead of a page-level trust. Bulk-fix
+  smoke coverage locks the request to target rows and asserts no global
+  `entity_id` is sent. The standalone internal draft generator remains
+  single-entity-blocked because it creates a new batch under one entity; that
+  product/API choice is intentionally deferred. No provider send, email/SMS,
+  Xero/Basiq, payment, or reconciliation path changed.
 - [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
   `/maintenance/work-orders` now accepts omitted `entity_id` as an
   organisation-wide read scoped to the operator's readable entities, while

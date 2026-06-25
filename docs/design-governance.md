@@ -188,6 +188,12 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Portfolio QA · existing desktop/mobile smoke surfaces checked
+  through `portfolio-qa-guided` + `portfolio-qa-ux` · fixes: row-backed
+  cleanup actions now remain available in all-entities mode without adding a
+  global trust picker; standalone internal draft generation remains
+  single-entity-blocked · deferred: product/API decision for any future
+  cross-entity draft-batch creation.
 - 2026-06-12 · Portfolio QA · copy fix: removed internal "Remba review"
   reference from the operator-visible all-clear summary string · no
   layout change · none deferred.

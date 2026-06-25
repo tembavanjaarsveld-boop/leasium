@@ -1,6 +1,33 @@
 # Leasium Next Chat Handover
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
+
+## Continuation - 2026-06-26 (Switcher removal slice 7: Portfolio QA)
+
+Slice 7 is committed locally on `main`: Portfolio QA is still an all-entities
+cleanup workspace, but row-backed actions no longer require a single global
+trust. The reviewed tenant-contact and owner-billing staging/saves, sourced
+public enrichment preview/apply, and onboarding invite creation are available in
+all-entities mode and operate through each flagged row's own record/lease
+identity. The bulk-fix endpoint takes target rows only; the smoke tests now
+assert the request does not include a page-level `entity_id` and covers a
+mixed-entity staged set. The standalone "Create internal drafts" action remains
+single-entity-blocked because it mints a new billing batch with one
+`entity_id`; that product/API question was not guessed.
+
+Verification: red-first Portfolio QA smokes failed on disabled all-mode action
+buttons and a stale org-wide empty-state mock. Final checks passed:
+`NODE_ENV=development NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs
+./node_modules/.bin/playwright test tests/smoke/portfolio-qa-guided.spec.ts
+tests/smoke/portfolio-qa-ux.spec.ts --reporter=line` — 16 passed;
+`./node_modules/.bin/eslint src/app/portfolio-qa/page.tsx
+tests/smoke/portfolio-qa-guided.spec.ts tests/smoke/portfolio-qa-ux.spec.ts`
+passed; `./node_modules/.bin/tsc --noEmit` passed; `git diff --check` passed.
+
+Next switcher-removal slice: Contractors + Tenants actions
+(`contractors`, `tenants-ux`, `app-flows`). Keep Portfolio-QA's exception in
+mind: cross-portfolio cleanup rows own their entity, so do not retrofit a global
+action trust picker there.
 
 ## Continuation - 2026-06-25 (Entity-as-dimension backend last mile)
 
