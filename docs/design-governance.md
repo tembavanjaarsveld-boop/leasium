@@ -188,6 +188,11 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Contractors + Tenants · existing desktop/mobile smoke surfaces
+  checked through `contractors`, `tenants-ux`, and the relevant `app-flows`
+  subset · fixes: added compact default-first trust selectors for Add
+  contractor, Send invite, and Review reminders after global switcher removal ·
+  none deferred.
 - 2026-06-26 · Portfolio QA · existing desktop/mobile smoke surfaces checked
   through `portfolio-qa-guided` + `portfolio-qa-ux` · fixes: row-backed
   cleanup actions now remain available in all-entities mode without adding a

@@ -106,15 +106,54 @@ test("tenant invite drawer close action stays touch-safe", async ({ page }) => {
   );
 });
 
+test("tenant invite creation uses an explicit trust picker in all-entities mode", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const tenantCreates: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/tenants", async (route) => {
+    if (route.request().method() === "POST") {
+      tenantCreates.push(route.request().postDataJSON() as Record<string, unknown>);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/tenants");
+
+  await page.getByRole("button", { name: "Send invite" }).click();
+  const invitePanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Send invite" }),
+  });
+  await expect(invitePanel).toBeVisible();
+  const trustPicker = invitePanel.getByLabel("File under trust");
+  await expect(trustPicker).toBeVisible();
+  await expect(trustPicker).toHaveValue("entity-1");
+
+  await invitePanel
+    .getByLabel(/^Property/)
+    .selectOption("property-1");
+  await invitePanel.getByLabel("Tenant name").fill("Action Picker Cafe");
+  await invitePanel
+    .getByLabel("Contact email")
+    .fill("action-picker@example.test");
+  await invitePanel.locator("form").getByRole("button", { name: "Send invite" }).click();
+
+  expect(tenantCreates).toHaveLength(1);
+  expect(tenantCreates[0].entity_id).toBe("entity-1");
+  expect(tenantCreates[0].entity_id).not.toBe("__all__");
+});
+
 test("tenant reminder sends require explicit approval", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await mockLeasiumApi(page);
 
-  let reminderRuns = 0;
+  const reminderEntityIds: string[] = [];
   await page.route(
     /\/api\/v1\/tenant-onboarding\/reminders\/run(?:\?.*)?$/,
     async (route) => {
-      reminderRuns += 1;
+      reminderEntityIds.push(new URL(route.request().url()).searchParams.get("entity_id") ?? "");
       await route.fulfill({
         contentType: "application/json",
         status: 200,
@@ -144,19 +183,22 @@ test("tenant reminder sends require explicit approval", async ({ page }) => {
   await expect(
     reminderApproval.getByRole("heading", { name: "Send due reminders?" }),
   ).toBeVisible();
-  await expect.poll(() => reminderRuns).toBe(0);
+  const trustPicker = reminderApproval.getByLabel("Reminder trust");
+  await expect(trustPicker).toBeVisible();
+  await expect(trustPicker).toHaveValue("entity-1");
+  await expect.poll(() => reminderEntityIds.length).toBe(0);
 
   await reminderApproval.getByRole("button", { name: "Cancel" }).click();
   await expect(
     page.getByRole("heading", { name: "Send due reminders?" }),
   ).toHaveCount(0);
-  await expect.poll(() => reminderRuns).toBe(0);
+  await expect.poll(() => reminderEntityIds.length).toBe(0);
 
   await page.getByRole("button", { name: "Review reminders" }).click();
   await reminderApproval
     .getByRole("button", { name: "Send due reminders" })
     .click();
-  await expect.poll(() => reminderRuns).toBe(1);
+  await expect.poll(() => reminderEntityIds).toEqual(["entity-1"]);
   await expect(page.getByText("2 reminders sent.")).toBeVisible();
 
   await page.unrouteAll({ behavior: "ignoreErrors" });

@@ -20,10 +20,9 @@ import {
   UserPlus,
   Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -50,8 +49,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -155,31 +153,24 @@ function ContractorsContent() {
     queryFn: listEntities,
   });
 
-  const [selectedEntityId, setSelectedEntityId] = useState("");
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) setSelectedEntityId(stored);
-  }, []);
-  useEffect(() => {
-    if (!selectedEntityId) return;
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-  }, [selectedEntityId]);
-  useEffect(() => {
-    if (selectedEntityId) return;
-    const fallback = defaultEntitySelection(entitiesQuery.data ?? []);
-    if (fallback) setSelectedEntityId(fallback);
-  }, [entitiesQuery.data, selectedEntityId]);
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag (?trust_tag, below). The
+  // org-wide read path always runs; a single entity is reached via the tag, not
+  // a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
 
   const allMode = isAllEntities(selectedEntityId);
   const scopedEntityId = scopeEntityId(selectedEntityId);
+  const entities = useMemo(
+    () => entitiesQuery.data ?? [],
+    [entitiesQuery.data],
+  );
+  const [actionEntityOverride, setActionEntityOverride] = useState("");
+  const actionEntityId = actionEntityOverride || entities[0]?.id || "";
   const entityNameById = useMemo(
     () =>
-      new Map(
-        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
-      ),
-    [entitiesQuery.data],
+      new Map(entities.map((entity) => [entity.id, entity.name])),
+    [entities],
   );
 
   const contractorsQuery = useQuery({
@@ -231,14 +222,7 @@ function ContractorsContent() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
@@ -265,12 +249,7 @@ function ContractorsContent() {
               <Button
                 type="button"
                 onClick={() => setShowCreate((prev) => !prev)}
-                disabled={!scopedEntityId}
-                title={
-                  allMode
-                    ? "Select a single entity to add a contractor"
-                    : undefined
-                }
+                disabled={!actionEntityId}
               >
                 <Plus size={16} />
                 {showCreate ? "Close form" : "Add contractor"}
@@ -285,7 +264,9 @@ function ContractorsContent() {
 
         {showCreate ? (
           <AddContractorForm
-            entityId={scopedEntityId}
+            entityId={actionEntityId}
+            entities={entities}
+            onEntityIdChange={setActionEntityOverride}
             onSaved={() => {
               setShowCreate(false);
               queryClient.invalidateQueries({
@@ -338,9 +319,13 @@ function ContractorsContent() {
 
 function AddContractorForm({
   entityId,
+  entities,
+  onEntityIdChange,
   onSaved,
 }: {
   entityId: string;
+  entities: Array<{ id: string; name: string }>;
+  onEntityIdChange: (entityId: string) => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState("");
@@ -394,6 +379,18 @@ function AddContractorForm({
           if (canSubmit) createMutation.mutate();
         }}
       >
+        <Field label="File under trust">
+          <Select
+            value={entityId}
+            onChange={(event) => onEntityIdChange(event.target.value)}
+          >
+            {entities.map((entity) => (
+              <option key={entity.id} value={entity.id}>
+                {entity.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="Name">
           <Input
             required

@@ -4717,7 +4717,7 @@ test("portfolio QA All entities billing drafts use one org-wide read", async ({
   expect(billingDraftEntityRequests).toEqual(["__missing__"]);
 });
 
-test("contractors All entities merges vendors across entities and gates add", async ({
+test("contractors All entities merges vendors and uses add action picker", async ({
   page,
 }) => {
   const contractorEntityRequests: string[] = [];
@@ -4746,20 +4746,24 @@ test("contractors All entities merges vendors across entities and gates add", as
   expect(contractorEntityRequests).toContain("");
   expect(contractorEntityRequests).not.toContain("entity-2");
 
-  // Add contractor needs a single entity, so it is disabled in all-mode.
-  await expect(
-    page.getByRole("button", { name: "Add contractor" }),
-  ).toBeDisabled();
+  await page.getByRole("button", { name: "Add contractor" }).click();
+  const createPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Add contractor" }) })
+    .first();
+  await expect(createPanel.getByLabel("File under trust")).toHaveValue(
+    "entity-1",
+  );
 });
 
-test("contractor create form blocks submit after switching scopes", async ({
+test("contractor create form posts the action picker entity", async ({
   page,
 }) => {
-  const contractorPosts: string[] = [];
+  const contractorPosts: Array<Record<string, unknown>> = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (request.method() === "POST" && url.pathname === "/api/v1/contractors") {
-      contractorPosts.push(request.postData() ?? "");
+      contractorPosts.push(JSON.parse(request.postData() ?? "{}"));
     }
   });
 
@@ -4769,18 +4773,20 @@ test("contractor create form blocks submit after switching scopes", async ({
     page.getByRole("heading", { name: "Contractor directory" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Add contractor" }).click();
-  await page.getByLabel("Name").fill("Scope Switch Services");
-
-  await selectAllEntitiesFromWorkspaceSwitcher(page);
-
-  await expect(
-    page.getByRole("button", { name: "Save contractor" }),
-  ).toBeDisabled();
-  await page.waitForTimeout(100);
-  expect(contractorPosts).toEqual([]);
+  const createPanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Add contractor" }) })
+    .first();
+  await expect(createPanel.getByLabel("File under trust")).toHaveValue(
+    "entity-1",
+  );
+  await createPanel.getByLabel("Name").fill("Scope Switch Services");
+  await createPanel.getByRole("button", { name: "Save contractor" }).click();
+  await expect.poll(() => contractorPosts.length).toBe(1);
+  expect(contractorPosts[0].entity_id).toBe("entity-1");
 });
 
-test("tenants All entities merges tenants across entities and gates invite", async ({
+test("tenants All entities merges tenants and uses invite action picker", async ({
   page,
 }) => {
   const tenantEntityRequests: string[] = [];
@@ -4815,14 +4821,20 @@ test("tenants All entities merges tenants across entities and gates invite", asy
   expect(tenantEntityRequests).toContain("");
   expect(tenantEntityRequests).not.toContain("entity-2");
 
-  // Send invite needs a single entity, so it is disabled in all-mode.
-  await expect(page.getByRole("button", { name: "Send invite" })).toBeDisabled();
+  await page.getByRole("button", { name: "Send invite" }).click();
+  const invitePanel = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Send invite" }) })
+    .first();
+  await expect(invitePanel.getByLabel("File under trust")).toHaveValue(
+    "entity-1",
+  );
 });
 
-test("tenant action panels block submit after switching scopes", async ({
+test("tenant action panels post their selected action entity", async ({
   page,
 }) => {
-  const actionPosts: string[] = [];
+  const actionPosts: Array<{ path: string; entityId: string | null }> = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (
@@ -4830,7 +4842,13 @@ test("tenant action panels block submit after switching scopes", async ({
       (url.pathname === "/api/v1/tenants" ||
         url.pathname === "/api/v1/tenant-onboarding/reminders/run")
     ) {
-      actionPosts.push(url.pathname);
+      actionPosts.push({
+        path: url.pathname,
+        entityId:
+          url.pathname === "/api/v1/tenants"
+            ? (JSON.parse(request.postData() ?? "{}").entity_id ?? null)
+            : url.searchParams.get("entity_id"),
+      });
     }
   });
 
@@ -4841,35 +4859,67 @@ test("tenant action panels block submit after switching scopes", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Review reminders" }).click();
 
-  await selectAllEntitiesFromWorkspaceSwitcher(page);
-
   const reminderApproval = page
     .locator("section")
     .filter({
       has: page.getByRole("heading", { name: "Send due reminders?" }),
     })
     .first();
+  await expect(reminderApproval.getByLabel("Reminder trust")).toHaveValue(
+    "entity-1",
+  );
   await expect(
     reminderApproval.getByRole("button", { name: "Send due reminders" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
+  await reminderApproval
+    .getByRole("button", { name: "Send due reminders" })
+    .click();
+  await expect
+    .poll(() =>
+      actionPosts.some(
+        (post) =>
+          post.path === "/api/v1/tenant-onboarding/reminders/run" &&
+          post.entityId === "entity-1",
+      ),
+    )
+    .toBe(true);
   await reminderApproval.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Send due reminders?" }),
+  ).toHaveCount(0);
 
-  await selectWorkspaceEntity(page, "entity-1");
   await page.getByRole("button", { name: "Send invite" }).click();
   const invitePanel = page
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Send invite" }) })
     .first();
   await expect(invitePanel).toBeVisible();
-
-  await selectAllEntitiesFromWorkspaceSwitcher(page);
-
-  await expect(invitePanel.getByRole("combobox").first()).toBeDisabled();
+  await expect(invitePanel.getByLabel("File under trust")).toHaveValue(
+    "entity-1",
+  );
+  await invitePanel
+    .getByLabel(/^Property/)
+    .selectOption("property-1");
+  await invitePanel.getByLabel("Tenant name").fill("Action Picker Cafe");
+  await invitePanel
+    .getByLabel("Contact email")
+    .fill("action-picker@example.test");
   await expect(
     invitePanel.locator("form").getByRole("button", { name: "Send invite" }),
-  ).toBeDisabled();
-  await page.waitForTimeout(100);
-  expect(actionPosts).toEqual([]);
+  ).toBeEnabled();
+  await invitePanel
+    .locator("form")
+    .getByRole("button", { name: "Send invite" })
+    .click();
+  expect(actionPosts).toEqual(
+    expect.arrayContaining([
+      {
+        path: "/api/v1/tenant-onboarding/reminders/run",
+        entityId: "entity-1",
+      },
+      { path: "/api/v1/tenants", entityId: "entity-1" },
+    ]),
+  );
 });
 
 test("tenant detail shows portal access recovery actions", async ({ page }) => {

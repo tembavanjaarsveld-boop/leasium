@@ -207,3 +207,33 @@ test("contractor directory copies and downloads the same guarded readiness CSV",
   );
   expect(forbiddenApiPaths).toEqual([]);
 });
+
+test("contractor creation uses an explicit trust picker in all-entities mode", async ({
+  page,
+}) => {
+  const createCalls: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/contractors", async (route) => {
+    if (route.request().method() === "POST") {
+      createCalls.push(route.request().postDataJSON() as Record<string, unknown>);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/contractors");
+
+  await page.getByRole("button", { name: "Add contractor" }).click();
+  const createPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Add contractor" }),
+  });
+  await expect(createPanel).toBeVisible();
+  const trustPicker = createPanel.getByLabel("File under trust");
+  await expect(trustPicker).toBeVisible();
+  await expect(trustPicker).toHaveValue("entity-1");
+
+  await createPanel.getByLabel("Name").fill("Scope Switch Services");
+  await createPanel.getByRole("button", { name: "Save contractor" }).click();
+
+  expect(createCalls).toHaveLength(1);
+  expect(createCalls[0].entity_id).toBe("entity-1");
+  expect(createCalls[0].entity_id).not.toBe("__all__");
+});

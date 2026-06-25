@@ -2,6 +2,22 @@
 
 Last updated: 2026-06-26
 
+## Continuation - 2026-06-26 (Switcher removal slice 8: Contractors + Tenants actions)
+
+Slice 8 is committed locally on `main`: Contractors and Tenants remain
+all-entities read surfaces, but standalone actions now own explicit trust
+selection instead of depending on a removed global switcher. Add contractor uses
+`File under trust` and posts the selected `entity_id`; Send invite uses `File
+under trust` for the tenant/lease/onboarding create chain; Review reminders
+uses `Reminder trust` for the reminder run query. Each selector defaults to the
+first accessible entity.
+
+Verification: red-first smokes failed on disabled Add contractor, Send invite,
+and Review reminders buttons in all-entities mode. Final checks passed:
+focused Contractors/Tenants action smokes — 3 passed; app-flow slice subset —
+4 passed; full `contractors.spec.ts` + `tenants-ux.spec.ts` — 12 passed;
+eslint on touched web files passed; `tsc --noEmit` passed.
+
 ## Continuation - 2026-06-26 (Switcher removal slice 7b: snapshot/draft action pickers)
 
 Slice 7b is committed locally on `main`: standalone create actions that mint

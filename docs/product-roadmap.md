@@ -703,6 +703,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   selected trust before creating local drafts. Both remain review-first/local:
   no provider send, email/SMS, Xero/Basiq, payment, or reconciliation path
   changed.
+- [x] **2026-06-26 Switcher removal slice 8 — Contractors + Tenants action pickers:**
+  Contractors stays an all-entities directory read while Add contractor now has
+  a `File under trust` action selector, defaulting to the first accessible
+  entity, and sends that entity in the create payload. Tenants stays an
+  all-entities register/onboarding read while Send invite uses `File under
+  trust` for the tenant/lease/onboarding create chain and Review reminders uses
+  `Reminder trust` for the reminder run. These are review-first/local action
+  selections only: no provider send, Xero/Basiq, payment, or reconciliation
+  path changed.
 - [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
   `/maintenance/work-orders` now accepts omitted `entity_id` as an
   organisation-wide read scoped to the operator's readable entities, while

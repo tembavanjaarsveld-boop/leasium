@@ -16,7 +16,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { DetailDrawer } from "@/components/detail-drawer";
-import { EntityPicker } from "@/components/entity-picker";
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -59,8 +58,7 @@ import {
   onboardingReminderTone,
 } from "@/lib/delivery";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -198,12 +196,18 @@ function isTenantFilterKey(value: string | null): value is FilterKey {
 
 function TenantWorkspace() {
   const queryClient = useQueryClient();
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag (?trust_tag, below). The
+  // org-wide read path always runs; a single entity is reached via the tag, not
+  // a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [showReminderApproval, setShowReminderApproval] = useState(false);
   const [form, setForm] = useState<InviteForm>(emptyForm);
+  const [inviteEntityOverride, setInviteEntityOverride] = useState("");
+  const [reminderEntityOverride, setReminderEntityOverride] = useState("");
   const [reminderRunSummary, setReminderRunSummary] = useState("");
   const [drawerTenantId, setDrawerTenantId] = useState<string | null>(null);
 
@@ -245,36 +249,19 @@ function TenantWorkspace() {
     queryFn: listEntities,
   });
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set((entitiesQuery.data ?? []).map((entity) => entity.id));
-    // The All-entities sentinel is a valid restore target even though it is not
-    // a real entity id, so the cross-entity view survives navigation/reload.
-    const next =
-      stored && (isAllEntities(stored) || accessibleIds.has(stored))
-        ? stored
-        : defaultEntitySelection(entitiesQuery.data ?? []);
-    if (!selectedEntityId && next) {
-      setSelectedEntityId(next);
-    }
-  }, [entitiesQuery.data, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    }
-  }, [selectedEntityId]);
-
   // All-entities mode: entity-scoped queries use scopedEntityId (empty in
   // all-mode, so they stay disabled) and the page reads merged fan-out results.
   const allMode = isAllEntities(selectedEntityId);
   const scopedEntityId = scopeEntityId(selectedEntityId);
-  const entityNameById = useMemo(
-    () =>
-      new Map(
-        (entitiesQuery.data ?? []).map((entity) => [entity.id, entity.name]),
-      ),
+  const entities = useMemo(
+    () => entitiesQuery.data ?? [],
     [entitiesQuery.data],
+  );
+  const inviteEntityId = inviteEntityOverride || entities[0]?.id || "";
+  const reminderEntityId = reminderEntityOverride || entities[0]?.id || "";
+  const entityNameById = useMemo(
+    () => new Map(entities.map((entity) => [entity.id, entity.name])),
+    [entities],
   );
 
   const tenantsQuery = useQuery({
@@ -335,9 +322,9 @@ function TenantWorkspace() {
   // once per entity; units are loaded per selected property so the unit
   // dropdown only shows units that belong to the chosen property.
   const propertiesQuery = useQuery({
-    queryKey: ["properties", scopedEntityId],
-    queryFn: () => listProperties(scopedEntityId),
-    enabled: Boolean(scopedEntityId),
+    queryKey: ["properties", inviteEntityId],
+    queryFn: () => listProperties(inviteEntityId),
+    enabled: Boolean(inviteEntityId && showCreate),
   });
 
   const unitsQuery = useQuery({
@@ -591,6 +578,15 @@ function TenantWorkspace() {
     );
   }
 
+  function updateInviteEntity(entityId: string) {
+    setInviteEntityOverride(entityId);
+    setForm((current) => ({
+      ...current,
+      property_id: "",
+      tenancy_unit_id: "",
+    }));
+  }
+
   // Unit is satisfied if the operator picked one OR there's a single
   // unit we'll auto-select OR there are zero units we'll auto-create.
   // Loading state is the only mode where we wait.
@@ -599,7 +595,7 @@ function TenantWorkspace() {
     unitPickerMode === "auto-select" ||
     Boolean(form.tenancy_unit_id);
   const canSubmitInvite =
-    Boolean(scopedEntityId) &&
+    Boolean(inviteEntityId) &&
     Boolean(form.property_id) &&
     !unitsQuery.isLoading &&
     unitReady &&
@@ -608,22 +604,15 @@ function TenantWorkspace() {
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSubmitInvite || !scopedEntityId) {
+    if (!canSubmitInvite || !inviteEntityId) {
       return;
     }
-    sendInviteMutation.mutate({ values: form, entityId: scopedEntityId });
+    sendInviteMutation.mutate({ values: form, entityId: inviteEntityId });
   }
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <section className="flex flex-wrap items-center justify-between gap-3">
@@ -653,12 +642,7 @@ function TenantWorkspace() {
             <SecondaryButton
               type="button"
               onClick={() => setShowReminderApproval(true)}
-              disabled={
-                !scopedEntityId || runRemindersMutation.isPending
-              }
-              title={
-                allMode ? "Select a single entity to send reminders" : undefined
-              }
+              disabled={!reminderEntityId || runRemindersMutation.isPending}
             >
               <Clock3 size={15} />
               Review reminders
@@ -666,10 +650,7 @@ function TenantWorkspace() {
             <Button
               type="button"
               onClick={() => setShowCreate(true)}
-              disabled={!scopedEntityId}
-              title={
-                allMode ? "Select a single entity to send an invite" : undefined
-              }
+              disabled={!inviteEntityId}
             >
               <Send size={16} />
               Send invite
@@ -693,6 +674,20 @@ function TenantWorkspace() {
             }
           >
             <div className="grid gap-3 p-4 text-sm leading-6 text-muted-foreground">
+              <Field label="Reminder trust">
+                <Select
+                  value={reminderEntityId}
+                  onChange={(event) =>
+                    setReminderEntityOverride(event.target.value)
+                  }
+                >
+                  {entities.map((entity) => (
+                    <option key={entity.id} value={entity.id}>
+                      {entity.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <p>
                 This checks sent onboarding rows and sends due reminder messages
                 to tenants through SendGrid or Twilio when those channels are
@@ -710,13 +705,11 @@ function TenantWorkspace() {
                 <Button
                   type="button"
                   onClick={() => {
-                    if (scopedEntityId) {
-                      runRemindersMutation.mutate(scopedEntityId);
+                    if (reminderEntityId) {
+                      runRemindersMutation.mutate(reminderEntityId);
                     }
                   }}
-                  disabled={
-                    !scopedEntityId || runRemindersMutation.isPending
-                  }
+                  disabled={!reminderEntityId || runRemindersMutation.isPending}
                 >
                   <Clock3 size={15} />
                   {runRemindersMutation.isPending
@@ -794,6 +787,18 @@ function TenantWorkspace() {
             }
           >
             <form className="grid gap-3 p-4 md:grid-cols-2" onSubmit={submitForm}>
+              <Field label="File under trust">
+                <Select
+                  value={inviteEntityId}
+                  onChange={(event) => updateInviteEntity(event.target.value)}
+                >
+                  {entities.map((entity) => (
+                    <option key={entity.id} value={entity.id}>
+                      {entity.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Property">
                 <Select
                   value={form.property_id}
@@ -801,7 +806,7 @@ function TenantWorkspace() {
                     updateField("property_id", event.target.value)
                   }
                   disabled={
-                    propertiesQuery.isLoading || !scopedEntityId
+                    propertiesQuery.isLoading || !inviteEntityId
                   }
                 >
                   <option value="">Select a property</option>
