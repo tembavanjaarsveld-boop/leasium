@@ -148,6 +148,19 @@ test("people hub All entities merges tenants and vendors across entities", async
     rivergumCard.getByText("Secondary Holdings Pty Ltd"),
   ).toBeVisible();
 
+  // Clicking a trust tag filters the merged list to that entity; Clear restores.
+  await rivergumCard
+    .getByRole("button", { name: "Secondary Holdings Pty Ltd" })
+    .click();
+  await expect(
+    page.getByText("Showing Secondary Holdings Pty Ltd only"),
+  ).toBeVisible();
+  await expect(
+    page.locator("li").filter({ hasText: "Bright Cafe Pty Ltd" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page.getByText("Bright Cafe Pty Ltd")).toBeVisible();
+
   // Vendors merge across entities too.
   await page.getByRole("tab", { name: "Vendors" }).click();
   await expect(

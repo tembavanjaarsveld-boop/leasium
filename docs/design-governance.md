@@ -831,6 +831,16 @@ fixes · deferrals.
   correctly in dark, consistent with the sibling create rows · no fixes needed ·
   filing stays the single reviewed write — no Xero/SendGrid/Twilio/payment ·
   none deferred.
+- 2026-06-25 · People trust-tag filter (Track C slice 1, entity-as-tag) · in
+  all-entities mode each tenant/vendor row's trust label is now a clickable tag
+  that filters the list to that entity (`?trust_tag`) with a "Showing <trust>
+  only" clear bar · reuses the approved Properties owner-tag chip pattern +
+  tokens, so no new Figma frame · read-only filter, no provider/write change,
+  the top-left switcher is untouched (its removal is a later Track C slice) ·
+  covered by people-hub smoke (tag click filters, Clear restores) and the
+  existing mobile touch-safe test; the full 1440/390 visual eyeball is folded
+  into the consolidated Track C pass that lands with the switcher removal ·
+  none deferred.
 
 ## UX Debt Register
 

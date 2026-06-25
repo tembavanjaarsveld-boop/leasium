@@ -193,6 +193,28 @@ function PeopleContent() {
     [entitiesQuery.data],
   );
 
+  // Trust-as-tag filter: clicking a row's trust tag narrows the all-entities
+  // list to that entity. Held in ?trust_tag so it is shareable and can later be
+  // set from the command bar. Only meaningful in all-entities mode.
+  const [trustTagFilter, setTrustTagFilter] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tag = new URL(window.location.href).searchParams.get("trust_tag");
+    setTrustTagFilter(tag ?? "");
+  }, []);
+  const applyTrustTag = (entityId: string) => {
+    setTrustTagFilter(entityId);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (entityId) url.searchParams.set("trust_tag", entityId);
+    else url.searchParams.delete("trust_tag");
+    window.history.replaceState({}, "", url);
+  };
+  const clearTrustTag = () => applyTrustTag("");
+  const trustTagName = trustTagFilter
+    ? (entityNameById.get(trustTagFilter) ?? "Unknown entity")
+    : "";
+
   const tenantsQuery = useQuery({
     queryKey: ["tenants", scopedEntityId],
     queryFn: () => listTenants(scopedEntityId),
@@ -360,6 +382,10 @@ function PeopleContent() {
             tenants={tenants}
             isLoading={tenantsLoading}
             error={tenantsError}
+            trustTagFilter={trustTagFilter}
+            trustTagName={trustTagName}
+            onSelectTrust={applyTrustTag}
+            onClearTrust={clearTrustTag}
           />
         ) : null}
         {activeTab === "vendors" ? (
@@ -369,11 +395,65 @@ function PeopleContent() {
             contractors={contractors}
             isLoading={contractorsLoading}
             error={contractorsError}
+            trustTagFilter={trustTagFilter}
+            trustTagName={trustTagName}
+            onSelectTrust={applyTrustTag}
+            onClearTrust={clearTrustTag}
           />
         ) : null}
         {activeTab === "prospects" ? <ProspectsTab /> : null}
       </div>
     </main>
+  );
+}
+
+function TrustTag({
+  entityId,
+  entityName,
+  active,
+  onSelect,
+}: {
+  entityId: string;
+  entityName: string | undefined;
+  active: boolean;
+  onSelect: (entityId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(entityId)}
+      title={`Filter by ${entityName ?? "this trust"}`}
+      className={`mt-1 inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-leasium-micro font-semibold uppercase transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+        active
+          ? "bg-primary-soft text-primary"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      {entityName ?? "Unknown entity"}
+    </button>
+  );
+}
+
+function TrustFilterBar({
+  name,
+  onClear,
+}: {
+  name: string;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-full border border-leasium-card-border bg-muted px-3 py-1.5">
+      <span className="truncate text-xs font-semibold text-foreground">
+        Showing {name} only
+      </span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-primary transition hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      >
+        Clear
+      </button>
+    </div>
   );
 }
 
@@ -383,18 +463,33 @@ function TenantsTab({
   tenants,
   isLoading,
   error,
+  trustTagFilter,
+  trustTagName,
+  onSelectTrust,
+  onClearTrust,
 }: {
   allMode: boolean;
   entityNameById: Map<string, string>;
   tenants: TenantRecord[];
   isLoading: boolean;
   error: unknown;
+  trustTagFilter: string;
+  trustTagName: string;
+  onSelectTrust: (entityId: string) => void;
+  onClearTrust: () => void;
 }) {
+  const visibleTenants =
+    allMode && trustTagFilter
+      ? tenants.filter((tenant) => tenant.entity_id === trustTagFilter)
+      : tenants;
   return (
     <section aria-labelledby="people-tenants-heading" className="grid gap-3">
       <div className="sr-only">
         <h2 id="people-tenants-heading">Tenants</h2>
       </div>
+      {allMode && trustTagFilter ? (
+        <TrustFilterBar name={trustTagName} onClear={onClearTrust} />
+      ) : null}
       {isLoading ? (
         <div className="rounded-[18px] border border-leasium-card-border bg-white p-4 shadow-leasiumCard">
           <SkeletonRows rows={3} />
@@ -405,7 +500,7 @@ function TenantsTab({
           {friendlyError(error)}
         </p>
       ) : null}
-      {!isLoading && tenants.length === 0 && !error ? (
+      {!isLoading && visibleTenants.length === 0 && !error ? (
         <div className={horizonMutedCardClass}>
           <Users size={20} className="mx-auto text-primary" />
           <p className="mt-2 text-sm font-semibold text-foreground">
@@ -417,7 +512,7 @@ function TenantsTab({
         </div>
       ) : null}
       <ul className="grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
-        {tenants.map((tenant) => {
+        {visibleTenants.map((tenant) => {
           const contactEmail = tenant.contact_email || null;
           // Avoid repeating the same email: rows whose display name is the
           // contact email show it once, and identical billing emails render
@@ -472,9 +567,12 @@ function TenantsTab({
                     </Link>
                   </div>
                   {allMode ? (
-                    <p className="mt-1 truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
-                      {entityName ?? "Unknown entity"}
-                    </p>
+                    <TrustTag
+                      entityId={tenant.entity_id}
+                      entityName={entityName}
+                      active={trustTagFilter === tenant.entity_id}
+                      onSelect={onSelectTrust}
+                    />
                   ) : null}
                   <div className="mt-3 flex items-center gap-2">
                     <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -515,18 +613,35 @@ function VendorsTab({
   contractors,
   isLoading,
   error,
+  trustTagFilter,
+  trustTagName,
+  onSelectTrust,
+  onClearTrust,
 }: {
   allMode: boolean;
   entityNameById: Map<string, string>;
   contractors: ContractorRecord[];
   isLoading: boolean;
   error: unknown;
+  trustTagFilter: string;
+  trustTagName: string;
+  onSelectTrust: (entityId: string) => void;
+  onClearTrust: () => void;
 }) {
+  const visibleContractors =
+    allMode && trustTagFilter
+      ? contractors.filter(
+          (contractor) => contractor.entity_id === trustTagFilter,
+        )
+      : contractors;
   return (
     <section aria-labelledby="people-vendors-heading" className="grid gap-3">
       <div className="sr-only">
         <h2 id="people-vendors-heading">Vendors</h2>
       </div>
+      {allMode && trustTagFilter ? (
+        <TrustFilterBar name={trustTagName} onClear={onClearTrust} />
+      ) : null}
       {isLoading ? (
         <div className="rounded-[18px] border border-leasium-card-border bg-white p-4 shadow-leasiumCard">
           <SkeletonRows rows={3} />
@@ -537,7 +652,7 @@ function VendorsTab({
           {friendlyError(error)}
         </p>
       ) : null}
-      {!isLoading && contractors.length === 0 && !error ? (
+      {!isLoading && visibleContractors.length === 0 && !error ? (
         <div className={horizonMutedCardClass}>
           <Wrench size={20} className="mx-auto text-primary" />
           <p className="mt-2 text-sm font-semibold text-foreground">
@@ -549,7 +664,7 @@ function VendorsTab({
         </div>
       ) : null}
       <ul className="grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
-        {contractors.map((contractor) => {
+        {visibleContractors.map((contractor) => {
           const status = vendorStatus(contractor);
           const entityName = entityNameById.get(contractor.entity_id);
           return (
@@ -584,9 +699,12 @@ function VendorsTab({
                     </Link>
                   </div>
                   {allMode ? (
-                    <p className="mt-1 truncate text-leasium-micro font-semibold uppercase text-muted-foreground">
-                      {entityName ?? "Unknown entity"}
-                    </p>
+                    <TrustTag
+                      entityId={contractor.entity_id}
+                      entityName={entityName}
+                      active={trustTagFilter === contractor.entity_id}
+                      onSelect={onSelectTrust}
+                    />
                   ) : null}
                   <div className="mt-3 flex items-center gap-2">
                     <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
