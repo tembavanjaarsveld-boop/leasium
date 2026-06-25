@@ -5207,7 +5207,7 @@ test("smart intake applies inspection findings into work orders", async ({
   expect(forbiddenProviderRequests).toEqual([]);
 });
 
-test("smart intake deep link selects the review entity", async ({ page }) => {
+test("smart intake deep link defaults the review trust", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("leasium.entity_id", "entity-2");
   });
@@ -5216,11 +5216,10 @@ test("smart intake deep link selects the review entity", async ({ page }) => {
     "/intake?entity_id=entity-1&review=intake-tenant-upload-insurance-1",
   );
 
-  await expect(page.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
+  await expect(page.getByTestId("leasium-ai-document-chat")).toBeVisible();
+  await expect(page.getByTestId("intake-trust-select-input")).toHaveValue(
     "entity-1",
   );
-  await expect(page.getByTestId("leasium-ai-document-chat")).toBeVisible();
   await expect(page.getByTestId("intake-conversation")).toContainText(
     "tenant-uploaded-insurance.txt",
   );

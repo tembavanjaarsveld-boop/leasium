@@ -1764,10 +1764,15 @@ export function Dashboard({
     queryFn: () => listTenantOnboardings(scopedEntityId),
     enabled: Boolean(scopedEntityId),
   });
+  const documentIntakeScopeKey = isIntakeWorkspace
+    ? "org-wide"
+    : scopedEntityId;
   const documentIntakesQuery = useQuery({
-    queryKey: ["dashboard-document-intakes", scopedEntityId],
-    queryFn: () => listDocumentIntakes(scopedEntityId),
-    enabled: Boolean(scopedEntityId),
+    queryKey: ["dashboard-document-intakes", documentIntakeScopeKey],
+    queryFn: () =>
+      listDocumentIntakes(isIntakeWorkspace ? undefined : scopedEntityId),
+    enabled:
+      !demoMode && (isIntakeWorkspace || Boolean(documentIntakeScopeKey)),
     refetchInterval: (query) =>
       query.state.data?.some(intakeIsActive) ? 2500 : false,
   });
@@ -1947,13 +1952,16 @@ export function Dashboard({
           !onboardingQuery.data &&
           (onboardingQuery.isLoading || onboardingQuery.isFetching)));
   const documentIntakesLoading =
-    entitySelectionLoading ||
-    (!demoMode &&
-      (allMode
-        ? documentIntakesFanOut.isLoading
-        : Boolean(selectedEntityId) &&
-          !documentIntakesQuery.data &&
-          (documentIntakesQuery.isLoading || documentIntakesQuery.isFetching)));
+    !demoMode &&
+    (isIntakeWorkspace
+      ? !documentIntakesQuery.data &&
+        (documentIntakesQuery.isLoading || documentIntakesQuery.isFetching)
+      : entitySelectionLoading ||
+        (allMode
+          ? documentIntakesFanOut.isLoading
+          : Boolean(selectedEntityId) &&
+            !documentIntakesQuery.data &&
+            (documentIntakesQuery.isLoading || documentIntakesQuery.isFetching)));
   const dashboardDataQueries = [
     propertiesQuery,
     tenantsQuery,
@@ -2541,7 +2549,7 @@ export function Dashboard({
         </button>
       </div>
       <IntakeConversationPanel
-        entityId={selectedEntityId}
+        entityId={selectedReviewIntake.entity_id || selectedEntityId}
         intake={selectedReviewIntake}
         onApplied={() => {
           setIntakeNotice("Document workflow applied.");
