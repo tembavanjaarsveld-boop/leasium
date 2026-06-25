@@ -3631,6 +3631,27 @@ function OperationsWorkspace() {
       ),
     [entitiesQuery.data],
   );
+  // Trust-as-tag filter for the Work queue: clicking a row's trust tag scopes
+  // the queue to that entity; clicking the active tag clears it. Held in
+  // ?trust_tag so it is shareable. Only meaningful in all-entities mode.
+  const [trustTagFilter, setTrustTagFilter] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tag = new URL(window.location.href).searchParams.get("trust_tag");
+    setTrustTagFilter(tag ?? "");
+  }, []);
+  const toggleTrustTag = (entityId: string) => {
+    setTrustTagFilter((current) => {
+      const next = current === entityId ? "" : entityId;
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (next) url.searchParams.set("trust_tag", next);
+        else url.searchParams.delete("trust_tag");
+        window.history.replaceState({}, "", url);
+      }
+      return next;
+    });
+  };
   const operationsCalendarWindow = useMemo(calendarWindow, []);
 
   const propertiesQuery = useQuery({
@@ -4372,27 +4393,30 @@ function OperationsWorkspace() {
     [securityMembers, scopedEntityId],
   );
 
-  const queueItems = useMemo(
-    () =>
-      buildQueueItems(
-        obligations,
-        onboardings,
-        intakes,
-        maintenance,
-        arrears,
-        properties,
-        tenants,
-      ),
-    [
-      arrears,
-      intakes,
-      maintenance,
+  const queueItems = useMemo(() => {
+    const built = buildQueueItems(
       obligations,
       onboardings,
+      intakes,
+      maintenance,
+      arrears,
       properties,
       tenants,
-    ],
-  );
+    );
+    return allMode && trustTagFilter
+      ? built.filter((item) => item.record.entity_id === trustTagFilter)
+      : built;
+  }, [
+    allMode,
+    trustTagFilter,
+    arrears,
+    intakes,
+    maintenance,
+    obligations,
+    onboardings,
+    properties,
+    tenants,
+  ]);
 
   const openQueueItems = queueItems.filter((item) => !item.completed);
   const assignableOpenQueueItems = openQueueItems.filter(isAssignableQueueItem);
@@ -5406,13 +5430,29 @@ function OperationsWorkspace() {
                 {secondaryContext}
               </span>
             ) : null}
-            {allMode ? (
-              <span className="text-leasium-micro font-semibold uppercase text-muted-foreground">
-                {entityNameById.get(item.record.entity_id) ?? "Unknown entity"}
-              </span>
-            ) : null}
           </div>
         </Link>
+        {allMode ? (
+          <button
+            type="button"
+            onClick={() => toggleTrustTag(item.record.entity_id)}
+            title={
+              trustTagFilter === item.record.entity_id
+                ? "Showing this trust only — click to clear"
+                : `Filter the queue to ${
+                    entityNameById.get(item.record.entity_id) ?? "this trust"
+                  }`
+            }
+            className={cn(
+              "ml-1 mt-2 inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-leasium-micro font-semibold uppercase transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+              trustTagFilter === item.record.entity_id
+                ? "bg-primary-soft text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            {entityNameById.get(item.record.entity_id) ?? "Unknown entity"}
+          </button>
+        ) : null}
         {isAssignableQueueItem(item) ? (
           <div className="mt-3 grid gap-2 pl-1">
             {renderQueueAssignmentControl(item, undefined, true)}

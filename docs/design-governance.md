@@ -841,6 +841,16 @@ fixes · deferrals.
   existing mobile touch-safe test; the full 1440/390 visual eyeball is folded
   into the consolidated Track C pass that lands with the switcher removal ·
   none deferred.
+- 2026-06-25 · Operations Work queue trust-tag filter (Track C slice 2,
+  entity-as-tag) · in all-entities mode each queue row shows a clickable trust
+  tag (moved just below the row's navigation link to avoid a button nested in an
+  anchor) that scopes the whole queue to that entity; clicking the active tag
+  clears it (`?trust_tag`) · reuses the approved owner-tag chip styling, no new
+  Figma frame · read-only filter on queueItems, no provider/write change, the
+  top-left switcher is untouched · verified eslint + tsc + the Operations
+  All-entities org-wide smokes (no regression); a dedicated queue click-filter
+  assertion and the full 1440/390 visual eyeball fold into the consolidated
+  Track C pass with the switcher removal · none deferred.
 
 ## UX Debt Register
 
