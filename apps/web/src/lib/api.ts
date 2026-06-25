@@ -3564,6 +3564,93 @@ export function applyOwnershipSplit(
   });
 }
 
+export type ReassignHistoryFlag = {
+  kind: string;
+  count: number;
+};
+
+export type ReassignPropertyPlan = {
+  property_id: string;
+  property_name: string;
+  current_entity_id: string;
+  current_entity_name: string | null;
+  target_entity_id: string;
+  target_entity_name: string;
+  obligation_count: number;
+  history_flags: ReassignHistoryFlag[];
+};
+
+export type ReassignTenantPlan = {
+  tenant_id: string;
+  tenant_name: string;
+  disposition: "move" | "flag";
+  reason: string | null;
+};
+
+export type ReassignSkipped = {
+  property_id: string;
+  reason: string;
+};
+
+export type PropertyReassignPreview = {
+  properties: ReassignPropertyPlan[];
+  tenants: ReassignTenantPlan[];
+  skipped: ReassignSkipped[];
+  moved_property_count: number;
+  moved_obligation_count: number;
+  moved_tenant_count: number;
+  flagged_tenant_count: number;
+  skipped_property_count: number;
+  has_history: boolean;
+  warnings: string[];
+};
+
+export type PropertyReassignResult = {
+  moved_property_count: number;
+  moved_obligation_count: number;
+  moved_tenant_count: number;
+  flagged_tenant_count: number;
+  skipped_property_count: number;
+  notes: string[];
+};
+
+export function previewPropertyReassign(payload: {
+  property_ids: string[];
+  target_entity_id: string;
+}) {
+  return request<PropertyReassignPreview>(
+    "/entities/reassign-properties/preview",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function applyPropertyReassign(payload: {
+  property_ids: string[];
+  target_entity_id: string;
+}) {
+  return request<PropertyReassignResult>(
+    "/entities/reassign-properties/apply",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export type EntityReassignSuggestionGroup = {
+  target_entity_id: string;
+  target_entity_name: string;
+  owner_label: string;
+  property_ids: string[];
+  property_count: number;
+};
+
+export type EntityReassignSuggestions = {
+  groups: EntityReassignSuggestionGroup[];
+  suggested_property_count: number;
+};
+
+export function getEntityReassignSuggestions() {
+  return request<EntityReassignSuggestions>("/entities/reassign-suggestions");
+}
+
 export function getSecurityWorkspace() {
   return request<SecurityWorkspaceRecord>("/security/workspace");
 }

@@ -788,6 +788,17 @@ fixes · deferrals.
   the chosen building instead of spawning a duplicate property · reuses
   Field/Select + SecondaryButton, no new tokens · no fixes needed · no provider
   calls, tenant email, Xero sync, or payment reconciliation · none deferred.
+- 2026-06-25 · Property → entity reassignment ("Move to entity" + "Looks
+  mis-filed") · Figma waived for these internal admin surfaces (Temba's call);
+  built on the approved Horizon `DetailDrawer` + `SectionPanel`/`StatusBadge`/
+  `Field`/`Select`/`Button` primitives, no new tokens · screens checked at
+  desktop 1440 and mobile 390 from local Playwright captures (settings panel +
+  open preview drawer) · the property editor gained a "Move to entity" control
+  beside the destructive zone, and Settings Entities gained a suggester-driven
+  "Looks mis-filed" panel that opens the same review drawer (preview → confirm)
+  · fix in-slice: singular suggestion row read "1 property look like they belong
+  to" → "looks like it belongs to" · reassignment is a local re-filing — no Xero
+  write, email, SMS, or payment reconciliation · none deferred.
 
 ## UX Debt Register
 

@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Ban,
   CalendarClock,
   Check,
@@ -58,6 +59,7 @@ import {
   type EvidenceSourceLocation,
 } from "@/components/evidence-drawer";
 import { InlineEditCell } from "@/components/inline-edit-cell";
+import { PropertyEntityReassignDrawer } from "@/components/property-entity-reassign";
 import { QueryProvider } from "@/components/query-provider";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { defaultEntitySelection } from "@/lib/entity-selection";
@@ -2167,6 +2169,7 @@ function Workspace({
     "index" | "detail"
   >("index");
   const [editing, setEditing] = useState<PropertyRecord | null>(null);
+  const [reassignOpen, setReassignOpen] = useState(false);
   const [propertyEditorOpen, setPropertyEditorOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<TenancyUnitRecord | null>(
     null,
@@ -8183,6 +8186,27 @@ function Workspace({
                 {editing ? (
                   <div className="mt-2 border-t border-border pt-4">
                     <p className="text-xs text-muted-foreground">
+                      Filed under{" "}
+                      <span className="font-medium text-foreground">
+                        {entityNameById.get(editing.entity_id) ?? "this entity"}
+                      </span>
+                      . Move it to the right trust if an import filed it under
+                      the wrong one.
+                    </p>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => setReassignOpen(true)}
+                      className="mt-2"
+                      data-testid="property-move-entity"
+                    >
+                      <ArrowRightLeft size={16} />
+                      Move to entity
+                    </SecondaryButton>
+                  </div>
+                ) : null}
+                {editing ? (
+                  <div className="mt-2 border-t border-border pt-4">
+                    <p className="text-xs text-muted-foreground">
                       Removes this property from your portfolio along with{" "}
                       {selectedPropertyUnitCount} unit
                       {selectedPropertyUnitCount === 1 ? "" : "s"} and{" "}
@@ -8213,6 +8237,17 @@ function Workspace({
           </div>
         ) : null}
       </div>
+      <PropertyEntityReassignDrawer
+        open={reassignOpen}
+        onClose={() => setReassignOpen(false)}
+        propertyIds={editing ? [editing.id] : []}
+        entities={entitiesQuery.data ?? []}
+        currentEntityName={
+          editing ? (entityNameById.get(editing.entity_id) ?? null) : null
+        }
+        contextLabel={editing?.name}
+        onApplied={() => setEditing(null)}
+      />
     </main>
   );
 }

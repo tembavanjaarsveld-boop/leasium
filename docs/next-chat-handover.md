@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-25
 
-## Continuation - 2026-06-25 (Property entity reassignment — backend)
+## Continuation - 2026-06-25 (Property entity reassignment — backend + UI)
 
 Temba needed to change a property's owning Trust/entity: an import had filed
 property 1642 under "SNI No 1" when it belongs to "SJI No 5", with no way to
@@ -38,10 +38,15 @@ JSONB).
 Guardrails: reassignment is a local re-filing — no Xero write, email, SMS, or
 payment reconciliation; review-first preview before apply.
 
-Next this session: build the operator UI to spec (Figma waived for these
-internal admin surfaces) — a "Move to entity" control on the property detail and
-a suggester-driven "Looks mis-filed" panel near Ownership tags — then eslint/tsc
-+ smoke + build + 1440/390 UX pass, and a second commit.
+Operator UI shipped (second commit, same session; Figma waived for these
+internal admin surfaces, Temba's call): a "Move to entity" control on the
+property editor and a suggester-driven "Looks mis-filed" panel in Settings →
+Entities, both opening one review-first drawer
+(`apps/web/src/components/property-entity-reassign.tsx`; preview → confirm).
+API client gained preview/apply/suggestions functions. Verification: eslint +
+tsc clean; Playwright smoke +2 (`reassign-entity.spec.ts`) with settings +
+properties-ux green (no regressions); production `next build` clean; UX pass at
+1440/390 (UX Pass Log 2026-06-25).
 
 ## Continuation - 2026-06-24 (Property delete + Smart Intake existing-property picker)
 

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Ban,
   Bell,
   BellOff,
@@ -37,6 +38,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-shell";
 import { ActivityAuditPanel } from "@/components/activity-audit-panel";
 import { OwnersDirectory } from "@/components/owners-directory";
+import { PropertyEntityReassignDrawer } from "@/components/property-entity-reassign";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -86,6 +88,7 @@ import {
   applyOwnershipSplit,
   entityTypeLabel,
   getEntitiesXeroOverview,
+  getEntityReassignSuggestions,
   getOwnershipSplitPlan,
   listCommsTrustedSenders,
   listBrandedCommunicationTemplates,
@@ -131,6 +134,7 @@ import {
   type SecurityWorkAssignmentDigestCadence,
   type XeroMappingIssueRecord,
   type XeroReadinessSummaryRecord,
+  type EntityReassignSuggestionGroup,
   type EntityType,
   type EntityXeroStatusValue,
   type OwnershipSplitApplyResult,
@@ -2645,6 +2649,13 @@ function SettingsWorkspace() {
     queryFn: getOwnershipSplitPlan,
     enabled: activeTab === "organisation",
   });
+  const reassignSuggestionsQuery = useQuery({
+    queryKey: ["entity-reassign-suggestions"],
+    queryFn: getEntityReassignSuggestions,
+    enabled: activeTab === "organisation",
+  });
+  const [reassignGroup, setReassignGroup] =
+    useState<EntityReassignSuggestionGroup | null>(null);
   const entitiesOverviewForOrg = useQuery({
     queryKey: ["entities-xero-overview"],
     queryFn: getEntitiesXeroOverview,
@@ -6121,6 +6132,75 @@ function SettingsWorkspace() {
                 ) : null}
               </div>
               </SectionPanel>
+            ) : null}
+
+            {activeOrganisationTab === "entities" &&
+            (reassignSuggestionsQuery.data?.groups.length ?? 0) > 0 ? (
+              <SectionPanel
+                title="Looks mis-filed"
+                description="Properties whose owner label points to a different trust than the one they're filed under — usually an import that put a whole batch on one entity."
+                icon={<ArrowRightLeft size={17} className="text-primary" />}
+                actions={
+                  <StatusBadge tone="warning">
+                    {reassignSuggestionsQuery.data!.suggested_property_count}{" "}
+                    {reassignSuggestionsQuery.data!.suggested_property_count === 1
+                      ? "property"
+                      : "properties"}
+                  </StatusBadge>
+                }
+              >
+                <div className="divide-y divide-border">
+                  {reassignSuggestionsQuery.data!.groups.map((group) => (
+                    <div
+                      key={group.target_entity_id}
+                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+                      data-testid="reassign-suggestion-row"
+                    >
+                      <p className="min-w-0 text-foreground">
+                        <span className="font-semibold">
+                          {group.property_count}{" "}
+                          {group.property_count === 1
+                            ? "property"
+                            : "properties"}
+                        </span>{" "}
+                        {group.property_count === 1
+                          ? "looks like it belongs to"
+                          : "look like they belong to"}{" "}
+                        <span className="font-medium">
+                          {group.target_entity_name}
+                        </span>
+                        .
+                      </p>
+                      <SecondaryButton
+                        type="button"
+                        onClick={() => setReassignGroup(group)}
+                        data-testid="reassign-suggestion-review"
+                      >
+                        Review &amp; move
+                      </SecondaryButton>
+                    </div>
+                  ))}
+                </div>
+              </SectionPanel>
+            ) : null}
+
+            {activeOrganisationTab === "entities" ? (
+              <PropertyEntityReassignDrawer
+                open={reassignGroup !== null}
+                onClose={() => setReassignGroup(null)}
+                propertyIds={reassignGroup?.property_ids ?? []}
+                entities={entitiesQuery.data ?? []}
+                presetTargetEntityId={reassignGroup?.target_entity_id}
+                contextLabel={
+                  reassignGroup
+                    ? `${reassignGroup.property_count} ${
+                        reassignGroup.property_count === 1
+                          ? "property"
+                          : "properties"
+                      }`
+                    : undefined
+                }
+              />
             ) : null}
 
             {activeOrganisationTab === "entities" ? (

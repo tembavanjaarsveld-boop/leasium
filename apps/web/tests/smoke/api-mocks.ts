@@ -5517,6 +5517,60 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "GET" && path === "/entities/reassign-suggestions") {
+      await fulfillJson(route, { groups: [], suggested_property_count: 0 });
+      return;
+    }
+
+    if (method === "POST" && path === "/entities/reassign-properties/preview") {
+      const payload = request.postDataJSON() as {
+        property_ids: string[];
+        target_entity_id: string;
+      };
+      const target = entities.find(
+        (entity) => entity.id === payload.target_entity_id,
+      );
+      await fulfillJson(route, {
+        properties: payload.property_ids.map((id, index) => ({
+          property_id: id,
+          property_name: `Property ${index + 1}`,
+          current_entity_id: entityId,
+          current_entity_name: "Acme Holdings Pty Ltd",
+          target_entity_id: payload.target_entity_id,
+          target_entity_name: target?.name ?? "Target entity",
+          obligation_count: 0,
+          history_flags: [],
+        })),
+        tenants: [],
+        skipped: [],
+        moved_property_count: payload.property_ids.length,
+        moved_obligation_count: 0,
+        moved_tenant_count: 0,
+        flagged_tenant_count: 0,
+        skipped_property_count: 0,
+        has_history: false,
+        warnings: [],
+      });
+      return;
+    }
+
+    if (method === "POST" && path === "/entities/reassign-properties/apply") {
+      const payload = request.postDataJSON() as { property_ids: string[] };
+      await fulfillJson(
+        route,
+        {
+          moved_property_count: payload.property_ids.length,
+          moved_obligation_count: 0,
+          moved_tenant_count: 0,
+          flagged_tenant_count: 0,
+          skipped_property_count: 0,
+          notes: [],
+        },
+        201,
+      );
+      return;
+    }
+
     if (method === "GET" && path === "/entities/xero-overview") {
       await fulfillJson(route, {
         summary: {

@@ -16,6 +16,27 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-25 Property → entity (trust) reassignment:** Fixes mis-filed
+  properties — e.g. an import that filed property 1642 under "SNI No 1" when it
+  belongs to "SJI No 5" — which previously had no fix because `PropertyUpdate`
+  omits `entity_id` and only the bulk ownership-split moved it. A cascade-aware
+  engine (`stewart/domain/entity_reassignment.py`) re-files a property under a
+  target entity, carrying its property/unit/lease-scoped obligations, syncing
+  the owner label to the target name, and moving tenants whose leases sit wholly
+  within the move (tenants spanning the boundary are left in place and flagged,
+  never split). It detects but does not move existing accounting/operational
+  history (billing/invoice drafts, work orders, arrears, an existing Xero
+  contact), surfacing it as a preview warning, and writes a reversible audit row
+  per property. Endpoints: `POST /entities/reassign-properties/preview` + `/apply`
+  (single or batch) and `GET /entities/reassign-suggestions`, which auto-matches
+  each property's owner label to an existing entity and flags mis-filings —
+  retro-fixing existing mis-imports rather than only future ones. Operator UI: a
+  "Move to entity" control on the property editor and a suggester-driven "Looks
+  mis-filed" panel in Settings → Entities, both opening one review-first drawer
+  (preview → confirm). Backend `pytest` +5 (full suite 749 passed), no migration;
+  frontend eslint/tsc clean, Playwright smoke +2, production `next build` clean,
+  UX pass at 1440/390 (Figma waived for these internal admin surfaces). The move
+  is a local re-filing — no Xero write, email, SMS, or payment reconciliation.
 - [x] **2026-06-24 Property delete + Smart Intake existing-property picker:**
   Fixes the duplicate-property trap from importing a lease whose building wasn't
   auto-matched. `DELETE /properties/{id}` now cascades its soft-delete to the
