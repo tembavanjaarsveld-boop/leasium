@@ -3132,6 +3132,69 @@ def test_document_intake_apply_lease_files_under_target_entity(
     assert str(intake.entity_id) == target_entity_id
 
 
+def test_document_intake_apply_lease_target_entity_with_thread_on_upload_entity(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """Regression: filing under a different trust must still append the created
+    turn to the Relby AI thread, even though that thread is bound to the entity
+    where the conversation started (the upload entity), not the target trust.
+    Previously the apply 403'd with "Conversation thread does not match this
+    entity." once target_entity_id diverged from the thread's entity."""
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_thread_cross_entity_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    upload_entity_id = _entity_id(session)
+    target_entity_id = _writable_entity(session, "Cross-Thread Target Trust")
+
+    # A Relby AI thread anchored to the upload entity (where the chat began).
+    thread_response = client.post(
+        "/api/v1/conversation-threads",
+        json={"entity_id": upload_entity_id, "source": "intake"},
+    )
+    assert thread_response.status_code == 201
+    thread_id = thread_response.json()["id"]
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": upload_entity_id},
+        files={"file": ("cross-thread-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "target_entity_id": target_entity_id,
+            "thread_id": thread_id,
+        },
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    assert body["entity_id"] == target_entity_id
+
+    # The created-records turn was still appended to the upload-entity thread.
+    thread_after = client.get(f"/api/v1/conversation-threads/{thread_id}")
+    assert thread_after.status_code == 200
+    turns = thread_after.json()["turns"]
+    assert any(turn["kind"] == "created" for turn in turns), turns
+
+
 def test_document_intake_apply_lease_without_target_keeps_upload_entity(
     client: TestClient,
     session: Session,

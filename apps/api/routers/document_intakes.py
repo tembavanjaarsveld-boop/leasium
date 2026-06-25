@@ -196,7 +196,12 @@ def _append_apply_created_turn(
 ) -> None:
     if thread_id is None:
         return
-    thread = get_thread_for_write(thread_id, session, user, intake.entity_id)
+    # The conversation thread belongs to the entity where the chat started,
+    # which can differ from the filing entity once an operator files an import
+    # under a different trust (Smart Intake "File under trust"). The thread is
+    # still authorised on its own entity inside get_thread_for_write; don't also
+    # require it to equal the (possibly re-pointed) filing entity.
+    thread = get_thread_for_write(thread_id, session, user)
     applied = _dict(intake.review_data).get("applied")
     if not isinstance(applied, dict):
         return
