@@ -784,6 +784,87 @@ test("document review opens as a focused Relby AI chat without provider writes",
   expect(forbiddenRequests).toEqual([]);
 });
 
+test("Relby AI review defaults the File-under-trust selector to the detected trust and posts target_entity_id", async ({
+  page,
+}) => {
+  await page.goto("/intake?entity_id=entity-1&review=intake-1");
+
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toBeVisible();
+
+  // Selector exists and defaults to the trust detected from the lease
+  // (suggested_entity_id = entity-2, a different trust than the upload entity).
+  const trustSelect = page.getByTestId("intake-trust-select-input");
+  await expect(trustSelect).toBeVisible();
+  await expect(trustSelect).toHaveValue("entity-2");
+
+  const createAll = page.getByTestId("intake-create-all");
+  await expect(createAll).toBeEnabled();
+
+  // Capture the apply request synchronously with the click — the panel unmounts
+  // once the dashboard refetches and drops the now-applied intake from the
+  // review list, so assert on the request body + the stable applied notice
+  // rather than the transient created card.
+  const [applyRequest] = await Promise.all([
+    page.waitForRequest((request) => {
+      const path = new URL(request.url()).pathname;
+      return (
+        request.method() === "POST" &&
+        /\/document-intakes\/[^/]+\/apply$/.test(path)
+      );
+    }),
+    createAll.click(),
+  ]);
+
+  const applyBody = JSON.parse(applyRequest.postData() ?? "{}") as Record<
+    string,
+    unknown
+  >;
+  expect(applyBody).toMatchObject({ target_entity_id: "entity-2" });
+  expect(applyBody).not.toHaveProperty("create_entity_name");
+  await expect(page.getByText("Document workflow applied.")).toBeVisible();
+});
+
+test("Relby AI review can create a new trust on import and posts create_entity_name", async ({
+  page,
+}) => {
+  await page.goto("/intake?entity_id=entity-1&review=intake-1");
+
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toBeVisible();
+
+  // Switch to "Create new trust…": Apply is blocked until a name is typed.
+  const trustSelect = page.getByTestId("intake-trust-select-input");
+  await trustSelect.selectOption("__create_trust__");
+  const createAll = page.getByTestId("intake-create-all");
+  await expect(createAll).toBeDisabled();
+  await expect(page.getByTestId("intake-trust-required-hint")).toBeVisible();
+
+  await page.getByTestId("intake-trust-new-name").fill("SJI Property Trust No 6");
+  await expect(createAll).toBeEnabled();
+
+  const [applyRequest] = await Promise.all([
+    page.waitForRequest((request) => {
+      const path = new URL(request.url()).pathname;
+      return (
+        request.method() === "POST" &&
+        /\/document-intakes\/[^/]+\/apply$/.test(path)
+      );
+    }),
+    createAll.click(),
+  ]);
+
+  const applyBody = JSON.parse(applyRequest.postData() ?? "{}") as Record<
+    string,
+    unknown
+  >;
+  expect(applyBody).toMatchObject({
+    create_entity_name: "SJI Property Trust No 6",
+  });
+  expect(applyBody).not.toHaveProperty("target_entity_id");
+  await expect(page.getByText("Document workflow applied.")).toBeVisible();
+});
+
 test("mobile Relby AI document review keeps one touch-safe conversation", async ({
   page,
 }) => {

@@ -16,6 +16,23 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-25 Smart Intake trust selection at import:** Stops lease imports
+  silently filing under the wrong trust (the cause of the 1642 Anzac mis-files)
+  by making the filing trust an explicit, reviewed decision instead of a value
+  locked at upload. Backend: `POST /document-intakes/{id}/apply` accepts
+  `target_entity_id` (file under an existing trust) and `create_entity_name`
+  (mint a new trust then file under it, reusing the `entities` create auth/audit,
+  Xero-unconnected); the review/extract/get/list responses expose
+  `suggested_entity_id`, a normalise-match of the lease's extracted `trust_name`
+  to an existing entity. Frontend: the Relby AI document review gains a required
+  "File under trust" selector defaulting to the detected trust, with a "Create
+  new trust…" inline-name path; the intake match pool went org-wide so an
+  existing property under another trust is matched (and linkable) instead of
+  duplicated. Filing stays the single reviewed write — no Xero/SendGrid/Twilio/
+  payment. Backend `pytest` +8 (intake suite 50 passed), frontend eslint/tsc/
+  next build clean, Playwright smoke +2, UX pass at 1440/390 + dark (Figma waived
+  — selector added to an existing review surface). Pairs with the property→entity
+  reassignment engine below, which retro-fixes already mis-filed imports.
 - [x] **2026-06-25 Property → entity (trust) reassignment:** Fixes mis-filed
   properties — e.g. an import that filed property 1642 under "SNI No 1" when it
   belongs to "SJI No 5" — which previously had no fix because `PropertyUpdate`

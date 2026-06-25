@@ -30,6 +30,7 @@ import {
   applyDocumentIntake,
   askLeasium,
   createConversationThread,
+  listEntities,
   listProperties,
   listTenants,
   type AskCitationRecord,
@@ -255,6 +256,18 @@ type UnderstandingRow = {
 // secondary and stays tucked behind "more details" so the card leads with
 // what the operator actually needs.
 const PRIMARY_UNDERSTANDING = new Set(["Tenant", "Property", "Unit", "Term", "Rent"]);
+
+// Sentinel value for the "File under trust" selector's create-new option. Any
+// real value is an Entity id, so a non-id sentinel is safe.
+const CREATE_TRUST = "__create_trust__";
+
+// The trust_name extracted from the lease — used to pre-fill a "Create new
+// trust" name when the detected trust matches nothing existing.
+function leaseTrustName(data: DocumentIntakeExtraction): string {
+  const property = items(data.properties)[0];
+  const fromProperty = property ? text(property.trust_name) : null;
+  return fromProperty ?? text(data.trust_name) ?? "";
+}
 
 function moneyLabel(item: Record<string, unknown>): string {
   const amount = num(item.amount);
@@ -702,16 +715,23 @@ export function IntakeConversationPanel({
   onApplied?: (rec: DocumentIntakeRecord) => void;
 }) {
   const data = useMemo(() => reviewExtraction(intake), [intake]);
+  // Org-wide match pool: a property/tenant under a *different* trust must be
+  // visible to match against (and to pick manually), so the import can link a
+  // cross-trust record instead of duplicating it. Filing still goes to the
+  // trust the operator confirms in the selector below.
   const propertiesQuery = useQuery({
-    queryKey: ["intake-match-properties", entityId],
-    queryFn: () => listProperties(entityId),
-    enabled: Boolean(entityId),
+    queryKey: ["intake-match-properties", "org-wide"],
+    queryFn: () => listProperties(),
     staleTime: 60_000,
   });
   const tenantsQuery = useQuery({
-    queryKey: ["intake-match-tenants", entityId],
-    queryFn: () => listTenants(entityId),
-    enabled: Boolean(entityId),
+    queryKey: ["intake-match-tenants", "org-wide"],
+    queryFn: () => listTenants(),
+    staleTime: 60_000,
+  });
+  const entitiesQuery = useQuery({
+    queryKey: ["intake-trust-options"],
+    queryFn: () => listEntities(),
     staleTime: 60_000,
   });
   const propertyMatch = useMemo(
@@ -766,6 +786,46 @@ export function IntakeConversationPanel({
           : null,
     [manualPropertyId, selectedManualProperty, linkProperty, propertyMatch],
   );
+  // "File under trust": the operator confirms the trust the records file under,
+  // picks a different existing one, or creates a new trust inline. Default to
+  // the trust detected from the lease (suggested_entity_id) when it matches an
+  // accessible entity, else the active entity. Empty = nothing chosen yet, which
+  // blocks Apply.
+  const entityOptions = useMemo(
+    () => entitiesQuery.data ?? [],
+    [entitiesQuery.data],
+  );
+  const suggestedEntityId = intake.suggested_entity_id;
+  const detectedTrustName = useMemo(() => leaseTrustName(data), [data]);
+  const [trustChoice, setTrustChoice] = useState("");
+  const [newTrustName, setNewTrustName] = useState("");
+  const defaultTrustChoice = useMemo(() => {
+    const accessible = new Set(entityOptions.map((entity) => entity.id));
+    if (suggestedEntityId && accessible.has(suggestedEntityId)) {
+      return suggestedEntityId;
+    }
+    if (entityId && accessible.has(entityId)) {
+      return entityId;
+    }
+    return "";
+  }, [entityOptions, suggestedEntityId, entityId]);
+  useEffect(() => {
+    // Re-default when the intake or the loaded entity list changes. Done as a
+    // reset (not a one-time seed) so switching documents re-applies the lease's
+    // detected trust rather than keeping a stale pick.
+    setTrustChoice(defaultTrustChoice);
+  }, [defaultTrustChoice, intake.id]);
+  useEffect(() => {
+    // Pre-fill the new-trust name with the lease's detected trust when nothing
+    // matched an existing entity (nice-to-have: saves retyping the lessor).
+    setNewTrustName(suggestedEntityId ? "" : detectedTrustName);
+  }, [suggestedEntityId, detectedTrustName, intake.id]);
+  const creatingTrust = trustChoice === CREATE_TRUST;
+  const trustChosen = creatingTrust
+    ? newTrustName.trim().length > 0
+    : trustChoice !== "";
+  const selectedTrust = entityOptions.find((entity) => entity.id === trustChoice);
+
   const understanding = useMemo(
     () => buildUnderstanding(data, intake.confidence),
     [data, intake.confidence],
@@ -920,7 +980,7 @@ export function IntakeConversationPanel({
     );
 
   async function handleCreateAll() {
-    if (applying) return;
+    if (applying || !trustChosen) return;
     setApplying(true);
     setApplyError(null);
     setAttentionMessage(null);
@@ -955,6 +1015,10 @@ export function IntakeConversationPanel({
         leaseId:
           !manualPropertyId && linkProperty ? text(links.lease_id) : undefined,
         threadId: currentThread.id,
+        // File under the confirmed trust: an existing entity OR a new trust by
+        // name. Never both — target wins on the backend, but we only send one.
+        targetEntityId: creatingTrust ? undefined : trustChoice,
+        createEntityName: creatingTrust ? newTrustName.trim() : undefined,
       });
       if (result.status === "needs_attention") {
         setAttentionMessage(applyNeedsAttentionMessage(result));
@@ -1258,6 +1322,65 @@ export function IntakeConversationPanel({
                 {editing ? "Done" : "Check/change details"}
               </button>
             </div>
+            <div
+              data-testid="intake-trust-select"
+              className="mb-3 rounded-xl border border-border bg-white/70 p-3"
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                  <Building2 size={16} />
+                </span>
+                <span className="text-sm font-semibold text-foreground">
+                  File under trust
+                </span>
+              </div>
+              <Field label="Trust (entity)">
+                <Select
+                  data-testid="intake-trust-select-input"
+                  value={trustChoice}
+                  onChange={(e) => setTrustChoice(e.target.value)}
+                >
+                  <option value="">Choose a trust…</option>
+                  {entityOptions.map((entity) => (
+                    <option key={entity.id} value={entity.id}>
+                      {entity.name}
+                      {entity.id === suggestedEntityId ? " (from this lease)" : ""}
+                    </option>
+                  ))}
+                  <option value={CREATE_TRUST}>Create new trust…</option>
+                </Select>
+              </Field>
+              {creatingTrust ? (
+                <div className="mt-3">
+                  <Field label="New trust name">
+                    <Input
+                      data-testid="intake-trust-new-name"
+                      value={newTrustName}
+                      onChange={(e) => setNewTrustName(e.target.value)}
+                      placeholder="e.g. SJI Property Trust No 6"
+                    />
+                  </Field>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    A new trust is created (unconnected to Xero) and everything
+                    files under it.
+                  </p>
+                </div>
+              ) : trustChoice ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Records will file under{" "}
+                  <span className="font-medium text-foreground">
+                    {selectedTrust?.name ?? "the selected trust"}
+                  </span>
+                  {trustChoice === suggestedEntityId
+                    ? " — the trust detected from this lease."
+                    : "."}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Choose which trust these records belong to before approving.
+                </p>
+              )}
+            </div>
             {editing ? (
               <div data-testid="intake-edit-form" className="space-y-3">
                 <div className="rounded-xl border border-border bg-white/70 p-3">
@@ -1462,12 +1585,20 @@ export function IntakeConversationPanel({
             {threadError ? (
               <p className="mt-3 text-sm text-muted-foreground">{threadError}</p>
             ) : null}
+            {!trustChosen ? (
+              <p
+                data-testid="intake-trust-required-hint"
+                className="mt-3 text-sm text-muted-foreground"
+              >
+                Choose a trust above to file these records under before approving.
+              </p>
+            ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 data-testid="intake-create-all"
                 onClick={handleCreateAll}
-                disabled={applying}
+                disabled={applying || !trustChosen}
               >
                 {applying ? (
                   <>

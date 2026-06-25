@@ -819,6 +819,18 @@ fixes · deferrals.
   eslint + tsc clean and the OpenSign lease-signing smoke (4 passed) at desktop
   chromium · 1440/390 capture not run (copy-only on already-approved surfaces) ·
   none deferred.
+- 2026-06-25 · Smart Intake "File under trust" selector (Relby AI document
+  review plan card) · new required selector added to the existing review panel
+  (not a new surface, so no new Figma frame); defaults to the trust detected
+  from the lease (`suggested_entity_id`), offers a "Create new trust…" inline
+  name path, and disables Approve with a hint until a trust is chosen · the
+  intake match pool also went org-wide so a property under another trust is
+  matched instead of duplicated · screens checked 1440/390 + dark, plus the
+  create-new and required-hint states (local Playwright captures) · reuses
+  Field/Select/Input and the panel's existing tokens; the bg-white/70 box flips
+  correctly in dark, consistent with the sibling create rows · no fixes needed ·
+  filing stays the single reviewed write — no Xero/SendGrid/Twilio/payment ·
+  none deferred.
 
 ## UX Debt Register
 

@@ -1675,6 +1675,10 @@ const initialDocumentIntakes = [
     document_type: "lease",
     summary: "Lease summary is ready for review.",
     confidence: 0.86,
+    // Trust detected from the lease, matched to the secondary entity — the
+    // "File under trust" selector defaults to this (a different trust than the
+    // upload entity), exercising the cross-trust filing path.
+    suggested_entity_id: secondaryEntityId,
     extracted_data: {
       document_type: "lease",
       summary: "Lease summary is ready for review.",
@@ -11851,6 +11855,40 @@ export async function mockLeasiumApi(
       const payload = request.postDataJSON() as Record<string, JsonBody>;
       const reviewData = jsonRecord(payload.review_data);
       const now = "2026-05-29T00:00:00.000Z";
+      // Mirror the backend: file under the chosen trust. target_entity_id files
+      // under an existing entity; create_entity_name spins up a new trust first.
+      // Re-point the intake's entity_id so the response reflects the filing.
+      const targetEntityId =
+        typeof payload.target_entity_id === "string"
+          ? payload.target_entity_id
+          : null;
+      const createEntityName =
+        typeof payload.create_entity_name === "string"
+          ? payload.create_entity_name
+          : null;
+      let filedEntityId = intake.entity_id;
+      if (targetEntityId) {
+        filedEntityId = targetEntityId;
+      } else if (createEntityName) {
+        const created = {
+          id: `entity-created-${entities.length + 1}`,
+          organisation_id: "org-1",
+          name: createEntityName,
+          abn: "",
+          gst_registered: true,
+          entity_type: "trust",
+          is_managing_entity: false,
+          xero_tenant_id: null,
+          xero_connected_at: null,
+          xero_last_sync_at: null,
+          notes: null,
+          created_at: now,
+          deleted_at: null,
+        };
+        entities.push(created);
+        filedEntityId = created.id;
+      }
+      intake.entity_id = filedEntityId;
       const findings = Array.isArray(reviewData.inspection_findings)
         ? reviewData.inspection_findings.filter(
             (item): item is Record<string, JsonBody> =>

@@ -1566,6 +1566,9 @@ export type DocumentIntakeRecord = {
   content_type: string | null;
   byte_size: number;
   category: DocumentCategory;
+  // The trust detected from the lease's trust_name, matched to an existing
+  // Entity (null when no match). Defaults the "File under trust" selector.
+  suggested_entity_id: string | null;
 };
 
 export type RegisterImportSeverity = "info" | "warning" | "blocker";
@@ -6272,6 +6275,12 @@ export function applyDocumentIntake(
     tenantId?: string | null;
     leaseId?: string | null;
     threadId?: string | null;
+    // The trust to file the records under. `targetEntityId` files under an
+    // existing trust; `createEntityName` creates a new trust then files under
+    // it. The backend lets target win if both are sent — callers should send
+    // only one.
+    targetEntityId?: string | null;
+    createEntityName?: string | null;
   },
 ) {
   return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/apply`, {
@@ -6283,6 +6292,8 @@ export function applyDocumentIntake(
       tenant_id: payload.tenantId || undefined,
       lease_id: payload.leaseId || undefined,
       thread_id: payload.threadId || undefined,
+      target_entity_id: payload.targetEntityId || undefined,
+      create_entity_name: payload.createEntityName || undefined,
     }),
   });
 }

@@ -654,6 +654,7 @@ function demoIntake(createdAt: string): DocumentIntakeRecord {
     content_type: "application/pdf",
     byte_size: 840_000,
     category: "lease",
+    suggested_entity_id: null,
   };
 }
 
