@@ -373,6 +373,43 @@ test("portfolio QA bulk fix review applies staged rows in one reviewed request a
   expect(tenantPatchCalls).toEqual([]);
 });
 
+test("portfolio QA internal draft generation uses an explicit draft trust picker", async ({
+  page,
+}) => {
+  const draftBatchCalls: Array<Record<string, unknown>> = [];
+  await mockLeasiumApi(page);
+  await page.route("**/api/v1/billing-drafts/from-charge-rules", async (route) => {
+    if (route.request().method() === "POST") {
+      draftBatchCalls.push(
+        route.request().postDataJSON() as Record<string, unknown>,
+      );
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/portfolio-qa");
+  await page
+    .getByRole("button", { name: /Billing drafts Prepare internal drafts/ })
+    .click();
+
+  const billingPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Billing draft generation" }),
+  });
+  await expect(billingPanel).toBeVisible();
+  const draftTrustPicker = billingPanel.getByLabel("Draft trust");
+  await expect(draftTrustPicker).toBeVisible();
+  await expect(draftTrustPicker).toHaveValue("entity-1");
+
+  await billingPanel
+    .getByRole("button", { name: "Create internal drafts" })
+    .click();
+
+  await expect(billingPanel.getByText(/Created .* reused .* skipped/)).toBeVisible();
+  expect(draftBatchCalls).toHaveLength(1);
+  expect(draftBatchCalls[0].entity_id).toBe("entity-1");
+  expect(draftBatchCalls[0].entity_id).not.toBe("__all__");
+});
+
 test("portfolio QA enrichment preview surfaces a 503 inline without firing apply", async ({
   page,
 }) => {

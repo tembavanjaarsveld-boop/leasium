@@ -2,6 +2,24 @@
 
 Last updated: 2026-06-26
 
+## Continuation - 2026-06-26 (Switcher removal slice 7b: snapshot/draft action pickers)
+
+Slice 7b is committed locally on `main`: standalone create actions that mint
+new single-entity records now own explicit in-page trust selectors. Insights
+Shareable Snapshots has a `Snapshot trust` picker defaulting to the first
+accessible entity; snapshot history, create payloads, and revoke refreshes are
+keyed to that action entity. Portfolio QA Billing draft generation has a
+`Draft trust` picker defaulting to the first accessible entity; draft creation
+sends that entity and filters lease ids to the selected trust's rent-roll rows.
+
+Verification: red-first smokes failed on the missing `Snapshot trust` and
+`Draft trust` pickers. Final focused checks passed:
+`NODE_ENV=development NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs
+./node_modules/.bin/playwright test tests/smoke/insights.spec.ts
+tests/smoke/portfolio-qa-ux.spec.ts --reporter=line` — 12 passed; app-flow
+subset for Portfolio QA and Insights — 3 passed. Lint/type/diff evidence is in
+the commit notes for the slice.
+
 ## Continuation - 2026-06-26 (Switcher removal slice 7: Portfolio QA)
 
 Slice 7 is committed locally on `main`: Portfolio QA is still an all-entities

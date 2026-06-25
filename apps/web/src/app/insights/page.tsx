@@ -1308,6 +1308,7 @@ function InsightsWorkspace() {
   // always runs; a single entity is reached via the tag, not a page-level pin.
   const selectedEntityId = ALL_ENTITIES_VALUE;
   const [snapshotType, setSnapshotType] = useState<InsightsSnapshotType>("owner");
+  const [snapshotEntityOverride, setSnapshotEntityOverride] = useState("");
   const [latestSnapshot, setLatestSnapshot] =
     useState<InsightsSnapshotCreateRecord | null>(null);
   const [copiedSnapshotId, setCopiedSnapshotId] = useState<string | null>(null);
@@ -1331,6 +1332,7 @@ function InsightsWorkspace() {
     () => new Map(entities.map((entity) => [entity.id, entity.name])),
     [entities],
   );
+  const snapshotEntityId = snapshotEntityOverride || entities[0]?.id || "";
 
   const selectedEntity = entities.find((entity) => entity.id === scopedEntityId);
   const activeEntityId = selectedEntity?.id ?? "";
@@ -1343,9 +1345,9 @@ function InsightsWorkspace() {
   });
 
   const snapshotsQuery = useQuery({
-    queryKey: ["insights-snapshots", activeEntityId],
-    queryFn: () => listInsightsSnapshots(activeEntityId),
-    enabled: Boolean(activeEntityId),
+    queryKey: ["insights-snapshots", snapshotEntityId],
+    queryFn: () => listInsightsSnapshots(snapshotEntityId),
+    enabled: Boolean(snapshotEntityId),
   });
 
   const portfolioRollupQuery = useQuery({
@@ -1358,7 +1360,7 @@ function InsightsWorkspace() {
   const createSnapshotMutation = useMutation({
     mutationFn: () =>
       createInsightsSnapshot({
-        entity_id: activeEntityId,
+        entity_id: snapshotEntityId,
         snapshot_type: snapshotType,
         as_of: asOf,
         expires_in_days: 30,
@@ -1367,7 +1369,7 @@ function InsightsWorkspace() {
       setLatestSnapshot(snapshot);
       setCopiedSnapshotId(null);
       void queryClient.invalidateQueries({
-        queryKey: ["insights-snapshots", activeEntityId],
+        queryKey: ["insights-snapshots", snapshotEntityId],
       });
     },
   });
@@ -1376,7 +1378,7 @@ function InsightsWorkspace() {
     mutationFn: revokeInsightsSnapshot,
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ["insights-snapshots", activeEntityId],
+        queryKey: ["insights-snapshots", snapshotEntityId],
       });
     },
   });
@@ -1750,6 +1752,23 @@ function InsightsWorkspace() {
             >
               <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)]">
                 <div className="grid content-start gap-3">
+                  <Field label="Snapshot trust">
+                    <Select
+                      value={snapshotEntityId}
+                      onChange={(event) => {
+                        setSnapshotEntityOverride(event.target.value);
+                        setLatestSnapshot(null);
+                        setCopiedSnapshotId(null);
+                      }}
+                      disabled={!entities.length}
+                    >
+                      {entities.map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
                   <Field label="Snapshot type">
                     <Select
                       value={snapshotType}
@@ -1768,7 +1787,7 @@ function InsightsWorkspace() {
                   <Button
                     type="button"
                     onClick={() => createSnapshotMutation.mutate()}
-                    disabled={!activeEntityId || createSnapshotMutation.isPending}
+                    disabled={!snapshotEntityId || createSnapshotMutation.isPending}
                   >
                     {createSnapshotMutation.isPending ? (
                       <Loader2 size={15} className="animate-spin" />

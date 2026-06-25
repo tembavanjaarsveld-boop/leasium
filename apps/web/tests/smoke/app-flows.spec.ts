@@ -2815,15 +2815,18 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     ownerPanel.getByText("Review staged owner billing suggestions"),
   ).toBeVisible();
   await expect(ownerPanel.getByText("Eagle Street Office")).toBeVisible();
-  await ownerPanel.getByLabel("Owner ABN").fill("33123456789");
-  await ownerPanel
+  const eagleStreetRow = ownerPanel
+    .getByRole("link", { name: "Eagle Street Office" })
+    .locator("xpath=ancestor::div[contains(@class, 'xl:grid-cols')][1]");
+  await eagleStreetRow.getByLabel("Owner ABN").fill("33123456789");
+  await eagleStreetRow
     .getByLabel("Invoice issuer")
     .fill("Eagle Street Trustee Pty Ltd");
-  await ownerPanel.getByLabel("Billing contact").fill("Noah Accounts");
-  await ownerPanel
+  await eagleStreetRow.getByLabel("Billing contact").fill("Noah Accounts");
+  await eagleStreetRow
     .getByLabel("Billing email")
     .fill("owners@eaglestreet.example");
-  await ownerPanel.getByRole("button", { name: "Save fix" }).click();
+  await eagleStreetRow.getByRole("button", { name: "Save fix" }).click();
   await expect(
     page.getByText("Eagle Street Office billing identity saved."),
   ).toBeVisible();
@@ -2839,12 +2842,15 @@ test("portfolio QA guides cleanup fixes and source trails", async ({
     contactPanel.getByText("Review staged tenant suggestions"),
   ).toBeVisible();
   await expect(contactPanel.getByText("Northwind Fitness")).toBeVisible();
-  await contactPanel
+  const northwindRow = contactPanel
+    .getByRole("link", { name: "Northwind Fitness" })
+    .locator("xpath=ancestor::div[contains(@class, 'xl:grid-cols')][1]");
+  await northwindRow
     .getByLabel("Billing email")
     .fill("accounts@northwind.example");
-  await contactPanel.getByRole("button", { name: "Save fix" }).click();
+  await northwindRow.getByRole("button", { name: "Save fix" }).click();
   await expect(
-    contactPanel.getByText("Tenant contact data is complete"),
+    contactPanel.getByText(/Northwind Fitness .* contact details saved\./),
   ).toBeVisible();
 
   await page
@@ -7609,10 +7615,17 @@ test("insights shows overview, exceptions, activity, and owner snapshot", async 
     ownerEntitySnapshotPanel.getByText("Trust", { exact: true }).first(),
   ).toBeVisible();
 
-  // Snapshot creation is intentionally single-entity: org-wide Insights reads
-  // are review/export only, while revocable snapshot links stay tied to one
-  // trust.
-  await expect(page.getByRole("button", { name: "Generate link" })).toBeDisabled();
+  // Snapshot creation still targets one trust, but the action owns an in-page
+  // picker now that the global switcher is gone.
+  const snapshotPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Shareable Snapshots" }),
+  });
+  await expect(snapshotPanel.getByLabel("Snapshot trust")).toHaveValue(
+    "entity-1",
+  );
+  await expect(
+    snapshotPanel.getByRole("button", { name: "Generate link" }),
+  ).toBeEnabled();
 });
 
 test("settings shows account type as read-only set by Relby", async ({

@@ -41,6 +41,7 @@ import {
   PageHeader,
   SecondaryButton,
   SectionPanel,
+  Select,
   StatusBadge,
   type StatusTone,
 } from "@/components/ui";
@@ -4076,6 +4077,7 @@ function PortfolioQaWorkspace() {
   const [activeTab, setActiveTab] = useState<QaTab>("issues");
   const [search, setSearch] = useState("");
   const [selectedLeaseIds, setSelectedLeaseIds] = useState<string[]>([]);
+  const [draftEntityOverride, setDraftEntityOverride] = useState("");
   const [tenantDrafts, setTenantDrafts] = useState<
     Record<string, TenantContactDraft>
   >({});
@@ -4107,6 +4109,7 @@ function PortfolioQaWorkspace() {
     () => new Map(entities.map((entity) => [entity.id, entity.name])),
     [entities],
   );
+  const draftEntityId = draftEntityOverride || entities[0]?.id || "";
 
   useEffect(() => {
     if (activeTab !== "contacts" || !focusedTenantId) {
@@ -4552,8 +4555,9 @@ function PortfolioQaWorkspace() {
   const billingBatchMutation = useMutation({
     mutationFn: () =>
       createBillingDraftsFromChargeRules({
-        entity_id: selectedEntityId,
+        entity_id: draftEntityId,
         lease_ids: rentRoll
+          .filter((row) => row.entity_id === draftEntityId)
           .map((row) => row.lease_id)
           .filter((id): id is string => Boolean(id)),
       }),
@@ -5468,25 +5472,36 @@ function PortfolioQaWorkspace() {
             description="Create internal billing drafts from reviewed rent and outgoings charge rules. No tenant email, PDF, or Xero sync runs here."
             icon={<ClipboardList size={17} className="text-primary" />}
             actions={
-              <Button
-                type="button"
-                onClick={() => billingBatchMutation.mutate()}
-                disabled={
-                  !scopedEntityId || billingBatchMutation.isPending || allMode
-                }
-                title={
-                  allMode
-                    ? "Select a single entity to apply fixes"
-                    : undefined
-                }
-              >
-                {billingBatchMutation.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <ClipboardList size={15} />
-                )}
-                Create internal drafts
-              </Button>
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Draft trust">
+                  <Select
+                    value={draftEntityId}
+                    onChange={(event) =>
+                      setDraftEntityOverride(event.target.value)
+                    }
+                    disabled={!entities.length || billingBatchMutation.isPending}
+                    className="min-w-56"
+                  >
+                    {entities.map((entity) => (
+                      <option key={entity.id} value={entity.id}>
+                        {entity.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Button
+                  type="button"
+                  onClick={() => billingBatchMutation.mutate()}
+                  disabled={!draftEntityId || billingBatchMutation.isPending}
+                >
+                  {billingBatchMutation.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <ClipboardList size={15} />
+                  )}
+                  Create internal drafts
+                </Button>
+              </div>
             }
           >
             {billingBatch ? (

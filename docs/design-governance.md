@@ -194,6 +194,10 @@ fixes · deferrals.
   global trust picker; standalone internal draft generation remains
   single-entity-blocked · deferred: product/API decision for any future
   cross-entity draft-batch creation.
+- 2026-06-26 · Insights + Portfolio QA · existing smoke surfaces checked
+  through `insights`, `portfolio-qa-ux`, and the relevant `app-flows` subset ·
+  fixes: added compact `Snapshot trust` and `Draft trust` action selectors for
+  standalone create actions after the global switcher removal · none deferred.
 - 2026-06-12 · Portfolio QA · copy fix: removed internal "Remba review"
   reference from the operator-visible all-clear summary string · no
   layout change · none deferred.

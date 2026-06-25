@@ -280,6 +280,36 @@ test("insights exports review packet CSV from loaded overview data", async ({
   expect(forbiddenApiCalls).toEqual([]);
 });
 
+test("insights snapshot generation uses an explicit trust picker in all-entities mode", async ({
+  page,
+}) => {
+  const snapshotCalls: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/insights/snapshots", async (route) => {
+    if (route.request().method() === "POST") {
+      snapshotCalls.push(route.request().postDataJSON() as Record<string, unknown>);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/insights");
+
+  const snapshotPanel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Shareable Snapshots" }),
+  });
+  await expect(snapshotPanel).toBeVisible();
+  const trustPicker = snapshotPanel.getByLabel("Snapshot trust");
+  await expect(trustPicker).toBeVisible();
+  await expect(trustPicker).toHaveValue("entity-1");
+
+  await trustPicker.selectOption("entity-2");
+  await snapshotPanel.getByRole("button", { name: "Generate link" }).click();
+
+  await expect(snapshotPanel.getByText("Snapshot link ready")).toBeVisible();
+  expect(snapshotCalls).toHaveLength(1);
+  expect(snapshotCalls[0].entity_id).toBe("entity-2");
+  expect(snapshotCalls[0].snapshot_type).toBe("owner");
+});
+
 test("insights splits the Xero-status guardrail into label and caption", async ({
   page,
 }) => {

@@ -695,6 +695,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   single-entity-blocked because it creates a new batch under one entity; that
   product/API choice is intentionally deferred. No provider send, email/SMS,
   Xero/Basiq, payment, or reconciliation path changed.
+- [x] **2026-06-26 Switcher removal slice 7b — snapshot/draft action pickers:**
+  Insights Shareable Snapshots now use an in-page `Snapshot trust` selector,
+  defaulting to the first accessible entity, so generated links stay
+  single-trust without relying on a global switcher. Portfolio QA internal draft
+  generation now uses a `Draft trust` selector and filters lease ids to the
+  selected trust before creating local drafts. Both remain review-first/local:
+  no provider send, email/SMS, Xero/Basiq, payment, or reconciliation path
+  changed.
 - [x] **2026-06-12 All entities maintenance fan-out reduction v1:**
   `/maintenance/work-orders` now accepts omitted `entity_id` as an
   organisation-wide read scoped to the operator's readable entities, while
