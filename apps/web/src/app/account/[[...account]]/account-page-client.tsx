@@ -30,14 +30,14 @@ type RouteState = "idle" | "checking" | "operator" | "tenant" | "unlinked" | "er
 
 function AccountShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-leasium-bg px-5 py-10 text-foreground">
+    <main className="min-h-screen bg-leasium-canvas px-5 py-10 text-foreground">
       <section className="mx-auto grid max-w-5xl gap-6">
         <Link
           href="/welcome"
           className="inline-flex w-fit items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
         >
           <LeasiumMark className="h-10 w-10" />
-          <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
+          <span className="text-base font-semibold tracking-tight text-foreground">
             Relby
           </span>
         </Link>
@@ -83,28 +83,28 @@ function AccountSignIn() {
     <AccountShell>
       <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
         <div className="grid gap-4">
-          <span className="inline-flex w-fit items-center gap-2 rounded-full bg-leasium-blue-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-leasium-blue">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
             One Relby login
           </span>
-          <h1 className="text-3xl font-bold tracking-tight text-leasium-navy-800 sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Sign in once. Relby opens the right workspace.
           </h1>
-          <p className="text-base leading-relaxed text-leasium-slate-500">
+          <p className="text-base leading-relaxed text-muted-foreground">
             Operators go to the property team workspace. Tenants go to the tenant
             portal linked to their invite.
           </p>
-          <div className="grid gap-3 text-sm text-leasium-slate-600">
+          <div className="grid gap-3 text-sm text-muted-foreground">
             <div className="flex items-start gap-3 rounded-xl border border-border bg-white p-4">
-              <Building2 className="mt-0.5 text-leasium-blue" size={18} />
+              <Building2 className="mt-0.5 text-primary" size={18} />
               <div>
-                <p className="font-semibold text-leasium-navy-800">Property teams</p>
+                <p className="font-semibold text-foreground">Property teams</p>
                 <p>Use the operator account invited by the Relby admin.</p>
               </div>
             </div>
             <div className="flex items-start gap-3 rounded-xl border border-border bg-white p-4">
               <UserRound className="mt-0.5 text-success-strong" size={18} />
               <div>
-                <p className="font-semibold text-leasium-navy-800">Tenants</p>
+                <p className="font-semibold text-foreground">Tenants</p>
                 <p>Use the account created from the tenant invite email.</p>
               </div>
             </div>
@@ -226,7 +226,7 @@ function AccountRouter() {
           <div className="flex items-center gap-3">
             <Loader2 className="animate-spin text-primary" size={20} />
             <div>
-              <h1 className="text-xl font-semibold text-leasium-navy-800">
+              <h1 className="text-xl font-semibold text-foreground">
                 Opening your Relby account
               </h1>
               <p className="text-sm text-muted-foreground">
@@ -249,7 +249,7 @@ function AccountRouter() {
               <ShieldCheck size={18} />
               <span className="font-semibold">Account not linked yet</span>
             </div>
-            <h1 className="text-2xl font-semibold text-leasium-navy-800">
+            <h1 className="text-2xl font-semibold text-foreground">
               This login is not attached to a Relby workspace.
             </h1>
           </div>
@@ -262,7 +262,7 @@ function AccountRouter() {
               ? `${signedInEmail} signed in successfully, but Relby could not match that email to an operator or tenant portal yet.`
               : "You signed in successfully, but Relby could not match this login to an operator or tenant portal yet."}
         </p>
-        <div className="grid gap-3 rounded-xl border border-border bg-leasium-slate-50 p-4 text-sm">
+        <div className="grid gap-3 rounded-xl border border-border bg-muted p-4 text-sm">
           <div className="flex items-start gap-2">
             <CheckCircle2 className="mt-0.5 text-success-strong" size={16} />
             <span>

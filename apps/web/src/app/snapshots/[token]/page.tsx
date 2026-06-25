@@ -362,7 +362,7 @@ function PublicSnapshotContent() {
   const snapshot = snapshotQuery.data;
 
   return (
-    <main className="min-h-screen bg-leasium-bg px-5 py-8 text-foreground">
+    <main className="min-h-screen bg-leasium-canvas px-5 py-8 text-foreground">
       <div className="mx-auto grid max-w-5xl gap-5">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">

@@ -44,7 +44,7 @@ export default function AccessPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-leasium-bg px-5 py-10">
+    <main className="grid min-h-screen place-items-center bg-leasium-canvas px-5 py-10">
       <section className="w-full max-w-md rounded-2xl border border-border bg-white p-6 shadow-leasiumSm">
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-12 w-12" />

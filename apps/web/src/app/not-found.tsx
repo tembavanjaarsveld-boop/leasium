@@ -5,19 +5,19 @@ import { LeasiumMark } from "@/components/brand";
 
 export default function NotFound() {
   return (
-    <main className="grid min-h-screen place-items-center bg-leasium-bg px-6 py-12 text-foreground">
+    <main className="grid min-h-screen place-items-center bg-leasium-canvas px-6 py-12 text-foreground">
       <div className="grid w-full max-w-md gap-6 rounded-2xl border border-border bg-white p-8 shadow-leasiumMd">
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-9 w-9" />
-          <span className="text-base font-semibold tracking-tight text-leasium-navy-800">
+          <span className="text-base font-semibold tracking-tight text-foreground">
             Relby
           </span>
         </div>
         <div className="grid gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-leasium-navy-800">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Page not found
           </h1>
-          <p className="text-sm leading-relaxed text-leasium-slate-500">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             This page does not exist or has moved. Head back to your dashboard
             to pick up where you left off.
           </p>
@@ -36,7 +36,7 @@ export default function NotFound() {
           </Link>
           <Link
             href="/intake"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-leasium-slate-700 shadow-leasiumXs transition duration-200 ease-leasium hover:bg-leasium-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leasium-blue"
           >
             <Sparkles size={16} aria-hidden="true" />
             Open Relby AI

@@ -22,7 +22,7 @@ function clerkProxyUrl() {
 
 function OperatorAuthLoading() {
   return (
-    <main className="min-h-screen bg-leasium-bg px-5 py-10 text-foreground">
+    <main className="min-h-screen bg-leasium-canvas px-5 py-10 text-foreground">
       <section className="mx-auto grid max-w-xl gap-5">
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-12 w-12" />
@@ -44,7 +44,7 @@ function OperatorAuthLoading() {
 
 function OperatorSignInRequired({ returnTo }: { returnTo: string }) {
   return (
-    <main className="min-h-screen bg-leasium-bg px-5 py-10 text-foreground">
+    <main className="min-h-screen bg-leasium-canvas px-5 py-10 text-foreground">
       <section className="mx-auto grid max-w-xl gap-5">
         <div className="flex items-center gap-3">
           <LeasiumMark className="h-12 w-12" />
@@ -117,7 +117,7 @@ function OperatorAuthBridge({ children }: { children: React.ReactNode }) {
 
   if (!isLoaded) {
     return authTimedOut ? (
-      <main className="min-h-screen bg-leasium-bg px-5 py-10 text-foreground">
+      <main className="min-h-screen bg-leasium-canvas px-5 py-10 text-foreground">
         <section className="mx-auto grid max-w-xl gap-5">
           <div className="flex items-center gap-3">
             <LeasiumMark className="h-12 w-12" />

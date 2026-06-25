@@ -57,7 +57,7 @@ function OnboardingWelcome({ token }: { token: string | null }) {
   const preview = previewQuery.data ?? null;
 
   return (
-    <main className="min-h-screen bg-leasium-bg px-5 py-8 sm:py-12">
+    <main className="min-h-screen bg-leasium-canvas px-5 py-8 sm:py-12">
       <section className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] lg:items-start">
         <header className="flex items-center gap-3 lg:col-span-2">
           <LeasiumMark className="h-12 w-12" />
@@ -142,7 +142,7 @@ function AccountFirstInvitation({
       </div>
 
       {preview ? (
-        <dl className="grid gap-3 rounded-xl border border-border bg-leasium-bg p-4 text-sm sm:grid-cols-2">
+        <dl className="grid gap-3 rounded-xl border border-border bg-leasium-canvas p-4 text-sm sm:grid-cols-2">
           <PreviewItem label="Business" value={tenantName} />
           <PreviewItem
             label="Invite email"
@@ -155,7 +155,7 @@ function AccountFirstInvitation({
           />
         </dl>
       ) : (
-        <div className="rounded-xl border border-border bg-leasium-bg p-4 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-border bg-leasium-canvas p-4 text-sm text-muted-foreground">
           {hasPreviewError
             ? "We could not check the invite details from this screen. Continue to the tenant portal to verify the invite or ask your property manager for a fresh link."
             : "Continue to the tenant portal to confirm the business, property, and onboarding details for this invite."}
