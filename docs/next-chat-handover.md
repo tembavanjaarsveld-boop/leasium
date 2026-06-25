@@ -48,6 +48,16 @@ tsc clean; Playwright smoke +2 (`reassign-entity.spec.ts`) with settings +
 properties-ux green (no regressions); production `next build` clean; UX pass at
 1440/390 (UX Pass Log 2026-06-25).
 
+Follow-up (same session): the Move-to-entity drawer can now create a trust
+inline ("+ Create a new trust…" in the target select → name → Create trust →
+preview → move), reusing the property-create entity-creation pattern. This
+closed a gap Temba hit immediately: entities could previously only be created
+while adding a *new* property, and "Add owner" under Settings → Entities → Owner
+& trust records creates an `Owner` record, not an `Entity` — so a "trust"
+created there never appeared in the entity selector. A standalone "Add entity"
+affordance in Settings, and untangling the Owner-vs-Entity co-location in that
+tab, remain sensible future tidy-ups (smoke +1 for the inline-create path).
+
 ## Continuation - 2026-06-24 (Property delete + Smart Intake existing-property picker)
 
 Temba imported a lease via Leasium AI that had no building in the review, typed

@@ -5,13 +5,23 @@ import { AlertTriangle, ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DetailDrawer } from "@/components/detail-drawer";
-import { Button, Field, SecondaryButton, Select, StatusBadge } from "@/components/ui";
+import {
+  Button,
+  Field,
+  Input,
+  SecondaryButton,
+  Select,
+  StatusBadge,
+} from "@/components/ui";
 import {
   applyPropertyReassign,
+  createEntity,
   type Entity,
   previewPropertyReassign,
   type PropertyReassignResult,
 } from "@/lib/api";
+
+const NEW_ENTITY_VALUE = "__new_entity__";
 
 const HISTORY_LABELS: Record<string, string> = {
   billing_drafts: "billing drafts",
@@ -59,6 +69,10 @@ export function PropertyEntityReassignDrawer({
   const queryClient = useQueryClient();
   const [targetEntityId, setTargetEntityId] = useState(presetTargetEntityId ?? "");
   const [applied, setApplied] = useState<PropertyReassignResult | null>(null);
+  const [creatingNew, setCreatingNew] = useState(false);
+  const [newEntityName, setNewEntityName] = useState("");
+
+  const organisationId = entities[0]?.organisation_id;
 
   // Reset only on the open→true edge. Resetting on every prop change would
   // wipe the success summary when a caller clears its selection on apply
@@ -68,6 +82,8 @@ export function PropertyEntityReassignDrawer({
     if (open && !wasOpen.current) {
       setTargetEntityId(presetTargetEntityId ?? "");
       setApplied(null);
+      setCreatingNew(false);
+      setNewEntityName("");
     }
     wasOpen.current = open;
   }, [open, presetTargetEntityId]);
@@ -100,6 +116,26 @@ export function PropertyEntityReassignDrawer({
         queryClient.invalidateQueries({ queryKey: key });
       }
       onApplied?.(result);
+    },
+  });
+
+  const createEntityMutation = useMutation({
+    mutationFn: (name: string) => {
+      if (!organisationId) {
+        return Promise.reject(new Error("No organisation context."));
+      }
+      return createEntity({
+        organisation_id: organisationId,
+        name: name.trim(),
+        entity_type: "trust",
+      });
+    },
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["entities"] });
+      // Select the freshly created trust so the preview runs against it.
+      setTargetEntityId(created.id);
+      setCreatingNew(false);
+      setNewEntityName("");
     },
   });
 
@@ -169,8 +205,17 @@ export function PropertyEntityReassignDrawer({
 
           <Field label="Move to entity">
             <Select
-              value={targetEntityId}
-              onChange={(event) => setTargetEntityId(event.target.value)}
+              value={creatingNew ? NEW_ENTITY_VALUE : targetEntityId}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === NEW_ENTITY_VALUE) {
+                  setCreatingNew(true);
+                  setTargetEntityId("");
+                } else {
+                  setCreatingNew(false);
+                  setTargetEntityId(value);
+                }
+              }}
               data-testid="reassign-target-select"
             >
               <option value="">Select a trust…</option>
@@ -181,12 +226,52 @@ export function PropertyEntityReassignDrawer({
                     {entity.name}
                   </option>
                 ))}
+              {organisationId ? (
+                <option value={NEW_ENTITY_VALUE}>+ Create a new trust…</option>
+              ) : null}
             </Select>
           </Field>
 
-          {!targetEntityId ? (
+          {creatingNew ? (
+            <div className="grid gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+              <Field label="New trust name">
+                <Input
+                  placeholder="e.g. SJI No 5 Pty Ltd"
+                  value={newEntityName}
+                  onChange={(event) => setNewEntityName(event.target.value)}
+                  data-testid="reassign-new-entity-name"
+                />
+              </Field>
+              <div className="flex items-center justify-end gap-2">
+                <SecondaryButton
+                  type="button"
+                  onClick={() => {
+                    setCreatingNew(false);
+                    setNewEntityName("");
+                  }}
+                >
+                  Cancel
+                </SecondaryButton>
+                <Button
+                  type="button"
+                  disabled={
+                    !newEntityName.trim() || createEntityMutation.isPending
+                  }
+                  onClick={() => createEntityMutation.mutate(newEntityName)}
+                  data-testid="reassign-create-entity"
+                >
+                  {createEntityMutation.isPending ? "Creating…" : "Create trust"}
+                </Button>
+              </div>
+              {createEntityMutation.isError ? (
+                <p className="text-xs text-danger">
+                  Could not create the trust. Try again.
+                </p>
+              ) : null}
+            </div>
+          ) : !targetEntityId ? (
             <p className="text-sm text-muted-foreground">
-              Pick the trust this property should belong to.
+              Pick the trust this property should belong to, or create a new one.
             </p>
           ) : previewQuery.isPending ? (
             <p className="text-sm text-muted-foreground">Checking what moves…</p>

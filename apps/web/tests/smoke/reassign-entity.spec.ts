@@ -82,3 +82,29 @@ test("property editor moves a property to a different entity", async ({
   await drawer.getByTestId("reassign-confirm").click();
   await expect(drawer.getByTestId("reassign-applied-summary")).toBeVisible();
 });
+
+test("property editor creates a new trust inline and moves to it", async ({
+  page,
+}) => {
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.getByTestId("property-move-entity").click();
+
+  const drawer = page.getByTestId("property-entity-reassign-drawer");
+  await expect(drawer).toBeVisible();
+
+  // The trust does not exist yet — create it from inside the drawer.
+  await drawer
+    .getByTestId("reassign-target-select")
+    .selectOption("__new_entity__");
+  await drawer
+    .getByTestId("reassign-new-entity-name")
+    .fill("SJI No 5 Pty Ltd");
+  await drawer.getByTestId("reassign-create-entity").click();
+
+  // The new trust is selected and the move preview runs against it.
+  await expect(drawer.getByTestId("reassign-preview-summary")).toBeVisible();
+  await drawer.getByTestId("reassign-confirm").click();
+  await expect(drawer.getByTestId("reassign-applied-summary")).toBeVisible();
+});

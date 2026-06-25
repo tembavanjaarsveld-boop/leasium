@@ -5517,6 +5517,32 @@ export async function mockLeasiumApi(
       return;
     }
 
+    if (method === "POST" && path === "/entities") {
+      const payload = request.postDataJSON() as {
+        organisation_id: string;
+        name: string;
+        entity_type?: string | null;
+      };
+      const created = {
+        id: `entity-created-${entities.length + 1}`,
+        organisation_id: payload.organisation_id,
+        name: payload.name,
+        abn: "",
+        gst_registered: true,
+        entity_type: payload.entity_type ?? "trust",
+        is_managing_entity: false,
+        xero_tenant_id: null,
+        xero_connected_at: null,
+        xero_last_sync_at: null,
+        notes: null,
+        created_at: new Date().toISOString(),
+        deleted_at: null,
+      };
+      entities.push(created);
+      await fulfillJson(route, created, 201);
+      return;
+    }
+
     if (method === "GET" && path === "/entities/reassign-suggestions") {
       await fulfillJson(route, { groups: [], suggested_property_count: 0 });
       return;
