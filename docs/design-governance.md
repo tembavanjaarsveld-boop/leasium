@@ -799,6 +799,17 @@ fixes · deferrals.
   · fix in-slice: singular suggestion row read "1 property look like they belong
   to" → "looks like it belongs to" · reassignment is a local re-filing — no Xero
   write, email, SMS, or payment reconciliation · none deferred.
+- 2026-06-25 · Properties multi-entity cards de-glitch · the all-entities cards
+  view showed the property type twice (right label + status line both fell back
+  to the type with no rent/occupancy data loaded) and an owner chip that either
+  duplicated the trust line or said "Ownership unknown" beside a known filing
+  entity · fix: the status line is dropped when it equals the right-hand label,
+  and in the multi-entity view (where the trust line is the source of truth) the
+  owner chip is hidden when it equals the trust or is the "unknown" badge, so it
+  only appears when the owner label genuinely diverges from the filing entity;
+  the compact card prefers the trust over "Ownership unknown" · verified by
+  properties-ux + reassign smoke (27 passed, no regression) and production build;
+  no provider, comms, or accounting path touched · none deferred.
 
 ## UX Debt Register
 

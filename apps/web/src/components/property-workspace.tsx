@@ -148,6 +148,7 @@ import {
   propertyOccupancyFromRentRoll,
 } from "@/lib/property-occupancy";
 import {
+  normaliseOwnerLabel,
   ownershipChipClassName,
   propertyMatchesOwnershipTag,
   propertyOwnerLabels,
@@ -8879,7 +8880,11 @@ function PropertyCardsView({
           const locationLabel = [property.suburb, property.state]
             .filter(Boolean)
             .join(" ");
-          const secondaryLabel = [locationLabel, ownerBadge?.label ?? entityLabel]
+          const ownerOrEntityLabel =
+            ownerBadge && ownerBadge.label !== "Ownership unknown"
+              ? ownerBadge.label
+              : entityLabel;
+          const secondaryLabel = [locationLabel, ownerOrEntityLabel]
             .filter(Boolean)
             .join(" · ");
           const rentOrTypeLabel = rentDataAvailable
@@ -8958,6 +8963,17 @@ function PropertyCardsView({
               : "-"
             : propertyTypeLabel(property.property_type);
           const entityLabel = entityNameById?.get(property.entity_id);
+          // The trust line is the source of truth in the multi-entity view, so
+          // only show the owner chip when it adds something the line doesn't —
+          // a real owner label that differs from the filing entity.
+          const showOwnerBadge =
+            ownerBadge != null &&
+            !(
+              entityLabel != null &&
+              (ownerBadge.label === "Ownership unknown" ||
+                normaliseOwnerLabel(ownerBadge.label) ===
+                  normaliseOwnerLabel(entityLabel))
+            );
 
           return (
             <li key={property.id} className="min-w-0">
@@ -9018,7 +9034,7 @@ function PropertyCardsView({
                     ) : null}
                   </div>
                   <div className="flex min-w-0 items-center gap-2 pt-1">
-                    {ownerBadge ? (
+                    {ownerBadge && showOwnerBadge ? (
                       <span
                         title={ownerBadge.title ?? ownerBadge.label}
                         className={`inline-flex max-w-[70%] items-center truncate rounded-full border px-2.5 py-1 text-leasium-micro font-semibold leading-4 ${ownershipChipClassName(ownerBadge.palette)}`}
@@ -9031,18 +9047,20 @@ function PropertyCardsView({
                       {rentOrTypeLabel}
                     </span>
                   </div>
-                  <p
-                    className={cn(
-                      "truncate text-[11px] font-semibold leading-4",
-                      occupancy?.status === "vacant"
-                        ? "text-warning-strong"
-                        : expiry
-                          ? "text-primary"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {statusLine}
-                  </p>
+                  {statusLine && statusLine !== rentOrTypeLabel ? (
+                    <p
+                      className={cn(
+                        "truncate text-[11px] font-semibold leading-4",
+                        occupancy?.status === "vacant"
+                          ? "text-warning-strong"
+                          : expiry
+                            ? "text-primary"
+                            : "text-muted-foreground",
+                      )}
+                    >
+                      {statusLine}
+                    </p>
+                  ) : null}
                 </div>
               </button>
             </li>
