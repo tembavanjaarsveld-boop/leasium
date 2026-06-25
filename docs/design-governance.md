@@ -188,6 +188,17 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Comms template catalog/editor/preview · existing desktop/mobile
+  smoke surfaces checked through `comms-template-catalog`,
+  `comms-template-editor`, `comms-template-preview` (desktop + 390 density), and
+  `comms-template-versioning` · fixes: catalog now reads org-wide via a
+  per-entity fan-out with a per-row trust chip (reusing the outbound-log
+  all-mode attribution pattern); New template uses a default-first Trust
+  selector in the drawer (reusing the inbox/billing picker pattern);
+  edit/version stay on the row's own trust; stored-template preview is
+  review-only so it stays available in all-entities mode · deferred: comms queue
+  + outbound-log CSV filename still records "undated" in all-entities mode
+  (separate Track-B export drift, tracked for the drift pass).
 - 2026-06-26 · Operations compliance + UX actions · existing desktop/mobile
   smoke surfaces checked through `operations-compliance`, `operations-ux`, and
   the relevant `app-flows` slice · fixes: row-backed compliance, maintenance,

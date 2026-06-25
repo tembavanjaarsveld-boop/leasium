@@ -47,7 +47,6 @@ import {
   CommsTemplateEditorDrawer,
   type CommsTemplateEditorAction,
 } from "@/components/comms-template-editor-drawer";
-import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -86,9 +85,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_CHANGED_EVENT,
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -743,31 +740,11 @@ function CommsContent() {
     queryFn: listEntities,
   });
 
-  const [selectedEntityId, setSelectedEntityId] = useState("");
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const requestedEntityId = params.get("entity_id");
-    if (requestedEntityId) {
-      setSelectedEntityId(requestedEntityId);
-      return;
-    }
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    // The All-entities sentinel is a valid restore target even though it is not
-    // a real entity id, so the cross-entity view survives navigation/reload.
-    if (stored) setSelectedEntityId(stored);
-  }, []);
-  useEffect(() => {
-    if (!selectedEntityId) return;
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    window.dispatchEvent(new Event(ENTITY_CHANGED_EVENT));
-  }, [selectedEntityId]);
-  useEffect(() => {
-    if (selectedEntityId) return;
-    const fallback = defaultEntitySelection(entitiesQuery.data ?? []);
-    if (fallback) setSelectedEntityId(fallback);
-  }, [entitiesQuery.data, selectedEntityId]);
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag (?trust_tag, below). The
+  // org-wide read path always runs; a single entity is reached via the tag, not
+  // a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
 
   // All-entities mode: entity-scoped queries use scopedEntityId (empty in
   // all-mode, so they stay disabled) and the page reads merged fan-out results.
@@ -837,14 +814,33 @@ function CommsContent() {
       return record.events.map((event) => ({ entityId: event.entity_id, event }));
     },
   });
+  // Branded templates are per-entity (the list endpoint requires an entity_id),
+  // so the org-wide catalog fans out per entity and merges — there is no
+  // org-wide template endpoint to call. Records carry their own entity_id.
+  const templateCatalogFanOut = useEntityFanOut<BrandedCommunicationTemplateRecord>(
+    {
+      entities: entitiesQuery.data,
+      enabled: allMode,
+      keyPrefix: ["comms-template-catalog-fanout"],
+      queryFn: (entityId) =>
+        listBrandedCommunicationTemplates({
+          entityId,
+          includeInactive: true,
+        }),
+    },
+  );
   const [templateEditorState, setTemplateEditorState] = useState<{
     mode: "create" | "edit";
     template: BrandedCommunicationTemplateRecord | null;
   } | null>(null);
-  const invalidateTemplateCatalog = () =>
-    queryClient.invalidateQueries({
+  const invalidateTemplateCatalog = () => {
+    void queryClient.invalidateQueries({
       queryKey: ["comms-template-catalog", selectedEntityId],
     });
+    void queryClient.invalidateQueries({
+      queryKey: ["comms-template-catalog-fanout"],
+    });
+  };
   const storeTemplateCatalogRecord = (
     record: BrandedCommunicationTemplateRecord,
   ) => {
@@ -1063,8 +1059,9 @@ function CommsContent() {
     : (entitiesQuery.data?.find((entity) => entity.id === selectedEntityId)
         ?.name ?? "Selected entity");
   const storedTemplates = useMemo(
-    () => templateCatalogQuery.data ?? [],
-    [templateCatalogQuery.data],
+    () =>
+      allMode ? templateCatalogFanOut.data : (templateCatalogQuery.data ?? []),
+    [allMode, templateCatalogFanOut.data, templateCatalogQuery.data],
   );
   const activeTemplates = useMemo(
     () =>
@@ -1212,14 +1209,7 @@ function CommsContent() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
           title="Comms queue"
@@ -1298,8 +1288,15 @@ function CommsContent() {
           inactiveTemplates={inactiveTemplates}
           entityName={selectedEntityName}
           allMode={allMode}
-          isLoading={templateCatalogQuery.isLoading}
-          error={templateCatalogQuery.error}
+          entityNameById={entityNameById}
+          isLoading={
+            allMode
+              ? templateCatalogFanOut.isLoading
+              : templateCatalogQuery.isLoading
+          }
+          error={
+            allMode ? templateCatalogFanOut.error : templateCatalogQuery.error
+          }
           onCopy={copyTemplateCatalogCsv}
           onDownload={downloadTemplateCatalogCsv}
           copyReceipt={templateCatalogCsvCopyReceipt}
@@ -1481,7 +1478,7 @@ function CommsContent() {
         mode={templateEditorState?.mode ?? "create"}
         template={templateEditorState?.template ?? null}
         templateHistory={templateEditorHistory}
-        entityId={scopedEntityId || null}
+        entities={entitiesQuery.data ?? []}
         onClose={() => setTemplateEditorState(null)}
         onSaved={handleTemplateEditorSaved}
       />
@@ -1523,6 +1520,7 @@ function TemplateCatalogPanel({
   inactiveTemplates,
   entityName,
   allMode,
+  entityNameById,
   isLoading,
   error,
   onCopy,
@@ -1535,6 +1533,7 @@ function TemplateCatalogPanel({
   inactiveTemplates: BrandedCommunicationTemplateRecord[];
   entityName: string;
   allMode: boolean;
+  entityNameById: Map<string, string>;
   isLoading: boolean;
   error: unknown;
   onCopy: (download: TemplateCatalogDownload) => void | Promise<void>;
@@ -1547,16 +1546,20 @@ function TemplateCatalogPanel({
   const templateCountLabel = `${templates.length} active ${
     templates.length === 1 ? "template" : "templates"
   }`;
-  // Templates are configured per entity, so management is single-entity only.
-  // In all-mode the panel shows a "select a single entity" note instead.
-  const actionDisabled =
-    allMode || isLoading || Boolean(error) || templates.length === 0;
-  const editorDisabled = allMode || isLoading || Boolean(error);
+  // The catalog reads org-wide: the list merges every trust's templates (each
+  // row shows its trust in all-mode), New template picks the target trust in
+  // the drawer, and Edit/version stay on the row's own trust.
+  const actionDisabled = isLoading || Boolean(error) || templates.length === 0;
+  const editorDisabled = isLoading || Boolean(error);
 
   return (
     <SectionPanel
       title="Template catalog"
-      description="Stored communication templates for the selected entity."
+      description={
+        allMode
+          ? "Stored communication templates across every trust."
+          : "Stored communication templates for the selected entity."
+      }
       icon={<Sparkles size={17} />}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -1564,9 +1567,6 @@ function TemplateCatalogPanel({
             type="button"
             onClick={onCreate}
             disabled={editorDisabled}
-            title={
-              allMode ? "Select a single entity to manage templates" : undefined
-            }
           >
             <Plus size={15} />
             New template
@@ -1596,39 +1596,35 @@ function TemplateCatalogPanel({
         </div>
       }
     >
-      {allMode ? (
-        <div className="p-4 text-sm text-muted-foreground">
-          Templates are configured per entity. Select a single entity to view
-          and manage its communication templates.
-        </div>
-      ) : null}
-      {!allMode && isLoading ? (
+      {isLoading ? (
         <div className="p-4">
           <SkeletonRows rows={2} />
         </div>
       ) : null}
-      {!allMode && error ? (
+      {!isLoading && error ? (
         <p className="m-4 rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
           {friendlyError(error)}
         </p>
       ) : null}
-      {!allMode && !isLoading && !error && templates.length === 0 ? (
+      {!isLoading && !error && templates.length === 0 ? (
         <div className="p-4 text-sm text-muted-foreground">
           No active communication templates are stored for {entityName}.
         </div>
       ) : null}
-      {!allMode && !isLoading && !error && templates.length > 0 ? (
+      {!isLoading && !error && templates.length > 0 ? (
         <div aria-label="Active templates" className="divide-y divide-border">
           {templates.map((template) => (
             <TemplateCatalogCard
               key={template.id}
               template={template}
               onEdit={onEdit}
+              allMode={allMode}
+              entityNameById={entityNameById}
             />
           ))}
         </div>
       ) : null}
-      {!allMode && !isLoading && !error && inactiveTemplates.length > 0 ? (
+      {!isLoading && !error && inactiveTemplates.length > 0 ? (
         <details className="border-t border-border bg-muted/10" open>
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">
             Inactive templates ({inactiveTemplates.length})
@@ -1639,6 +1635,8 @@ function TemplateCatalogPanel({
                 key={template.id}
                 template={template}
                 onEdit={onEdit}
+                allMode={allMode}
+                entityNameById={entityNameById}
               />
             ))}
           </div>
@@ -1656,9 +1654,13 @@ function TemplateCatalogPanel({
 function TemplateCatalogCard({
   template,
   onEdit,
+  allMode,
+  entityNameById,
 }: {
   template: BrandedCommunicationTemplateRecord;
   onEdit: (template: BrandedCommunicationTemplateRecord) => void;
+  allMode: boolean;
+  entityNameById: Map<string, string>;
 }) {
   return (
     <article
@@ -1673,6 +1675,11 @@ function TemplateCatalogCard({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {allMode ? (
+            <StatusBadge tone="neutral">
+              {entityNameById.get(template.entity_id) ?? "Unknown entity"}
+            </StatusBadge>
+          ) : null}
           <StatusBadge tone="neutral">{template.version}</StatusBadge>
           <StatusBadge tone={template.channel === "sms" ? "primary" : "neutral"}>
             {templateChannelProviderLabel(template)}
@@ -1999,7 +2006,9 @@ function CandidateCard({
   const [templatePreview, setTemplatePreview] =
     useState<CommsTemplatePreviewRecord | null>(null);
   const approvalBlockerId = useId();
-  const canPreviewTemplate = Boolean(template && !allMode && !isSms);
+  // Preview is review-only (no entity_id, no provider send), so it stays
+  // available in all-entities mode; dispatch remains single-entity below.
+  const canPreviewTemplate = Boolean(template && !isSms);
   const templateLabel = template
     ? `Template ${template.key} ${template.version}`
     : null;

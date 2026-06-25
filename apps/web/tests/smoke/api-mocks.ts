@@ -10733,11 +10733,17 @@ export async function mockLeasiumApi(
 
     if (method === "GET" && path === "/branded-communication-templates") {
       const includeInactive = url.searchParams.get("include_inactive") === "true";
+      // The real endpoint scopes to one entity (entity_id is required); mirror
+      // that so the org-wide catalog fan-out merges per-entity lists without
+      // double-counting shared rows.
+      const requestedEntityId = url.searchParams.get("entity_id");
       await fulfillJson(
         route,
         brandedCommunicationTemplates.filter(
           (template) =>
-            !template.deleted_at && (includeInactive || template.is_active),
+            !template.deleted_at &&
+            (includeInactive || template.is_active) &&
+            (!requestedEntityId || template.entity_id === requestedEntityId),
         ),
       );
       return;

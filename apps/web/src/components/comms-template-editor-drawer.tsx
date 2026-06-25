@@ -19,6 +19,7 @@ import {
   type BrandedCommunicationTemplateRenderPreviewRecord,
   type BrandedCommunicationTemplateUpdatePayload,
   type BrandedCommunicationTemplateVersionCreatePayload,
+  type Entity,
   renderBrandedCommunicationTemplatePreview,
 } from "@/lib/api";
 import { cn, friendlyError } from "@/lib/utils";
@@ -76,7 +77,7 @@ export function CommsTemplateEditorDrawer({
   mode,
   template,
   templateHistory,
-  entityId,
+  entities,
   onClose,
   onSaved,
 }: {
@@ -84,7 +85,7 @@ export function CommsTemplateEditorDrawer({
   mode: "create" | "edit";
   template: BrandedCommunicationTemplateRecord | null;
   templateHistory: BrandedCommunicationTemplateRecord[];
-  entityId: string | null;
+  entities: Entity[];
   onClose: () => void;
   onSaved: (action: CommsTemplateEditorAction) => Promise<void>;
 }) {
@@ -107,6 +108,10 @@ export function CommsTemplateEditorDrawer({
     useState<BrandedCommunicationTemplateRenderPreviewRecord | null>(null);
   const [isRendering, setIsRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
+  // Create-time target trust. Defaults to the first accessible entity; the
+  // operator can re-point it when more than one trust is in reach. Edit/version
+  // actions stay on the template's own entity, so this is create-only.
+  const [createEntityOverride, setCreateEntityOverride] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -115,6 +120,7 @@ export function CommsTemplateEditorDrawer({
     setRenderedPreview(null);
     setIsRendering(false);
     setRenderError(null);
+    setCreateEntityOverride("");
     if (mode === "edit" && template) {
       setKey(template.key);
       setVersion(template.version);
@@ -146,9 +152,14 @@ export function CommsTemplateEditorDrawer({
     mode === "edit" && template
       ? `Edit ${template.name}`
       : "New communication template";
+  // Create posts under the chosen trust (default first); edit/version inherit
+  // the template's own entity.
+  const createEntityId = entities[0]
+    ? createEntityOverride || entities[0].id
+    : "";
   const saveDisabled =
     isSubmitting ||
-    !entityId ||
+    (mode === "create" && !createEntityId) ||
     !key.trim() ||
     !version.trim() ||
     !provider.trim() ||
@@ -160,7 +171,10 @@ export function CommsTemplateEditorDrawer({
     actionLabel: renderTemplateSample(actionLabel),
     actionUrl: renderTemplateSample(actionUrlTemplate),
   };
-  const previewEntityId = entityId ?? template?.entity_id ?? null;
+  const previewEntityId =
+    mode === "create"
+      ? createEntityId || null
+      : (template?.entity_id ?? null);
   const renderDisabled =
     isRendering || !previewEntityId || !key.trim() || !bodyTemplate.trim();
   const versionHistory =
@@ -197,11 +211,11 @@ export function CommsTemplateEditorDrawer({
 
   function saveTemplate() {
     if (mode === "create") {
-      if (!entityId) return;
+      if (!createEntityId) return;
       void runAction({
         type: "create",
         payload: {
-          entity_id: entityId,
+          entity_id: createEntityId,
           key: key.trim(),
           version: version.trim(),
           channel,
@@ -322,6 +336,21 @@ export function CommsTemplateEditorDrawer({
             <StatusBadge tone="primary">Operator</StatusBadge>
           )}
         </div>
+
+        {mode === "create" && entities.length > 1 ? (
+          <Field label="Trust">
+            <Select
+              value={createEntityId}
+              onChange={(event) => setCreateEntityOverride(event.target.value)}
+            >
+              {entities.map((entity) => (
+                <option key={entity.id} value={entity.id}>
+                  {entity.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Key">
