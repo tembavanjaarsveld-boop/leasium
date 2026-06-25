@@ -1,22 +1,26 @@
 """Org-wide (no entity_id) scope on the all-entities fan-out list endpoints."""
 
-from datetime import date
+from datetime import date, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from stewart.core.audit import audit_log
 from stewart.core.models import (
     ArrearsCase,
+    AuditOutcome,
     BillingDraft,
     ComplianceCheck,
     Contractor,
     DocumentCategory,
     DocumentIntake,
     Entity,
+    InboundMessage,
     InvoiceDraft,
     Lease,
     LeaseStatus,
     MaintenanceWorkOrder,
+    MaintenanceWorkOrderStatus,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -143,6 +147,42 @@ def _seed_entity_records(session: Session, entity: Entity, token: str) -> None:
     session.commit()
 
 
+def _assignment_metadata() -> dict[str, object]:
+    settings = get_settings()
+    return {
+        "work_assignment": {
+            "assigned_user_id": str(settings.dev_user_id),
+            "assigned_user_name": settings.dev_user_name,
+            "assigned_user_email": settings.dev_user_email,
+            "assigned_role": "owner",
+            "assigned_at": "2026-05-20T00:00:00Z",
+            "assigned_by_user_id": str(settings.dev_user_id),
+            "assigned_by_name": settings.dev_user_name,
+            "work_title": "Org-wide assigned work",
+            "work_kind": "Maintenance",
+            "notification": {
+                "channel": "in_app",
+                "provider": "leasium",
+                "status": "ready",
+                "recipient_email": settings.dev_user_email,
+                "template_key": "work_assignment_notification",
+                "template_version": "v1",
+            },
+            "history": [
+                {
+                    "event": "assigned",
+                    "at": "2026-05-20T00:00:00Z",
+                    "actor_name": settings.dev_user_name,
+                    "assigned_user_name": settings.dev_user_name,
+                    "assigned_user_email": settings.dev_user_email,
+                    "notification_status": "ready",
+                    "summary": "Maintenance assigned to Temba van Jaarsveld.",
+                }
+            ],
+        }
+    }
+
+
 def test_org_wide_lists_cover_readable_entities_only(
     client: TestClient,
     session: Session,
@@ -216,6 +256,222 @@ def test_explicit_entity_scope_still_requires_entity_role(
     ):
         response = client.get(path, params={"entity_id": str(hidden.id)})
         assert response.status_code == 403, path
+
+
+def test_org_wide_comms_queue_returns_readable_entity_candidates_only(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+
+    accessible = Entity(organisation_id=seeded.organisation_id, name="Visible Comms")
+    hidden = Entity(organisation_id=seeded.organisation_id, name="Hidden Comms")
+    session.add_all([accessible, hidden])
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=settings.dev_user_id,
+            entity_id=accessible.id,
+            role=UserRole.viewer,
+        )
+    )
+    session.flush()
+    session.add_all(
+        [
+            InboundMessage(
+                entity_id=accessible.id,
+                channel="email",
+                provider="sendgrid",
+                source="tenant_channel",
+                trust_state="trusted",
+                from_address="visible@example.test",
+                to_address="visible@inbox.leasium.ai",
+                subject="Visible maintenance request",
+                body_text="The lights need attention.",
+            ),
+            InboundMessage(
+                entity_id=hidden.id,
+                channel="email",
+                provider="sendgrid",
+                source="tenant_channel",
+                trust_state="trusted",
+                from_address="hidden@example.test",
+                to_address="hidden@inbox.leasium.ai",
+                subject="Hidden maintenance request",
+                body_text="This should not leak.",
+            ),
+        ]
+    )
+    session.commit()
+
+    response = client.get("/api/v1/comms/queue")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_id"] is None
+    candidate_entities = {candidate["entity_id"] for candidate in body["candidates"]}
+    assert candidate_entities == {str(accessible.id)}
+    assert body["candidates"][0]["subject"] == "Re: Visible maintenance request"
+
+    response = client.get(
+        "/api/v1/comms/queue",
+        params={"entity_id": str(hidden.id)},
+    )
+    assert response.status_code == 403
+
+
+def test_org_wide_comms_outbound_log_returns_readable_entity_events_only(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+
+    accessible = Entity(organisation_id=seeded.organisation_id, name="Visible Dispatch")
+    hidden = Entity(organisation_id=seeded.organisation_id, name="Hidden Dispatch")
+    session.add_all([accessible, hidden])
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=settings.dev_user_id,
+            entity_id=accessible.id,
+            role=UserRole.viewer,
+        )
+    )
+    session.flush()
+    visible_message = InboundMessage(
+        entity_id=accessible.id,
+        channel="email",
+        provider="sendgrid",
+        source="tenant_channel",
+        trust_state="trusted",
+        from_address="visible@example.test",
+        subject="Visible dispatch",
+        body_text="Visible body.",
+    )
+    hidden_message = InboundMessage(
+        entity_id=hidden.id,
+        channel="email",
+        provider="sendgrid",
+        source="tenant_channel",
+        trust_state="trusted",
+        from_address="hidden@example.test",
+        subject="Hidden dispatch",
+        body_text="Hidden body.",
+    )
+    session.add_all([visible_message, hidden_message])
+    session.flush()
+    visible_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=accessible.id,
+        action="dispatch",
+        target_table="inbound_message",
+        target_id=visible_message.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"inbound_email:inbound_message:{visible_message.id}",
+            "kind": "inbound_email",
+            "channel": "email",
+        },
+        tool_output_summary="visible comms dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    visible_dispatch.occurred_at = datetime(2026, 5, 21, 2, 30, 0)
+    hidden_dispatch = audit_log(
+        session,
+        actor="dev@test",
+        entity_id=hidden.id,
+        action="dispatch",
+        target_table="inbound_message",
+        target_id=hidden_message.id,
+        tool_name="sendgrid.sendgrid",
+        tool_input={
+            "candidate_id": f"inbound_email:inbound_message:{hidden_message.id}",
+            "kind": "inbound_email",
+            "channel": "email",
+        },
+        tool_output_summary="hidden comms dispatch",
+        outcome=AuditOutcome.success,
+        data_classification="confidential",
+    )
+    hidden_dispatch.occurred_at = datetime(2026, 5, 21, 2, 35, 0)
+    session.commit()
+
+    response = client.get("/api/v1/comms/outbound-log")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_id"] is None
+    assert [(event["entity_id"], event["summary"]) for event in body["events"]] == [
+        (str(accessible.id), "visible comms dispatch")
+    ]
+
+    response = client.get(
+        "/api/v1/comms/outbound-log",
+        params={"entity_id": str(hidden.id)},
+    )
+    assert response.status_code == 403
+
+
+def test_org_wide_notification_center_returns_readable_entity_notices_only(
+    client: TestClient,
+    session: Session,
+) -> None:
+    settings = get_settings()
+    seeded = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seeded is not None
+
+    accessible = Entity(organisation_id=seeded.organisation_id, name="Visible Work")
+    hidden = Entity(organisation_id=seeded.organisation_id, name="Hidden Work")
+    session.add_all([accessible, hidden])
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=settings.dev_user_id,
+            entity_id=accessible.id,
+            role=UserRole.viewer,
+        )
+    )
+    session.flush()
+    session.add_all(
+        [
+            MaintenanceWorkOrder(
+                entity_id=accessible.id,
+                title="Visible assigned work",
+                description="Visible assignment.",
+                status=MaintenanceWorkOrderStatus.assigned,
+                work_order_metadata=_assignment_metadata(),
+            ),
+            MaintenanceWorkOrder(
+                entity_id=hidden.id,
+                title="Hidden assigned work",
+                description="Hidden assignment.",
+                status=MaintenanceWorkOrderStatus.assigned,
+                work_order_metadata=_assignment_metadata(),
+            ),
+        ]
+    )
+    session.commit()
+
+    response = client.get("/api/v1/work-assignments/notification-center")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_id"] is None
+    assert [(notice["entity_id"], notice["title"]) for notice in body["notices"]] == [
+        (str(accessible.id), "Visible assigned work")
+    ]
+
+    response = client.get(
+        "/api/v1/work-assignments/notification-center",
+        params={"entity_id": str(hidden.id)},
+    )
+    assert response.status_code == 403
 
 
 def test_org_wide_arrears_tenant_filter_requires_readable_tenant(

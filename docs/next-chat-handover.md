@@ -2,6 +2,33 @@
 
 Last updated: 2026-06-25
 
+## Continuation - 2026-06-25 (Entity-as-dimension backend last mile)
+
+Track A of `docs/multi-entity-dimension-plan-2026-06-25.md` landed locally:
+Entity now behaves as a pure read dimension for the remaining backend holdouts.
+`GET /api/v1/comms/queue`, `GET /api/v1/comms/outbound-log`, and
+`GET /api/v1/work-assignments/notification-center` accept omitted `entity_id`,
+scope through `readable_entity_ids`, and return only readable-entity rows with
+entity tags. Explicit `?entity_id=` still checks entity role and returns 403 for
+unreadable entities.
+
+API client types/functions landed in `apps/web/src/lib/api.ts` for the org-wide
+comms queue, comms outbound log, and work-assignment notification center reads.
+No comms/notifications page components or entity switcher UI were touched; Track
+B/C can wire the UI later.
+
+Guardrails: read-only aggregation only. No Xero write, SendGrid email, Twilio
+SMS, tenant email, payment, reconciliation, or provider/source-record mutation.
+
+Verification: red-first tests were added to
+`tests/integration/test_org_wide_scope_api.py`; focused red failures were the
+old 422 required-query-param responses. Final checks: `.venv/bin/python -m ruff
+check apps stewart tests scripts` passed; `.venv/bin/python -m pytest
+tests/integration/test_org_wide_scope_api.py -q` passed 9; full backend suite
+passed 760 / skipped 1 (`TEST_DATABASE_URL` not configured); `cd apps/web &&
+./node_modules/.bin/eslint src` passed; `cd apps/web &&
+./node_modules/.bin/tsc --noEmit` passed.
+
 ## Continuation - 2026-06-25 (Property entity reassignment — backend + UI)
 
 Temba needed to change a property's owning Trust/entity: an import had filed

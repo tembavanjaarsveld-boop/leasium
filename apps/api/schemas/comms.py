@@ -46,6 +46,7 @@ class CommsCandidate(BaseModel):
     """
 
     id: str
+    entity_id: UUID | None = None
     kind: CommsKind
     target_kind: str
     target_id: UUID
@@ -67,7 +68,7 @@ class CommsCandidate(BaseModel):
 class CommsQueueRead(BaseModel):
     """Read response for ``GET /api/v1/comms/queue``."""
 
-    entity_id: UUID
+    entity_id: UUID | None = None
     candidates: list[CommsCandidate]
     generated_at: datetime
 
@@ -153,6 +154,7 @@ class CommsCorrespondenceEvent(BaseModel):
     """Read-only event in a tenant-linked correspondence timeline."""
 
     id: str
+    entity_id: UUID | None = None
     source: CommsCorrespondenceSource
     direction: CommsCorrespondenceDirection
     event_type: str
@@ -207,7 +209,7 @@ class CommsContractorCorrespondenceRead(BaseModel):
 class CommsOutboundLogRead(BaseModel):
     """Read-only entity-scoped comms dispatch receipt log."""
 
-    entity_id: UUID
+    entity_id: UUID | None = None
     events: list[CommsCorrespondenceEvent]
     guardrails: list[str]
     generated_at: datetime

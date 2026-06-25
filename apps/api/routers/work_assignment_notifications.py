@@ -38,7 +38,13 @@ from stewart.integrations.communications import (
 )
 
 from apps.api import webhook_auth
-from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
+from apps.api.deps import (
+    CurrentUser,
+    assert_entity_role,
+    get_current_user,
+    get_session,
+    readable_entity_ids,
+)
 from apps.api.schemas.work_assignments import (
     WorkAssignmentDigestCadence,
     WorkAssignmentDigestDueCadence,
@@ -943,6 +949,7 @@ def _notification_center_item(
         if receipt is not None
     ]
     return WorkAssignmentNotificationCenterItemRead(
+        entity_id=target.entity_id,
         target_id=target.id,
         target_type=_target_table(target),  # type: ignore[arg-type]
         title=_target_title(target),
@@ -1373,6 +1380,7 @@ def _notification_center_digest_receipts(
             )
             receipts.append(
                 WorkAssignmentNotificationCenterDigestRead(
+                    entity_id=entity_id,
                     assignee_user_id=member.id,
                     assignee_name=member.display_name,
                     assignee_email=member.email,
@@ -1585,38 +1593,43 @@ def _latest_notification_center_activity_at(
     return max(activity) if activity else None
 
 
-@router.get("/notification-center", response_model=WorkAssignmentNotificationCenterRead)
-def get_work_assignment_notification_center(
-    entity_id: Annotated[UUID, Query()],
-    session: Annotated[Session, Depends(get_session)],
-    user: Annotated[CurrentUser, Depends(get_current_user)],
+_NOTIFICATION_CENTER_GROUP_RANK = {"attention": 0, "ready": 1, "in_flight": 2, "done": 3}
+
+
+def _notification_center_notice_sort_key(
+    item: WorkAssignmentNotificationCenterItemRead,
+) -> tuple[int, int, float, date, str]:
+    return (
+        _NOTIFICATION_CENTER_GROUP_RANK[item.group],
+        0 if item.follow_up_due else 1,
+        -(item.event_at.timestamp() if item.event_at is not None else 0),
+        item.due_date or date.max,
+        item.title,
+    )
+
+
+def _build_work_assignment_notification_center(
+    *,
+    entity_id: UUID,
+    session: Session,
+    user: CurrentUser,
+    settings: Settings,
+    frontend_base: str | None,
+    today: date,
+    current_member: AppUser | None,
 ) -> WorkAssignmentNotificationCenterRead:
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    settings = get_settings()
-    frontend_base = settings.frontend_url.strip().rstrip("/") or None
-    today = utcnow().date()
     notices = [
         item
         for target in _open_assignment_targets(session, entity_id)
         if (item := _notification_center_item(target, frontend_base, today, session)) is not None
     ]
-    group_rank = {"attention": 0, "ready": 1, "in_flight": 2, "done": 3}
-    notices.sort(
-        key=lambda item: (
-            group_rank[item.group],
-            0 if item.follow_up_due else 1,
-            -(item.event_at.timestamp() if item.event_at is not None else 0),
-            item.due_date or date.max,
-            item.title,
-        )
-    )
+    notices.sort(key=_notification_center_notice_sort_key)
     members = _entity_assignment_members(
         session,
         organisation_id=user.organisation_id,
         entity_id=entity_id,
     )
     digest_receipts = _notification_center_digest_receipts(members, entity_id)
-    current_member = session.get(AppUser, user.id)
     last_read_at = _notification_center_read_at(current_member, entity_id)
     return WorkAssignmentNotificationCenterRead(
         entity_id=entity_id,
@@ -1635,6 +1648,65 @@ def get_work_assignment_notification_center(
         digest_receipt_count=len(digest_receipts),
         guardrails=NOTIFICATION_CENTER_GUARDRAILS,
         channels=_notification_center_channels(settings, members),
+        notices=notices[:50],
+        digest_receipts=digest_receipts,
+    )
+
+
+@router.get("/notification-center", response_model=WorkAssignmentNotificationCenterRead)
+def get_work_assignment_notification_center(
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    entity_id: Annotated[UUID | None, Query()] = None,
+) -> WorkAssignmentNotificationCenterRead:
+    settings = get_settings()
+    frontend_base = settings.frontend_url.strip().rstrip("/") or None
+    today = utcnow().date()
+    current_member = session.get(AppUser, user.id)
+
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        return _build_work_assignment_notification_center(
+            entity_id=entity_id,
+            session=session,
+            user=user,
+            settings=settings,
+            frontend_base=frontend_base,
+            today=today,
+            current_member=current_member,
+        )
+
+    centers = [
+        _build_work_assignment_notification_center(
+            entity_id=current_entity_id,
+            session=session,
+            user=user,
+            settings=settings,
+            frontend_base=frontend_base,
+            today=today,
+            current_member=current_member,
+        )
+        for current_entity_id in readable_entity_ids(session, user, READ_ROLES)
+    ]
+    notices = [notice for center in centers for notice in center.notices]
+    notices.sort(key=_notification_center_notice_sort_key)
+    digest_receipts = [
+        receipt for center in centers for receipt in center.digest_receipts
+    ]
+    digest_receipts.sort(key=lambda receipt: receipt.generated_at, reverse=True)
+    return WorkAssignmentNotificationCenterRead(
+        entity_id=None,
+        generated_at=utcnow(),
+        last_read_at=None,
+        unread_count=sum(center.unread_count for center in centers),
+        notice_count=len(notices),
+        attention_count=sum(1 for item in notices if item.group == "attention"),
+        ready_count=sum(1 for item in notices if item.group == "ready"),
+        in_flight_count=sum(1 for item in notices if item.group == "in_flight"),
+        done_count=sum(1 for item in notices if item.group == "done"),
+        digest_receipt_count=len(digest_receipts),
+        guardrails=NOTIFICATION_CENTER_GUARDRAILS,
+        channels=[],
         notices=notices[:50],
         digest_receipts=digest_receipts,
     )

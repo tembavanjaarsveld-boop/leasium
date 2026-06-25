@@ -153,6 +153,7 @@ class WorkAssignmentDigestDueRunRead(BaseModel):
 
 
 class WorkAssignmentNotificationCenterItemRead(BaseModel):
+    entity_id: UUID | None = None
     target_id: UUID
     target_type: Literal["maintenance_work_order", "arrears_case", "obligation"]
     title: str
@@ -266,6 +267,7 @@ class WorkAssignmentNoticeSmsSendRead(BaseModel):
 
 
 class WorkAssignmentNotificationCenterDigestRead(BaseModel):
+    entity_id: UUID | None = None
     assignee_user_id: UUID
     assignee_name: str
     assignee_email: str
@@ -290,7 +292,7 @@ class WorkAssignmentNotificationCenterDigestRead(BaseModel):
 
 
 class WorkAssignmentNotificationCenterRead(BaseModel):
-    entity_id: UUID
+    entity_id: UUID | None = None
     generated_at: datetime
     last_read_at: datetime | None = None
     unread_count: int = 0

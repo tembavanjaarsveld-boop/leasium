@@ -285,6 +285,7 @@ export type WorkAssignmentNoticeChannelReceiptRecord = {
 };
 
 export type WorkAssignmentNotificationCenterItemRecord = {
+  entity_id?: string | null;
   target_id: string;
   target_type: WorkAssignmentTargetType;
   title: string;
@@ -390,6 +391,7 @@ export type WorkAssignmentProviderHistoryRecord = {
 };
 
 export type WorkAssignmentNotificationCenterDigestRecord = {
+  entity_id?: string | null;
   assignee_user_id: string;
   assignee_name: string;
   assignee_email: string;
@@ -428,6 +430,33 @@ export type WorkAssignmentNotificationCenterRecord = {
   channels?: WorkAssignmentNotificationChannelRecord[];
   notices: WorkAssignmentNotificationCenterItemRecord[];
   digest_receipts: WorkAssignmentNotificationCenterDigestRecord[];
+};
+
+export type EntityTaggedWorkAssignmentNotificationCenterItemRecord =
+  WorkAssignmentNotificationCenterItemRecord & {
+    entity_id: string;
+  };
+
+export type EntityTaggedWorkAssignmentNotificationCenterDigestRecord =
+  WorkAssignmentNotificationCenterDigestRecord & {
+    entity_id: string;
+  };
+
+export type OrgWideWorkAssignmentNotificationCenterRecord = Omit<
+  WorkAssignmentNotificationCenterRecord,
+  "entity_id" | "channels" | "notices" | "digest_receipts"
+> & {
+  entity_id: null;
+  channels: [];
+  notices: EntityTaggedWorkAssignmentNotificationCenterItemRecord[];
+  digest_receipts: EntityTaggedWorkAssignmentNotificationCenterDigestRecord[];
+};
+
+export type EntityScopedWorkAssignmentNotificationCenterRecord = Omit<
+  WorkAssignmentNotificationCenterRecord,
+  "entity_id"
+> & {
+  entity_id: string;
 };
 
 export type WorkAssignmentNotificationCenterReadStateRecord = {
@@ -5634,8 +5663,14 @@ export function runWorkAssignmentDigest(payload: {
 
 export function getWorkAssignmentNotificationCenter(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
-  return request<WorkAssignmentNotificationCenterRecord>(
+  return request<EntityScopedWorkAssignmentNotificationCenterRecord>(
     `/work-assignments/notification-center?${params.toString()}`,
+  );
+}
+
+export function getOrgWideWorkAssignmentNotificationCenter() {
+  return request<OrgWideWorkAssignmentNotificationCenterRecord>(
+    "/work-assignments/notification-center",
   );
 }
 
@@ -6652,6 +6687,7 @@ export type CommsSeverity = "info" | "warning" | "danger";
 
 export type CommsCandidateRecord = {
   id: string;
+  entity_id?: string | null;
   kind: CommsKind;
   target_kind: string;
   target_id: string;
@@ -6674,6 +6710,26 @@ export type CommsQueueRecord = {
   entity_id: string;
   candidates: CommsCandidateRecord[];
   generated_at: string;
+};
+
+export type EntityTaggedCommsCandidateRecord = CommsCandidateRecord & {
+  entity_id: string;
+};
+
+export type OrgWideCommsQueueRecord = Omit<
+  CommsQueueRecord,
+  "entity_id" | "candidates"
+> & {
+  entity_id: null;
+  candidates: EntityTaggedCommsCandidateRecord[];
+};
+
+export type EntityScopedCommsQueueRecord = Omit<
+  CommsQueueRecord,
+  "entity_id" | "candidates"
+> & {
+  entity_id: string;
+  candidates: EntityTaggedCommsCandidateRecord[];
 };
 
 export type CommsDispatchPayload = {
@@ -6753,6 +6809,7 @@ export type CommsDismissRecord = {
 
 export type CommsCorrespondenceEventRecord = {
   id: string;
+  entity_id?: string | null;
   source: "inbound_message" | "comms_audit";
   direction: "inbound" | "outbound" | "internal";
   event_type: string;
@@ -6805,9 +6862,35 @@ export type CommsOutboundLogRecord = {
   generated_at: string;
 };
 
+export type EntityTaggedCommsEventRecord = CommsCorrespondenceEventRecord & {
+  entity_id: string;
+};
+
+export type OrgWideCommsOutboundLogRecord = Omit<
+  CommsOutboundLogRecord,
+  "entity_id" | "events"
+> & {
+  entity_id: null;
+  events: EntityTaggedCommsEventRecord[];
+};
+
+export type EntityScopedCommsOutboundLogRecord = Omit<
+  CommsOutboundLogRecord,
+  "entity_id" | "events"
+> & {
+  entity_id: string;
+  events: EntityTaggedCommsEventRecord[];
+};
+
 export function getCommsQueue(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
-  return request<CommsQueueRecord>(`/comms/queue?${params.toString()}`);
+  return request<EntityScopedCommsQueueRecord>(
+    `/comms/queue?${params.toString()}`,
+  );
+}
+
+export function getOrgWideCommsQueue() {
+  return request<OrgWideCommsQueueRecord>("/comms/queue");
 }
 
 export type CommsQueueCountsRecord = {
@@ -6847,8 +6930,19 @@ export function getContractorCommsCorrespondence(contractorId: string) {
 
 export function getCommsOutboundLog(entityId: string) {
   const params = new URLSearchParams({ entity_id: entityId });
-  return request<CommsOutboundLogRecord>(
+  return request<EntityScopedCommsOutboundLogRecord>(
     `/comms/outbound-log?${params.toString()}`,
+  );
+}
+
+export function getOrgWideCommsOutboundLog(limit?: number) {
+  const params = new URLSearchParams();
+  if (typeof limit === "number") {
+    params.set("limit", String(limit));
+  }
+  const query = params.toString();
+  return request<OrgWideCommsOutboundLogRecord>(
+    `/comms/outbound-log${query ? `?${query}` : ""}`,
   );
 }
 

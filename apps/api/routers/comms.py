@@ -1932,9 +1932,9 @@ def _inbound_email_candidates(
 
 @router.get("/queue", response_model=CommsQueueRead)
 def get_comms_queue(
-    entity_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    entity_id: UUID | None = None,
 ) -> CommsQueueRead:
     """Return draft communications the operator should review.
 
@@ -1944,8 +1944,16 @@ def get_comms_queue(
     renewal, etc.) follow the same shape.
     """
 
-    assert_entity_role(session, user, entity_id, READ_ROLES)
-    candidates = _queue_candidates(entity_id, session)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        entity_ids = [entity_id]
+    else:
+        entity_ids = readable_entity_ids(session, user, READ_ROLES)
+    candidates = [
+        candidate.model_copy(update={"entity_id": current_entity_id})
+        for current_entity_id in entity_ids
+        for candidate in _queue_candidates(current_entity_id, session)
+    ]
     return CommsQueueRead(
         entity_id=entity_id,
         candidates=candidates,
@@ -3064,9 +3072,9 @@ def get_contractor_correspondence(
 
 @router.get("/outbound-log", response_model=CommsOutboundLogRead)
 def get_comms_outbound_log(
-    entity_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    entity_id: UUID | None = None,
     limit: int = 20,
 ) -> CommsOutboundLogRead:
     """Return recent stored comms dispatch receipts for the Comms hub.
@@ -3075,22 +3083,32 @@ def get_comms_outbound_log(
     providers, regenerates drafts, dismisses candidates, or mutates queue state.
     """
 
-    assert_entity_role(session, user, entity_id, READ_ROLES)
+    if entity_id is not None:
+        assert_entity_role(session, user, entity_id, READ_ROLES)
+        entity_ids = [entity_id]
+    else:
+        entity_ids = readable_entity_ids(session, user, READ_ROLES)
     normalized_limit = max(0, min(limit, 50))
     audit_rows = session.scalars(
         select(AuditAction)
         .where(
-            AuditAction.entity_id == entity_id,
+            AuditAction.entity_id.in_(entity_ids),
             AuditAction.action == "dispatch",
             AuditAction.target_id.is_not(None),
         )
         .order_by(AuditAction.occurred_at.desc())
     ).all()
-    events = [
-        _audit_correspondence_event(row, session)
-        for row in audit_rows
-        if _is_comms_correspondence_audit(row)
-    ][:normalized_limit]
+    events: list[CommsCorrespondenceEvent] = []
+    for row in audit_rows:
+        if row.entity_id is None or not _is_comms_correspondence_audit(row):
+            continue
+        events.append(
+            _audit_correspondence_event(row, session).model_copy(
+                update={"entity_id": row.entity_id}
+            )
+        )
+        if len(events) >= normalized_limit:
+            break
     return CommsOutboundLogRead(
         entity_id=entity_id,
         events=events,
