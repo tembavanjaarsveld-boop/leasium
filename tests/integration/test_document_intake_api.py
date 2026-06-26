@@ -1,5 +1,6 @@
 """Smart Intake API tests with OpenAI extraction monkeypatched."""
 
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -3043,6 +3044,96 @@ def test_document_intake_apply_lease_creates_register_records(
     assert document is not None
     assert document.lease_id == lease.id
     assert document.document_metadata["applied_lease_id"] == str(lease.id)
+
+
+def test_document_intake_apply_lease_skips_past_obligation_dates(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    today = date(2030, 1, 15)
+    yesterday = today - timedelta(days=1)
+    future = today + timedelta(days=45)
+    expiry = today + timedelta(days=365)
+
+    def fixed_utcnow() -> datetime:
+        return datetime(today.year, today.month, today.day, tzinfo=UTC)
+
+    monkeypatch.setattr("apps.api.routers.lease_intakes.utcnow", fixed_utcnow)
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_smart_lease_current_dates"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("smart-lease-current-dates.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    reviewed = _fake_smart_lease_extraction()
+    reviewed["key_dates"] = [
+        {
+            "label": "Lease commencement",
+            "date": (today - timedelta(days=365)).isoformat(),
+        },
+        {"label": "Lease expiry", "date": expiry.isoformat()},
+        {"label": "Rent review", "date": today.isoformat()},
+    ]
+    reviewed["obligations"] = [
+        {
+            "title": "Past bank guarantee review",
+            "due_date": yesterday.isoformat(),
+            "category": "bank_guarantee",
+            "notes": "This historical item should not be imported.",
+        },
+        {
+            "title": "Current option notice",
+            "due_date": today.isoformat(),
+            "category": "option_notice",
+            "notes": "Due today is still current.",
+        },
+        {
+            "title": "Future make good review",
+            "due_date": future.isoformat(),
+            "category": "other",
+            "notes": "Future follow-up stays importable.",
+        },
+    ]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={"review_data": reviewed},
+    )
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    lease = session.get(Lease, UUID(body["review_data"]["applied"]["lease_id"]))
+    assert lease is not None
+
+    obligations = session.scalars(
+        select(Obligation).where(Obligation.lease_id == lease.id)
+    ).all()
+    assert {obligation.title for obligation in obligations} == {
+        "Current option notice",
+        "Future make good review",
+        "Rent review",
+        "Lease expiry",
+    }
+    assert all(obligation.due_date >= today for obligation in obligations)
+    assert body["review_data"]["applied"]["obligation_count"] == 4
 
 
 def _writable_entity(session: Session, name: str) -> str:

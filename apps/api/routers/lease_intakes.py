@@ -929,12 +929,15 @@ def _create_obligations(
             }
         )
 
+    today = utcnow().date()
     seen: set[tuple[str, date, str]] = set()
     obligations: list[Obligation] = []
     for row in rows:
         due_date = _date(row.get("due_date") or row.get("due"))
         title = _str(row.get("title"))
         if due_date is None or title is None:
+            continue
+        if due_date < today:
             continue
         category = _enum(ObligationCategory, row.get("category"), ObligationCategory.other)
         key = (title.lower(), due_date, category.value)
