@@ -503,22 +503,22 @@ def update_obligation(
 ) -> Obligation:
     obligation = _get_obligation_for_user(obligation_id, user, session, WRITE_ROLES)
     data: dict[str, Any] = payload.model_dump(exclude_unset=True)
-    entity_id = data.get("entity_id", obligation.entity_id)
-    property_id = data.get("property_id", obligation.property_id)
-    tenancy_unit_id = data.get("tenancy_unit_id", obligation.tenancy_unit_id)
-    lease_id = data.get("lease_id", obligation.lease_id)
-    property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
-        entity_id=entity_id,
-        property_id=property_id,
-        tenancy_unit_id=tenancy_unit_id,
-        lease_id=lease_id,
-        user=user,
-        session=session,
-        roles=WRITE_ROLES,
-    )
-    data["property_id"] = property_id
-    data["tenancy_unit_id"] = tenancy_unit_id
-    data["lease_id"] = lease_id
+    # Only re-validate placement when the PATCH actually changes scope. A
+    # status/notes/priority edit must not 404 because the stored unit or lease
+    # was since soft-deleted (e.g. wrong-trust dedup left the reference dangling).
+    if {"entity_id", "property_id", "tenancy_unit_id", "lease_id"} & data.keys():
+        property_id, tenancy_unit_id, lease_id = _validate_obligation_scope(
+            entity_id=data.get("entity_id", obligation.entity_id),
+            property_id=data.get("property_id", obligation.property_id),
+            tenancy_unit_id=data.get("tenancy_unit_id", obligation.tenancy_unit_id),
+            lease_id=data.get("lease_id", obligation.lease_id),
+            user=user,
+            session=session,
+            roles=WRITE_ROLES,
+        )
+        data["property_id"] = property_id
+        data["tenancy_unit_id"] = tenancy_unit_id
+        data["lease_id"] = lease_id
     if "metadata" in data:
         data["obligation_metadata"] = data.pop("metadata")
     for key, value in data.items():

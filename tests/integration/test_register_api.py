@@ -1077,6 +1077,77 @@ def test_obligation_crud_filters_scope_and_writes_audit(
     )
 
 
+def test_status_update_succeeds_when_obligation_unit_soft_deleted(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_id = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Anzac Avenue Office",
+            "street_address": "1642 Anzac Avenue",
+            "suburb": "North Lakes",
+            "state": "QLD",
+            "postcode": "4509",
+            "property_type": "commercial_office",
+        },
+    ).json()["id"]
+    unit_id = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "T004", "sqm": 120},
+    ).json()["id"]
+    tenant_id = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Brisbane Skin Pty Ltd"},
+    ).json()["id"]
+    lease_id = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2029-01-31",
+        },
+    ).json()["id"]
+    obligation_id = client.post(
+        "/api/v1/obligations",
+        json={
+            "entity_id": entity_id,
+            "lease_id": lease_id,
+            "title": "Pay bond",
+            "due_date": "2022-01-01",
+            "priority": 0,
+        },
+    ).json()["id"]
+
+    # Simulate a wrong-trust dedup that soft-deleted the unit while leaving the
+    # lease-scoped obligation pointing at it.
+    unit = session.get(TenancyUnit, UUID(unit_id))
+    assert unit is not None
+    unit.deleted_at = datetime.now(UTC)
+    session.commit()
+
+    # The Attention complete/waive action sends a status-only PATCH; it must
+    # still succeed instead of 404-ing on the now-dangling unit reference.
+    complete_response = client.patch(
+        f"/api/v1/obligations/{obligation_id}",
+        json={"status": "completed", "completed_at": "2026-06-26T00:00:00Z"},
+    )
+    assert complete_response.status_code == 200
+    assert complete_response.json()["status"] == "completed"
+
+    # A PATCH that actually re-scopes the obligation still validates the unit.
+    rescope_response = client.patch(
+        f"/api/v1/obligations/{obligation_id}",
+        json={"tenancy_unit_id": unit_id},
+    )
+    assert rescope_response.status_code == 404
+    assert rescope_response.json()["detail"] == "Tenancy unit not found."
+
+
 def test_lease_event_follow_up_run_creates_missing_obligations_without_duplicates(
     client: TestClient,
     session: Session,
