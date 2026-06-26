@@ -35,6 +35,46 @@ function watchForbiddenTrustedSenderSettingsRequests(page: Page) {
   return requests;
 }
 
+async function watchForbiddenSettingsTemplateCalls(page: Page) {
+  const forbiddenApiCalls: string[] = [];
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+    const method = request.method();
+    const allowedTemplateMutation =
+      method !== "GET" &&
+      (path === "/branded-communication-templates/render-preview" ||
+        /^\/branded-communication-templates\/[^/]+$/.test(path) ||
+        /^\/branded-communication-templates\/[^/]+\/versions$/.test(path));
+    const isForbiddenSendPath =
+      /sendgrid|twilio|dispatch|dismiss|notification-center|invoice-drafts|tenant-onboarding/i.test(
+        path,
+      );
+    const isForbiddenMutation = method !== "GET" && !allowedTemplateMutation;
+
+    if (isForbiddenSendPath || isForbiddenMutation) {
+      forbiddenApiCalls.push(`${method} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "settings template editor must never send or dispatch",
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  return forbiddenApiCalls;
+}
+
+function requestPath(requestUrl: string) {
+  return new URL(requestUrl).pathname.replace(/^\/api\/v1/, "");
+}
+
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
@@ -697,12 +737,58 @@ test("settings exports communication template override review CSV", async ({
 
   await page.getByRole("tab", { name: "Organisation" }).click();
   await page.getByRole("tab", { name: /^Comms\b/ }).click();
-  await expect(page.getByText("Communication templates")).toBeVisible();
-  await expect(page.getByText("Stored template overrides")).toBeVisible();
+  await expect(page.getByText("Message templates")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Messages" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Branding" })).toBeVisible();
   await expect(
-    page.getByText(
-      "Database-backed branded templates are visible here for audit. Edit templates from the Comms hub; send-time wiring remains paused for internal-first use.",
+    page.getByRole("tab", { name: "Delivery receipts" }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Advanced" })).toBeVisible();
+  await expect(page.getByText("Tenant onboarding invite")).toBeVisible();
+  await expect(page.getByText("Invoice delivery")).toBeVisible();
+  await expect(page.getByText("Standard assignment notice")).toBeVisible();
+  await expect(page.getByText("tenant_onboarding_invite")).toHaveCount(0);
+  exportActionsStarted = true;
+  const tenantInviteRow = page
+    .getByRole("article")
+    .filter({ hasText: "Tenant onboarding invite" })
+    .first();
+  await tenantInviteRow.getByRole("button", { name: "Preview" }).click();
+  const previewDrawer = page.getByRole("dialog", {
+    name: "Tenant onboarding invite",
+  });
+  await expect(previewDrawer).toBeVisible();
+  await expect(
+    previewDrawer.getByText(
+      "This wording is generated at send time and cannot be edited here yet.",
     ),
+  ).toBeVisible();
+  await previewDrawer
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+
+  const invoiceDeliveryRow = page
+    .getByRole("article")
+    .filter({ hasText: "Invoice delivery" })
+    .first();
+  await invoiceDeliveryRow.getByRole("button", { name: "Edit wording" }).click();
+  const editorDrawer = page.getByRole("dialog", {
+    name: "Edit SKJ invoice delivery",
+  });
+  await expect(editorDrawer).toBeVisible();
+  await expect(editorDrawer.getByLabel("Body")).toBeVisible();
+  await editorDrawer
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+
+  await page.getByRole("tab", { name: "Advanced" }).click();
+  await expect(page.getByText("Stored template overrides")).toBeVisible();
+  await expect(page.getByText("tenant_onboarding_invite").first()).toBeVisible();
+  await expect(
+    page.getByText("Runtime keys, versions, override coverage, and exports."),
   ).toBeVisible();
   await expect(
     page.getByText("2/2 active overrides match runtime keys."),
@@ -736,7 +822,6 @@ test("settings exports communication template override review CSV", async ({
   );
   expect(Math.max(horizontalGap, verticalGap)).toBeLessThanOrEqual(12);
 
-  exportActionsStarted = true;
   await copyOverridesCsv.click();
   await expect
     .poll(() =>
@@ -784,6 +869,49 @@ test("settings exports communication template override review CSV", async ({
     "Review-only export: downloading this file does not wire stored templates into send paths, edit templates, send notifications, run digests, send invoices, send tenant onboarding messages, send contractor updates, mutate preferences, or write provider history.",
   );
   expect(forbiddenExportCalls).toEqual([]);
+});
+
+test("settings edits message template wording locally without provider dispatch", async ({
+  page,
+}) => {
+  const forbiddenApiCalls = await watchForbiddenSettingsTemplateCalls(page);
+
+  await page.goto("/settings");
+  await page.getByRole("tab", { name: "Organisation" }).click();
+  await page.getByRole("tab", { name: /^Comms\b/ }).click();
+
+  const invoiceDeliveryRow = page
+    .getByRole("article")
+    .filter({ hasText: "Invoice delivery" })
+    .first();
+  await invoiceDeliveryRow.getByRole("button", { name: "Edit wording" }).click();
+
+  const editorDrawer = page.getByRole("dialog", {
+    name: "Edit SKJ invoice delivery",
+  });
+  await editorDrawer
+    .getByLabel("Body")
+    .fill("Hi {{tenant_name}}, your settings-edited invoice is ready.");
+
+  const versionRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      requestPath(request.url()) ===
+        "/branded-communication-templates/branded-template-1/versions",
+  );
+  await editorDrawer.getByRole("button", { name: "Save template" }).click();
+  const versionRequest = await versionRequestPromise;
+  expect(versionRequest.postDataJSON()).toMatchObject({
+    body_template: "Hi {{tenant_name}}, your settings-edited invoice is ready.",
+    is_active: true,
+  });
+
+  await expect(
+    invoiceDeliveryRow.getByText(
+      "Hi {{tenant_name}}, your settings-edited invoice is ready.",
+    ),
+  ).toBeVisible();
+  expect(forbiddenApiCalls).toEqual([]);
 });
 
 test("settings keeps account type read-only without orphaning self-managed owner records", async ({

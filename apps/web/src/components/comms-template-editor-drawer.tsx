@@ -252,6 +252,7 @@ export function CommsTemplateEditorDrawer({
           action_label: nullableText(actionLabel),
           action_url_template: nullableText(actionUrlTemplate),
           notes: nullableText(notes),
+          is_active: isActive,
         },
       });
       return;

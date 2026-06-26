@@ -74,6 +74,7 @@ class BrandedTemplateVersionCreate(BaseModel):
     action_label: str | None = Field(default=None, max_length=120)
     action_url_template: str | None = Field(default=None, max_length=600)
     notes: str | None = Field(default=None, max_length=2_000)
+    is_active: bool | None = None
 
 
 class BrandedTemplateRenderPreview(BaseModel):

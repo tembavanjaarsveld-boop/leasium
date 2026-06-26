@@ -16,6 +16,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-26 Settings communication templates redesign:** Settings →
+  Organisation → Comms now presents message templates in business language
+  instead of exposing runtime keys, versions, and webhooks up front. The default
+  `Messages` view uses compact Horizon rows with active wording summaries and
+  explicit `Preview` / `Edit wording` actions; Branding, Delivery receipts, and
+  Advanced tabs move trust defaults, receipt endpoints, runtime keys, override
+  coverage, and CSV export into the right level of detail. Stored branded
+  templates reuse the existing editor drawer; runtime-only rows open a
+  read-only preview drawer. Provider guardrails remain intact: no SendGrid,
+  Twilio, dispatch, payment, reconciliation, Xero, or Basiq mutation runs from
+  viewing, previewing, editing template rows, or exporting the local review CSV.
 - [x] **2026-06-26 Relby AI no-prepick document upload:** `/intake` no longer
   forces the operator to guess a trust before dropping a lease, invoice, or
   contract. Uploads use an accessible provisional holding trust only for the

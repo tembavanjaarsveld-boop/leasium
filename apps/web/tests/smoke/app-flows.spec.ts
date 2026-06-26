@@ -6656,16 +6656,22 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Organisation" }).click();
   await page.getByRole("tab", { name: /^Comms\b/ }).click();
-  await expect(page.getByText("Communication templates")).toBeVisible();
+  await expect(page.getByText("Message templates")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Messages" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByText("Invoice delivery").first()).toBeVisible();
+  await expect(page.getByText("Tenant onboarding invite").first()).toBeVisible();
+  await expect(page.getByText("Standard assignment notice").first()).toBeVisible();
+  await page.getByRole("tab", { name: "Advanced" }).click();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
-  await expect(page.getByText("Override coverage")).toBeVisible();
+  await expect(page.getByText("Override coverage", { exact: true })).toBeVisible();
   await expect(
     page.getByText("2/2 active overrides match runtime keys."),
   ).toBeVisible();
-  await expect(page.getByText("invoice_delivery covered")).toBeVisible();
+  await expect(page.getByText("invoice_delivery email covered")).toBeVisible();
   await expect(page.getByText("SKJ invoice delivery")).toBeVisible();
-  await expect(page.getByText("Read-only", { exact: true })).toBeVisible();
   await expect(
     page.getByText("tenant_onboarding_invite").first(),
   ).toBeVisible();

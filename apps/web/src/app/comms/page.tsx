@@ -1105,10 +1105,13 @@ function CommsContent() {
     [storedTemplates],
   );
   const templateEditorHistory = useMemo(() => {
-    const editingKey = templateEditorState?.template?.key;
-    if (!editingKey) return [];
+    const editingTemplate = templateEditorState?.template;
+    if (!editingTemplate) return [];
     return storedTemplates.filter(
-      (template) => template.key === editingKey && !template.deleted_at,
+      (template) =>
+        template.key === editingTemplate.key &&
+        template.channel === editingTemplate.channel &&
+        !template.deleted_at,
     );
   }, [storedTemplates, templateEditorState]);
   // Loading/error/fetching routed through allMode so the cross-entity view

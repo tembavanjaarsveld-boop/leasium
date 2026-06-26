@@ -375,7 +375,9 @@ def test_save_version_creates_new_active_version_and_deactivates_prior(
     assert prior["updated_by_user_id"]
 
     active = client.get(BASE, params={"entity_id": entity_id}).json()
-    active_versions = [row["version"] for row in active if row["key"] == created["key"]]
+    active_versions = [
+        row["version"] for row in active if row["key"] == created["key"]
+    ]
     assert active_versions == ["v2"]
 
     audit = session.scalar(
@@ -383,6 +385,35 @@ def test_save_version_creates_new_active_version_and_deactivates_prior(
     )
     assert audit is not None
     assert "does not send any message" in (audit.tool_output_summary or "")
+
+
+def test_save_version_can_create_inactive_version_and_deactivate_prior(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    created = client.post(BASE, json=_create_payload(entity_id)).json()
+
+    response = client.post(
+        f"{BASE}/{created['id']}/versions",
+        json={
+            "body_template": "Updated inactive body copy.",
+            "is_active": False,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["version"] == "v2"
+    assert body["is_active"] is False
+    assert body["body_template"] == "Updated inactive body copy."
+
+    prior = client.get(f"{BASE}/{created['id']}").json()
+    assert prior["is_active"] is False
+
+    active = client.get(BASE, params={"entity_id": entity_id}).json()
+    active_versions = [row["version"] for row in active if row["key"] == created["key"]]
+    assert active_versions == []
 
 
 def test_save_version_preserves_full_history_via_include_inactive(

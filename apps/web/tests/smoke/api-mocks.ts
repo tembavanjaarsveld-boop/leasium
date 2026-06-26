@@ -10867,6 +10867,7 @@ export async function mockLeasiumApi(
         if (
           template.entity_id === source.entity_id &&
           template.key === source.key &&
+          template.channel === source.channel &&
           template.is_active &&
           !template.deleted_at
         ) {
@@ -10909,7 +10910,8 @@ export async function mockLeasiumApi(
             ? payload.notes
             : null
           : source.notes,
-        is_active: true,
+        is_active:
+          typeof payload.is_active === "boolean" ? payload.is_active : true,
         is_system: false,
         created_by_user_id: operatorId,
         updated_by_user_id: operatorId,

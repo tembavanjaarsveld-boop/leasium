@@ -458,10 +458,13 @@ def create_branded_template_version(
     updates = payload.model_dump(exclude_unset=True)
     next_version = _next_version(session, source.entity_id, source.key)
     now = utcnow()
+    requested_active = updates.pop("is_active", True)
+    is_active = True if requested_active is None else requested_active
     prior_active = session.scalars(
         select(BrandedCommunicationTemplate).where(
             BrandedCommunicationTemplate.entity_id == source.entity_id,
             BrandedCommunicationTemplate.key == source.key,
+            BrandedCommunicationTemplate.channel == source.channel,
             BrandedCommunicationTemplate.is_active.is_(True),
             BrandedCommunicationTemplate.deleted_at.is_(None),
         )
@@ -482,7 +485,7 @@ def create_branded_template_version(
         action_label=updates.get("action_label", source.action_label),
         action_url_template=updates.get("action_url_template", source.action_url_template),
         notes=updates.get("notes", source.notes),
-        is_active=True,
+        is_active=is_active,
         is_system=False,
         created_by_user_id=user.id,
         updated_by_user_id=user.id,

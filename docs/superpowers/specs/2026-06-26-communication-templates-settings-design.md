@@ -14,8 +14,8 @@ The section should be organised around business-language message types, not prov
 2. Each row shows the channel, active/runtime/override state, current subject or short wording summary, and one obvious action: `Edit wording` when editable, `Preview` when runtime-only, or `Change version` when version selection exists.
 3. Selecting a stored branded template row opens the existing comms template editor drawer. Selecting a runtime-only row opens a read-only preview drawer with an `Open full Comms hub` secondary action. Both drawer states keep key/version/provider visible but secondary.
 4. `Branding` contains sender/reply-to/signature defaults for the selected trust or organisation. If those controls are not yet backed by API data, this tab shows a compact empty state that explains branding defaults still come from the selected trust profile.
-5. `Delivery receipts` contains SendGrid/Twilio receipt endpoints and recent delivery evidence as read-only operational detail.
-6. `Advanced keys` contains runtime keys, versions, override coverage, and CSV export. This replaces the current always-visible key/version/endpoint wall.
+5. `Delivery receipts` contains SendGrid/Twilio receipt endpoints and read-only operational guidance.
+6. `Advanced` contains runtime keys, versions, override coverage, and CSV export. This replaces the current always-visible key/version/endpoint wall.
 
 ## Interaction Principles
 
@@ -56,5 +56,6 @@ Inside the existing Organisation Comms content:
 
 - New provider send behaviour.
 - New SendGrid/Twilio webhook behaviour.
-- New backend template schema.
+- Broad backend template schema redesign beyond preserving the editor's active
+  state when saving a new version.
 - A second independent template editor that duplicates the Comms hub editor.

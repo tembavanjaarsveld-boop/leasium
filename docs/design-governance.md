@@ -188,6 +188,19 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Settings Organisation communication templates redesign ·
+  screenshots reviewed at `output/playwright/settings-comms-messages-1440.png`,
+  `output/playwright/settings-comms-advanced-1440.png`,
+  `output/playwright/settings-comms-messages-390.png`, and
+  `output/playwright/settings-comms-advanced-390.png` · fixes: the Comms
+  settings template section now starts with business-language message rows and
+  explicit Preview/Edit wording actions, moves branding/receipt/advanced key
+  details behind compact tabs, keeps trusted senders separate, reuses the
+  existing branded-template editor drawer for stored rows, preserves runtime
+  rows as read-only previews, and keeps local CSV export/provider guardrails
+  covered by smoke tests · Figma source checked against Settings frame `55:439`;
+  follow-up frame refresh logged in UX debt because this subsection was approved
+  in-thread from the visual companion rather than as a committed Figma frame.
 - 2026-06-26 · Properties map address-only fallback · screenshots reviewed at
   `output/playwright/properties-map-approx-1440.png` and
   `output/playwright/properties-map-approx-390.png` · fixes: address-only AU
@@ -984,6 +997,10 @@ remove entries by shipping a slice whose UX pass covers them.
   existing Horizon Settings implementation. Refresh canonical Figma
   `03 Screens / Settings 55:439` so future Settings slices pull the two-pane
   workspace instead of the older equal-tab or grouped-picker-only frames.
+  Include the 2026-06-26 Organisation Comms `Message templates` subsection,
+  which was approved in-thread from visual companion mockups and shipped
+  against the existing Settings visual language before a committed Figma
+  subsection frame existed.
 
 - **Leasium AI cross-page history surfacing** (2026-06-16) —
   shipped since the first slice: conversational review for both intake and the

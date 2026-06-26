@@ -180,6 +180,7 @@ export type BrandedCommunicationTemplateVersionCreatePayload = {
   action_label?: string | null;
   action_url_template?: string | null;
   notes?: string | null;
+  is_active?: boolean | null;
 };
 
 export type BrandedCommunicationTemplateRenderPreviewPayload = {

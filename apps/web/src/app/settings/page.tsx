@@ -14,6 +14,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Eye,
   FileText,
   History,
   KeyRound,
@@ -21,11 +22,13 @@ import {
   MailCheck,
   Monitor,
   Moon,
+  Pencil,
   PlugZap,
   RefreshCw,
   SearchCheck,
   Send,
   ShieldCheck,
+  Sparkles,
   Smartphone,
   Sun,
   Tags,
@@ -37,6 +40,11 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
 import { ActivityAuditPanel } from "@/components/activity-audit-panel";
+import {
+  CommsTemplateEditorDrawer,
+  type CommsTemplateEditorAction,
+} from "@/components/comms-template-editor-drawer";
+import { DetailDrawer } from "@/components/detail-drawer";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { PropertyEntityReassignDrawer } from "@/components/property-entity-reassign";
 import { QueryProvider } from "@/components/query-provider";
@@ -65,13 +73,16 @@ import {
 } from "@/lib/appearance";
 import {
   applyBasiqReconciliation,
+  createBrandedCommunicationTemplate,
   createCommsTrustedSender,
+  createBrandedCommunicationTemplateVersion,
   applyXeroChartTaxMapping,
   applyXeroContactPreview,
   applyXeroPaymentReconciliation,
   approveXeroInvoicePosting,
   createSecurityMember,
   createXeroInvoiceDrafts,
+  deleteBrandedCommunicationTemplate,
   getBasiqConnectionStatus,
   getSecurityWorkspace,
   getWorkAssignmentNotificationTemplates,
@@ -104,6 +115,7 @@ import {
   revokeCommsTrustedSender,
   startXeroOAuth,
   updatePaymentInstructions,
+  updateBrandedCommunicationTemplate,
   updateSecurityMember,
   updateChargeRule,
   unlinkSecurityMemberLogin,
@@ -171,6 +183,7 @@ type SettingsTab =
   | "activity"
   | "connect";
 type OrganisationSubTab = "overview" | "payments" | "comms" | "entities";
+type MessageTemplateTab = "messages" | "branding" | "receipts" | "advanced";
 type PanelRef = { current: HTMLDivElement | null };
 type NotificationTemplateDraft = {
   noticeKey: string;
@@ -1188,12 +1201,15 @@ function communicationTemplateOverrideCsv({
   brandedTemplates: BrandedCommunicationTemplateRecord[];
 }) {
   const runtimeTemplateKeys = new Set(
-    runtimeTemplates.map((template) => template.templateKey),
+    runtimeTemplates.map(
+      (template) =>
+        `${template.templateKey}:${brandedChannelForRuntime(template.channel)}`,
+    ),
   );
   const activeOverrideKeys = new Set(
     brandedTemplates
-      .filter((template) => template.is_active)
-      .map((template) => template.key),
+      .filter((template) => template.is_active && !template.deleted_at)
+      .map((template) => `${template.key}:${template.channel}`),
   );
   const rows: Array<Array<string | number | null | undefined>> = [
     [
@@ -1216,14 +1232,18 @@ function communicationTemplateOverrideCsv({
       template.channel === "portal" ? "in_app" : template.channel,
       template.provider,
       template.sourceLabel,
-      activeOverrideKeys.has(template.templateKey)
+      activeOverrideKeys.has(
+        `${template.templateKey}:${brandedChannelForRuntime(template.channel)}`,
+      )
         ? "Runtime-aligned"
         : "Runtime only",
       template.actionLabel,
       TEMPLATE_OVERRIDE_EXPORT_GUARDRAIL,
     ]),
     ...brandedTemplates.map((template) => {
-      const isRuntimeAligned = runtimeTemplateKeys.has(template.key);
+      const isRuntimeAligned = runtimeTemplateKeys.has(
+        `${template.key}:${template.channel}`,
+      );
       return [
         "Stored override",
         template.key,
@@ -1924,22 +1944,586 @@ function templateOverrideCoverage({
   brandedTemplates: BrandedCommunicationTemplateRecord[];
 }): TemplateOverrideCoverage {
   const runtimeTemplateKeys = new Set(
-    runtimeTemplates.map((template) => template.templateKey),
+    runtimeTemplates.map(
+      (template) =>
+        `${template.templateKey}:${brandedChannelForRuntime(template.channel)}`,
+    ),
   );
   const activeOverrides = brandedTemplates.filter(
-    (template) => template.is_active,
+    (template) => template.is_active && !template.deleted_at,
   );
 
   return activeOverrides.reduce<TemplateOverrideCoverage>(
     (coverage, template) => {
-      if (runtimeTemplateKeys.has(template.key)) {
-        coverage.covered.push(template.key);
+      const coverageLabel = `${template.key} ${brandedTemplateChannelLabel(
+        template.channel,
+      ).toLowerCase()}`;
+      if (runtimeTemplateKeys.has(`${template.key}:${template.channel}`)) {
+        coverage.covered.push(coverageLabel);
       } else {
-        coverage.unmatched.push(template.key);
+        coverage.unmatched.push(coverageLabel);
       }
       return coverage;
     },
     { active: activeOverrides.length, covered: [], unmatched: [] },
+  );
+}
+
+function brandedChannelForRuntime(
+  channel: CommunicationTemplateCard["channel"],
+): BrandedCommunicationTemplateRecord["channel"] {
+  return channel === "portal" ? "in_app" : channel;
+}
+
+function communicationTemplateChannelLabel(
+  channel: CommunicationTemplateCard["channel"],
+) {
+  if (channel === "sms") return "SMS";
+  if (channel === "portal") return "Portal";
+  return "Email";
+}
+
+function matchingBrandedTemplate(
+  runtimeTemplate: CommunicationTemplateCard,
+  brandedTemplates: BrandedCommunicationTemplateRecord[],
+) {
+  const brandedChannel = brandedChannelForRuntime(runtimeTemplate.channel);
+  return (
+    brandedTemplates.find(
+      (template) =>
+        !template.deleted_at &&
+        template.is_active &&
+        template.key === runtimeTemplate.templateKey &&
+        template.channel === brandedChannel,
+    ) ?? null
+  );
+}
+
+function messageTemplateRowSubtitle(template: CommunicationTemplateCard) {
+  return `${template.audience} message via ${template.provider}`;
+}
+
+function MessageTemplatesPanel({
+  runtimeTemplates,
+  brandedTemplates,
+  coverage,
+  entityName,
+  activeTab,
+  onTabChange,
+  onPreviewRuntime,
+  onEditTemplate,
+  onCopy,
+  onDownload,
+  copyReceipt,
+  isLoading,
+  error,
+}: {
+  runtimeTemplates: CommunicationTemplateCard[];
+  brandedTemplates: BrandedCommunicationTemplateRecord[];
+  coverage: TemplateOverrideCoverage;
+  entityName: string;
+  activeTab: MessageTemplateTab;
+  onTabChange: (tab: MessageTemplateTab) => void;
+  onPreviewRuntime: (template: CommunicationTemplateCard) => void;
+  onEditTemplate: (template: BrandedCommunicationTemplateRecord) => void;
+  onCopy: () => void | Promise<void>;
+  onDownload: () => void;
+  copyReceipt: string | null;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const tabs: Array<{ id: MessageTemplateTab; label: string }> = [
+    { id: "messages", label: "Messages" },
+    { id: "branding", label: "Branding" },
+    { id: "receipts", label: "Delivery receipts" },
+    { id: "advanced", label: "Advanced" },
+  ];
+  const activeOverrides = brandedTemplates.filter(
+    (template) => template.is_active && !template.deleted_at,
+  );
+  const exportDisabled = isLoading || Boolean(error);
+
+  return (
+    <SectionPanel
+      title="Message templates"
+      description="Review active Relby message wording, branding defaults, and delivery evidence."
+      icon={<Sparkles size={17} className="text-primary" />}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="primary">
+            {runtimeTemplates.length} messages
+          </StatusBadge>
+          <StatusBadge tone={activeOverrides.length ? "success" : "neutral"}>
+            {activeOverrides.length
+              ? `${activeOverrides.length} overrides`
+              : "Runtime wording"}
+          </StatusBadge>
+          <Link
+            href="/comms"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-4 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
+          >
+            <ExternalLink size={15} />
+            Open full Comms hub
+          </Link>
+        </div>
+      }
+    >
+      <div className="border-b border-border px-4 pt-4">
+        <div
+          aria-label="Message template views"
+          className="flex flex-wrap gap-2"
+          role="tablist"
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                aria-selected={isActive}
+                className={`min-h-10 rounded-lg border px-3 text-sm font-semibold transition-colors duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 ${
+                  isActive
+                    ? "border-primary/30 bg-primary-soft text-primary"
+                    : "border-border bg-white text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                }`}
+                onClick={() => onTabChange(tab.id)}
+                role="tab"
+                type="button"
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeTab === "messages" ? (
+        <div>
+          {isLoading ? (
+            <div className="border-b border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              Checking stored template overrides.
+            </div>
+          ) : null}
+          <div className="divide-y divide-border">
+            {runtimeTemplates.map((template) => (
+              <MessageTemplateRow
+                key={template.id}
+                template={template}
+                override={matchingBrandedTemplate(template, brandedTemplates)}
+                entityName={entityName}
+                onPreviewRuntime={onPreviewRuntime}
+                onEditTemplate={onEditTemplate}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "branding" ? (
+        <div className="p-4">
+          <EmptyState
+            icon={<FileText size={18} />}
+            title="Branding defaults use the trust profile"
+            description={`Sender, reply-to, and signature defaults still come from ${entityName}.`}
+          />
+        </div>
+      ) : null}
+
+      {activeTab === "receipts" ? (
+        <div className="divide-y divide-border">
+          {runtimeTemplates.map((template) => (
+            <div
+              key={`${template.id}-receipt`}
+              className="grid gap-3 px-4 py-3 text-sm md:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-foreground">
+                    {template.title}
+                  </span>
+                  <StatusBadge tone="neutral">
+                    {communicationTemplateChannelLabel(template.channel)}
+                  </StatusBadge>
+                </div>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {template.receiptDetail}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  {template.receiptLabel}
+                </div>
+                {template.receiptEndpoint ? (
+                  <code className="mt-2 block break-all rounded-md bg-muted px-2 py-1 text-leasium-micro text-muted-foreground">
+                    {template.receiptEndpoint}
+                  </code>
+                ) : (
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    No provider webhook is needed for this in-app receipt.
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {activeTab === "advanced" ? (
+        <AdvancedTemplateKeysPanel
+          runtimeTemplates={runtimeTemplates}
+          brandedTemplates={brandedTemplates}
+          coverage={coverage}
+          copyReceipt={copyReceipt}
+          onCopy={onCopy}
+          onDownload={onDownload}
+          exportDisabled={exportDisabled}
+          isLoading={isLoading}
+          error={error}
+        />
+      ) : null}
+    </SectionPanel>
+  );
+}
+
+function MessageTemplateRow({
+  template,
+  override,
+  entityName,
+  onPreviewRuntime,
+  onEditTemplate,
+}: {
+  template: CommunicationTemplateCard;
+  override: BrandedCommunicationTemplateRecord | null;
+  entityName: string;
+  onPreviewRuntime: (template: CommunicationTemplateCard) => void;
+  onEditTemplate: (template: BrandedCommunicationTemplateRecord) => void;
+}) {
+  const subject = override?.subject_template ?? template.subjectPreview;
+  const summary = override?.body_template ?? template.bodyPreview;
+  const sourceLabel = override
+    ? override.is_system
+      ? "System override"
+      : "Stored override"
+    : template.sourceLabel === "Fallback"
+      ? "Fallback"
+      : "Runtime-only";
+  const sourceTone: StatusTone = override
+    ? override.is_system
+      ? "neutral"
+      : "primary"
+    : template.sourceLabel === "Fallback"
+      ? "warning"
+      : "neutral";
+
+  return (
+    <article className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="font-semibold text-foreground">{template.title}</h4>
+          <StatusBadge tone={template.tone}>
+            {communicationTemplateChannelLabel(template.channel)}
+          </StatusBadge>
+          <StatusBadge tone={sourceTone}>{sourceLabel}</StatusBadge>
+          <StatusBadge tone="neutral">
+            {override?.version ?? template.templateVersion}
+          </StatusBadge>
+        </div>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          {messageTemplateRowSubtitle(template)} · {entityName}
+        </p>
+        <div className="mt-2 rounded-md border border-border bg-muted/20 p-3">
+          <div className="font-medium text-foreground">{subject}</div>
+          <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
+            {summary}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 lg:justify-end">
+        {override ? (
+          <SecondaryButton
+            type="button"
+            onClick={() => onEditTemplate(override)}
+            className="min-h-11"
+          >
+            <Pencil size={15} />
+            Edit wording
+          </SecondaryButton>
+        ) : (
+          <SecondaryButton
+            type="button"
+            onClick={() => onPreviewRuntime(template)}
+            className="min-h-11"
+          >
+            <Eye size={15} />
+            Preview
+          </SecondaryButton>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function RuntimeTemplatePreviewDrawer({
+  template,
+  open,
+  onClose,
+}: {
+  template: CommunicationTemplateCard | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <DetailDrawer
+      open={open}
+      title={template?.title ?? "Message preview"}
+      description="Runtime wording preview"
+      onClose={onClose}
+      primaryAction={{ label: "Open full Comms hub", href: "/comms" }}
+      footerNote="Previewing runtime wording does not send email, SMS, or provider calls."
+      testId="settings-template-preview-drawer"
+    >
+      {template ? (
+        <div className="grid gap-4">
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge tone={template.tone}>
+              {communicationTemplateChannelLabel(template.channel)}
+            </StatusBadge>
+            <StatusBadge tone="neutral">{template.templateVersion}</StatusBadge>
+            <StatusBadge tone="neutral">Runtime-only</StatusBadge>
+          </div>
+          <p className="rounded-md border border-border bg-muted/20 p-3 text-sm leading-6 text-muted-foreground">
+            This wording is generated at send time and cannot be edited here
+            yet.
+          </p>
+          <div className="grid gap-2">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Subject or title
+            </div>
+            <div className="rounded-md border border-border bg-white p-3 font-medium text-foreground">
+              {template.subjectPreview}
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Wording summary
+            </div>
+            <p className="rounded-md border border-border bg-white p-3 text-sm leading-6 text-muted-foreground">
+              {template.bodyPreview}
+            </p>
+          </div>
+          <div className="grid gap-2">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">
+              Advanced detail
+            </div>
+            <div className="grid gap-1 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+              <span>Key: {template.templateKey}</span>
+              <span>Provider: {template.provider}</span>
+              <span>Rule: {template.actionLabel}</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </DetailDrawer>
+  );
+}
+
+function AdvancedTemplateKeysPanel({
+  runtimeTemplates,
+  brandedTemplates,
+  coverage,
+  onCopy,
+  onDownload,
+  copyReceipt,
+  exportDisabled,
+  isLoading,
+  error,
+}: {
+  runtimeTemplates: CommunicationTemplateCard[];
+  brandedTemplates: BrandedCommunicationTemplateRecord[];
+  coverage: TemplateOverrideCoverage;
+  onCopy: () => void | Promise<void>;
+  onDownload: () => void;
+  copyReceipt: string | null;
+  exportDisabled: boolean;
+  isLoading: boolean;
+  error: unknown;
+}) {
+  return (
+    <div className="grid gap-4 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-foreground">
+            Stored template overrides
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Runtime keys, versions, override coverage, and exports.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton
+            type="button"
+            onClick={() => {
+              void onCopy();
+            }}
+            disabled={exportDisabled}
+            className="min-h-11 rounded-lg px-3"
+          >
+            <Copy size={14} />
+            Copy overrides CSV
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            onClick={onDownload}
+            disabled={exportDisabled}
+            className="min-h-11 rounded-lg px-3"
+          >
+            <Download size={14} />
+            Download overrides CSV
+          </SecondaryButton>
+          <StatusBadge tone={brandedTemplates.length ? "primary" : "neutral"}>
+            {brandedTemplates.length
+              ? `${brandedTemplates.length} stored`
+              : "No stored overrides"}
+          </StatusBadge>
+        </div>
+      </div>
+
+      <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="font-semibold">Override coverage</div>
+            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+              {coverage.active
+                ? coverage.unmatched.length
+                  ? `${coverage.covered.length}/${coverage.active} active overrides match runtime keys; ${coverage.unmatched.length} need send-time wiring review.`
+                  : `${coverage.covered.length}/${coverage.active} active overrides match runtime keys.`
+                : "No active stored overrides yet."}
+            </div>
+            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+              Coverage only; sends still use runtime templates unless the Comms
+              hub has an active reviewed override for that message.
+            </div>
+          </div>
+          <StatusBadge
+            tone={
+              coverage.unmatched.length
+                ? "warning"
+                : coverage.active
+                  ? "success"
+                  : "neutral"
+            }
+          >
+            {coverage.unmatched.length
+              ? "Review wiring"
+              : coverage.active
+                ? "Runtime-aligned"
+                : "No active"}
+          </StatusBadge>
+        </div>
+        {coverage.active ? (
+          <div className="flex flex-wrap gap-2">
+            {coverage.covered.map((key) => (
+              <StatusBadge key={key} tone="success">
+                {key} covered
+              </StatusBadge>
+            ))}
+            {coverage.unmatched.map((key) => (
+              <StatusBadge key={key} tone="warning">
+                {key} needs wiring
+              </StatusBadge>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {copyReceipt ? (
+        <p className="text-sm font-medium text-success">{copyReceipt}</p>
+      ) : null}
+      {isLoading ? (
+        <div className="rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
+          Checking stored template overrides.
+        </div>
+      ) : error ? (
+        <div className="rounded-md border border-danger/20 bg-danger-soft p-3 text-sm text-danger">
+          {error instanceof Error
+            ? error.message
+            : "Stored template overrides could not load."}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {runtimeTemplates.map((template) => (
+          <div
+            key={`${template.id}-advanced`}
+            className="rounded-md border border-border bg-white p-3 text-sm shadow-leasiumXs"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">{template.title}</span>
+              <StatusBadge tone="neutral">
+                {communicationTemplateChannelLabel(template.channel)}
+              </StatusBadge>
+              <StatusBadge tone="neutral">{template.templateVersion}</StatusBadge>
+            </div>
+            <div className="mt-2 grid gap-1 text-xs leading-5 text-muted-foreground">
+              <span className="break-all">Key: {template.templateKey}</span>
+              <span>Provider: {template.provider}</span>
+              <span>Source: {template.sourceLabel}</span>
+            </div>
+            {template.receiptEndpoint ? (
+              <code className="mt-2 block break-all rounded bg-muted px-2 py-1 text-leasium-micro text-muted-foreground">
+                {template.receiptEndpoint}
+              </code>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {!isLoading && !error && brandedTemplates.length ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {brandedTemplates.map((template) => (
+            <div
+              key={template.id}
+              className="grid gap-3 rounded-md border border-border bg-white p-3 text-sm shadow-leasiumXs"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{template.name}</span>
+                    <StatusBadge tone="primary">
+                      {brandedTemplateChannelLabel(template.channel)}
+                    </StatusBadge>
+                    <StatusBadge
+                      tone={template.is_active ? "success" : "neutral"}
+                    >
+                      {template.is_active ? "Active" : "Inactive"}
+                    </StatusBadge>
+                  </div>
+                  <div className="mt-1 break-all text-xs text-muted-foreground">
+                    {template.key} / {template.version} / {template.provider}
+                  </div>
+                </div>
+                <StatusBadge tone={template.is_system ? "neutral" : "warning"}>
+                  {template.is_system ? "System" : "Override"}
+                </StatusBadge>
+              </div>
+              <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3">
+                {template.subject_template ? (
+                  <div className="font-medium">{template.subject_template}</div>
+                ) : null}
+                <div className="line-clamp-3 text-xs leading-5 text-muted-foreground">
+                  {template.body_template}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : !isLoading && !error ? (
+        <EmptyState
+          icon={<FileText size={18} />}
+          title="No stored template overrides"
+          description="Runtime templates are still the source of truth for this trust."
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -2504,6 +3088,14 @@ function SettingsWorkspace() {
   >(null);
   const [templateOverrideExportReceipt, setTemplateOverrideExportReceipt] =
     useState<string | null>(null);
+  const [messageTemplateTab, setMessageTemplateTab] =
+    useState<MessageTemplateTab>("messages");
+  const [runtimeTemplatePreview, setRuntimeTemplatePreview] =
+    useState<CommunicationTemplateCard | null>(null);
+  const [templateEditorState, setTemplateEditorState] = useState<{
+    mode: "create" | "edit";
+    template: BrandedCommunicationTemplateRecord | null;
+  } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteRole, setInviteRole] = useState<SecurityRole>("viewer");
@@ -2703,7 +3295,10 @@ function SettingsWorkspace() {
   const brandedTemplatesQuery = useQuery({
     queryKey: ["branded-communication-templates", selectedEntityId],
     queryFn: () =>
-      listBrandedCommunicationTemplates({ entityId: selectedEntityId }),
+      listBrandedCommunicationTemplates({
+        entityId: selectedEntityId,
+        includeInactive: true,
+      }),
     enabled: Boolean(selectedEntityId) && activeTab === "organisation",
   });
 
@@ -2732,6 +3327,83 @@ function SettingsWorkspace() {
       }),
     [brandedTemplates, communicationTemplates],
   );
+  const templateEditorHistory = useMemo(() => {
+    const editingTemplate = templateEditorState?.template;
+    if (!editingTemplate) return [];
+    return brandedTemplates.filter(
+      (template) =>
+        template.key === editingTemplate.key &&
+        template.channel === editingTemplate.channel &&
+        !template.deleted_at,
+    );
+  }, [brandedTemplates, templateEditorState]);
+  const invalidateBrandedTemplates = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ["branded-communication-templates", selectedEntityId],
+    });
+  };
+  const storeBrandedTemplateRecord = (
+    record: BrandedCommunicationTemplateRecord,
+  ) => {
+    queryClient.setQueryData<BrandedCommunicationTemplateRecord[]>(
+      ["branded-communication-templates", selectedEntityId],
+      (previous) => {
+        if (!previous) return previous;
+        const withoutRecord = previous.filter(
+          (template) => template.id !== record.id,
+        );
+        if (record.deleted_at) {
+          return withoutRecord;
+        }
+        return [...withoutRecord, record];
+      },
+    );
+    invalidateBrandedTemplates();
+  };
+  const createTemplateMutation = useMutation({
+    mutationFn: createBrandedCommunicationTemplate,
+    onSuccess: storeBrandedTemplateRecord,
+  });
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({
+      templateId,
+      payload,
+    }: Extract<CommsTemplateEditorAction, { type: "update" }>) =>
+      updateBrandedCommunicationTemplate(templateId, payload),
+    onSuccess: storeBrandedTemplateRecord,
+  });
+  const saveTemplateVersionMutation = useMutation({
+    mutationFn: ({
+      templateId,
+      payload,
+    }: Extract<CommsTemplateEditorAction, { type: "save_version" }>) =>
+      createBrandedCommunicationTemplateVersion(templateId, payload),
+    onSuccess: storeBrandedTemplateRecord,
+  });
+  const deleteTemplateMutation = useMutation({
+    mutationFn: ({
+      templateId,
+    }: Extract<CommsTemplateEditorAction, { type: "delete" }>) =>
+      deleteBrandedCommunicationTemplate(templateId),
+    onSuccess: storeBrandedTemplateRecord,
+  });
+  const handleTemplateEditorSaved = async (
+    action: CommsTemplateEditorAction,
+  ) => {
+    if (action.type === "create") {
+      await createTemplateMutation.mutateAsync(action.payload);
+      return;
+    }
+    if (action.type === "update") {
+      await updateTemplateMutation.mutateAsync(action);
+      return;
+    }
+    if (action.type === "save_version") {
+      await saveTemplateVersionMutation.mutateAsync(action);
+      return;
+    }
+    await deleteTemplateMutation.mutateAsync(action);
+  };
 
   const communicationTemplateOverridesCsv = () =>
     communicationTemplateOverrideCsv({
@@ -3444,10 +4116,6 @@ function SettingsWorkspace() {
       : `${ownershipTags.length} ${
           ownershipTags.length === 1 ? "tag" : "tags"
         }`;
-  const storedTemplateOverrideLabel =
-    brandedTemplatesQuery.isLoading && !brandedTemplatesQuery.data
-      ? "Checking overrides"
-      : `${brandedTemplates.length} stored`;
   const xeroExceptionOpenLabel =
     xeroExceptionQueueQuery.isLoading && !exceptionQueue
       ? "Checking"
@@ -5763,267 +6431,27 @@ function SettingsWorkspace() {
                   </SectionPanel>
                 )}
 
-                <SectionPanel
-                  title="Communication templates"
-                  description="Shared template keys, previews, versions, and receipt endpoints for tenant, operator, invoice, and contractor messages."
-                  icon={<FileText size={17} className="text-primary" />}
-                  actions={
-                    <div className="flex flex-wrap gap-2">
-                      <StatusBadge tone="primary">
-                        {communicationTemplates.length} templates
-                      </StatusBadge>
-                      <StatusBadge tone="neutral">
-                        Review-first sends
-                      </StatusBadge>
-                    </div>
+                <MessageTemplatesPanel
+                  runtimeTemplates={communicationTemplates}
+                  brandedTemplates={brandedTemplates}
+                  coverage={brandedTemplateCoverage}
+                  entityName={
+                    selectedEntity?.name ??
+                    securityQuery.data?.organisation.name ??
+                    "Relby"
                   }
-                >
-              <div className="grid gap-3 p-4 xl:grid-cols-2">
-                {communicationTemplates.map((template) => (
-                  <div
-                    key={template.id}
-                    className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold">
-                            {template.title}
-                          </span>
-                          <StatusBadge tone={template.tone}>
-                            {template.channel === "sms"
-                              ? "SMS"
-                              : template.channel === "portal"
-                                ? "Portal"
-                                : "Email"}
-                          </StatusBadge>
-                          <StatusBadge tone="neutral">
-                            {template.templateVersion}
-                          </StatusBadge>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {template.audience} / {template.provider} /{" "}
-                          {template.brand}
-                        </div>
-                      </div>
-                      <div className="rounded-xl bg-white p-2 text-primary shadow-leasiumXs">
-                        {template.channel === "sms" ? (
-                          <Smartphone size={16} />
-                        ) : template.channel === "portal" ? (
-                          <Bell size={16} />
-                        ) : (
-                          <MailCheck size={16} />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-2 rounded-md border border-border bg-white p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-semibold uppercase text-muted-foreground">
-                          {template.templateKey}
-                        </span>
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {template.sourceLabel}
-                        </span>
-                      </div>
-                      <div className="font-medium">
-                        {template.subjectPreview}
-                      </div>
-                      <div className="text-xs leading-5 text-muted-foreground">
-                        {template.bodyPreview}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <div className="rounded-md border border-border bg-white p-3">
-                        <div className="text-xs font-semibold uppercase text-muted-foreground">
-                          Delivery rule
-                        </div>
-                        <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                          {template.actionLabel}
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border bg-white p-3">
-                        <div className="text-xs font-semibold uppercase text-muted-foreground">
-                          {template.receiptLabel}
-                        </div>
-                        <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                          {template.receiptDetail}
-                        </div>
-                        {template.receiptEndpoint ? (
-                          <code className="mt-2 block break-all rounded bg-muted px-2 py-1 text-leasium-micro text-muted-foreground">
-                            {template.receiptEndpoint}
-                          </code>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-border p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">
-                      Stored template overrides
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Database-backed branded templates are visible here for
-                      audit. Edit templates from the Comms hub; send-time
-                      wiring remains paused for internal-first use.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <SecondaryButton
-                      type="button"
-                      onClick={copyCommunicationTemplateOverridesCsv}
-                      className="min-h-11 rounded-lg px-3"
-                    >
-                      <Copy size={14} />
-                      Copy overrides CSV
-                    </SecondaryButton>
-                    <SecondaryButton
-                      type="button"
-                      onClick={downloadCommunicationTemplateOverridesCsv}
-                      className="min-h-11 rounded-lg px-3"
-                    >
-                      <Download size={14} />
-                      Download overrides CSV
-                    </SecondaryButton>
-                    <StatusBadge
-                      tone={brandedTemplates.length ? "primary" : "neutral"}
-                    >
-                      {storedTemplateOverrideLabel}
-                    </StatusBadge>
-                    <StatusBadge tone="neutral">Read-only</StatusBadge>
-                  </div>
-                </div>
-                <div className="mt-3 grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">Override coverage</div>
-                      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {brandedTemplateCoverage.active
-                          ? brandedTemplateCoverage.unmatched.length
-                            ? `${brandedTemplateCoverage.covered.length}/${brandedTemplateCoverage.active} active overrides match runtime keys; ${brandedTemplateCoverage.unmatched.length} need send-time wiring review.`
-                            : `${brandedTemplateCoverage.covered.length}/${brandedTemplateCoverage.active} active overrides match runtime keys.`
-                          : "No active stored overrides yet."}
-                      </div>
-                      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                        Coverage only; sends still use runtime templates until
-                        editing and wiring land.
-                      </div>
-                    </div>
-                    <StatusBadge
-                      tone={
-                        brandedTemplateCoverage.unmatched.length
-                          ? "warning"
-                          : brandedTemplateCoverage.active
-                            ? "success"
-                            : "neutral"
-                      }
-                    >
-                      {brandedTemplateCoverage.unmatched.length
-                        ? "Review wiring"
-                        : brandedTemplateCoverage.active
-                          ? "Runtime-aligned"
-                          : "No active"}
-                    </StatusBadge>
-                  </div>
-                  {brandedTemplateCoverage.active ? (
-                    <div className="flex flex-wrap gap-2">
-                      {brandedTemplateCoverage.covered.map((key) => (
-                        <StatusBadge key={key} tone="success">
-                          {key} covered
-                        </StatusBadge>
-                      ))}
-                      {brandedTemplateCoverage.unmatched.map((key) => (
-                        <StatusBadge key={key} tone="warning">
-                          {key} needs wiring
-                        </StatusBadge>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                {templateOverrideExportReceipt ? (
-                  <p className="mt-3 text-sm font-medium text-success">
-                    {templateOverrideExportReceipt}
-                  </p>
-                ) : null}
-                {brandedTemplatesQuery.isLoading ? (
-                  <div className="mt-3 rounded-md border border-border bg-muted/25 p-3 text-sm text-muted-foreground">
-                    Checking stored template overrides.
-                  </div>
-                ) : brandedTemplatesQuery.error ? (
-                  <div className="mt-3 rounded-md border border-danger/20 bg-danger-soft p-3 text-sm text-danger">
-                    {brandedTemplatesQuery.error instanceof Error
-                      ? brandedTemplatesQuery.error.message
-                      : "Stored template overrides could not load."}
-                  </div>
-                ) : brandedTemplates.length ? (
-                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                    {brandedTemplates.map((template) => (
-                      <div
-                        key={template.id}
-                        className="grid gap-3 rounded-md border border-border bg-white p-3 text-sm shadow-leasiumXs"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold">
-                                {template.name}
-                              </span>
-                              <StatusBadge tone="primary">
-                                {brandedTemplateChannelLabel(template.channel)}
-                              </StatusBadge>
-                              <StatusBadge
-                                tone={
-                                  template.is_active ? "success" : "neutral"
-                                }
-                              >
-                                {template.is_active ? "Active" : "Inactive"}
-                              </StatusBadge>
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {template.key} / {template.version} /{" "}
-                              {template.provider}
-                            </div>
-                          </div>
-                          <StatusBadge
-                            tone={template.is_system ? "neutral" : "warning"}
-                          >
-                            {template.is_system ? "System" : "Override"}
-                          </StatusBadge>
-                        </div>
-                        <div className="grid gap-2 rounded-md border border-border bg-muted/20 p-3">
-                          {template.subject_template ? (
-                            <div className="font-medium">
-                              {template.subject_template}
-                            </div>
-                          ) : null}
-                          <div className="line-clamp-3 text-xs leading-5 text-muted-foreground">
-                            {template.body_template}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {template.action_label ? (
-                            <span>Action: {template.action_label}</span>
-                          ) : null}
-                          {template.notes ? (
-                            <span>{template.notes}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={<FileText size={18} />}
-                    title="No stored template overrides"
-                    description="Runtime templates are still the source of truth until editable branded templates are enabled."
-                  />
-                )}
-              </div>
-                </SectionPanel>
+                  activeTab={messageTemplateTab}
+                  onTabChange={setMessageTemplateTab}
+                  onPreviewRuntime={setRuntimeTemplatePreview}
+                  onEditTemplate={(template) =>
+                    setTemplateEditorState({ mode: "edit", template })
+                  }
+                  onCopy={copyCommunicationTemplateOverridesCsv}
+                  onDownload={downloadCommunicationTemplateOverridesCsv}
+                  copyReceipt={templateOverrideExportReceipt}
+                  isLoading={brandedTemplatesQuery.isLoading}
+                  error={brandedTemplatesQuery.error}
+                />
               </>
             ) : null}
 
@@ -9500,6 +9928,20 @@ function SettingsWorkspace() {
           </div>
         </div>
       </div>
+      <RuntimeTemplatePreviewDrawer
+        open={Boolean(runtimeTemplatePreview)}
+        template={runtimeTemplatePreview}
+        onClose={() => setRuntimeTemplatePreview(null)}
+      />
+      <CommsTemplateEditorDrawer
+        open={Boolean(templateEditorState)}
+        mode={templateEditorState?.mode ?? "edit"}
+        template={templateEditorState?.template ?? null}
+        templateHistory={templateEditorHistory}
+        entities={entitiesQuery.data ?? []}
+        onClose={() => setTemplateEditorState(null)}
+        onSaved={handleTemplateEditorSaved}
+      />
     </main>
   );
 }

@@ -24,6 +24,12 @@ to live here is preserved at
 
 ## Current State
 
+- Settings -> Organisation -> Comms message-template UX is redesigned. The
+  default Settings view now shows business-language message rows with
+  Preview/Edit wording actions; Branding, Delivery receipts, and Advanced tabs
+  hold sender defaults, provider receipt endpoints, runtime keys, override
+  coverage, and the local CSV export. Stored template edits reuse the existing
+  Comms template drawer; runtime rows stay preview-only.
 - Relby AI no-prepick document upload is shipped. `/intake` accepts document
   upload/drop without forcing a trust pick first; extraction detects the trust
   and the review-side `File under trust` selector remains the filing decision.
