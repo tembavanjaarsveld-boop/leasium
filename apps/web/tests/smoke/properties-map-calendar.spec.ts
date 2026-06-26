@@ -53,9 +53,10 @@ test("map view shows mapped and unmapped counts from property metadata", async (
     "aria-selected",
     "true",
   );
-  // property-1 carries metadata.map_location; property-2 / property-3 do not.
+  // All-entities view: property-1 carries metadata.map_location; property-2,
+  // property-3, and the entity-2 property (property-secondary-1) do not.
   await expect(page.getByText("1 mapped")).toBeVisible();
-  await expect(page.getByText("2 unmapped")).toBeVisible();
+  await expect(page.getByText("3 unmapped")).toBeVisible();
 });
 
 test("map view lists unmapped properties with Google Maps address links", async ({

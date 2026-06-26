@@ -188,6 +188,14 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Properties calendar/map/metrics org-wide · existing
+  desktop/mobile smoke surfaces checked through `properties-map-calendar` and
+  `properties-ux` (34/34) · fixes: calendar lease events, map mapped/unmapped
+  counts, portfolio occupancy/rent metrics, and the billing property filter now
+  read org-wide in all-entities mode; the calendar follow-up action and billing
+  filter target a real entity (not the `__all_entities__` sentinel); the image
+  panel is reached via a selected property's Documents tab now that the
+  all-entities list no longer auto-selects a property · none deferred.
 - 2026-06-26 · Comms template catalog/editor/preview · existing desktop/mobile
   smoke surfaces checked through `comms-template-catalog`,
   `comms-template-editor`, `comms-template-preview` (desktop + 390 density), and

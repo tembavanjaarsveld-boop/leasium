@@ -46,7 +46,9 @@ test("properties action=new opens the new-property drawer", async ({ page }) => 
 });
 
 test("mobile properties loading copy stays contextual", async ({ page }) => {
-  await page.route("**/api/v1/premises/by-entity/entity-1**", async () => {
+  // All-entities default: the portfolio list loads org-wide via /properties
+  // (the per-entity /premises/by-entity path is no longer the list source).
+  await page.route("**/api/v1/properties**", async () => {
     await new Promise(() => {});
   });
 
@@ -100,7 +102,7 @@ test("desktop Properties opens on the Horizon cards frame", async ({ page }) => 
     page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
   await expect(
-    page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
+    page.getByText("4 properties across 2 entities").last(),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Cards" })).toHaveAttribute(
     "aria-selected",
@@ -261,7 +263,7 @@ test("desktop Properties cards keep portfolio metrics after billing filters", as
   await page.goto("/properties");
 
   await expect(
-    page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
+    page.getByText("4 properties across 2 entities").last(),
   ).toBeVisible();
   await page.getByRole("tab", { name: "Table" }).click();
   await page.getByRole("tab", { name: /Billing/ }).click();
@@ -272,7 +274,7 @@ test("desktop Properties cards keep portfolio metrics after billing filters", as
 
   await page.getByRole("tab", { name: "Cards" }).click();
   await expect(
-    page.getByText("3 properties · 67% occupied · $14,000 monthly rent roll"),
+    page.getByText("4 properties across 2 entities").last(),
   ).toBeVisible();
   await expect(page.getByText("$14,000 / mo")).toBeVisible();
   await expect(page.getByText("$8,000 / mo").last()).toBeVisible();
@@ -582,12 +584,19 @@ test("properties inline table editors and owner chips stay touch safe", async ({
 });
 
 test("properties image panel toggle stays touch safe", async ({ page }) => {
+  // The image panel renders on a property record's Documents tab. The
+  // all-entities list no longer auto-picks a property, so open one (which drops
+  // into its entity), then open the Documents tab.
   await page.goto("/properties");
 
+  await page
+    .getByRole("button", { name: "Open property Queen Street Retail Centre" })
+    .first()
+    .click();
   await expect(
-    page.getByRole("heading", { name: "Properties" }),
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Table" }).click();
+  await page.getByRole("tab", { name: "Documents" }).first().click();
 
   await expectTouchTarget(
     page.getByRole("button", { name: /Property images/ }).first(),

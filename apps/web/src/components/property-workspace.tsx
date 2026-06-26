@@ -177,7 +177,6 @@ const PropertyLeafletMap = dynamic(
   },
 );
 
-const ENTITY_STORAGE_KEY = "leasium.entity_id";
 // Sentinel picker value for the cross-entity "All entities" portfolio view.
 // Not a real entity id, so entity-scoped queries must treat it as "no entity".
 const ALL_ENTITIES_VALUE = "__all_entities__";
@@ -2145,7 +2144,13 @@ function Workspace({
   const router = useRouter();
   const propertyDocumentInputRef = useRef<HTMLInputElement>(null);
   const propertyCreateActionHandledRef = useRef(false);
-  const [selectedEntityId, setSelectedEntityId] = useState<string>("");
+  // Properties is a portfolio surface: it lists every entity by default (the
+  // global entity switcher is gone). selectedEntityId stays as internal state,
+  // but it is now *parent-derived* — selectProperty() drops into the clicked
+  // property's entity for the entity-scoped detail panels, and create flows take
+  // an explicit entity from their own form — never a global page-level pin.
+  const [selectedEntityId, setSelectedEntityId] =
+    useState<string>(ALL_ENTITIES_VALUE);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [requestedPropertyId, setRequestedPropertyId] = useState<string>("");
   const [ownerTagFilter, setOwnerTagFilter] = useState<string>("");
@@ -2334,7 +2339,10 @@ function Workspace({
         property_id: rentRollPropertyId || undefined,
         as_of: rentRollAsOf,
       }),
-    enabled: Boolean(scopedEntityId),
+    // Org-wide in all-entities mode: entity_id "" omits the filter so the API
+    // scopes to every readable entity. Entity-scoped once a property is in
+    // focus (selectProperty drops into the clicked property's entity).
+    placeholderData: keepPreviousData,
   });
   const portfolioRentRollQuery = useQuery({
     queryKey: ["rent-roll-portfolio", scopedEntityId, rentRollAsOf],
@@ -2343,7 +2351,10 @@ function Workspace({
         entity_id: scopedEntityId,
         as_of: rentRollAsOf,
       }),
-    enabled: Boolean(scopedEntityId && rentRollPropertyId),
+    // When a billing-filter property is picked, this no-property_id query keeps
+    // the portfolio metrics on the full portfolio. Org-wide in all-entities
+    // mode (entity_id "" omits the filter).
+    enabled: Boolean((scopedEntityId || isAllEntities) && rentRollPropertyId),
   });
   const calendarRentRollQuery = useQuery({
     queryKey: ["rent-roll-calendar", scopedEntityId, rentRollAsOf],
@@ -2357,7 +2368,8 @@ function Workspace({
   const insightsOverviewQuery = useQuery<InsightsOverviewRecord>({
     queryKey: ["insights-overview", scopedEntityId, rentRollAsOf],
     queryFn: () => getInsightsOverview(scopedEntityId, rentRollAsOf),
-    enabled: Boolean(scopedEntityId),
+    // Org-wide in all-entities mode: scopedEntityId "" sends no entity_id, so
+    // the lease-event snapshot that feeds the calendar covers every entity.
   });
   const chargeRulesQuery = useQuery({
     queryKey: ["charge-rules", scopedEntityId, selectedPropertyId],
@@ -2447,22 +2459,30 @@ function Workspace({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("entity_id");
-    const stored =
-      window.localStorage.getItem(ENTITY_STORAGE_KEY) ??
-      window.localStorage.getItem("stewart.entity_id");
     // Fresh selection: multi-entity orgs default to the All-entities view;
-    // single-entity orgs land directly on their one entity.
+    // single-entity orgs land directly on their one entity. Entity is no longer
+    // persisted to localStorage (Properties is a portfolio surface that defaults
+    // to all-entities) — only an explicit ?entity_id deep link scopes a fresh
+    // load, and property deep links drive the entity via selectProperty.
     const fallbackEntity = defaultEntitySelection(entitiesQuery.data ?? []);
     const accessibleIds = new Set(
       (entitiesQuery.data ?? []).map((entity) => entity.id),
     );
     // The "All entities" sentinel is a valid restore target even though it is
-    // not in accessibleIds, so it survives reload and ?entity_id deep links.
-    const preferred = [fromUrl, stored].find(
-      (id) => id && (id === ALL_ENTITIES_VALUE || accessibleIds.has(id)),
-    );
+    // not in accessibleIds, so an ?entity_id deep link can request it.
+    const preferred =
+      fromUrl && (fromUrl === ALL_ENTITIES_VALUE || accessibleIds.has(fromUrl))
+        ? fromUrl
+        : undefined;
     const next = preferred || fallbackEntity;
-    if (!selectedEntityId && next) {
+    // Default state is the All-entities sentinel; only move off it for an
+    // explicit ?entity_id deep link or a single-entity org (which has no
+    // all-entities view worth showing).
+    if (
+      selectedEntityId === ALL_ENTITIES_VALUE &&
+      next &&
+      next !== ALL_ENTITIES_VALUE
+    ) {
       setSelectedEntityId(next);
     }
     if (
@@ -2474,7 +2494,6 @@ function Workspace({
       setSelectedEntityId(next);
       setSelectedPropertyId("");
       setRequestedPropertyId("");
-      window.localStorage.removeItem(ENTITY_STORAGE_KEY);
       window.localStorage.removeItem(PROPERTY_STORAGE_KEY);
       const url = new URL(window.location.href);
       if (next) {
@@ -2486,15 +2505,6 @@ function Workspace({
       window.history.replaceState(null, "", url);
     }
   }, [entitiesQuery.data, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-      const url = new URL(window.location.href);
-      url.searchParams.set("entity_id", selectedEntityId);
-      window.history.replaceState(null, "", url);
-    }
-  }, [selectedEntityId]);
 
   useEffect(() => {
     setPropertyEnrichmentSuggestions([]);
@@ -2541,10 +2551,11 @@ function Workspace({
   );
   const portfolioRentRollRows = useMemo(
     () =>
-      rentRollPropertyId && scopedEntityId
+      rentRollPropertyId && (scopedEntityId || isAllEntities)
         ? (portfolioRentRollQuery.data ?? EMPTY_RENT_ROLL_ROWS)
         : (rentRollQuery.data ?? EMPTY_RENT_ROLL_ROWS),
     [
+      isAllEntities,
       portfolioRentRollQuery.data,
       rentRollPropertyId,
       rentRollQuery.data,
@@ -2552,7 +2563,7 @@ function Workspace({
     ],
   );
   const portfolioRentRollReady = Boolean(
-    scopedEntityId &&
+    (scopedEntityId || isAllEntities) &&
       (rentRollPropertyId ? portfolioRentRollQuery.data : rentRollQuery.data),
   );
   const occupancyByPropertyId = useMemo(() => {
@@ -3211,6 +3222,17 @@ function Workspace({
       }
       setSelectedPropertyId(next);
       setRequestedPropertyId(next);
+      // Mirror selectProperty: a restored / deep-linked property in the
+      // All-entities view drops into its own entity so the entity-scoped
+      // detail panels (tenants, leases, obligations, charge rules) load.
+      if (isAllEntities) {
+        const target = propertyRecords.find(
+          (property) => property.id === next,
+        );
+        if (target) {
+          setSelectedEntityId(target.entity_id);
+        }
+      }
       window.localStorage.setItem(PROPERTY_STORAGE_KEY, next);
       const url = new URL(window.location.href);
       url.searchParams.set("property_id", next);
@@ -3227,6 +3249,7 @@ function Workspace({
   }, [
     chargeRuleForm,
     displayedProperties,
+    isAllEntities,
     leaseForm,
     obligationForm,
     propertyRecords,
@@ -3256,6 +3279,10 @@ function Workspace({
           targetEntityId = created.id;
         } else if (createEntityChoice) {
           targetEntityId = createEntityChoice;
+        } else {
+          // No explicit entity chosen and no single page entity to inherit
+          // (all-entities default): refuse rather than write to the sentinel.
+          throw new Error("Choose an entity for this property.");
         }
       }
       const payload = {
@@ -3875,7 +3902,16 @@ function Workspace({
     setEditing(null);
     setBillingProfileOpen(false);
     form.reset(defaultPropertyFormValues);
-    setCreateEntityChoice(hasNoEntities ? NEW_ENTITY_VALUE : selectedEntityId);
+    // All-entities is the default view, so there is no single page entity to
+    // pre-fill: require an explicit pick (the wrong-trust-write guardrail). With
+    // no entities yet, jump straight to the create-entity branch.
+    setCreateEntityChoice(
+      hasNoEntities
+        ? NEW_ENTITY_VALUE
+        : isAllEntities
+          ? ""
+          : selectedEntityId,
+    );
     setNewEntityName("");
     setNewEntityType("");
     setPropertyEditorOpen(true);
@@ -4252,19 +4288,7 @@ function Workspace({
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesLoading}
-          value={selectedEntityId}
-          onChange={(value) => {
-            setSelectedEntityId(value);
-            if (ownerTagFilter) {
-              clearOwnerTagFilter();
-            }
-          }}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-[1208px] gap-4 px-5 py-5 md:px-9 md:py-7">
         <section className="min-w-0">
@@ -5865,7 +5889,7 @@ function Workspace({
                     className="h-8 min-w-44"
                   >
                     <option value="">All properties</option>
-                    {propertiesQuery.data?.map((property) => (
+                    {propertyRecords.map((property) => (
                       <option key={property.id} value={property.id}>
                         {property.name}
                       </option>
@@ -6920,7 +6944,12 @@ function Workspace({
                 />
               ) : (
                 <PropertyCalendarView
-                  entityId={selectedEntityId || null}
+                  entityId={
+                    scopedEntityId ||
+                    displayedProperties[0]?.entity_id ||
+                    entitiesQuery.data?.[0]?.id ||
+                    null
+                  }
                   events={leaseCalendarEvents}
                   isLoading={
                     insightsOverviewQuery.isLoading ||
@@ -7956,6 +7985,9 @@ function Workspace({
                         setCreateEntityChoice(event.target.value)
                       }
                     >
+                      <option value="" disabled>
+                        Select an entity…
+                      </option>
                       {(entitiesQuery.data ?? []).map((entity) => (
                         <option key={entity.id} value={entity.id}>
                           {entity.name}
@@ -8181,7 +8213,11 @@ function Workspace({
                 <Button
                   type="submit"
                   disabled={
-                    (!selectedEntityId && !createEntityChoice) ||
+                    // A new property must name an explicit entity: in the
+                    // all-entities default there is no page entity to fall back
+                    // to, so the create-form choice is required.
+                    (!editing && !createEntityChoice) ||
+                    (editing && !selectedEntityId) ||
                     mutation.isPending
                   }
                 >
