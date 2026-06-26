@@ -1905,7 +1905,14 @@ export function Dashboard({
     (entitiesQuery.isLoading || entitiesQuery.isFetching);
   const entitySelectionLoading =
     entitiesLoading ||
-    (!demoMode && !selectedEntityId && (entitiesQuery.data?.length ?? 0) > 0);
+    // The intake workspace starts without a pinned entity (the composer asks
+    // for an explicit "Adding to" trust per action), so "no selection yet" is a
+    // ready state there, not a loading one — otherwise the Relby AI landing
+    // loader spins forever once the all-entities sentinel is dropped (1671).
+    (!demoMode &&
+      !isIntakeWorkspace &&
+      !selectedEntityId &&
+      (entitiesQuery.data?.length ?? 0) > 0);
   const overviewDocumentNeedsReviewCount = overviewStatusCount(
     dashboardOverview?.intake.document_counts,
     ["ready_for_review", "needs_attention"],

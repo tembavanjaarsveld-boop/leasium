@@ -114,6 +114,15 @@
   background-color: var(--leasium-surface) !important;
 }
 
+/* Responsive bg-white variants (e.g. sm:bg-white on card-at-desktop panels)
+   compile to their own media-gated class, so the plain .bg-white rule above
+   does not catch them — mirror it at the sm breakpoint. */
+@media (min-width: 640px) {
+  :root[data-theme="dark"] .sm\:bg-white {
+    background-color: var(--leasium-surface) !important;
+  }
+}
+
 :root[data-theme="dark"] .bg-white\/95 {
   background-color: color-mix(
     in srgb,

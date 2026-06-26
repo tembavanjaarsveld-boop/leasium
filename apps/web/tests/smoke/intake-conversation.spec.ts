@@ -133,6 +133,20 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
+test("Relby AI landing finishes loading without a pinned entity", async ({
+  page,
+}) => {
+  // Regression: the intake workspace drops the all-entities sentinel and waits
+  // for an explicit per-action trust pick (no auto-default), so "no selection
+  // yet" must be a ready state — the landing must not sit forever on the
+  // "Checking live portfolio" loader when no entity is selected.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/intake");
+
+  await expect(page.getByPlaceholder(/Ask Relby anything/)).toBeVisible();
+  await expect(page.getByText("Checking live portfolio")).toHaveCount(0);
+});
+
 test("conversation-first intake panel reads the lease and creates records without provider calls", async ({
   page,
 }) => {
