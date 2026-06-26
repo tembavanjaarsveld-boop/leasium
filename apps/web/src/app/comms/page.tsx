@@ -984,6 +984,16 @@ function CommsContent() {
       ]),
     );
   }, [allMode, queueFanOut.data, entityNameById]);
+  // Row trust: each candidate dispatches/dismisses/attaches evidence under its
+  // own entity. Dispatch and dismiss resolve the entity server-side from the
+  // target; evidence upload needs the id directly, so map candidate id -> entity
+  // id from the fan-out rows (candidates carry no entity_id of their own).
+  const candidateEntityIdById = useMemo(() => {
+    if (!allMode) return new Map<string, string>();
+    return new Map(
+      queueFanOut.data.map((row) => [row.candidate.id, row.entityId]),
+    );
+  }, [allMode, queueFanOut.data]);
   useEffect(() => {
     setSettledCandidateIds((previous) => {
       if (previous.size === 0) return previous;
@@ -1330,7 +1340,7 @@ function CommsContent() {
           guardrails={
             allMode
               ? [
-                  "Read-only cross-entity view: merged from every accessible entity. Sending stays per entity — select a single entity to dispatch or dismiss.",
+                  "Read-only cross-entity view: merged from every accessible entity. Opening this log does not send email or SMS; approve or dismiss drafts per row in the queue above, each under its own trust.",
                 ]
               : (outboundLogQuery.data?.guardrails ?? [])
           }
@@ -1461,7 +1471,11 @@ function CommsContent() {
               >
                 <CandidateCard
                   candidate={candidate}
-                  entityId={scopedEntityId}
+                  entityId={
+                    allMode
+                      ? (candidateEntityIdById.get(candidate.id) ?? "")
+                      : scopedEntityId
+                  }
                   template={templateForCandidate(candidate, activeTemplates)}
                   allMode={allMode}
                   entityName={
@@ -2503,10 +2517,7 @@ function CandidateCard({
                   <SecondaryButton
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={evidenceMutation.isPending || allMode}
-                    title={
-                      allMode ? "Select a single entity to send" : undefined
-                    }
+                    disabled={evidenceMutation.isPending}
                   >
                     {evidenceMutation.isPending ? (
                       <Loader2 size={15} className="animate-spin" />
@@ -2582,12 +2593,7 @@ function CandidateCard({
             <SecondaryButton
               type="button"
               onClick={() => dismissMutation.mutate()}
-              disabled={
-                actionPending ||
-                draftSettled ||
-                allMode
-              }
-              title={allMode ? "Select a single entity to send" : undefined}
+              disabled={actionPending || draftSettled}
             >
               <X size={15} />
               Dismiss
@@ -2600,13 +2606,7 @@ function CandidateCard({
                   ? approvalBlockerId
                   : undefined
               }
-              disabled={
-                actionPending ||
-                draftSettled ||
-                dispatchBlocked ||
-                allMode
-              }
-              title={allMode ? "Select a single entity to send" : undefined}
+              disabled={actionPending || draftSettled || dispatchBlocked}
             >
               {dispatchMutation.isPending ? (
                 <Loader2 size={16} className="animate-spin" />

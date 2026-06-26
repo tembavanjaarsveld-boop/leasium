@@ -2433,8 +2433,11 @@ function BillingReadinessWorkspace() {
   });
 
   const dispatchInvoiceProvidersMutation = useMutation({
-    mutationFn: (draftId: string) =>
-      dispatchXeroInvoiceProviders(selectedEntityId, {
+    // Row trust: dispatch under the invoice draft's own entity. The page is
+    // all-entities by default (selectedEntityId is the sentinel), so the entity
+    // must come from the row, not the page.
+    mutationFn: ({ draftId, entityId }: { draftId: string; entityId: string }) =>
+      dispatchXeroInvoiceProviders(entityId, {
         invoice_draft_ids: [draftId],
       }),
     onSuccess: () => {
@@ -2442,10 +2445,10 @@ function BillingReadinessWorkspace() {
         queryKey: ["billing-readiness-invoice-drafts"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-xero-status", selectedEntityId],
+        queryKey: ["billing-readiness-xero-status"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-rent-roll", selectedEntityId],
+        queryKey: ["billing-readiness-rent-roll"],
       });
     },
   });
@@ -2467,7 +2470,7 @@ function BillingReadinessWorkspace() {
         queryKey: ["billing-readiness-invoice-drafts"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["billing-readiness-xero-status", selectedEntityId],
+        queryKey: ["billing-readiness-xero-status"],
       });
     },
   });
@@ -2924,12 +2927,8 @@ function BillingReadinessWorkspace() {
               invoiceDraft,
             })
           }
-          disabled={isApprovingDraft || allMode}
-          title={
-            allMode
-              ? "Select a single entity to approve invoices"
-              : "Approves this invoice and prepares it to send. No tenant email or Xero sync runs yet — you send on the next tab."
-          }
+          disabled={isApprovingDraft}
+          title="Approves this invoice and prepares it to send. No tenant email or Xero sync runs yet — you send on the next tab."
         >
           {isApprovingDraft ? (
             <Loader2 size={14} className="animate-spin" />
@@ -2944,12 +2943,8 @@ function BillingReadinessWorkspace() {
           onClick={() =>
             updateDraftMutation.mutate({ draftId: draft.id, status: "void" })
           }
-          disabled={isVoiding || allMode}
-          title={
-            allMode
-              ? "Select a single entity to void a billing draft"
-              : "Voids this draft only. No invoice is posted or synced."
-          }
+          disabled={isVoiding}
+          title="Voids this draft only. No invoice is posted or synced."
         >
           {isVoiding ? (
             <Loader2 size={14} className="animate-spin" />
@@ -3777,12 +3772,8 @@ function BillingReadinessWorkspace() {
                             onClick={() =>
                               prepareInvoiceDraftMutation.mutate(draft.id)
                             }
-                            disabled={!canPrepare || isPreparing || allMode}
-                            title={
-                              allMode
-                                ? "Select a single entity to prepare invoice delivery"
-                                : "Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
-                            }
+                            disabled={!canPrepare || isPreparing}
+                            title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
                           >
                             {isPreparing ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3824,12 +3815,8 @@ function BillingReadinessWorkspace() {
                                 status: "approved",
                               })
                             }
-                            disabled={!canApprove || isUpdatingInvoice || allMode}
-                            title={
-                              allMode
-                                ? "Select a single entity to approve an invoice draft"
-                                : "Approves the internal invoice draft only. No tenant email or Xero sync is run."
-                            }
+                            disabled={!canApprove || isUpdatingInvoice}
+                            title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
                           >
                             {isUpdatingInvoice ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -3847,12 +3834,8 @@ function BillingReadinessWorkspace() {
                                 status: "void",
                               })
                             }
-                            disabled={!canVoid || isUpdatingInvoice || allMode}
-                            title={
-                              allMode
-                                ? "Select a single entity to void an invoice draft"
-                                : "Voids this internal invoice draft only."
-                            }
+                            disabled={!canVoid || isUpdatingInvoice}
+                            title="Voids this internal invoice draft only."
                           >
                             {isUpdatingInvoice ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -4117,12 +4100,8 @@ function BillingReadinessWorkspace() {
                                   onClick={() =>
                                     prepareInvoiceDraftMutation.mutate(draft.id)
                                   }
-                                  disabled={!canPrepare || isPreparing || allMode}
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to prepare invoice delivery"
-                                      : "Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
-                                  }
+                                  disabled={!canPrepare || isPreparing}
+                                  title="Stores the invoice PDF artifact and prepares the email draft. Nothing is sent or synced."
                                 >
                                   {isPreparing ? (
                                     <Loader2
@@ -4168,14 +4147,8 @@ function BillingReadinessWorkspace() {
                                       status: "approved",
                                     })
                                   }
-                                  disabled={
-                                    !canApprove || isUpdatingInvoice || allMode
-                                  }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to approve an invoice draft"
-                                      : "Approves the internal invoice draft only. No tenant email or Xero sync is run."
-                                  }
+                                  disabled={!canApprove || isUpdatingInvoice}
+                                  title="Approves the internal invoice draft only. No tenant email or Xero sync is run."
                                 >
                                   {isUpdatingInvoice ? (
                                     <Loader2
@@ -4196,14 +4169,8 @@ function BillingReadinessWorkspace() {
                                       status: "void",
                                     })
                                   }
-                                  disabled={
-                                    !canVoid || isUpdatingInvoice || allMode
-                                  }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to void an invoice draft"
-                                      : "Voids this internal invoice draft only."
-                                  }
+                                  disabled={!canVoid || isUpdatingInvoice}
+                                  title="Voids this internal invoice draft only."
                                 >
                                   {isUpdatingInvoice ? (
                                     <Loader2
@@ -4359,7 +4326,8 @@ function BillingReadinessWorkspace() {
                       sendInvoiceDeliveryEmailMutation.variables === draft.id;
                     const isDispatchingProviders =
                       dispatchInvoiceProvidersMutation.isPending &&
-                      dispatchInvoiceProvidersMutation.variables === draft.id;
+                      dispatchInvoiceProvidersMutation.variables?.draftId ===
+                        draft.id;
                     const isUpdatingPayment =
                       updatePaymentStatusMutation.isPending &&
                       updatePaymentStatusMutation.variables?.draftId ===
@@ -4612,18 +4580,15 @@ function BillingReadinessWorkspace() {
                             type="button"
                             className="min-h-11 rounded-lg px-3"
                             onClick={() =>
-                              dispatchInvoiceProvidersMutation.mutate(draft.id)
+                              dispatchInvoiceProvidersMutation.mutate({
+                                draftId: draft.id,
+                                entityId: draft.entity_id,
+                              })
                             }
                             disabled={
-                              !canDispatchProviders ||
-                              isDispatchingProviders ||
-                              allMode
+                              !canDispatchProviders || isDispatchingProviders
                             }
-                            title={
-                              allMode
-                                ? "Select a single entity to dispatch providers"
-                                : "Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
-                            }
+                            title="Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
                           >
                             {isDispatchingProviders ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -4640,14 +4605,8 @@ function BillingReadinessWorkspace() {
                             onClick={() =>
                               sendInvoiceDeliveryEmailMutation.mutate(draft.id)
                             }
-                            disabled={
-                              !canRecordDelivery || isSendingEmail || allMode
-                            }
-                            title={
-                              allMode
-                                ? "Select a single entity to send the invoice email"
-                                : "Sends the approved invoice email through the configured provider. No Xero sync is run."
-                            }
+                            disabled={!canRecordDelivery || isSendingEmail}
+                            title="Sends the approved invoice email through the configured provider. No Xero sync is run."
                           >
                             {isSendingEmail ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -4662,14 +4621,8 @@ function BillingReadinessWorkspace() {
                             onClick={() =>
                               recordInvoiceDeliveryMutation.mutate(draft.id)
                             }
-                            disabled={
-                              !canRecordDelivery || isRecordingDelivery || allMode
-                            }
-                            title={
-                              allMode
-                                ? "Select a single entity to record delivery"
-                                : "Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
-                            }
+                            disabled={!canRecordDelivery || isRecordingDelivery}
+                            title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
                           >
                             {isRecordingDelivery ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -4687,12 +4640,8 @@ function BillingReadinessWorkspace() {
                                 paymentStatus: "paid",
                               })
                             }
-                            disabled={!canMarkPaid || isUpdatingPayment || allMode}
-                            title={
-                              allMode
-                                ? "Select a single entity to mark paid"
-                                : "Marks the approved internal invoice as paid in Relby only."
-                            }
+                            disabled={!canMarkPaid || isUpdatingPayment}
+                            title="Marks the approved internal invoice as paid in Relby only."
                           >
                             {isUpdatingPayment ? (
                               <Loader2 size={14} className="animate-spin" />
@@ -4778,7 +4727,7 @@ function BillingReadinessWorkspace() {
                             draft.id;
                         const isDispatchingProviders =
                           dispatchInvoiceProvidersMutation.isPending &&
-                          dispatchInvoiceProvidersMutation.variables ===
+                          dispatchInvoiceProvidersMutation.variables?.draftId ===
                             draft.id;
                         const isUpdatingPayment =
                           updatePaymentStatusMutation.isPending &&
@@ -5174,20 +5123,16 @@ function BillingReadinessWorkspace() {
                                   type="button"
                                   className="min-h-11 rounded-lg px-3"
                                   onClick={() =>
-                                    dispatchInvoiceProvidersMutation.mutate(
-                                      draft.id,
-                                    )
+                                    dispatchInvoiceProvidersMutation.mutate({
+                                      draftId: draft.id,
+                                      entityId: draft.entity_id,
+                                    })
                                   }
                                   disabled={
                                     !canDispatchProviders ||
-                                    isDispatchingProviders ||
-                                    allMode
+                                    isDispatchingProviders
                                   }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to dispatch providers"
-                                      : "Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
-                                  }
+                                  title="Creates or reuses the Xero DRAFT first, then sends or reuses the tenant email. Payment reconciliation stays separate."
                                 >
                                   {isDispatchingProviders ? (
                                     <Loader2
@@ -5209,16 +5154,8 @@ function BillingReadinessWorkspace() {
                                       draft.id,
                                     )
                                   }
-                                  disabled={
-                                    !canRecordDelivery ||
-                                    isSendingEmail ||
-                                    allMode
-                                  }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to send the invoice email"
-                                      : "Sends the approved invoice email through the configured provider. No Xero sync is run."
-                                  }
+                                  disabled={!canRecordDelivery || isSendingEmail}
+                                  title="Sends the approved invoice email through the configured provider. No Xero sync is run."
                                 >
                                   {isSendingEmail ? (
                                     <Loader2
@@ -5239,15 +5176,9 @@ function BillingReadinessWorkspace() {
                                     )
                                   }
                                   disabled={
-                                    !canRecordDelivery ||
-                                    isRecordingDelivery ||
-                                    allMode
+                                    !canRecordDelivery || isRecordingDelivery
                                   }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to record delivery"
-                                      : "Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
-                                  }
+                                  title="Records the approved invoice as manually delivered to the tenant. No Xero sync is run."
                                 >
                                   {isRecordingDelivery ? (
                                     <Loader2
@@ -5268,14 +5199,8 @@ function BillingReadinessWorkspace() {
                                       paymentStatus: "paid",
                                     })
                                   }
-                                  disabled={
-                                    !canMarkPaid || isUpdatingPayment || allMode
-                                  }
-                                  title={
-                                    allMode
-                                      ? "Select a single entity to mark paid"
-                                      : "Marks the approved internal invoice as paid in Relby only."
-                                  }
+                                  disabled={!canMarkPaid || isUpdatingPayment}
+                                  title="Marks the approved internal invoice as paid in Relby only."
                                 >
                                   {isUpdatingPayment ? (
                                     <Loader2

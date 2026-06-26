@@ -2236,7 +2236,10 @@ test("comms queue approves inbound SMS with a phone recipient", async ({
 test("grouped compliance comms drafts avoid single-obligation evidence upload", async ({
   page,
 }) => {
-  await page.route("**/api/v1/comms/queue?**", async (route) => {
+  // All-entities comms reads the org-wide queue (/comms/queue, no entity_id), so
+  // the mock must match both the org-wide path and the per-entity (?entity_id=)
+  // path without also swallowing /comms/queue/counts.
+  await page.route(/\/api\/v1\/comms\/queue(\?|$)/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -2246,6 +2249,7 @@ test("grouped compliance comms drafts avoid single-obligation evidence upload", 
         candidates: [
           {
             id: "comms-compliance-obligation-grouped",
+            entity_id: "entity-1",
             kind: "compliance_obligation",
             target_kind: "obligation",
             target_id: "obligation-compliance-1",
@@ -4397,9 +4401,14 @@ test("properties All entities view merges across entities and drops into one", a
   await expect(
     secondaryCard.getByText("Secondary Holdings Pty Ltd").first(),
   ).toBeVisible();
-  await expect(primaryCard.getByText("$8,000 / mo")).toHaveCount(0);
+  // All-entities merge cards now render rent (consistent with properties-ux and
+  // the live merge view); the entity is shown as a trust tag, not a switcher.
+  await expect(primaryCard.getByText("$8,000 / mo")).toBeVisible();
   await expect(primaryCard.getByText("No units")).toHaveCount(0);
-  await expect(secondaryCard.getByText("No units")).toHaveCount(0);
+  // Rivergum has no rent-roll rows in the fixture, so its merge-view occupancy
+  // badge reads "No units" (unknown occupancy) — the badge itself is new from
+  // the rip-out, which now renders occupancy on the cross-entity cards.
+  await expect(secondaryCard.getByText("No units")).toBeVisible();
 
   // Selecting a property drops the workspace into that property's entity.
   await secondaryCard
@@ -7103,17 +7112,17 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
 
   await page.getByRole("link", { name: "Open dispatch handoff" }).click();
   await expect(page).toHaveURL(/\/billing-readiness/);
-  await expect(page.getByText("Accounting missing")).toBeVisible();
-  await expect(page.getByText("Reconciliation stale").first()).toBeVisible();
-  const staleDispatchRow = page.getByRole("row").filter({
-    hasText: "INV-1001",
-  });
+  // Billing-readiness is all-entities by default; Xero connection + accounting
+  // freshness are per-entity (Xero books close per trust) and are shown only in
+  // a single-entity view. The all-mode note replaces the freshness strip here;
+  // the freshness snapshot itself is asserted on /settings?tab=xero below.
   await expect(
-    staleDispatchRow.getByText("Payment check missing"),
+    page.getByText(
+      "accounting freshness, and the month-end statement handoff are shown when a single entity is selected",
+    ),
   ).toBeVisible();
-  await expect(staleDispatchRow.getByText("Review payments")).toBeVisible();
   await expect(
-    page.getByText("1 Xero-linked payment review is open."),
+    page.getByRole("row").filter({ hasText: "INV-1001" }),
   ).toBeVisible();
 
   await page.goto("/settings?tab=xero");
