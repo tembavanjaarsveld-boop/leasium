@@ -2,6 +2,29 @@
 
 Last updated: 2026-06-26
 
+## Continuation - 2026-06-26 (People Owners all-entities fan-out)
+
+Follow-up cleanup from the switcher-removal work: `/people` is always in
+all-entities mode now, but the Owners tab still passed the all-entities sentinel
+through the old single-entity owner directory path. That disabled the owner read
+query and showed an empty Owners directory for managing-agent/hybrid accounts.
+
+The People page now fans owner reads out across accessible trusts with the
+existing `listOwners(entity_id)` API, merges those rows for the all-entities
+Owners tab, and keeps Settings/single-trust owner create/update/delete scoped to
+a concrete trust. The smoke fixture now returns owners by requested
+`entity_id`, asserts both trusts' owners render, and verifies no blank owner
+request is sent. Mobile People content also gained enough bottom spacing/scroll
+margin for final owner actions to clear the fixed mobile nav.
+
+Verification: eslint on touched People/owner/test files passed; `tsc --noEmit`
+passed; full `people-hub.spec.ts` passed 7; focused Settings owner smoke passed
+1; temporary 1440/390 screenshot + slop check passed 2 and saved
+`output/playwright/people-owners-all-mode-1440.png` and
+`output/playwright/people-owners-all-mode-390.png`; `git diff --check` passed.
+No provider calls, email/SMS, Xero write, payment, or reconciliation paths were
+touched.
+
 ## Continuation - 2026-06-26 (Lease Attention error placement + orphan prevention)
 
 Lease Attention follow-ups from the 1642 Anzac stuck-obligation fix are now

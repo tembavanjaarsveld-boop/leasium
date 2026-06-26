@@ -25,8 +25,13 @@ import { AppHeader } from "@/components/app-shell";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
 import { SkeletonRows, StatusBadge } from "@/components/ui";
-import type { ContractorRecord, TenantRecord } from "@/lib/api";
-import { listContractors, listEntities, listTenants } from "@/lib/api";
+import type { ContractorRecord, OwnerRecord, TenantRecord } from "@/lib/api";
+import {
+  listContractors,
+  listEntities,
+  listOwners,
+  listTenants,
+} from "@/lib/api";
 import {
   ALL_ENTITIES_VALUE,
   isAllEntities,
@@ -239,6 +244,20 @@ function PeopleContent() {
   const contractorsError = allMode
     ? contractorsFanOut.error
     : contractorsQuery.error;
+  const ownersFanOut = useEntityFanOut<OwnerRecord>({
+    entities: entitiesQuery.data,
+    enabled: allMode && showOwners,
+    keyPrefix: ["owners"],
+    queryFn: listOwners,
+  });
+  const ownersLoading =
+    allMode && showOwners
+      ? entitiesQuery.isLoading || ownersFanOut.isLoading
+      : false;
+  const ownersError =
+    allMode && showOwners
+      ? (entitiesQuery.error ?? ownersFanOut.error)
+      : null;
 
   // Default toward "tenants": until the mode resolves we assume self-managed
   // (Owners hidden), so the initial tab must not be "owners" or it would render
@@ -278,7 +297,12 @@ function PeopleContent() {
 
   const tabCounts: Record<TabKey, number | null> = {
     tenants: tenantsLoading ? null : tenants.length,
-    owners: null,
+    owners:
+      allMode && showOwners
+        ? ownersLoading || ownersError
+          ? null
+          : ownersFanOut.data.length
+        : null,
     vendors: contractorsLoading ? null : contractors.length,
     prospects: null,
   };
@@ -287,7 +311,7 @@ function PeopleContent() {
     <main className="min-h-screen">
       <AppHeader />
 
-      <div className="mx-auto grid max-w-[1040px] gap-[14px] px-5 py-6 lg:px-9">
+      <div className="mx-auto grid max-w-[1040px] gap-[14px] px-5 pb-28 pt-6 lg:px-9 lg:pb-6">
         <section className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold leading-tight tracking-normal text-foreground">
@@ -351,7 +375,13 @@ function PeopleContent() {
         </div>
 
         {activeTab === "owners" && showOwners ? (
-          <OwnersDirectory entityId={scopeEntityId(selectedEntityId)} />
+          <OwnersDirectory
+            entityId={scopedEntityId}
+            owners={allMode ? ownersFanOut.data : undefined}
+            isLoading={allMode ? ownersLoading : undefined}
+            error={allMode ? ownersError : undefined}
+            onRefresh={allMode ? ownersFanOut.refetch : undefined}
+          />
         ) : null}
         {activeTab === "tenants" ? (
           <TenantsTab

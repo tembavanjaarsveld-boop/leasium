@@ -188,6 +188,13 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · People Owners all-entities fan-out · screenshots reviewed at
+  `output/playwright/people-owners-all-mode-1440.png` and
+  `output/playwright/people-owners-all-mode-390.png` · fixes: the People
+  Owners tab now reads owners per accessible trust in all-entities mode, keeps
+  Settings/single-trust owner creation scoped to a concrete trust, and adds
+  mobile bottom spacing/scroll margin so the final owner actions clear the
+  fixed bottom nav · none deferred.
 - 2026-06-26 · Property Lease Attention error placement · screenshots reviewed
   at `output/playwright/lease-attention-error-1440.png` and
   `output/playwright/lease-attention-error-390.png` · fixes: Complete/Waive

@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }, testInfo) => {
 const OWNERS = [
   {
     id: "owner-1",
-    entity_id: "11111111-1111-1111-1111-111111111111",
+    entity_id: "entity-1",
     legal_name: "SKJ Holdings Pty Ltd",
     abn: "11222333444",
     trustee_name: null,
@@ -41,7 +41,32 @@ const OWNERS = [
       },
     ],
   },
+  {
+    id: "owner-2",
+    entity_id: "entity-2",
+    legal_name: "Rivergum Holdings Pty Ltd",
+    abn: "99888777666",
+    trustee_name: null,
+    trust_name: "Rivergum Trust",
+    invoice_issuer_name: null,
+    billing_contact_name: null,
+    billing_email: "owners@rivergum.example",
+    invoice_reference: null,
+    gst_registered: true,
+    xero_contact_id: null,
+    created_at: "2026-05-31T00:00:00.000Z",
+    updated_at: "2026-05-31T00:00:00.000Z",
+    property_count: 1,
+    properties: [
+      {
+        property_id: "property-secondary-1",
+        property_name: "Rivergum Warehouse",
+        split_pct: 100,
+      },
+    ],
+  },
 ];
+const MISSING_OWNER_ENTITY_ID = "__missing_entity_id__";
 
 async function expectTouchTarget(control: Locator, minSize = 44) {
   await control.scrollIntoViewIfNeeded();
@@ -84,7 +109,7 @@ function watchForbiddenPeopleRequests(
 test("people hub renders tabs and the owners directory", async ({ page }) => {
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });
 
-  await mockOwners(page);
+  const ownerListEntityIds = await mockOwners(page);
   const forbiddenRequests = watchForbiddenPeopleRequests(page);
 
   await page.goto("/people");
@@ -102,8 +127,16 @@ test("people hub renders tabs and the owners directory", async ({ page }) => {
 
   // Owners is the default tab: the mocked owner + its property roll-up render.
   await expect(page.getByText("SKJ Holdings Pty Ltd")).toBeVisible();
+  await expect(page.getByText("Rivergum Holdings Pty Ltd")).toBeVisible();
   await expect(page.getByText("2 properties")).toBeVisible();
   await expect(page.getByText("Queen Street Retail Centre")).toBeVisible();
+  await expect(page.getByText("Rivergum Warehouse")).toBeVisible();
+  expect([...new Set(ownerListEntityIds)].sort()).toEqual([
+    "entity-1",
+    "entity-2",
+  ]);
+  expect(ownerListEntityIds).not.toContain("");
+  expect(ownerListEntityIds).not.toContain(MISSING_OWNER_ENTITY_ID);
 
   // Prospects tab shows the roadmap stub.
   await page.getByRole("tab", { name: "Prospects" }).click();
@@ -124,17 +157,8 @@ test("people hub All entities merges tenants and vendors across entities", async
     page.getByText("Tenants and vendors across the portfolio."),
   ).toBeVisible();
   // Tenants is the default tab for a self-managed owner.
-  const switcher = page
-    .getByRole("complementary", { name: "Primary navigation" })
-    .getByRole("group", { name: "Workspace switcher" });
-  await expect(
-    switcher.getByRole("button", { name: "All entities" }),
-  ).toHaveCount(0);
-  await switcher.getByLabel("Entity").click();
-  await switcher
-    .getByRole("listbox", { name: "Entities" })
-    .locator('[role="option"][data-value="__all_entities__"]')
-    .click();
+  // The app is always all-entities now (the global switcher was removed), so
+  // both entities' rows render by default; no entity selection step needed.
 
   // Tenant from the primary entity and the secondary entity both render. The
   // secondary card is labelled with its entity (scoped to the card to avoid the
@@ -235,12 +259,19 @@ test("hybrid people hub uses managing-agent owner-client framing", async ({
   page,
 }) => {
   await mockLeasiumApi(page, { operatingMode: "hybrid" });
-  await mockOwners(page);
+  const ownerListEntityIds = await mockOwners(page);
 
   await page.goto("/people");
 
   await expect(page.getByRole("tab", { name: "Owners" })).toBeVisible();
   await expect(page.getByText("SKJ Holdings Pty Ltd")).toBeVisible();
+  await expect(page.getByText("Rivergum Holdings Pty Ltd")).toBeVisible();
+  expect([...new Set(ownerListEntityIds)].sort()).toEqual([
+    "entity-1",
+    "entity-2",
+  ]);
+  expect(ownerListEntityIds).not.toContain("");
+  expect(ownerListEntityIds).not.toContain(MISSING_OWNER_ENTITY_ID);
 });
 
 test("self-managed direct owner record uses entity framing", async ({
@@ -272,6 +303,7 @@ test("self-managed direct owner record uses entity framing", async ({
 
 async function mockOwners(page: Parameters<typeof mockLeasiumApi>[0]) {
   // Layer a /owners mock over the catch-all (most-recent route wins first).
+  const requestedEntityIds: string[] = [];
   await page.route(
     (url) => url.pathname.endsWith("/owners"),
     async (route) => {
@@ -279,13 +311,21 @@ async function mockOwners(page: Parameters<typeof mockLeasiumApi>[0]) {
         await route.fallback();
         return;
       }
+      const requestedEntityId = new URL(route.request().url()).searchParams.get(
+        "entity_id",
+      );
+      requestedEntityIds.push(requestedEntityId ?? MISSING_OWNER_ENTITY_ID);
+      const owners = requestedEntityId
+        ? OWNERS.filter((owner) => owner.entity_id === requestedEntityId)
+        : OWNERS;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(OWNERS),
+        body: JSON.stringify(owners),
       });
     },
   );
+  return requestedEntityIds;
 }
 
 async function mockOwnerRecord(page: Parameters<typeof mockLeasiumApi>[0]) {

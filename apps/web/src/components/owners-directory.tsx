@@ -44,7 +44,7 @@ import {
 import { friendlyError } from "@/lib/utils";
 
 const recordLinkClass =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2";
+  "inline-flex min-h-11 scroll-mb-28 items-center justify-center gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm font-semibold text-slate shadow-leasiumXs transition duration-200 ease-leasium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2";
 
 function ownerName(owner: OwnerRecord) {
   return (
@@ -56,30 +56,51 @@ function ownerName(owner: OwnerRecord) {
   );
 }
 
-export function OwnersDirectory({ entityId }: { entityId: string }) {
+type OwnersDirectoryProps = {
+  entityId: string | null;
+  owners?: OwnerRecord[];
+  isLoading?: boolean;
+  error?: unknown;
+  onRefresh?: () => void;
+};
+
+export function OwnersDirectory({
+  entityId,
+  owners: providedOwners,
+  isLoading: providedLoading,
+  error: providedError,
+  onRefresh,
+}: OwnersDirectoryProps) {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const ownersQuery = useQuery({
     queryKey: ["owners", entityId],
-    queryFn: () => listOwners(entityId),
-    enabled: Boolean(entityId),
+    queryFn: () => listOwners(entityId ?? ""),
+    enabled: Boolean(entityId && providedOwners === undefined),
   });
-  const owners = ownersQuery.data ?? [];
+  const owners = providedOwners ?? ownersQuery.data ?? [];
+  const isLoading = providedLoading ?? ownersQuery.isLoading;
+  const error = providedError ?? ownersQuery.error;
 
   function refresh() {
-    queryClient.invalidateQueries({ queryKey: ["owners", entityId] });
+    onRefresh?.();
+    if (entityId) {
+      queryClient.invalidateQueries({ queryKey: ["owners", entityId] });
+    }
   }
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-end">
-        <Button type="button" onClick={() => setShowCreate((prev) => !prev)}>
-          <Plus size={16} />
-          {showCreate ? "Close form" : "Add owner"}
-        </Button>
-      </div>
+      {entityId ? (
+        <div className="flex items-center justify-end">
+          <Button type="button" onClick={() => setShowCreate((prev) => !prev)}>
+            <Plus size={16} />
+            {showCreate ? "Close form" : "Add owner"}
+          </Button>
+        </div>
+      ) : null}
 
-      {showCreate ? (
+      {showCreate && entityId ? (
         <AddOwnerForm
           entityId={entityId}
           onSaved={() => {
@@ -89,19 +110,19 @@ export function OwnersDirectory({ entityId }: { entityId: string }) {
         />
       ) : null}
 
-      {ownersQuery.isLoading ? (
+      {isLoading ? (
         <SectionPanel>
           <SkeletonRows rows={4} />
         </SectionPanel>
       ) : null}
 
-      {ownersQuery.error ? (
+      {error ? (
         <p className="rounded-md border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
-          {friendlyError(ownersQuery.error)}
+          {friendlyError(error)}
         </p>
       ) : null}
 
-      {!ownersQuery.isLoading && owners.length === 0 && !ownersQuery.error ? (
+      {!isLoading && owners.length === 0 && !error ? (
         <EmptyState
           icon={<Building2 size={18} />}
           title="No owners yet."
@@ -193,6 +214,7 @@ function OwnerCard({
           </Link>
           <SecondaryButton
             type="button"
+            className="scroll-mb-28"
             onClick={() => {
               if (
                 window.confirm(
