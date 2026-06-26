@@ -60,6 +60,7 @@ const leaseIntake = {
   content_type: "application/pdf",
   byte_size: 5678,
   category: "lease",
+  suggested_entity_id: null as string | null,
 };
 
 // The apply response the panel reads for its "Done — created" card. The panel's
@@ -94,6 +95,13 @@ const existingProperty = {
   state: "QLD",
   postcode: "4000",
 };
+
+function multipartField(body: string, name: string) {
+  const match = body.match(
+    new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`),
+  );
+  return match?.[1]?.trim() ?? null;
+}
 
 // Reuse the forbidden-endpoint shape from smart-intake-export-parity.spec.ts:
 // the conversation panel may link to Xero / finance / tenant surfaces, but it
@@ -145,6 +153,123 @@ test("Relby AI landing finishes loading without a pinned entity", async ({
 
   await expect(page.getByPlaceholder(/Ask Relby anything/)).toBeVisible();
   await expect(page.getByText("Checking live portfolio")).toHaveCount(0);
+});
+
+test("Relby AI file drop works without choosing a trust first", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  let droppedIntake: typeof leaseIntake | null = null;
+
+  await page.route("**/api/v1/document-intakes**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(droppedIntake ? [droppedIntake] : []),
+      });
+      return;
+    }
+
+    if (request.method() === "POST" && path === "/document-intakes") {
+      const body = request.postData() ?? "";
+      expect(request.headers()["content-type"]).toContain("multipart/form-data");
+      expect(multipartField(body, "entity_id")).toBe("entity-1");
+      droppedIntake = {
+        ...leaseIntake,
+        id: "intake-dropped-without-trust",
+        document_id: "document-dropped-without-trust",
+        status: "ready_for_review",
+        filename: "lease-with-detected-trust.txt",
+        suggested_entity_id: "entity-2",
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(droppedIntake),
+      });
+      return;
+    }
+
+    if (
+      request.method() === "POST" &&
+      path === "/document-intakes/intake-dropped-without-trust/apply"
+    ) {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      expect(payload).toMatchObject({ target_entity_id: "entity-2" });
+      const intakeToApply = droppedIntake;
+      expect(intakeToApply).not.toBeNull();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...intakeToApply!,
+          entity_id: "entity-2",
+          status: "applied",
+          applied_at: "2026-06-15T02:05:00.000Z",
+          applied_by_user_id: "operator-1",
+          updated_at: "2026-06-15T02:05:00.000Z",
+          review_data: { applied: appliedSummary },
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+
+  const composer = page.getByTestId("leasium-ai-home-composer");
+  await expect(composer).toBeVisible();
+  await expect(page.getByRole("button", { name: "Files" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Ask" })).toBeDisabled();
+
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File(["retail lease"], "lease-with-detected-trust.txt", {
+        type: "text/plain",
+      }),
+    );
+    return transfer;
+  });
+  const [createRequest] = await Promise.all([
+    page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/api/v1/document-intakes",
+      { timeout: 5_000 },
+    ),
+    composer.dispatchEvent("drop", { dataTransfer }),
+  ]);
+
+  expect(multipartField(createRequest.postData() ?? "", "entity_id")).toBe(
+    "entity-1",
+  );
+
+  const conversation = page.getByTestId("intake-conversation");
+  await expect(conversation).toBeVisible();
+  await expect(page.getByTestId("intake-trust-select-input")).toHaveValue(
+    "entity-2",
+  );
+
+  const [applyRequest] = await Promise.all([
+    page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname ===
+          "/api/v1/document-intakes/intake-dropped-without-trust/apply",
+      { timeout: 5_000 },
+    ),
+    page.getByTestId("intake-create-all").click(),
+  ]);
+  expect(applyRequest.postDataJSON()).toMatchObject({
+    target_entity_id: "entity-2",
+  });
 });
 
 test("conversation-first intake panel reads the lease and creates records without provider calls", async ({

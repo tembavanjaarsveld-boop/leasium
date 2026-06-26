@@ -124,8 +124,12 @@ def _extracted_trust_name(intake: DocumentIntake) -> str | None:
     return None
 
 
-def _suggested_entity_id(intake: DocumentIntake, session: Session) -> UUID | None:
-    """Match the extracted trust name to an existing Entity in the document's org.
+def _suggested_entity_id(
+    intake: DocumentIntake,
+    session: Session,
+    user: CurrentUser,
+) -> UUID | None:
+    """Match the extracted trust name to an existing Entity in the operator's org.
 
     Read-only: surfaces which trust the lease likely belongs to so the review UI
     can default the "File under trust" selector. Null when no confident match.
@@ -136,14 +140,9 @@ def _suggested_entity_id(intake: DocumentIntake, session: Session) -> UUID | Non
     target_key = _normalise_entity_name(trust_name)
     if not target_key:
         return None
-    organisation_id = session.scalar(
-        select(Entity.organisation_id).where(Entity.id == intake.entity_id)
-    )
-    if organisation_id is None:
-        return None
     for entity_id, name in session.execute(
         select(Entity.id, Entity.name).where(
-            Entity.organisation_id == organisation_id,
+            Entity.organisation_id == user.organisation_id,
             Entity.deleted_at.is_(None),
         )
     ):
@@ -155,6 +154,7 @@ def _suggested_entity_id(intake: DocumentIntake, session: Session) -> UUID | Non
 def _read_intake(
     intake: DocumentIntake,
     session: Session | None = None,
+    user: CurrentUser | None = None,
 ) -> DocumentIntakeRead:
     document = intake.document
     return DocumentIntakeRead.model_validate(
@@ -181,7 +181,9 @@ def _read_intake(
             "byte_size": document.byte_size,
             "category": document.category,
             "suggested_entity_id": (
-                _suggested_entity_id(intake, session) if session is not None else None
+                _suggested_entity_id(intake, session, user)
+                if session is not None and user is not None
+                else None
             ),
         }
     )
@@ -3210,7 +3212,7 @@ def list_document_intakes(
         .where(entity_scope, DocumentIntake.deleted_at.is_(None))
         .order_by(DocumentIntake.created_at.desc())
     ).all()
-    return [_read_intake(intake, session) for intake in intakes]
+    return [_read_intake(intake, session, user) for intake in intakes]
 
 
 @router.post("", response_model=DocumentIntakeRead, status_code=status.HTTP_201_CREATED)
@@ -3274,7 +3276,7 @@ async def create_document_intake(
     session.refresh(intake)
     if extract:
         background_tasks.add_task(_extract_intake_background, intake.id, user, session.get_bind())
-    return _read_intake(intake)
+    return _read_intake(intake, session, user)
 
 
 @router.get("/{intake_id}", response_model=DocumentIntakeRead)
@@ -3283,7 +3285,11 @@ def get_document_intake(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> DocumentIntakeRead:
-    return _read_intake(_get_intake(intake_id, user, session, READ_ROLES), session)
+    return _read_intake(
+        _get_intake(intake_id, user, session, READ_ROLES),
+        session,
+        user,
+    )
 
 
 @router.post("/from-document/{document_id}", response_model=DocumentIntakeRead)
@@ -3319,7 +3325,7 @@ def create_document_intake_from_document(
                 user,
                 session.get_bind(),
             )
-        return _read_intake(existing)
+        return _read_intake(existing, session, user)
 
     intake = DocumentIntake(
         entity_id=document.entity_id,
@@ -3349,7 +3355,7 @@ def create_document_intake_from_document(
     session.refresh(intake)
     if extract:
         background_tasks.add_task(_extract_intake_background, intake.id, user, session.get_bind())
-    return _read_intake(intake)
+    return _read_intake(intake, session, user)
 
 
 @router.post("/{intake_id}/extract", response_model=DocumentIntakeRead)
@@ -3372,7 +3378,7 @@ def extract_document_intake(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=intake.error_message or "Document extraction failed.",
         )
-    return _read_intake(intake, session)
+    return _read_intake(intake, session, user)
 
 
 @router.post("/{intake_id}/review", response_model=DocumentIntakeRead)
@@ -3410,7 +3416,7 @@ def review_document_intake(
     )
     session.commit()
     session.refresh(intake)
-    return _read_intake(intake, session)
+    return _read_intake(intake, session, user)
 
 
 @router.post("/{intake_id}/ai-opportunity-session", response_model=DocumentIntakeRead)
@@ -3469,7 +3475,7 @@ def update_document_intake_ai_opportunity_session(
     )
     session.commit()
     session.refresh(intake)
-    return _read_intake(intake)
+    return _read_intake(intake, session, user)
 
 
 @router.post("/{intake_id}/apply", response_model=DocumentIntakeRead)

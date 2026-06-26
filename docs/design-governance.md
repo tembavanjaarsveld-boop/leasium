@@ -188,6 +188,13 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Relby AI no-prepick document upload · screenshots reviewed at
+  `output/playwright/leasium-ai-workspace-1440.png` and
+  `output/playwright/leasium-ai-workspace-390.png` · fixes: Files/drop now works
+  without choosing a trust first, the composer trust control is reframed as the
+  explicit Ask scope, detected trust still defaults the review-side
+  File-under-trust selector, and Apply remains the reviewed filing step · none
+  deferred.
 - 2026-06-26 · People Owners all-entities fan-out · screenshots reviewed at
   `output/playwright/people-owners-all-mode-1440.png` and
   `output/playwright/people-owners-all-mode-390.png` · fixes: the People

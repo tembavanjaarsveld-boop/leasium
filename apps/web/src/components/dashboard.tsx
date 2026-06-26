@@ -1573,11 +1573,10 @@ export function Dashboard({
   const handleLandingAsk = async (override?: string) => {
     const trimmed = (override ?? landingQuestion).trim();
     // The Relby AI ask is entity-scoped (the backend builds answer context from
-    // one trust's records and asserts a role on it), so with the global switcher
-    // gone it targets the first accessible entity. TODO: surface a trust picker
-    // in the composer so the operator chooses which trust to ask about.
-    const askEntityId =
-      scopeEntityId(selectedEntityId) || entitiesQuery.data?.[0]?.id || "";
+    // one trust's records and asserts a role on it), so the composer requires
+    // an explicit trust for questions. File uploads can still detect their
+    // trust later in review.
+    const askEntityId = scopeEntityId(selectedEntityId);
     if (!trimmed || landingAsking || !askEntityId) return;
     setLandingAsking(true);
     setLandingQuestion("");
@@ -1693,7 +1692,11 @@ export function Dashboard({
   // in the landing composer, then strip the param so refresh/back won't re-ask.
   const askConsumedRef = useRef(false);
   useEffect(() => {
-    if (!isIntakeWorkspace || askConsumedRef.current || !selectedEntityId) {
+    if (
+      !isIntakeWorkspace ||
+      askConsumedRef.current ||
+      !scopeEntityId(selectedEntityId)
+    ) {
       return;
     }
     const ask = new URLSearchParams(window.location.search).get("ask");
@@ -1714,6 +1717,9 @@ export function Dashboard({
   // and the command center reads merged fan-out results across all entities.
   const allMode = isAllEntities(selectedEntityId) && !isIntakeWorkspace;
   const scopedEntityId = scopeEntityId(selectedEntityId);
+  const provisionalIntakeEntityId =
+    scopedEntityId ||
+    (isIntakeWorkspace ? (entitiesQuery.data?.[0]?.id ?? "") : "");
   const entityNameById = useMemo(
     () =>
       new Map(
@@ -1853,11 +1859,15 @@ export function Dashboard({
     orgWideQueryFn: () => listDocumentIntakes(),
   });
   const documentIntakeMutation = useMutation({
-    mutationFn: (file: File) =>
-      createDocumentIntake({
-        entityId: selectedEntityId,
+    mutationFn: (file: File) => {
+      if (!provisionalIntakeEntityId) {
+        throw new Error("Create or choose a trust before uploading a document.");
+      }
+      return createDocumentIntake({
+        entityId: provisionalIntakeEntityId,
         file,
-      }),
+      });
+    },
     onMutate: () => {
       setIntakeError(null);
       setIntakeNotice(null);
@@ -1869,7 +1879,7 @@ export function Dashboard({
         queryKey: ["dashboard-overview", selectedEntityId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["dashboard-document-intakes", selectedEntityId],
+        queryKey: ["dashboard-document-intakes", documentIntakeScopeKey],
       });
     },
     onError: (error) => {
@@ -1891,7 +1901,7 @@ export function Dashboard({
         queryKey: ["dashboard-overview", selectedEntityId],
       });
       queryClient.invalidateQueries({
-        queryKey: ["dashboard-document-intakes", selectedEntityId],
+        queryKey: ["dashboard-document-intakes", documentIntakeScopeKey],
       });
     },
     onError: (error) => {
@@ -1905,10 +1915,9 @@ export function Dashboard({
     (entitiesQuery.isLoading || entitiesQuery.isFetching);
   const entitySelectionLoading =
     entitiesLoading ||
-    // The intake workspace starts without a pinned entity (the composer asks
-    // for an explicit "Adding to" trust per action), so "no selection yet" is a
-    // ready state there, not a loading one — otherwise the Relby AI landing
-    // loader spins forever once the all-entities sentinel is dropped (1671).
+    // The intake workspace starts without a pinned entity: uploads can use a
+    // provisional holding trust, while questions need an explicit Ask scope.
+    // "No selection yet" is a ready state there, not a loading one.
     (!demoMode &&
       !isIntakeWorkspace &&
       !selectedEntityId &&
@@ -2482,7 +2491,7 @@ export function Dashboard({
     .slice(0, 3);
 
   function uploadSmartIntake(file: File | null | undefined) {
-    if (!file || !selectedEntityId || documentIntakeMutation.isPending) {
+    if (!file || !provisionalIntakeEntityId || documentIntakeMutation.isPending) {
       return;
     }
     documentIntakeMutation.mutate(file);
@@ -2562,7 +2571,7 @@ export function Dashboard({
           setIntakeNotice("Document workflow applied.");
           refreshDashboardData();
           queryClient.invalidateQueries({
-            queryKey: ["dashboard-document-intakes", selectedEntityId],
+            queryKey: ["dashboard-document-intakes", documentIntakeScopeKey],
           });
         }}
       />
@@ -3146,7 +3155,7 @@ export function Dashboard({
                 dragActive
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-primary/35",
-                !selectedEntityId || documentIntakeMutation.isPending
+                !provisionalIntakeEntityId || documentIntakeMutation.isPending
                   ? "opacity-75"
                   : "",
               ].join(" ")}
@@ -3189,7 +3198,10 @@ export function Dashboard({
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={!selectedEntityId || documentIntakeMutation.isPending}
+                        disabled={
+                          !provisionalIntakeEntityId ||
+                          documentIntakeMutation.isPending
+                        }
                         className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-white px-3 text-sm font-medium text-primary-hover shadow-leasiumXs transition hover:border-primary/35 hover:bg-primary-soft disabled:opacity-50"
                       >
                         {documentIntakeMutation.isPending ? (
@@ -3199,14 +3211,13 @@ export function Dashboard({
                         )}
                         Files
                       </button>
-                      {/* Conversation threads + document intakes bind to one
-                          trust. With no global switcher the operator names it
-                          here before asking — explicit, never a silent pin
-                          (the wrong-trust guardrail). */}
+                      {/* Ask is still trust-scoped. Uploads use this only as an
+                          optional holding trust; review-side filing is the
+                          authoritative decision. */}
                       <span className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-accent/25 bg-white px-3 text-sm font-medium text-leasium-teal-strong shadow-leasiumXs">
                         <Building2 size={16} className="shrink-0" />
                         <span className="shrink-0 text-muted-foreground">
-                          Adding to
+                          Ask about
                         </span>
                         <span className="min-w-[7.5rem] max-w-[12rem]">
                           <EntityPicker
@@ -3230,7 +3241,7 @@ export function Dashboard({
                         if (landingQuestion.trim()) handleLandingAsk();
                         else fileInputRef.current?.click();
                       }}
-                      disabled={landingAsking || !selectedEntityId}
+                      disabled={landingAsking || !scopedEntityId}
                       className="min-h-11"
                     >
                       {landingAsking ? (
@@ -3283,7 +3294,11 @@ export function Dashboard({
                           }
                           fileInputRef.current?.click();
                         }}
-                        disabled={!selectedEntityId}
+                        disabled={
+                          "ask" in chip && chip.ask
+                            ? !scopedEntityId
+                            : !provisionalIntakeEntityId
+                        }
                         className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/15 bg-white px-3 text-sm font-medium text-primary-hover shadow-leasiumXs transition hover:border-primary/35 hover:bg-primary-soft disabled:opacity-50"
                       >
                         {chip.icon}

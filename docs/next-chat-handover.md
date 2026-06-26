@@ -2,6 +2,32 @@
 
 Last updated: 2026-06-26
 
+## Continuation - 2026-06-26 (Relby AI no-prepick document upload)
+
+The `/intake` landing no longer requires the operator to choose a trust before
+dropping a document. The Files action and drop handler now create the intake
+under a provisional accessible trust (explicit Ask trust if selected, otherwise
+the first accessible entity) solely as a holding pen; extraction then surfaces
+the detected trust in the existing review-side "File under trust" selector, and
+Apply remains the first real filing mutation. The landing trust picker is now
+framed as the explicit Ask scope, so questions still do not silently fall back to
+the wrong trust.
+
+Backend `suggested_entity_id` now scopes trust-name matching to the requesting
+operator's organisation instead of deriving the candidate org from the
+provisional `intake.entity_id`. Cross-trust apply behavior is unchanged and
+continues to enforce WRITE on the chosen filing trust. No Xero, SendGrid,
+Twilio, tenant email, payment, or reconciliation provider path is touched.
+
+Verification: red-first backend test failed on the old upload-entity-org
+suggestion; red-first Playwright smoke failed on the disabled Files button. Final
+checks passed: `.venv/bin/python -m pytest
+tests/integration/test_document_intake_api.py -q` (52), full
+`intake-conversation.spec.ts` (7), focused Smart Intake `app-flows.spec.ts` (5),
+full backend `ruff`, `eslint src`, `tsc --noEmit`, production `next build`, and
+UX screenshots at `output/playwright/leasium-ai-workspace-1440.png` /
+`output/playwright/leasium-ai-workspace-390.png`.
+
 ## Continuation - 2026-06-26 (People Owners all-entities fan-out)
 
 Follow-up cleanup from the switcher-removal work: `/people` is always in

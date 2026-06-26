@@ -3557,6 +3557,82 @@ def test_document_intake_suggested_entity_id_matches_extracted_trust(
     assert get_response.json()["suggested_entity_id"] == target_entity_id
 
 
+def test_document_intake_suggested_entity_id_uses_requesting_users_org(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    """A provisional holding entity must not decide which org is searched for
+    the detected trust; the requesting operator's org is authoritative."""
+    target_entity_id = _writable_entity(session, "SJI No 5")
+    foreign_org = Organisation(name="Foreign Holding Org")
+    session.add(foreign_org)
+    session.flush()
+    provisional = Entity(
+        organisation_id=foreign_org.id,
+        name="Arbitrary Holding Trust",
+    )
+    session.add(provisional)
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=get_settings().dev_user_id,
+            entity_id=provisional.id,
+            role=UserRole.owner,
+        )
+    )
+    session.commit()
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return (
+            _fake_smart_lease_extraction_with_trust("SJI No. 5"),
+            "resp_suggest_user_org",
+        )
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(provisional.id), "extract": "false"},
+        files={"file": ("provisional-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    extract_response = client.post(f"/api/v1/document-intakes/{intake_id}/extract")
+    assert extract_response.status_code == 200
+    assert extract_response.json()["suggested_entity_id"] == target_entity_id
+
+    opportunity_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/ai-opportunity-session",
+        json={
+            "review_data": _fake_smart_lease_extraction_with_trust("SJI No. 5"),
+            "status": "open",
+        },
+    )
+    assert opportunity_response.status_code == 200
+    assert opportunity_response.json()["suggested_entity_id"] == target_entity_id
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction_with_trust("SJI No. 5"),
+            "target_entity_id": target_entity_id,
+        },
+    )
+    assert apply_response.status_code == 200
+    assert apply_response.json()["entity_id"] == target_entity_id
+
+
 def test_document_intake_suggested_entity_id_null_without_trust_match(
     client: TestClient,
     session: Session,

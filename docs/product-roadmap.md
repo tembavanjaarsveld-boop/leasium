@@ -1,6 +1,6 @@
 # Leasium Product Roadmap
 
-Last updated: 2026-06-21
+Last updated: 2026-06-26
 
 Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,16 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-26 Relby AI no-prepick document upload:** `/intake` no longer
+  forces the operator to guess a trust before dropping a lease, invoice, or
+  contract. Uploads use an accessible provisional holding trust only for the
+  required create call, extraction detects the lease trust, and the existing
+  review-side "File under trust" selector remains the authoritative
+  confirm/change step before Apply. Ask stays explicitly trust-scoped through
+  the composer picker. Backend detection now searches the requesting operator's
+  organisation rather than treating the provisional upload entity as meaningful.
+  No provider calls, emails, SMS, payment, or reconciliation actions run from
+  upload/extract/review.
 - [x] **2026-06-25 Smart Intake trust selection at import:** Stops lease imports
   silently filing under the wrong trust (the cause of the 1642 Anzac mis-files)
   by making the filing trust an explicit, reviewed decision instead of a value
