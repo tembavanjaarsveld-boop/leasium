@@ -17,7 +17,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import { InboxConversationPanel } from "@/components/intake/InboxConversationPanel";
 import { QueryProvider } from "@/components/query-provider";
 import {
@@ -56,8 +55,7 @@ import {
   triageInboxMessage,
 } from "@/lib/api";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -320,7 +318,10 @@ function mailboxStoredTriageResult(
 function InboxWorkspace() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag. The org-wide read path
+  // always runs; a single entity is reached via the tag, not a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
   const [body, setBody] = useState("");
   const [result, setResult] = useState<InboxTriageRecord | null>(null);
   const [mailboxReview, setMailboxReview] =
@@ -357,6 +358,17 @@ function InboxWorkspace() {
   // needed. scopedEntityId is the safe id to feed the API.
   const allMode = isAllEntities(selectedEntityId);
   const scopedEntityId = scopeEntityId(selectedEntityId);
+  // The mailbox list stays org-wide (scopedEntityId is ""), but classify and
+  // promote must write under a real trust. actionEntityId is that explicit
+  // target — it defaults to the first accessible entity and is operator-
+  // selectable (the create-time trust picker that replaces the global switcher).
+  const entityOptions = entitiesQuery.data ?? [];
+  const [actionEntityOverride, setActionEntityOverride] = useState("");
+  // Effective target trust for classify/promote: the operator's choice, else
+  // the first accessible entity. Derived (not effect-set) so it is correct on
+  // the first render once entities load — no timing gap that would leave the
+  // Classify button disabled.
+  const actionEntityId = actionEntityOverride || entityOptions[0]?.id || "";
 
   const mailboxQuery = useQuery({
     queryKey: ["inbox-ai-mailbox", selectedEntityId],
@@ -387,15 +399,15 @@ function InboxWorkspace() {
   });
 
   const propertiesQuery = useQuery({
-    queryKey: ["inbox-promote-properties", scopedEntityId],
-    queryFn: () => listProperties(scopedEntityId),
-    enabled: Boolean(scopedEntityId) && Boolean(result),
+    queryKey: ["inbox-promote-properties", actionEntityId],
+    queryFn: () => listProperties(actionEntityId),
+    enabled: Boolean(actionEntityId) && Boolean(result),
   });
 
   const tenantsQuery = useQuery({
-    queryKey: ["inbox-promote-tenants", scopedEntityId],
-    queryFn: () => listTenants(scopedEntityId),
-    enabled: Boolean(scopedEntityId) && Boolean(result),
+    queryKey: ["inbox-promote-tenants", actionEntityId],
+    queryFn: () => listTenants(actionEntityId),
+    enabled: Boolean(actionEntityId) && Boolean(result),
   });
 
   const leasesQuery = useQuery({
@@ -408,37 +420,13 @@ function InboxWorkspace() {
   });
 
   const contractorsQuery = useQuery({
-    queryKey: ["inbox-promote-contractors", scopedEntityId],
-    queryFn: () => listContractors(scopedEntityId),
+    queryKey: ["inbox-promote-contractors", actionEntityId],
+    queryFn: () => listContractors(actionEntityId),
     enabled:
-      Boolean(scopedEntityId) &&
+      Boolean(actionEntityId) &&
       Boolean(result) &&
       result?.kind === "vendor_or_contractor",
   });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set(
-      (entitiesQuery.data ?? []).map((entity) => entity.id),
-    );
-    // The All-entities sentinel is a valid restore target even though it is not
-    // a real entity id, so the cross-entity view survives navigation/reload.
-    const next =
-      stored && (isAllEntities(stored) || accessibleIds.has(stored))
-        ? stored
-        : defaultEntitySelection(entitiesQuery.data ?? []);
-    if (!selectedEntityId && next) {
-      setSelectedEntityId(next);
-    }
-  }, [entitiesQuery.data, selectedEntityId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    }
-  }, [selectedEntityId]);
 
   useEffect(() => {
     setSelectedMailboxMessageId(null);
@@ -542,9 +530,9 @@ function InboxWorkspace() {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = body.trim();
-    if (!trimmed || !scopedEntityId) return;
+    if (!trimmed || !actionEntityId) return;
     setMailboxReview(null);
-    triageMutation.mutate({ entity_id: scopedEntityId, body: trimmed });
+    triageMutation.mutate({ entity_id: actionEntityId, body: trimmed });
   }
 
   function handleReset() {
@@ -582,7 +570,7 @@ function InboxWorkspace() {
   }
 
   function handlePromote() {
-    if (!result || !scopedEntityId) return;
+    if (!result || !actionEntityId) return;
     if (!isPromotable(result.kind)) return;
     if (result.kind === "compliance_or_insurance" && !mailboxReview) {
       setPromoteError(
@@ -601,7 +589,7 @@ function InboxWorkspace() {
           )
         : undefined;
     promoteMutation.mutate({
-      entity_id: scopedEntityId,
+      entity_id: actionEntityId,
       kind: result.kind,
       summary: result.summary,
       body: body.trim(),
@@ -615,9 +603,9 @@ function InboxWorkspace() {
   }
 
   function handlePrepareTenantContact() {
-    if (!scopedEntityId || !promoteTenantId) return;
+    if (!actionEntityId || !promoteTenantId) return;
     tenantContactPreviewMutation.mutate({
-      entity_id: scopedEntityId,
+      entity_id: actionEntityId,
       tenant_id: promoteTenantId,
       body: body.trim(),
     });
@@ -634,7 +622,7 @@ function InboxWorkspace() {
   }
 
   function handleReviewMailboxMessage() {
-    if (!selectedMailboxMessage || !scopedEntityId) return;
+    if (!selectedMailboxMessage || !actionEntityId) return;
     const reviewBody = (
       selectedMailboxMessage.body_text ||
       selectedMailboxMessage.body_preview ||
@@ -681,7 +669,7 @@ function InboxWorkspace() {
     ).length ?? 0;
   const promoteDisabled =
     !showPromote ||
-    !scopedEntityId ||
+    !actionEntityId ||
     promoteMutation.isPending ||
     (promoteRequiresTenant && !promoteTenantId) ||
     (promoteShowsTenantContactPreview &&
@@ -727,19 +715,15 @@ function InboxWorkspace() {
     ? "Loading mailbox"
     : `${trustedMailboxMessages.length} ready · ${quarantinedMailboxMessages.length} quarantined`;
 
+  // Classify writes under actionEntityId (the chosen/first trust), not the
+  // org-wide mailbox scope — so gate on that, else the button is dead in
+  // all-entities mode where scopedEntityId is empty.
   const submitDisabled =
-    !scopedEntityId || !body.trim() || triageMutation.isPending;
+    !actionEntityId || !body.trim() || triageMutation.isPending;
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
       <div className="mx-auto grid max-w-5xl gap-5 px-5 py-6">
         <section className="relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-br from-primary-soft/40 via-white to-accent-soft/25 px-5 py-4 shadow-leasiumXs">
           <div
@@ -1126,10 +1110,10 @@ function InboxWorkspace() {
                       </div>
                     ) : null}
                     {selectedMailboxMessage.trust_state === "trusted" &&
-                    scopedEntityId ? (
+                    actionEntityId ? (
                       <div className="rounded-md border border-primary/20 bg-primary-soft/20 p-3">
                         <InboxConversationPanel
-                          entityId={scopedEntityId}
+                          entityId={actionEntityId}
                           message={selectedMailboxMessage}
                           onPromoted={(record) => {
                             void queryClient.invalidateQueries({
@@ -1221,6 +1205,22 @@ function InboxWorkspace() {
                 className="min-h-[200px] w-full rounded-md border border-border bg-white p-3 text-sm outline-none focus-visible:border-primary"
               />
             </Field>
+            {entityOptions.length > 1 ? (
+              <label className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+                File under trust
+                <select
+                  value={actionEntityId}
+                  onChange={(event) => setActionEntityOverride(event.target.value)}
+                  className="min-h-9 rounded-md border border-border bg-white px-2 py-1 text-sm font-normal text-foreground outline-none focus-visible:border-primary"
+                >
+                  {entityOptions.map((entity) => (
+                    <option key={entity.id} value={entity.id}>
+                      {entity.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
                 Tip: pressing Cmd/Ctrl + Enter inside the textarea will
@@ -1230,8 +1230,8 @@ function InboxWorkspace() {
                 type="submit"
                 disabled={submitDisabled}
                 title={
-                  allMode
-                    ? "Select a single entity to classify a message"
+                  !actionEntityId
+                    ? "Choose a trust to classify under"
                     : undefined
                 }
               >

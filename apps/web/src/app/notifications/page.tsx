@@ -19,7 +19,6 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import { QueryProvider } from "@/components/query-provider";
 import {
   EmptyState,
@@ -50,8 +49,7 @@ import {
 import { csvCell } from "@/lib/csv";
 import { saveBlob } from "@/lib/download";
 import {
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -1773,7 +1771,6 @@ function NotificationsMobileSummary({
 
 function NotificationsWorkspace() {
   const queryClient = useQueryClient();
-  const [selectedEntityId, setSelectedEntityId] = useState("");
   const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>("all");
   const [noticeChannelFilter, setNoticeChannelFilter] =
     useState<DeliveryChannelFilter>("all");
@@ -1789,27 +1786,10 @@ function NotificationsWorkspace() {
     queryFn: listEntities,
   });
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    const accessibleIds = new Set(
-      (entitiesQuery.data ?? []).map((entity) => entity.id),
-    );
-    // The All-entities sentinel is a valid restore target even though it is not
-    // a real entity id, so the cross-entity view survives navigation/reload.
-    const next =
-      stored && (isAllEntities(stored) || accessibleIds.has(stored))
-        ? stored
-        : defaultEntitySelection(entitiesQuery.data ?? []);
-    if (!selectedEntityId && next) {
-      setSelectedEntityId(next);
-    }
-  }, [entitiesQuery.data, selectedEntityId]);
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    }
-  }, [selectedEntityId]);
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag. The org-wide read path
+  // always runs; a single entity is reached via the tag, not a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
 
   // All-entities mode: the single-entity center query uses scopedEntityId
   // (empty in all-mode, so it stays disabled) and the page reads merged
@@ -2181,11 +2161,12 @@ function NotificationsWorkspace() {
     : selectedEntity
       ? `Work notices and digest receipts — ${notices.length} need you, the rest are receipts.`
       : "Choose an entity to review work notices and digest receipts.";
-  const mobileDescription = selectedEntity
-    ? `${noticeTotalCount} ${
-        noticeTotalCount === 1 ? "needs you" : "need you"
-      } · rest are receipts`
-    : "Choose an entity to review receipts";
+  const mobileDescription =
+    allMode || selectedEntity
+      ? `${noticeTotalCount} ${
+          noticeTotalCount === 1 ? "needs you" : "need you"
+        } · rest are receipts`
+      : "Choose an entity to review receipts";
   const headerActions = (
     <>
       {hasCenterData ? (
@@ -2253,14 +2234,7 @@ function NotificationsWorkspace() {
   );
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <section className="flex flex-wrap items-center justify-between gap-3">

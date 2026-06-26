@@ -1041,7 +1041,11 @@ function CommsContent() {
       ? `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining this session.`
       : `${remainingCount} ${remainingCount === 1 ? "draft" : "drafts"} remaining, ${settledCount} settled this session.`;
   const queueGeneratedLabel = allMode
-    ? null
+    ? formatDateTime(
+        latestRowTimestamp(
+          candidates.map((candidate) => candidate.generated_at),
+        ) ?? undefined,
+      )
     : formatDateTime(queueQuery.data?.generated_at);
   // Merged outbound log events + the per-event entity label (all-mode only).
   const outboundLogEvents = useMemo<CommsCorrespondenceEventRecord[]>(
