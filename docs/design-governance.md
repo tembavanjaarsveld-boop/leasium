@@ -195,6 +195,14 @@ fixes · deferrals.
   explicit Ask scope, detected trust still defaults the review-side
   File-under-trust selector, and Apply remains the reviewed filing step · none
   deferred.
+- 2026-06-26 · Backend recipient-visible Relby copy pass · screens checked: n/a
+  copy-only backend/data slice; verified through rendered Work notice and digest
+  API previews plus targeted comms/mailbox tests · fixes: outbound Work notice,
+  follow-up, digest, tenant/operator/invoice/contractor copy, AI prompt
+  self-reference, helper descriptions, mailbox defaults, and raw-email
+  provenance headers now use Relby; stored-row update is review-first via
+  `scripts/rebrand_relby_data.py` · deferred: run the data script against a Neon
+  branch and review row diffs before any production apply.
 - 2026-06-26 · People Owners all-entities fan-out · screenshots reviewed at
   `output/playwright/people-owners-all-mode-1440.png` and
   `output/playwright/people-owners-all-mode-390.png` · fixes: the People

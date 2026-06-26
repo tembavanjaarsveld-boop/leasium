@@ -39,7 +39,7 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance}
 
 PAYMENT_INSTRUCTION_GUARDRAILS = [
     (
-        "Payment instructions are display-only: Leasium shows tenants how and what "
+        "Payment instructions are display-only: Relby shows tenants how and what "
         "to pay but does not process payments, move money, or reconcile here."
     ),
 ]

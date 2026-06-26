@@ -94,8 +94,8 @@ def _active_basiq_connection(session: Session, entity_id: UUID) -> BasiqConnecti
 
 # Stable, non-deliverable label domain for synthesised Basiq user emails.
 # Entities carry no billing/contact email column; Basiq only uses this as a
-# user label and Leasium never sends mail to it.
-_BASIQ_USER_EMAIL_DOMAIN = "entities.leasium.invalid"
+# user label and Relby never sends mail to it.
+_BASIQ_USER_EMAIL_DOMAIN = "entities.relby.invalid"
 
 
 def _basiq_consent_email(entity: Entity) -> str:
@@ -427,13 +427,13 @@ def _basiq_reconciliation(
         guardrails=[
             "Basiq reconciliation preview does not change local invoice payment status.",
             (
-                "Apply only updates Leasium invoice payment metadata; it never mutates Xero, "
+                "Apply only updates Relby invoice payment metadata; it never mutates Xero, "
                 "Basiq, bank records, or money."
             ),
             "Apply writes only for rows whose idempotency key the operator explicitly approved.",
             "Duplicate payment idempotency keys are skipped.",
             (
-                "Bank-feed evidence is stored for review only; Leasium does not create, edit, "
+                "Bank-feed evidence is stored for review only; Relby does not create, edit, "
                 "or match bank transactions in Basiq or Xero."
             ),
         ],
@@ -590,7 +590,7 @@ def basiq_connection_status(
 ) -> BasiqConnectionStatusRead:
     """Local-only Basiq connection status.
 
-    Reads Leasium configuration and database rows only -- it never calls Basiq,
+    Reads Relby configuration and database rows only -- it never calls Basiq,
     mints a token, or mutates anything.
     """
 
@@ -611,10 +611,10 @@ def basiq_connection_status(
         can_start_connect=configured,
         can_fetch=configured and connected,
         guardrails=[
-            "Connection status reads local Leasium configuration and database state only.",
+            "Connection status reads local Relby configuration and database state only.",
             "Loading status does not mint a Basiq token, call Basiq, or mutate provider state.",
             (
-                "Basiq bank-feed access is read-only: Leasium never moves money, writes to a "
+                "Basiq bank-feed access is read-only: Relby never moves money, writes to a "
                 "bank, or mutates Xero from this connection."
             ),
         ],

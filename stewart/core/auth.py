@@ -78,7 +78,7 @@ def _clerk_user(
     if organisation is not None and organisation.suspended_at is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This organisation is suspended. Contact Leasium.",
+            detail="This organisation is suspended. Contact Relby.",
         )
     return CurrentUser(
         id=user.id,
@@ -234,7 +234,7 @@ def _clerk_user_payload(provider_id: str, settings: Settings) -> dict[str, Any] 
             headers={
                 "Authorization": f"Bearer {secret}",
                 "Accept": "application/json",
-                "User-Agent": "Leasium/1.0 (+https://leasium.ai)",
+                "User-Agent": "Relby/1.0 (+https://relby.ai)",
             },
             timeout=5.0,
         )

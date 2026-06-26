@@ -81,7 +81,7 @@ _SAMPLE_EMAIL_INVITE = WorkAssignmentEmail(
     assignee_name="Avery Operator",
     assignee_email="avery.operator@example.com",
     assigned_by_name="Temba van Jaarsveld",
-    work_url="https://leasium.ai/operations/maintenance/sample",
+    work_url="https://relby.ai/operations/maintenance/sample",
     template_key="work_assignment_notification",
     template_version="v1",
 )
@@ -96,7 +96,7 @@ _SAMPLE_SMS_INVITE = WorkAssignmentSms(
     assignee_name="Avery Operator",
     assignee_phone="+61400111222",
     assigned_by_name="Temba van Jaarsveld",
-    work_url="https://leasium.ai/operations/maintenance/sample",
+    work_url="https://relby.ai/operations/maintenance/sample",
     template_key="work_assignment_notification",
     template_version="v1",
 )
@@ -121,7 +121,7 @@ _SAMPLE_DIGEST_INVITE = WorkAssignmentDigestEmail(
             status="requested",
             priority="high",
             follow_up_due=True,
-            work_url="https://leasium.ai/operations/maintenance/sample",
+            work_url="https://relby.ai/operations/maintenance/sample",
         ),
         WorkAssignmentDigestEmailItem(
             title="Chase June arrears reminder",

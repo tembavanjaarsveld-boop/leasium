@@ -3,7 +3,7 @@
 The portfolio import (`scripts/import_portfolio_workbook.py`) already loaded
 properties, units, tenants, and leases from the SKJ source-of-truth workbook.
 But the tenants in that workbook are real, currently-occupying tenants who
-were enrolled long before Leasium existed — they don't need to go through
+were enrolled long before Relby existed — they don't need to go through
 the onboarding workflow. This script tags them as already complete:
 
   - Fills in missing tenant record fields (trading name, contact email,
@@ -276,7 +276,7 @@ def _synthetic_token(tenant_id: UUID, lease_id: UUID) -> str:
 
     The real onboarding flow generates random tokens for portal links.
     This record never had a portal link — it's a record of "this tenant
-    was already enrolled before Leasium". A deterministic hash means
+    was already enrolled before Relby". A deterministic hash means
     re-running the script doesn't create duplicate records.
     """
     seed = f"{ENROLLMENT_SOURCE}:{tenant_id}:{lease_id}".encode()

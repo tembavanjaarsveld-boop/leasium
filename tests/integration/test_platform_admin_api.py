@@ -206,7 +206,7 @@ def test_list_platform_organisations_excludes_reserved_org(
     settings = get_settings()
     reserved = Organisation(
         id=settings.platform_organisation_id,
-        name="Leasium Platform",
+        name="Relby Platform",
     )
     client_org = Organisation(name="Client Co")
     session.add_all([reserved, client_org])
@@ -215,7 +215,7 @@ def test_list_platform_organisations_excludes_reserved_org(
     response = client.get("/api/v1/platform/organisations")
     assert response.status_code == 200
     names = [org["name"] for org in response.json()["organisations"]]
-    assert "Leasium Platform" not in names
+    assert "Relby Platform" not in names
     assert "Client Co" in names
     assert "SKJ Capital" in names
 
@@ -298,7 +298,7 @@ def test_suspend_then_restore_blocks_and_reenables_login(
 
 def test_suspend_refuses_reserved_org(client: TestClient, session: Session) -> None:
     settings = get_settings()
-    reserved = Organisation(id=settings.platform_organisation_id, name="Leasium Platform")
+    reserved = Organisation(id=settings.platform_organisation_id, name="Relby Platform")
     session.add(reserved)
     session.commit()
 
@@ -363,7 +363,7 @@ def test_set_client_operating_mode_refuses_reserved_org(
     session: Session,
 ) -> None:
     settings = get_settings()
-    reserved = Organisation(id=settings.platform_organisation_id, name="Leasium Platform")
+    reserved = Organisation(id=settings.platform_organisation_id, name="Relby Platform")
     session.add(reserved)
     session.commit()
 

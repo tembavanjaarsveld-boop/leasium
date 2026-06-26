@@ -112,7 +112,7 @@ _ACTION_LABEL_MAP: dict[ActivityActionKind, str] = {
 _TARGET_TABLE_LABEL: dict[str, str] = {
     "app_user": "Operator",
     "arrears_case": "Arrears case",
-    "ask_leasium": "Ask Leasium",
+    "ask_leasium": "Ask Relby",
     "billing_draft": "Billing draft",
     "compliance_check": "Compliance check",
     "document_intake": "Smart Intake document",

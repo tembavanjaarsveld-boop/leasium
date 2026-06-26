@@ -42,7 +42,7 @@ def _seed_template(
     provider: str = "sendgrid",
     name: str = "Standard assignment notice",
     body_template: str = "Hi {{assignee_name}}, you have a new work item.",
-    subject_template: str | None = "New Leasium work assigned",
+    subject_template: str | None = "New Relby work assigned",
     is_active: bool = True,
     is_system: bool = True,
 ) -> BrandedCommunicationTemplate:
@@ -332,7 +332,7 @@ def test_seeded_notice_template_renders_identical_to_managed_default(
         assignee_name="Avery Operator",
         assignee_email="avery.operator@example.com",
         assigned_by_name="Temba van Jaarsveld",
-        work_url="https://leasium.ai/operations/maintenance/test",
+        work_url="https://relby.ai/operations/maintenance/test",
         template_key="work_assignment_notification",
         template_version="v1",
     )

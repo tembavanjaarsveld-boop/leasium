@@ -2121,7 +2121,7 @@ def send_tenant_onboarding_portal_invite(
     the tenant signs in with Clerk and the existing claim flow links them to
     this onboarding row). Never mutates the tenant record. The onboarding row
     must be live and not expired: either ``sent``, or a migrated ``applied``
-    row whose tenant was onboarded outside Leasium.
+    row whose tenant was onboarded outside Relby.
     """
 
     onboarding = _get_onboarding_for_user(onboarding_id, user, session, WRITE_ROLES)

@@ -1232,7 +1232,7 @@ def test_owner_statement_pdf_uses_entity_wording_for_self_managed_accounts(
         page.extract_text() or ""
         for page in PdfReader(BytesIO(response.content)).pages
     )
-    assert "LEASIUM ENTITY STATEMENT" in text
+    assert "RELBY ENTITY STATEMENT" in text
     assert "Review-only local entity-reporting export." in text
     assert "Entity: Local Entity Trust" in text
     assert "Not sent to owner" not in text

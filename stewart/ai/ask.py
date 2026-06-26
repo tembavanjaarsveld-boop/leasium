@@ -1,6 +1,6 @@
-"""Ask Leasium — read-only Q&A over an operator's entity context.
+"""Ask Relby — read-only Q&A over an operator's entity context.
 
-This is the v1 of the Tier 2 (e) "Ask Leasium" surface from the 2026-05-22
+This is the v1 of the Tier 2 (e) "Ask Relby" surface from the 2026-05-22
 UX review. The goal is for an operator to type a natural-language question
 about their portfolio ("When does the Acme lease expire?", "Which
 properties are vacant?", "What maintenance is open with no contractor?")
@@ -28,11 +28,11 @@ from stewart.core.settings import Settings
 
 
 class AskError(RuntimeError):
-    """Raised when the Ask Leasium helper cannot produce an answer."""
+    """Raised when the Ask Relby helper cannot produce an answer."""
 
 
 ASK_GUARDRAILS = [
-    "Read-only: Ask Leasium does not change records or send provider messages.",
+    "Read-only: Ask Relby does not change records or send provider messages.",
     (
         "Every factual claim must include a citation. The model is instructed "
         "to refuse to guess when context is missing."
@@ -94,18 +94,18 @@ def ask_leasium(
     if not settings.openai_api_key:
         raise AskError(
             "OpenAI API key is not configured. Set OPENAI_API_KEY to enable"
-            " Ask Leasium."
+            " Ask Relby."
         )
 
     prompt = (
-        "You are Ask Leasium — an operator-only assistant for an Australian"
+        "You are Ask Relby — an operator-only assistant for an Australian"
         " commercial lease management platform. You answer questions about the"
         " operator's own portfolio strictly from the provided context."
         "\n\nRules:"
         "\n1. Read-only. Never instruct the operator to send a message, post"
         " an invoice, reconcile a payment, or mutate any external provider."
         " If the operator asks for an action, explain that they need to use"
-        " the reviewed workflow inside Leasium."
+        " the reviewed workflow inside Relby."
         "\n2. Every factual claim must reference a citation: a property,"
         " lease, tenant, obligation, maintenance work order, or arrears case"
         " from the supplied context. Use the record's id as target_id."
@@ -161,20 +161,20 @@ def ask_leasium(
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise AskError(
-            f"OpenAI Ask Leasium request failed with status {exc.response.status_code}."
+            f"OpenAI Ask Relby request failed with status {exc.response.status_code}."
         ) from exc
     except httpx.HTTPError as exc:
-        raise AskError("OpenAI Ask Leasium request failed.") from exc
+        raise AskError("OpenAI Ask Relby request failed.") from exc
 
     body = response.json()
     output_text = _response_output_text(body)
     if not output_text:
-        raise AskError("OpenAI response did not include an Ask Leasium answer.")
+        raise AskError("OpenAI response did not include an Ask Relby answer.")
     try:
         extracted = json.loads(output_text)
     except json.JSONDecodeError as exc:
-        raise AskError("OpenAI Ask Leasium response was not valid JSON.") from exc
+        raise AskError("OpenAI Ask Relby response was not valid JSON.") from exc
     if not isinstance(extracted, dict):
-        raise AskError("OpenAI Ask Leasium response had an unexpected shape.")
+        raise AskError("OpenAI Ask Relby response had an unexpected shape.")
 
     return extracted, body.get("id") if isinstance(body.get("id"), str) else None

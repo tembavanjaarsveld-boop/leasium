@@ -1680,7 +1680,7 @@ def get_public_insights_snapshot(
         payload=_snapshot_payload(snapshot),
         guardrails=[
             "This is a frozen snapshot, not a live portfolio connection.",
-            "The public link cannot mutate Leasium records.",
+            "The public link cannot mutate Relby records.",
         ],
     )
 

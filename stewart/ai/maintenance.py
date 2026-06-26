@@ -97,7 +97,7 @@ def categorise_maintenance(
         )
 
     prompt = (
-        "You are the Leasium maintenance categoriser. The operator just"
+        "You are the Relby maintenance categoriser. The operator just"
         " created a maintenance work order. Your job is to classify the"
         " work into one trade category so the platform can suggest a"
         " contractor from the operator's directory."

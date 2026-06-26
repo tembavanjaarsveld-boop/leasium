@@ -16,7 +16,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Leasium"
+    app_name: str = "Relby"
     app_env: str = "local"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -47,14 +47,14 @@ class Settings(BaseSettings):
     # Dev auth acts as a platform admin locally so the /admin surface is reachable
     # without Clerk. In clerk mode the flag is read from the AppUser row instead.
     dev_is_platform_admin: bool = True
-    # Reserved "Leasium Platform" organisation + first platform-admin operator,
+    # Reserved "Relby Platform" organisation + first platform-admin operator,
     # seeded idempotently by scripts/seed_platform_admin.py. The reserved org holds
     # no entities/properties; platform admins act across client orgs via the flag.
     platform_organisation_id: UUID = UUID("00000000-0000-7000-8000-000000000900")
-    platform_organisation_name: str = "Leasium Platform"
+    platform_organisation_name: str = "Relby Platform"
     platform_admin_user_id: UUID = UUID("00000000-0000-7000-8000-000000000901")
-    platform_admin_email: str = "platform-admin@leasium.ai"
-    platform_admin_name: str = "Leasium Platform Admin"
+    platform_admin_email: str = "platform-admin@relby.ai"
+    platform_admin_name: str = "Relby Platform Admin"
     clerk_secret_key: str = ""
     clerk_jwks_url: str = ""
     clerk_issuer: str = ""
@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     xero_http_timeout_seconds: float = 15.0
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = ""
-    sendgrid_from_name: str = "Leasium"
+    sendgrid_from_name: str = "Relby"
     sendgrid_mail_send_url: str = "https://api.sendgrid.com/v3/mail/send"
     sendgrid_inbound_secret: str = ""
     invoice_email_enabled: bool = True
@@ -140,7 +140,7 @@ class Settings(BaseSettings):
     communications_timeout_seconds: float = 10.0
     tenant_onboarding_email_enabled: bool = True
     tenant_onboarding_sms_enabled: bool = True
-    tenant_onboarding_brand_name: str = "Leasium"
+    tenant_onboarding_brand_name: str = "Relby"
     tenant_onboarding_template_key: str = "tenant_onboarding_invite"
     tenant_onboarding_template_version: str = "v1"
     tenant_portal_invite_template_key: str = "tenant_portal_invite"

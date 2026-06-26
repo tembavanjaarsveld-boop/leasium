@@ -149,6 +149,14 @@ def test_notification_center_preview_falls_back_to_managed_default_without_custo
     session: Session,
 ) -> None:
     entity_id = _entity_id(session)
+    settings = get_settings()
+    assignee = session.get(AppUser, settings.dev_user_id)
+    assert assignee is not None
+    assignee.notification_preferences = {
+        "work_assignment_email_enabled": True,
+        "work_assignment_digest_cadence": "daily",
+    }
+    session.commit()
     work_order_id = _create_assigned_work_order(
         client, entity_id=entity_id, title="Managed default notice job"
     )
@@ -157,12 +165,24 @@ def test_notification_center_preview_falls_back_to_managed_default_without_custo
         client, entity_id=entity_id, work_order_id=work_order_id
     )
 
-    assert preview["subject"] == "Leasium work assigned: Managed default notice job"
-    assert "Maintenance has been assigned to you in Leasium." in str(
+    assert preview["subject"] == "Relby work assigned: Managed default notice job"
+    assert "Maintenance has been assigned to you in Relby." in str(
         preview["body_text"]
     )
     assert preview["template_key"] == "work_assignment_notification"
     assert preview["template_version"] == "v1"
+
+    response = client.post(
+        "/api/v1/work-assignments/digests/run",
+        json={"entity_id": entity_id, "cadence": "daily"},
+    )
+    assert response.status_code == 200, response.text
+    digest_preview = response.json()["digests"][0]["rendered_message_preview"]
+    assert digest_preview["subject"] == "Relby Daily Work digest: 1 items"
+    assert "Your daily Relby Work digest is ready." in digest_preview["body_text"]
+    assert "Please open Relby to review the work" in digest_preview["body_text"]
+    assert digest_preview["template_key"] == "work_assignment_digest"
+    assert digest_preview["template_version"] == "v1"
 
 
 def test_digest_run_receipt_preview_uses_custom_digest_template(
@@ -184,7 +204,7 @@ def test_digest_run_receipt_preview_uses_custom_digest_template(
         key="work_assignment_digest",
         version="v2",
         subject_template="Custom digest for {{assignee_name}}: {{item_count}} items",
-        body_template="Hi {{assignee_name}},\n\n{{items_block}}\n\nLeasium",
+        body_template="Hi {{assignee_name}},\n\n{{items_block}}\n\nRelby",
     )
     _create_assigned_work_order(
         client, entity_id=entity_id, title="Custom digest maintenance job"

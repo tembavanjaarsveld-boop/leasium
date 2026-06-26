@@ -233,7 +233,7 @@ def _migration_template_content() -> bytes:
     instructions = workbook.active
     assert instructions is not None
     instructions.title = "Instructions"
-    instructions.append(["Leasium Smart Intake migration template"])
+    instructions.append(["Relby Smart Intake migration template"])
     instructions.append(["1. Download this template and keep the sheet names unchanged."])
     instructions.append(
         ["2. Complete it using your preferred AI or spreadsheet workflow."]
@@ -288,7 +288,7 @@ def download_register_import_template(
         content=_migration_template_content(),
         media_type=XLSX_MEDIA_TYPE,
         headers={
-            "Content-Disposition": 'attachment; filename="leasium-migration-template.xlsx"'
+            "Content-Disposition": 'attachment; filename="relby-migration-template.xlsx"'
         },
     )
 

@@ -9,7 +9,7 @@ Provider-inert: this only creates onboarding rows — it never emails tenants.
 Sending each tenant their portal login link is a separate, explicit operator
 action (the "Send portal invite" control, or the API
 ``/tenant-onboarding/{id}/send-portal-invite`` endpoint), consistent with the
-Leasium guardrail that no tenant email fires without operator approval.
+Relby guardrail that no tenant email fires without operator approval.
 
 Run with::
 

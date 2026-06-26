@@ -1,4 +1,4 @@
-"""FastAPI application entrypoint for Leasium."""
+"""FastAPI application entrypoint for Relby."""
 
 import logging
 import os
@@ -58,7 +58,7 @@ from apps.api.routers import (
 from apps.api.schemas.system import ApiHealthRead
 
 settings = get_settings()
-logger = logging.getLogger("leasium.api")
+logger = logging.getLogger("relby.api")
 
 if settings.sentry_dsn:
     try:

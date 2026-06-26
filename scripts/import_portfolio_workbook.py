@@ -1,7 +1,7 @@
 """One-off loader for the SKJ portfolio source-of-truth workbook.
 
 This is deliberately operational rather than a polished migration surface:
-it imports the current workbook into the existing Leasium registers and keeps
+it imports the current workbook into the existing Relby registers and keeps
 source metadata so a later review/apply UI can build on the same provenance.
 """
 

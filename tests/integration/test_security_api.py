@@ -223,7 +223,7 @@ def test_bootstrap_status_unavailable_once_workspace_data_exists(
     body = response.json()
     assert body["available"] is False
     assert body["reason"] == (
-        "First workspace setup is closed because Leasium already has workspace data."
+        "First workspace setup is closed because Relby already has workspace data."
     )
     assert body["auth"]["auth_mode"] == "clerk"
     assert body["auth"]["clerk_jwks_configured"] is True
@@ -453,7 +453,7 @@ def test_operator_invite_sendgrid_receipt_requires_configured_secret(
 
     accepted_response = client.post(
         "/api/v1/security/webhooks/sendgrid-events",
-        headers={"x-leasium-webhook-secret": "sg-secret"},
+        headers={"x-relby-webhook-secret": "sg-secret"},
         json=[],
     )
     assert accepted_response.status_code == 204
@@ -652,7 +652,7 @@ def test_current_operator_cannot_remove_own_last_admin_role(
 def test_client_operating_mode_route_removed(
     client: TestClient,
 ) -> None:
-    # Operating mode is set by Leasium platform admins per client org
+    # Operating mode is set by Relby platform admins per client org
     # (clients don't decide what they are). The old client-side route
     # must stay gone; the replacement lives under /platform.
     response = client.patch(

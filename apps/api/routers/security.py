@@ -239,7 +239,7 @@ def _bootstrap_status(session: Session, settings: Settings) -> SecurityBootstrap
         reason = "Switch AUTH_MODE to clerk before first workspace setup."
     else:
         available = False
-        reason = "First workspace setup is closed because Leasium already has workspace data."
+        reason = "First workspace setup is closed because Relby already has workspace data."
     return SecurityBootstrapStatusRead(
         available=available,
         reason=reason,
@@ -267,7 +267,7 @@ def _bootstrap_clerk_provider_id(authorization: str | None, settings: Settings) 
 
 def _invite_detail(member: AppUser) -> str:
     if not member.is_active:
-        return "This operator is disabled and cannot access Leasium."
+        return "This operator is disabled and cannot access Relby."
     if member.auth_provider_id or member.invite_status == OperatorInviteStatus.accepted:
         return "Provider login is linked for this operator."
     if member.invite_status == OperatorInviteStatus.sent:

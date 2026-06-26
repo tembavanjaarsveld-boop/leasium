@@ -1050,7 +1050,7 @@ def comment_vendor_portal_work_order(
         work_order=work_order,
         action_name="comment",
         summary=(
-            "Contractor posted a job update and Leasium recorded an operator "
+            "Contractor posted a job update and Relby recorded an operator "
             "in-app cue; no email/SMS, provider, billing, payment, or "
             "reconciliation action ran."
         ),

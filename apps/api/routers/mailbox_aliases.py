@@ -35,7 +35,7 @@ router = APIRouter(prefix="/mailbox-aliases", tags=["mailbox-aliases"])
 
 # Only the single SendGrid Inbound Parse domain the webhook treats as AI Mailbox
 # traffic can route; reserving any other domain would never receive mail.
-ALLOWED_ALIAS_DOMAINS = {"inbox.leasium.ai"}
+ALLOWED_ALIAS_DOMAINS = {"inbox.relby.ai"}
 ALLOWED_ALIAS_STATUSES = {"active", "disabled"}
 _LOCAL_PART_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 
@@ -51,7 +51,7 @@ def _normalise_local_part(local_part: str) -> str:
 
 
 def _resolve_domain(domain: str | None) -> str:
-    resolved = (domain or "inbox.leasium.ai").strip().lower()
+    resolved = (domain or "inbox.relby.ai").strip().lower()
     if resolved not in ALLOWED_ALIAS_DOMAINS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

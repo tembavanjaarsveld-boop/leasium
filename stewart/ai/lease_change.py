@@ -165,7 +165,7 @@ def extract_lease_change(
         )
 
     prompt = (
-        "You are the Leasium lease-change extraction assistant. The operator"
+        "You are the Relby lease-change extraction assistant. The operator"
         " forwards an inbound message describing a proposed change to an"
         " existing lease (extension, renewal, rent variation, early"
         " termination, surrender, hold-over, option exercise, etc.). Your"

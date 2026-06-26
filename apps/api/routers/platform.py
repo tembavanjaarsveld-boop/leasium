@@ -1,7 +1,7 @@
 """Platform-admin client provisioning + management routes.
 
 Every endpoint is gated on ``require_platform_admin``. A platform admin acts
-*across* client organisations; the reserved "Leasium Platform" org is excluded
+*across* client organisations; the reserved "Relby Platform" org is excluded
 from client lists and refused where the operation makes no sense. All mutations
 are audited; all provider sends route through the mocked-in-tests invite
 machinery (no real Xero/SendGrid/Twilio call fires without operator approval).

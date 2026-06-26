@@ -130,7 +130,7 @@ def _trusted_mailbox_message(
         auth_result={"spf": "pass", "dkim": "pass"},
         original_sender="broker@external.example",
         from_address="temba@leasium.test",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         subject=subject,
         body_text=body_text,
         classification_kind=classification_kind,

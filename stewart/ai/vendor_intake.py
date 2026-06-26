@@ -96,9 +96,9 @@ def extract_vendor_intake(
         )
 
     prompt = (
-        "You are the Leasium vendor intake assistant. The operator forwards"
+        "You are the Relby vendor intake assistant. The operator forwards"
         " a message from a contractor or vendor who is not yet in the"
-        " Leasium directory. Extract the directory fields needed to"
+        " Relby directory. Extract the directory fields needed to"
         " register them as a draft contractor for the operator to review."
         "\n\nRules:"
         "\n1. Read-only. Do not draft a reply, confirm an engagement, or"

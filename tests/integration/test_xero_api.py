@@ -1013,7 +1013,7 @@ def test_xero_status_flags_stale_payment_reconciliation_from_local_metadata(
         >= freshness["readiness_blocker_count"] + freshness["readiness_warning_count"]
     )
     assert freshness["approved_unsynced_invoice_count"] == 0
-    assert "local Leasium metadata only" in freshness["guardrails"][0]
+    assert "local Relby metadata only" in freshness["guardrails"][0]
     # Default stale window is 7 days. With a recent reconciliation it should
     # be reflected, and the field is operator-configurable through settings.
     assert freshness["stale_after_days"] == 7
@@ -2289,7 +2289,7 @@ def test_xero_exception_queue_surfaces_local_provider_and_payment_gaps(
 
     assert body["summary"]["provider"] >= 1
     assert body["summary"]["payment"] >= 1
-    assert "local Leasium records only" in body["guardrails"][0]
+    assert "local Relby records only" in body["guardrails"][0]
 
     session.refresh(entity)
     assert entity.xero_last_sync_at == last_sync_before

@@ -1,4 +1,4 @@
-"""Seed the reserved 'Leasium Platform' organisation and its first platform admin.
+"""Seed the reserved 'Relby Platform' organisation and its first platform admin.
 
 Idempotent: re-running does not create duplicates. The reserved organisation
 holds NO entities or properties — platform admins act *across* client orgs via

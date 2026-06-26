@@ -1,8 +1,8 @@
-# Leasium Product Roadmap
+# Relby Product Roadmap
 
 Last updated: 2026-06-26
 
-Leasium is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Leasium reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
+Relby is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Relby reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
 Design-facing changes go through the in-loop UX gate (Figma-first design + same-session UX pass) defined in [design-governance.md](design-governance.md), with the brand/frontend source of truth in [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md).
 
@@ -26,6 +26,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   organisation rather than treating the provisional upload entity as meaningful.
   No provider calls, emails, SMS, payment, or reconciliation actions run from
   upload/extract/review.
+- [x] **2026-06-26 backend/data Relby brand pass:** Backend app/platform defaults,
+  SendGrid sender name defaults, recipient-visible Work/email/SMS/digest/invoice/
+  contractor copy, API helper descriptions, AI self-reference prompts, mailbox
+  defaults, PDF export titles, and platform-admin seed copy now say Relby while
+  internal identifiers such as `ask_leasium`, `provider="leasium"`, and the
+  lower-case compatibility namespaces remain unchanged. Added
+  `scripts/rebrand_relby_data.py` as a review-first stored-row pass for the
+  reserved platform org/admin, branded templates, onboarding delivery data, and
+  Work/statement notification snapshots; it dry-runs by default and only commits
+  with `--apply` after operator approval on a Neon branch. No SendGrid/Twilio,
+  Xero, payment, or reconciliation provider call runs from this slice.
 - [x] **2026-06-25 Smart Intake trust selection at import:** Stops lease imports
   silently filing under the wrong trust (the cause of the 1642 Anzac mis-files)
   by making the filing trust an explicit, reviewed decision instead of a value

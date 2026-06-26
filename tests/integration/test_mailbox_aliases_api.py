@@ -49,13 +49,13 @@ def test_platform_admin_reserves_alias_and_audits(
     assert response.status_code == 201
     body = response.json()
     assert body["local_part"] == "skj"
-    assert body["domain"] == "inbox.leasium.ai"
-    assert body["email_address"] == "skj@inbox.leasium.ai"
+    assert body["domain"] == "inbox.relby.ai"
+    assert body["email_address"] == "skj@inbox.relby.ai"
     assert body["status"] == "active"
     assert body["organisation_id"] == str(org.id)
 
     row = session.scalar(
-        select(MailboxAlias).where(MailboxAlias.email_address == "skj@inbox.leasium.ai")
+        select(MailboxAlias).where(MailboxAlias.email_address == "skj@inbox.relby.ai")
     )
     assert row is not None and row.organisation_id == org.id
     actions = session.scalars(
@@ -78,7 +78,7 @@ def test_reserve_duplicate_active_alias_conflicts(
     second = client.post("/api/v1/mailbox-aliases", json=payload)
     assert second.status_code == 409
     rows = session.scalars(
-        select(MailboxAlias).where(MailboxAlias.email_address == "skj@inbox.leasium.ai")
+        select(MailboxAlias).where(MailboxAlias.email_address == "skj@inbox.relby.ai")
     ).all()
     assert len(rows) == 1
 

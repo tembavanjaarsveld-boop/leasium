@@ -1,4 +1,4 @@
-"""Smoke tests for the core Leasium workflows used by the web app."""
+"""Smoke tests for the core Relby workflows used by the web app."""
 
 from typing import Any
 
@@ -35,7 +35,7 @@ def test_healthcheck_smoke(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["app"] == "Leasium"
+    assert body["app"] == "Relby"
     assert body["release"] == {
         "commit": "unknown",
         "source": "local",
@@ -241,7 +241,7 @@ def test_tenant_document_can_be_promoted_to_smart_intake_once(
         assert file_data == b"certificate bytes"
         assert filename == "certificate.txt"
         assert content_type == "text/plain"
-        assert settings.app_name == "Leasium"
+        assert settings.app_name == "Relby"
         return _document_extraction(), "resp_smoke_document"
 
     monkeypatch.setattr(

@@ -565,7 +565,7 @@ def _accounting_freshness(
         last_payment_reconciliation_source=_metadata_text(last_payment_record, "source"),
         last_payment_reconciliation_mode=_metadata_text(last_payment_record, "mode"),
         guardrails=[
-            "Accounting freshness is calculated from local Leasium metadata only.",
+            "Accounting freshness is calculated from local Relby metadata only.",
             (
                 "Loading Xero status does not refresh tokens, call Xero, "
                 "post invoices, or reconcile payments."
@@ -1714,7 +1714,7 @@ def _payment_exception_from_invoice(
         label="Xero payment status needs review",
         detail=(
             f"{draft.invoice_number or draft.title} is linked to a Xero draft "
-            f"but Leasium still shows {payment_status.replace('_', ' ')}."
+            f"but Relby still shows {payment_status.replace('_', ' ')}."
         ),
         action=(
             "Preview provider payments, then apply reviewed local payment metadata "
@@ -1969,7 +1969,7 @@ def _payment_match_method(
     if item.match_method:
         return item.match_method
     if match_basis == "invoice_draft_id":
-        return "Matched by Leasium invoice draft ID."
+        return "Matched by Relby invoice draft ID."
     if match_basis == "xero_invoice_id":
         return "Matched by Xero invoice ID."
     if match_basis == "invoice_number":
@@ -2378,7 +2378,7 @@ def xero_connection_diagnostics(
             connection_source=connection.connection_source,
         ),
         guardrails=[
-            "Connection diagnostics reads local Leasium configuration and database state only.",
+            "Connection diagnostics reads local Relby configuration and database state only.",
             "Loading diagnostics does not refresh tokens, call Xero, or mutate provider state.",
             (
                 "No Xero API calls, invoice posting, contact writes, "
@@ -2795,7 +2795,7 @@ def validate_xero_chart_tax_preview(
         validated_at=validated_at,
         guardrails=[
             "This is a provider-backed validation preview only.",
-            "Leasium only checks whether local account codes and tax types exist in Xero.",
+            "Relby only checks whether local account codes and tax types exist in Xero.",
             "No invoice posting, Xero mutation, tenant email, or payment reconciliation was run.",
         ],
     )
@@ -3122,7 +3122,7 @@ def preview_xero_invoice_posting(
         prepared_at=prepared_at,
         guardrails=[
             "This is a provider-backed invoice posting preview only.",
-            "Leasium builds the draft Xero payload and blocker list for approved invoice drafts.",
+            "Relby builds the draft Xero payload and blocker list for approved invoice drafts.",
             (
                 "No invoices are posted, no Xero records are mutated, no tenant email is "
                 "sent, and no payment reconciliation is run."
@@ -4023,10 +4023,10 @@ def _xero_payment_reconciliation(
         reconciled_at=reconciled_at,
         guardrails=[
             "Payment reconciliation preview does not change local invoice payment status.",
-            "Apply only updates Leasium invoice payment metadata; it never mutates Xero payments.",
+            "Apply only updates Relby invoice payment metadata; it never mutates Xero payments.",
             "Duplicate payment idempotency keys are skipped.",
             (
-                "Bank-feed evidence is stored for review only; Leasium does not create, "
+                "Bank-feed evidence is stored for review only; Relby does not create, "
                 "edit, or match bank transactions in Xero."
             ),
         ],
@@ -4135,7 +4135,7 @@ def xero_exception_queue(
         summary=_xero_exception_summary(items),
         items=items,
         guardrails=[
-            "The exception queue is built from local Leasium records only.",
+            "The exception queue is built from local Relby records only.",
             (
                 "Loading this queue does not refresh Xero tokens, call Xero APIs, "
                 "post invoices, send emails, or reconcile payments."

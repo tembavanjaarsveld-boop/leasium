@@ -52,6 +52,13 @@ def test_webhook_secret_valid_accepts_header_or_query_token() -> None:
     assert webhook_secret_valid(
         _request(
             "/api/v1/work-assignments/webhooks/twilio-status",
+            headers={"x-relby-webhook-secret": secret},
+        ),
+        secret,
+    )
+    assert webhook_secret_valid(
+        _request(
+            "/api/v1/work-assignments/webhooks/twilio-status",
             headers={"x-leasium-webhook-secret": secret},
         ),
         secret,
@@ -66,7 +73,7 @@ def test_webhook_secret_valid_accepts_header_or_query_token() -> None:
     assert not webhook_secret_valid(
         _request(
             "/api/v1/work-assignments/webhooks/twilio-status",
-            headers={"x-leasium-webhook-secret": "wrong-secret"},
+            headers={"x-relby-webhook-secret": "wrong-secret"},
         ),
         secret,
     )
@@ -76,7 +83,7 @@ def test_assert_webhook_secret_rejects_missing_or_wrong_secret() -> None:
     assert_webhook_secret(
         _request(
             "/api/v1/work-assignments/webhooks/sendgrid-events",
-            headers={"x-leasium-webhook-secret": "shared-secret"},
+            headers={"x-relby-webhook-secret": "shared-secret"},
         ),
         "shared-secret",
     )
@@ -93,7 +100,7 @@ def test_assert_webhook_secret_rejects_missing_or_wrong_secret() -> None:
         assert_webhook_secret(
             _request(
                 "/api/v1/work-assignments/webhooks/sendgrid-events",
-                headers={"x-leasium-webhook-secret": "wrong-secret"},
+                headers={"x-relby-webhook-secret": "wrong-secret"},
             ),
             "shared-secret",
         )
@@ -108,15 +115,15 @@ def test_assert_webhook_secret_accepts_provider_specific_headers() -> None:
             headers={"x-opensign-webhook-secret": "opensign-secret"},
         ),
         "opensign-secret",
-        header_names=("x-opensign-webhook-secret", "x-leasium-webhook-secret"),
+        header_names=("x-opensign-webhook-secret", "x-relby-webhook-secret"),
     )
     assert_webhook_secret(
         _request(
             "/api/v1/tenant-onboarding/webhooks/opensign",
-            headers={"x-leasium-webhook-secret": "opensign-secret"},
+            headers={"x-relby-webhook-secret": "opensign-secret"},
         ),
         "opensign-secret",
-        header_names=("x-opensign-webhook-secret", "x-leasium-webhook-secret"),
+        header_names=("x-opensign-webhook-secret", "x-relby-webhook-secret"),
     )
 
     with pytest.raises(HTTPException) as wrong_header_error:
@@ -126,7 +133,7 @@ def test_assert_webhook_secret_accepts_provider_specific_headers() -> None:
                 headers={"x-opensign-webhook-secret": "wrong-secret"},
             ),
             "opensign-secret",
-            header_names=("x-opensign-webhook-secret", "x-leasium-webhook-secret"),
+            header_names=("x-opensign-webhook-secret", "x-relby-webhook-secret"),
         )
     assert wrong_header_error.value.status_code == 401
 

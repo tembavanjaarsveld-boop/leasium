@@ -1,4 +1,4 @@
-"""Leasium AI conversation thread schemas."""
+"""Relby AI conversation thread schemas."""
 
 from datetime import datetime
 from typing import Any

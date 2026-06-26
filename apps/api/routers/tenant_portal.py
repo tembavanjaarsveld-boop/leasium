@@ -225,7 +225,7 @@ class OperatorPreviewAuth:
             dev_fallback=False,
             boundary="operator_session",
             detail=(
-                "Read-only operator preview scoped by the signed-in Leasium role. "
+                "Read-only operator preview scoped by the signed-in Relby role. "
                 "No tenant portal account is created."
             ),
         )
@@ -1608,7 +1608,7 @@ def _portal_read(scope: PortalScope, session: Session) -> TenantPortalRead:
             "Notification preference updates do not send email or SMS.",
         ]
     guardrails.append(
-        "Payment instructions are display-only; Leasium does not process payments "
+        "Payment instructions are display-only; Relby does not process payments "
         "or move money."
     )
     return TenantPortalRead(

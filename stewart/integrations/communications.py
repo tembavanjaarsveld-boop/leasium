@@ -414,11 +414,11 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
         "channel": "email",
         "provider": "sendgrid",
         "name": "Standard assignment notice",
-        "subject_template": "Leasium work assigned: {{title}}",
+        "subject_template": "Relby work assigned: {{title}}",
         "body_template": (
             "Hi {{assignee_name}},\n"
             "\n"
-            "{{work_kind}} has been assigned to you in Leasium.\n"
+            "{{work_kind}} has been assigned to you in Relby.\n"
             "\n"
             "Work: {{title}}\n"
             "Due: {{due_date}}\n"
@@ -426,9 +426,9 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
             "Details: {{description}}\n"
             "Open work: {{work_url}}\n"
             "\n"
-            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "Please open Relby to review the work, update status, or reassign if needed.\n"
             "\n"
-            "Leasium"
+            "Relby"
         ),
         "notes": "System default; editing templates does not send any message.",
     },
@@ -437,11 +437,11 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
         "channel": "email",
         "provider": "sendgrid",
         "name": "Follow-up assignment notice",
-        "subject_template": "Leasium work follow-up needed: {{title}}",
+        "subject_template": "Relby work follow-up needed: {{title}}",
         "body_template": (
             "Hi {{assignee_name}},\n"
             "\n"
-            "A follow-up is due on {{work_kind}} work assigned to you in Leasium.\n"
+            "A follow-up is due on {{work_kind}} work assigned to you in Relby.\n"
             "\n"
             "Work: {{title}}\n"
             "Due: {{due_date}}\n"
@@ -449,9 +449,9 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
             "Details: {{description}}\n"
             "Open work: {{work_url}}\n"
             "\n"
-            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "Please open Relby to review the work, update status, or reassign if needed.\n"
             "\n"
-            "Leasium"
+            "Relby"
         ),
         "notes": "System default; editing templates does not send any message.",
     },
@@ -460,11 +460,11 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
         "channel": "email",
         "provider": "sendgrid",
         "name": "Standard work digest",
-        "subject_template": "Leasium {{cadence_label}} Work digest: {{item_count}} items",
+        "subject_template": "Relby {{cadence_label}} Work digest: {{item_count}} items",
         "body_template": (
             "Hi {{assignee_name}},\n"
             "\n"
-            "Your {{cadence}} Leasium Work digest is ready.\n"
+            "Your {{cadence}} Relby Work digest is ready.\n"
             "\n"
             "Open items: {{item_count}}\n"
             "Follow-ups due: {{follow_up_due_count}}\n"
@@ -473,9 +473,9 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
             "\n"
             "{{items_block}}\n"
             "\n"
-            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "Please open Relby to review the work, update status, or reassign if needed.\n"
             "\n"
-            "Leasium"
+            "Relby"
         ),
         "notes": "System default; editing templates does not send any message.",
     },
@@ -484,11 +484,11 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
         "channel": "email",
         "provider": "sendgrid",
         "name": "Owner review digest",
-        "subject_template": "Leasium owner review digest: {{item_count}} items",
+        "subject_template": "Relby owner review digest: {{item_count}} items",
         "body_template": (
             "Hi {{assignee_name}},\n"
             "\n"
-            "Your {{cadence}} Leasium owner review digest is ready. It highlights\n"
+            "Your {{cadence}} Relby owner review digest is ready. It highlights\n"
             "owner-facing review items, approvals, blockers, and overdue follow-ups.\n"
             "\n"
             "Open items: {{item_count}}\n"
@@ -498,9 +498,9 @@ SYSTEM_BRANDED_TEMPLATE_SEEDS: list[dict[str, str]] = [
             "\n"
             "{{items_block}}\n"
             "\n"
-            "Please open Leasium to review the work, update status, or reassign if needed.\n"
+            "Please open Relby to review the work, update status, or reassign if needed.\n"
             "\n"
-            "Leasium"
+            "Relby"
         ),
         "notes": "System default; editing templates does not send any message.",
     },
@@ -514,7 +514,7 @@ def _email_subject(invite: TenantOnboardingInvite) -> str:
 
 
 def _operator_invite_subject(invite: OperatorInviteEmail) -> str:
-    return f"Join {invite.organisation_name} on Leasium"
+    return f"Join {invite.organisation_name} on Relby"
 
 
 def _work_assignment_subject(invite: WorkAssignmentEmail) -> str:
@@ -523,7 +523,7 @@ def _work_assignment_subject(invite: WorkAssignmentEmail) -> str:
             invite.custom_subject_template,
             work_assignment_email_context(invite),
         )
-    return f"Leasium work assigned: {invite.title}"
+    return f"Relby work assigned: {invite.title}"
 
 
 def _work_assignment_digest_subject(invite: WorkAssignmentDigestEmail) -> str:
@@ -533,7 +533,7 @@ def _work_assignment_digest_subject(invite: WorkAssignmentDigestEmail) -> str:
             work_assignment_digest_context(invite),
         )
     cadence = invite.cadence.capitalize()
-    return f"Leasium {cadence} Work digest: {invite.item_count} items"
+    return f"Relby {cadence} Work digest: {invite.item_count} items"
 
 
 def _email_text(invite: TenantOnboardingInvite) -> str:
@@ -547,7 +547,7 @@ def _email_text(invite: TenantOnboardingInvite) -> str:
                 (
                     "Your property team has approved your onboarding details."
                     " Your lease pack is ready to review and sign in the"
-                    " Leasium tenant portal."
+                    " Relby tenant portal."
                 ),
                 "",
                 f"Property: {invite.property_name}",
@@ -568,7 +568,7 @@ def _email_text(invite: TenantOnboardingInvite) -> str:
             greeting,
             "",
             (
-                "You've been invited to the Leasium tenant portal. Click"
+                "You've been invited to the Relby tenant portal. Click"
                 " the link below to create or sign in to your tenant"
                 " account — once you're signed in you can complete your"
                 " onboarding details, view your lease, and access"
@@ -599,14 +599,14 @@ def _operator_invite_text(invite: OperatorInviteEmail) -> str:
         [
             greeting,
             "",
-            f"{invite.invited_by_name} invited you to join {invite.organisation_name} on Leasium.",
+            f"{invite.invited_by_name} invited you to join {invite.organisation_name} on Relby.",
             "",
             "Accept the invite and sign in with Clerk to link this operator account:",
             invite.accept_url,
             "",
             f"This invite expires on {_date_label(invite.expires_at)}.",
             "",
-            "Leasium",
+            "Relby",
         ]
     )
 
@@ -640,7 +640,7 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
             <p style="margin:0 0 14px;">{greeting}</p>
             <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
               Your property team has approved your onboarding details.
-              Your lease pack is ready to review and sign in the Leasium
+              Your lease pack is ready to review and sign in the Relby
               tenant portal.
             </p>
             <div style="border:1px solid #E4E7EC;border-radius:12px;
@@ -673,7 +673,7 @@ def _email_html(invite: TenantOnboardingInvite) -> str:
         </div>
         <p style="margin:0 0 14px;">{greeting}</p>
         <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
-          You&#x2019;ve been invited to the Leasium tenant portal. Sign in
+          You&#x2019;ve been invited to the Relby tenant portal. Sign in
           or create your tenant account to complete your onboarding,
           view your lease, and access documents, payments, and
           maintenance in one place.
@@ -721,11 +721,11 @@ def _operator_invite_html(invite: OperatorInviteEmail) -> str:
     return f"""
     <div style="{shell_style}">
       <div style="{card_style}">
-        <div style="font-weight:700;font-size:20px;margin-bottom:18px;">Leasium</div>
+        <div style="font-weight:700;font-size:20px;margin-bottom:18px;">Relby</div>
         <p style="margin:0 0 14px;">{greeting}</p>
         <p style="margin:0 0 18px;color:#475467;line-height:1.55;">
           {escape(invite.invited_by_name)} invited you to join
-          {escape(invite.organisation_name)} on Leasium.
+          {escape(invite.organisation_name)} on Relby.
         </p>
         <a href="{escape(invite.accept_url)}" style="{button_style}">
           Accept invite
@@ -749,14 +749,14 @@ def _work_assignment_text(invite: WorkAssignmentEmail) -> str:
     assigned_by = (
         f"Assigned by: {invite.assigned_by_name}"
         if invite.assigned_by_name
-        else "Assigned in Leasium"
+        else "Assigned in Relby"
     )
     description = f"\nDetails: {invite.description}" if invite.description else ""
     return "\n".join(
         [
             greeting,
             "",
-            f"{invite.work_kind} has been assigned to you in Leasium.",
+            f"{invite.work_kind} has been assigned to you in Relby.",
             "",
             f"Work: {invite.title}",
             f"Due: {_date_label(invite.due_date)}",
@@ -764,9 +764,9 @@ def _work_assignment_text(invite: WorkAssignmentEmail) -> str:
             description.strip(),
             work_url.strip(),
             "",
-            "Please open Leasium to review the work, update status, or reassign if needed.",
+            "Please open Relby to review the work, update status, or reassign if needed.",
             "",
-            "Leasium",
+            "Relby",
         ]
     )
 
@@ -780,7 +780,7 @@ def _work_assignment_sms_body(invite: WorkAssignmentSms) -> str:
     due = _date_label(invite.due_date)
     work_url = f" {invite.work_url}" if invite.work_url else ""
     return (
-        f"Leasium: {invite.work_kind} assigned"
+        f"Relby: {invite.work_kind} assigned"
         f"{f' to {invite.assignee_name}' if invite.assignee_name else ''}: "
         f"{invite.title}. Due: {due}.{work_url}"
     )
@@ -809,7 +809,7 @@ def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
       <p>{greeting}</p>
-      <p>{escape(invite.work_kind)} has been assigned to you in Leasium.</p>
+      <p>{escape(invite.work_kind)} has been assigned to you in Relby.</p>
       <div style="border:1px solid #E4E7EC;border-radius:12px;padding:16px;margin:18px 0;">
         <p style="margin:0;font-weight:700;">{escape(invite.title)}</p>
         <p style="margin:10px 0 0;color:#475467;">Due: {escape(_date_label(invite.due_date))}</p>
@@ -817,8 +817,8 @@ def _work_assignment_html(invite: WorkAssignmentEmail) -> str:
         {description}
       </div>
       {work_url}
-      <p>Please open Leasium to review the work, update status, or reassign if needed.</p>
-      <p>Leasium</p>
+      <p>Please open Relby to review the work, update status, or reassign if needed.</p>
+      <p>Relby</p>
     </div>
     """
 
@@ -833,7 +833,7 @@ def _work_assignment_digest_text(invite: WorkAssignmentDigestEmail) -> str:
     lines = [
         greeting,
         "",
-        f"Your {invite.cadence} Leasium Work digest is ready.",
+        f"Your {invite.cadence} Relby Work digest is ready.",
         "",
         f"Open items: {invite.item_count}",
         f"Follow-ups due: {invite.follow_up_due_count}",
@@ -847,9 +847,9 @@ def _work_assignment_digest_text(invite: WorkAssignmentDigestEmail) -> str:
     lines.extend(
         [
             "",
-            "Please open Leasium to review the work, update status, or reassign if needed.",
+            "Please open Relby to review the work, update status, or reassign if needed.",
             "",
-            "Leasium",
+            "Relby",
         ]
     )
     return "\n".join(lines)
@@ -886,7 +886,7 @@ def _work_assignment_digest_html(invite: WorkAssignmentDigestEmail) -> str:
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#172033">
       <p>{greeting}</p>
-      <p>Your {escape(invite.cadence)} Leasium Work digest is ready.</p>
+      <p>Your {escape(invite.cadence)} Relby Work digest is ready.</p>
       <div style="border:1px solid #E4E7EC;border-radius:12px;padding:16px;margin:18px 0;">
         <p style="margin:0;font-weight:700;">{invite.item_count} open items</p>
         <p style="margin:8px 0 0;color:#475467;">
@@ -895,8 +895,8 @@ def _work_assignment_digest_html(invite: WorkAssignmentDigestEmail) -> str:
         </p>
         {"".join(item_rows)}
       </div>
-      <p>Please open Leasium to review the work, update status, or reassign if needed.</p>
-      <p>Leasium</p>
+      <p>Please open Relby to review the work, update status, or reassign if needed.</p>
+      <p>Relby</p>
     </div>
     """
 
@@ -1219,7 +1219,7 @@ def send_operator_invite_email(
 
 def _invoice_email_subject(invite: InvoiceDeliveryEmail) -> str:
     reference = invite.invoice_number or invite.title
-    return f"Invoice {reference} from {invite.issuer_name or 'Leasium'}"
+    return f"Invoice {reference} from {invite.issuer_name or 'Relby'}"
 
 
 def _invoice_email_text(invite: InvoiceDeliveryEmail) -> str:
@@ -1232,7 +1232,7 @@ def _invoice_email_text(invite: InvoiceDeliveryEmail) -> str:
         f"Reference: {invite.invoice_number or invite.title}{preview}\n\n"
         "Please reply to this email if anything looks incorrect.\n\n"
         "Regards,\n"
-        f"{invite.issuer_name or 'Leasium'}"
+        f"{invite.issuer_name or 'Relby'}"
     )
 
 
@@ -1251,7 +1251,7 @@ def _invoice_email_html(invite: InvoiceDeliveryEmail) -> str:
       <p>Reference: {escape(invite.invoice_number or invite.title)}</p>
       {preview_link}
       <p>Please reply to this email if anything looks incorrect.</p>
-      <p>Regards,<br>{escape(invite.issuer_name or "Leasium")}</p>
+      <p>Regards,<br>{escape(invite.issuer_name or "Relby")}</p>
     </div>
     """
 
@@ -1296,7 +1296,7 @@ def _contractor_email_text(invite: ContractorWorkOrderEmail) -> str:
             "Please reply to this email with timing, blockers, or next steps.",
             "",
             "Regards,",
-            "Leasium",
+            "Relby",
         ]
     )
 
@@ -1307,7 +1307,7 @@ def _contractor_sms_body(invite: ContractorWorkOrderSms) -> str:
         location = f"{location} {invite.unit_label}"
     due = _date_label(invite.due_date)
     details = f" Job: {invite.title}. Due: {due}. Location: {location}."
-    return f"Leasium contractor update: {invite.body.strip()}{details}"
+    return f"Relby contractor update: {invite.body.strip()}{details}"
 
 
 def _contractor_email_html(invite: ContractorWorkOrderEmail) -> str:
@@ -1352,7 +1352,7 @@ def _contractor_email_html(invite: ContractorWorkOrderEmail) -> str:
         {description}
       </div>
       <p>Please reply to this email with timing, blockers, or next steps.</p>
-      <p>Regards,<br>Leasium</p>
+      <p>Regards,<br>Relby</p>
     </div>
     """
 

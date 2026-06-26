@@ -1,4 +1,4 @@
-"""Shared test fixtures for the Leasium foundation."""
+"""Shared test fixtures for the Relby foundation."""
 
 from collections.abc import Generator
 

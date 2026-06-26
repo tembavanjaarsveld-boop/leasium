@@ -1,4 +1,4 @@
-"""Leasium AI first-class conversation thread routes."""
+"""Relby AI first-class conversation thread routes."""
 
 from typing import Annotated, Any
 from uuid import UUID
@@ -49,7 +49,7 @@ def _fallback_title(payload: ConversationThreadCreateRequest) -> str:
         raw_text = payload.initial_turn.payload.get("text")
         if isinstance(raw_text, str):
             text = raw_text.strip()
-    return text[:80] if text else "Leasium AI thread"
+    return text[:80] if text else "Relby AI thread"
 
 
 def _require_org_wide_role(

@@ -278,13 +278,13 @@ def _invoice_brand_metadata(
     draft: InvoiceDraft,
     settings: Settings,
 ) -> dict[str, str | None]:
-    sender_name = draft.issuer_name or "Leasium Billing"
+    sender_name = draft.issuer_name or "Relby Billing"
     return {
         "template_key": settings.invoice_email_template_key,
         "template_version": settings.invoice_email_template_version,
         "sender_name": sender_name,
         "reply_to": None,
-        "footer": "Prepared in Leasium. External delivery requires approval.",
+        "footer": "Prepared in Relby. External delivery requires approval.",
     }
 
 
@@ -300,14 +300,14 @@ def _invoice_email_preview(
         f"Please find invoice {subject_number} for "
         f"{_invoice_money(draft.total_cents, draft.currency)} attached for review. "
         f"Payment is due {due}.\n\n"
-        "This email draft uses the Leasium invoice template and is ready for approval. "
+        "This email draft uses the Relby invoice template and is ready for approval. "
         "No email has been sent."
     )
     return {
         "to": draft.recipient_email,
         "from_name": brand["sender_name"],
         "reply_to": brand["reply_to"],
-        "subject": f"Invoice {subject_number} from {draft.issuer_name or 'Leasium'}",
+        "subject": f"Invoice {subject_number} from {draft.issuer_name or 'Relby'}",
         "body": body,
         "brand": brand,
         "template_key": settings.invoice_email_template_key,
@@ -1327,7 +1327,7 @@ def create_billing_drafts_from_charge_rules(
             for rule in charge_rules
         )
         document_text = (
-            "Leasium internal billing preparation source.\n"
+            "Relby internal billing preparation source.\n"
             f"Prepared from reviewed charge rules on {now.isoformat()}.\n"
             f"Entity: {payload.entity_id}\n"
             f"Property: {prop.name}\n"
@@ -1376,7 +1376,7 @@ def create_billing_drafts_from_charge_rules(
             due_date=due_date,
             total_cents=total_cents,
             notes=(
-                "Prepared from existing Leasium charge rules. Review and approve before "
+                "Prepared from existing Relby charge rules. Review and approve before "
                 "invoice draft creation. No PDF, tenant email, or Xero sync has run."
             ),
             billing_metadata={

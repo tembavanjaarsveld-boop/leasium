@@ -1,4 +1,4 @@
-"""Ask Leasium read-only Q&A router.
+"""Ask Relby read-only Q&A router.
 
 Tier 2 (e) of the 2026-05-22 UX review. Operators send a natural-language
 question; the backend builds a bounded context summary of the operator's
@@ -465,7 +465,7 @@ def triage(
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> InboxTriageRead:
-    """Classify a pasted inbox message and suggest a next Leasium action."""
+    """Classify a pasted inbox message and suggest a next Relby action."""
 
     assert_entity_role(session, user, payload.entity_id, READ_ROLES)
 
@@ -594,7 +594,7 @@ def triage(
 # Triage promote — v2 of the AI inbox processor.
 #
 # v1 stopped at "classify + deep-link". v2 takes the reviewed classification
-# and the operator-confirmed match and creates the right Leasium draft. No
+# and the operator-confirmed match and creates the right Relby draft. No
 # provider mutation: the draft sits in its initial review state until the
 # operator approves the next step from inside the target surface.
 # ---------------------------------------------------------------------------
@@ -1415,7 +1415,7 @@ def promote_triage(
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> InboxPromoteRead:
-    """Promote a reviewed AI classification into a Leasium draft.
+    """Promote a reviewed AI classification into a Relby draft.
 
     No provider mutation. The draft sits in its initial review state — the
     operator still has to approve the next step (contractor dispatch,

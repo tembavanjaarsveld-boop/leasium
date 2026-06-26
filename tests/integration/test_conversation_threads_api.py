@@ -1,4 +1,4 @@
-"""Leasium AI first-class conversation thread API tests."""
+"""Relby AI first-class conversation thread API tests."""
 
 from typing import Any
 from uuid import UUID

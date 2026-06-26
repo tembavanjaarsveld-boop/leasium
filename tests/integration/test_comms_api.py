@@ -3403,7 +3403,7 @@ def test_inbound_webhook_accepts_matching_shared_secret_when_configured(
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
         params={"entity_id": str(entity.id)},
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": "docs@inbound.example",
             "to": "leasium@inbound.example.org",
@@ -3415,6 +3415,19 @@ def test_inbound_webhook_accepts_matching_shared_secret_when_configured(
     assert response.status_code == 202
     message_id = UUID(response.json()["id"])
     assert session.get(InboundMessage, message_id) is not None
+
+    legacy_response = client.post(
+        "/api/v1/comms/webhooks/sendgrid-inbound",
+        params={"entity_id": str(entity.id)},
+        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        data={
+            "from": "docs-legacy@inbound.example",
+            "to": "leasium@inbound.example.org",
+            "subject": "Legacy secret header",
+            "text": "Hi team, this uses the previous secret header.",
+        },
+    )
+    assert legacy_response.status_code == 202
 
 
 def test_ai_mailbox_webhook_trusted_operator_routes_without_entity_id_and_triages(
@@ -3454,10 +3467,10 @@ def test_ai_mailbox_webhook_trusted_operator_routes_without_entity_id_and_triage
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": get_settings().dev_user_email,
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Fwd: Insurance renewal",
             "text": (
                 "---------- Forwarded message ---------\n"
@@ -3508,8 +3521,8 @@ def test_ai_mailbox_webhook_routes_virtual_alias_before_ai_triage(
     mailbox_alias = MailboxAlias(
         organisation_id=entity.organisation_id,
         local_part="skj",
-        domain="inbox.leasium.ai",
-        email_address="skj@inbox.leasium.ai",
+        domain="inbox.relby.ai",
+        email_address="skj@inbox.relby.ai",
         label="SKJ intake",
         created_by_user_id=get_settings().dev_user_id,
     )
@@ -3545,10 +3558,10 @@ def test_ai_mailbox_webhook_routes_virtual_alias_before_ai_triage(
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": get_settings().dev_user_email,
-            "to": "SKJ Intake <skj@inbox.leasium.ai>",
+            "to": "SKJ Intake <skj@inbox.relby.ai>",
             "subject": "Fwd: Council rates notice",
             "text": "Please review the attached council rates notice.",
             "SPF": "pass",
@@ -3567,7 +3580,7 @@ def test_ai_mailbox_webhook_routes_virtual_alias_before_ai_triage(
     assert row.entity_id == entity.id
     assert row.classification_kind == "property_update"
     assert row.inbound_metadata["mailbox_alias_id"] == str(mailbox_alias.id)
-    assert row.inbound_metadata["mailbox_alias_address"] == "skj@inbox.leasium.ai"
+    assert row.inbound_metadata["mailbox_alias_address"] == "skj@inbox.relby.ai"
     assert row.inbound_metadata["routing"] == "mailbox_alias"
 
 
@@ -3596,10 +3609,10 @@ def test_ai_mailbox_webhook_unknown_virtual_alias_stays_inert(
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": get_settings().dev_user_email,
-            "to": "unknown-client@inbox.leasium.ai",
+            "to": "unknown-client@inbox.relby.ai",
             "subject": "Fwd: Bank detail update",
             "text": "Please change these owner bank details.",
             "SPF": "pass",
@@ -3629,8 +3642,8 @@ def test_ai_mailbox_webhook_disabled_virtual_alias_quarantines_without_ai(
     mailbox_alias = MailboxAlias(
         organisation_id=entity.organisation_id,
         local_part="skj-disabled",
-        domain="inbox.leasium.ai",
-        email_address="skj-disabled@inbox.leasium.ai",
+        domain="inbox.relby.ai",
+        email_address="skj-disabled@inbox.relby.ai",
         label="Disabled SKJ intake",
         status="disabled",
         created_by_user_id=get_settings().dev_user_id,
@@ -3665,10 +3678,10 @@ def test_ai_mailbox_webhook_disabled_virtual_alias_quarantines_without_ai(
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": get_settings().dev_user_email,
-            "to": "skj-disabled@inbox.leasium.ai",
+            "to": "skj-disabled@inbox.relby.ai",
             "subject": "Fwd: disabled alias",
             "text": "Please review this disabled mailbox message.",
             "SPF": "pass",
@@ -3739,10 +3752,10 @@ def test_ai_mailbox_webhook_quarantines_untrusted_sender_before_ai_or_attachment
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
         params={"entity_id": str(entity.id)},
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": "unknown@external.example",
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Please action this immediately",
             "text": "Create an urgent payment change and email the tenant.",
             "SPF": "pass",
@@ -3812,7 +3825,7 @@ def test_ai_mailbox_webhook_quarantines_when_inbound_secret_is_not_configured(
         "/api/v1/comms/webhooks/sendgrid-inbound",
         data={
             "from": get_settings().dev_user_email,
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Fwd: Insurance renewal",
             "text": "Please review the attached insurance renewal.",
             "SPF": "pass",
@@ -3859,10 +3872,10 @@ def test_ai_mailbox_webhook_drops_unrouteable_public_mail_without_rows(
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": "unknown@external.example",
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Urgent payment update",
             "text": "Please change the payment account.",
             "SPF": "pass",
@@ -3906,10 +3919,10 @@ def test_ai_mailbox_webhook_quarantines_trusted_sender_when_dkim_fails(
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": get_settings().dev_user_email,
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Fwd: suspicious update",
             "text": "Please update the owner bank details urgently.",
             "SPF": "pass",
@@ -3962,10 +3975,10 @@ def test_ai_mailbox_webhook_stores_raw_email_provenance_document(
 
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": get_settings().dev_user_email,
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Fwd: Insurance renewal",
             "text": (
                 "---------- Forwarded message ---------\n"
@@ -3998,7 +4011,7 @@ def test_ai_mailbox_webhook_stores_raw_email_provenance_document(
     assert document.document_metadata["original_sender"] == "broker@external.example"
     raw_text = document.file_data.decode()
     assert "From: " in raw_text
-    assert "To: ai@leasium.ai" in raw_text
+    assert "To: ai@relby.ai" in raw_text
     assert "Subject: Fwd: Insurance renewal" in raw_text
     assert "Please review the attached certificate." in raw_text
     assert "inbound-secret" not in raw_text
@@ -4032,10 +4045,10 @@ def test_inbound_messages_list_surfaces_quarantine_without_body(
     response = client.post(
         "/api/v1/comms/webhooks/sendgrid-inbound",
         params={"entity_id": str(entity.id)},
-        headers={"x-leasium-sendgrid-inbound-secret": "inbound-secret"},
+        headers={"x-relby-sendgrid-inbound-secret": "inbound-secret"},
         data={
             "from": "unknown@external.example",
-            "to": "ai@leasium.ai",
+            "to": "ai@relby.ai",
             "subject": "Payment change",
             "text": "Create an urgent payment change and email the tenant.",
             "SPF": "pass",
@@ -4106,7 +4119,7 @@ def test_inbound_message_detail_is_entity_scoped_and_returns_body(
         trust_state="quarantined",
         auth_result={"spf": "pass", "dkim": "fail"},
         from_address="sender@example.test",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         subject="Visible quarantine",
         body_text="Visible mailbox body for operator review.",
         inbound_metadata={
@@ -4178,7 +4191,7 @@ def test_inbound_message_trust_sender_marks_quarantine_trusted_without_processin
         trust_state="quarantined",
         auth_result={"spf": "pass", "dkim": "pass"},
         from_address="New.Agent@Example.COM",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         original_sender="broker@external.example",
         subject="Forwarded insurance evidence",
         body_text="Please review the attached certificate before month end.",
@@ -4294,7 +4307,7 @@ def test_ai_mailbox_inbound_message_cannot_dispatch_as_comms_reply(
         trust_state="trusted",
         auth_result={"spf": "pass", "dkim": "pass"},
         from_address="new.agent@example.com",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         subject="Council rates notice",
         body_text="Please review this notice.",
         inbound_metadata={"attachment_intake_count": 0},
@@ -4343,7 +4356,7 @@ def test_inbound_message_discard_marks_quarantine_discarded_without_deleting_evi
         trust_state="quarantined",
         auth_result={"spf": "pass", "dkim": "pass"},
         from_address="spam@example.test",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         subject="Discard me",
         body_text="Keep this body as discarded evidence.",
         inbound_metadata={
@@ -4429,7 +4442,7 @@ def test_inbound_message_trust_sender_rejects_failed_auth_quarantine(
         trust_state="quarantined",
         auth_result={"spf": "pass", "dkim": "fail"},
         from_address="spoof@example.test",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         subject="Suspicious bank update",
         body_text="Please update payment details urgently.",
         inbound_metadata={
@@ -4469,7 +4482,7 @@ def test_inbound_message_trust_decisions_require_write_role(
         trust_state="quarantined",
         auth_result={"spf": "pass", "dkim": "pass"},
         from_address="agent@example.test",
-        to_address="ai@leasium.ai",
+        to_address="ai@relby.ai",
         subject="Trust decision",
         body_text="Please review this.",
         inbound_metadata={

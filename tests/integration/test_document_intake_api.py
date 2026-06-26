@@ -1254,7 +1254,7 @@ def test_document_intake_apply_insurance_requires_reviewed_expiry_for_tenant_upd
 
 def test_generic_lease_review_prefers_explicit_lease_dates() -> None:
     """An unusual expiry key-date label must not leave the lease term unset when
-    the reviewer (e.g. the Leasium AI plan) hands in an explicit lease block."""
+    the reviewer (e.g. the Relby AI plan) hands in an explicit lease block."""
     from apps.api.routers.document_intakes import (
         _generic_lease_review_to_lease_intake_data,
     )
@@ -2294,7 +2294,7 @@ def test_invoice_sendgrid_receipt_requires_configured_secret(
 
     accepted_response = client.post(
         "/api/v1/invoice-drafts/webhooks/sendgrid-events",
-        headers={"x-leasium-webhook-secret": "sg-secret"},
+        headers={"x-relby-webhook-secret": "sg-secret"},
         json=[],
     )
     assert accepted_response.status_code == 204

@@ -40,7 +40,7 @@ class BasiqIntegrationError(RuntimeError):
 class BasiqTransaction:
     """A single bank-feed transaction surfaced for reconciliation review.
 
-    Amounts are stored in cents to match the Leasium invoice money model so
+    Amounts are stored in cents to match the Relby invoice money model so
     call sites can map straight onto the existing reconciliation item schema.
     """
 

@@ -169,7 +169,7 @@ class OwnerDistributionMarkDisbursedRequest(BaseModel):
 
     ``approve`` must be true — it is the operator's explicit per-distribution
     confirmation that the net amount was disbursed to the owner outside
-    Leasium. Marking moves no money and makes no provider/bank/rail call; it
+    Relby. Marking moves no money and makes no provider/bank/rail call; it
     only records an operator-entered status marker. ``note`` is an optional
     free-text reference (e.g. a bank payment reference) stored for audit.
     """

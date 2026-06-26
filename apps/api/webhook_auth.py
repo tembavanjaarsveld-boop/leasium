@@ -19,7 +19,10 @@ def webhook_secret_valid(
     request: Request,
     secret: str,
     *,
-    header_names: tuple[str, ...] = ("x-leasium-webhook-secret",),
+    header_names: tuple[str, ...] = (
+        "x-relby-webhook-secret",
+        "x-leasium-webhook-secret",
+    ),
 ) -> bool:
     supplied = ""
     for header_name in header_names:
@@ -34,7 +37,10 @@ def assert_webhook_secret(
     request: Request,
     secret: str,
     *,
-    header_names: tuple[str, ...] = ("x-leasium-webhook-secret",),
+    header_names: tuple[str, ...] = (
+        "x-relby-webhook-secret",
+        "x-leasium-webhook-secret",
+    ),
 ) -> None:
     if not webhook_secret_valid(request, secret, header_names=header_names):
         raise HTTPException(

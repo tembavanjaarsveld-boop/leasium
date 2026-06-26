@@ -111,7 +111,7 @@ def test_operator_invite_sendgrid_categories_are_deduplicated(
             invited_by_name="Temba van Jaarsveld",
             display_name="Temba van Jaarsveld",
             email="temba@skjcapital.com",
-            accept_url="https://leasium.ai/accept-invite?token=test",
+            accept_url="https://relby.ai/accept-invite?token=test",
             expires_at=datetime(2026, 5, 23, tzinfo=UTC),
             template_key="operator_invite",
             template_version="v1",
@@ -146,10 +146,10 @@ def test_tenant_onboarding_sendgrid_categories_are_deduplicated(
             property_name="100 Queen Street",
             property_address="100 Queen Street, Brisbane",
             unit_label="Shop 1",
-            onboarding_url="https://leasium.ai/onboarding/test",
+            onboarding_url="https://relby.ai/onboarding/test",
             due_date=date(2026, 5, 24),
             expires_at=datetime(2026, 5, 27, tzinfo=UTC),
-            brand_name="Leasium",
+            brand_name="Relby",
             template_key="tenant_onboarding",
             template_version="v1",
         ),
@@ -166,7 +166,7 @@ def test_tenant_onboarding_sendgrid_categories_are_deduplicated(
         for part in payloads[0]["content"]
         if part["type"] == "text/html"
     )
-    assert 'href="https://leasium.ai/onboarding/test"' in html_content
+    assert 'href="https://relby.ai/onboarding/test"' in html_content
     assert "If the button does not open" in html_content
 
 
@@ -260,7 +260,7 @@ def test_contractor_work_order_sms_includes_status_callback(
         "https://api.leasium.test/api/v1/maintenance/work-orders/webhooks/twilio-status"
         "?token=secret"
     )
-    assert "Leasium contractor update" in str(payloads[0]["Body"])
+    assert "Relby contractor update" in str(payloads[0]["Body"])
 
 
 def test_work_assignment_sendgrid_categories_are_deduplicated(
@@ -286,7 +286,7 @@ def test_work_assignment_sendgrid_categories_are_deduplicated(
             assignee_name="Temba van Jaarsveld",
             assignee_email="temba@example.com",
             assigned_by_name="Owner Operator",
-            work_url="https://leasium.ai/operations/maintenance/test",
+            work_url="https://relby.ai/operations/maintenance/test",
             template_key="work_assignment",
             template_version="v1",
         ),
@@ -337,7 +337,7 @@ def test_work_assignment_digest_sendgrid_categories_and_args(
                     status="requested",
                     priority="urgent",
                     follow_up_due=True,
-                    work_url="https://leasium.ai/operations/maintenance/test",
+                    work_url="https://relby.ai/operations/maintenance/test",
                 )
             ],
             template_key="work_assignment_digest",
@@ -369,7 +369,7 @@ def _work_assignment_email_invite(**overrides: object) -> WorkAssignmentEmail:
         "assignee_name": "Temba van Jaarsveld",
         "assignee_email": "temba@example.com",
         "assigned_by_name": "Owner Operator",
-        "work_url": "https://leasium.ai/operations/maintenance/test",
+        "work_url": "https://relby.ai/operations/maintenance/test",
         "template_key": "work_assignment_notification",
         "template_version": "v1",
     }
@@ -389,7 +389,7 @@ def _work_assignment_sms_invite(**overrides: object) -> WorkAssignmentSms:
         "assignee_name": "Temba van Jaarsveld",
         "assignee_phone": "+61400111222",
         "assigned_by_name": "Owner Operator",
-        "work_url": "https://leasium.ai/operations/maintenance/test",
+        "work_url": "https://relby.ai/operations/maintenance/test",
         "template_key": "work_assignment_notification",
         "template_version": "v1",
     }
@@ -419,7 +419,7 @@ def _work_assignment_digest_invite(**overrides: object) -> WorkAssignmentDigestE
                 status="requested",
                 priority="urgent",
                 follow_up_due=True,
-                work_url="https://leasium.ai/operations/maintenance/test",
+                work_url="https://relby.ai/operations/maintenance/test",
             )
         ],
         "template_key": "work_assignment_digest",
@@ -463,14 +463,14 @@ def test_work_assignment_email_preview_uses_custom_subject_and_body_templates() 
 def test_work_assignment_sms_preview_uses_custom_body_template() -> None:
     invite = _work_assignment_sms_invite(
         template_version="v2",
-        custom_body_template="Leasium: {{title}} due {{due_date}} {{work_url}}",
+        custom_body_template="Relby: {{title}} due {{due_date}} {{work_url}}",
     )
 
     preview = render_work_assignment_sms_preview(invite)
 
     assert preview.body_text == (
-        "Leasium: Replace shopfront lock due 28 May 2026 "
-        "https://leasium.ai/operations/maintenance/test"
+        "Relby: Replace shopfront lock due 28 May 2026 "
+        "https://relby.ai/operations/maintenance/test"
     )
     assert preview.template_version == "v2"
 
@@ -478,7 +478,7 @@ def test_work_assignment_sms_preview_uses_custom_body_template() -> None:
 def test_digest_preview_renders_items_block_token() -> None:
     invite = _work_assignment_digest_invite(
         template_version="v2",
-        custom_body_template="Hi {{assignee_name}},\n\n{{items_block}}\n\nLeasium",
+        custom_body_template="Hi {{assignee_name}},\n\n{{items_block}}\n\nRelby",
     )
 
     preview = render_work_assignment_digest_email_preview(invite)
@@ -490,46 +490,46 @@ def test_digest_preview_renders_items_block_token() -> None:
         "  Type: Maintenance\n"
         "  Due: 28 May 2026\n"
         "  Status: requested\n"
-        "  Open: https://leasium.ai/operations/maintenance/test\n"
+        "  Open: https://relby.ai/operations/maintenance/test\n"
         "\n"
-        "Leasium"
+        "Relby"
     )
     assert preview.template_version == "v2"
 
 
-def test_previews_unchanged_when_no_custom_template() -> None:
+def test_default_work_previews_use_relby_brand() -> None:
     email_preview = render_work_assignment_email_preview(_work_assignment_email_invite())
-    assert email_preview.subject == "Leasium work assigned: Replace shopfront lock"
+    assert email_preview.subject == "Relby work assigned: Replace shopfront lock"
     assert email_preview.body_text == (
         "Hi Temba van Jaarsveld,\n"
         "\n"
-        "Maintenance has been assigned to you in Leasium.\n"
+        "Maintenance has been assigned to you in Relby.\n"
         "\n"
         "Work: Replace shopfront lock\n"
         "Due: 28 May 2026\n"
         "Assigned by: Owner Operator\n"
         "Details: Rear lock is sticking.\n"
-        "Open work: https://leasium.ai/operations/maintenance/test\n"
+        "Open work: https://relby.ai/operations/maintenance/test\n"
         "\n"
-        "Please open Leasium to review the work, update status, or reassign if needed.\n"
+        "Please open Relby to review the work, update status, or reassign if needed.\n"
         "\n"
-        "Leasium"
+        "Relby"
     )
 
     sms_preview = render_work_assignment_sms_preview(_work_assignment_sms_invite())
     assert sms_preview.body_text == (
-        "Leasium: Maintenance assigned to Temba van Jaarsveld: Replace shopfront lock. "
-        "Due: 28 May 2026. https://leasium.ai/operations/maintenance/test"
+        "Relby: Maintenance assigned to Temba van Jaarsveld: Replace shopfront lock. "
+        "Due: 28 May 2026. https://relby.ai/operations/maintenance/test"
     )
 
     digest_preview = render_work_assignment_digest_email_preview(
         _work_assignment_digest_invite()
     )
-    assert digest_preview.subject == "Leasium Daily Work digest: 1 items"
+    assert digest_preview.subject == "Relby Daily Work digest: 1 items"
     assert digest_preview.body_text == (
         "Hi Temba van Jaarsveld,\n"
         "\n"
-        "Your daily Leasium Work digest is ready.\n"
+        "Your daily Relby Work digest is ready.\n"
         "\n"
         "Open items: 1\n"
         "Follow-ups due: 1\n"
@@ -540,9 +540,9 @@ def test_previews_unchanged_when_no_custom_template() -> None:
         "  Type: Maintenance\n"
         "  Due: 28 May 2026\n"
         "  Status: requested\n"
-        "  Open: https://leasium.ai/operations/maintenance/test\n"
+        "  Open: https://relby.ai/operations/maintenance/test\n"
         "\n"
-        "Please open Leasium to review the work, update status, or reassign if needed.\n"
+        "Please open Relby to review the work, update status, or reassign if needed.\n"
         "\n"
-        "Leasium"
+        "Relby"
     )

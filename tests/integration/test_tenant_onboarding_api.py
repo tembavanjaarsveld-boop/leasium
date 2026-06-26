@@ -531,7 +531,7 @@ def test_tenant_onboarding_sendgrid_receipt_requires_configured_secret(
 
     accepted_response = client.post(
         "/api/v1/tenant-onboarding/webhooks/sendgrid-events",
-        headers={"x-leasium-webhook-secret": "sg-secret"},
+        headers={"x-relby-webhook-secret": "sg-secret"},
         json=[],
     )
     assert accepted_response.status_code == 204

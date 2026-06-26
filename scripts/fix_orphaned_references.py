@@ -112,7 +112,7 @@ def main() -> None:
             state = "OK" if obj.deleted_at is None else "ALREADY-DELETED"
             plan.append(("SOFT_DELETE", model.__tablename__, sid, "set deleted_at=now", state))
 
-        bpath = Path.home() / f"leasium-orphan-backup-{datetime.now():%Y%m%d-%H%M%S}.json"
+        bpath = Path.home() / f"relby-orphan-backup-{datetime.now():%Y%m%d-%H%M%S}.json"
         bpath.write_text(json.dumps(backup, indent=2, default=str))
         print(f"Backup of {len(backup['rows'])} rows written: {bpath}\n")
 

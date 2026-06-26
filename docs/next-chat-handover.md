@@ -1,4 +1,4 @@
-# Leasium Next Chat Handover
+# Relby Next Chat Handover
 
 Last updated: 2026-06-26
 
@@ -27,6 +27,33 @@ tests/integration/test_document_intake_api.py -q` (52), full
 full backend `ruff`, `eslint src`, `tsc --noEmit`, production `next build`, and
 UX screenshots at `output/playwright/leasium-ai-workspace-1440.png` /
 `output/playwright/leasium-ai-workspace-390.png`.
+
+## Continuation - 2026-06-26 (Relby backend/data brand pass)
+
+Backend/data layer rename is implemented in code. User-facing defaults and
+copy now use Relby across settings/platform defaults, SendGrid sender-name
+defaults, Work assignment email/SMS/digest templates and previews, operator/
+tenant/invoice/contractor comms copy, API helper descriptions, AI prompt
+self-reference, mailbox defaults, raw AI-mailbox provenance headers, PDF export
+titles, and platform-admin seed copy. Internal identifiers were left alone where
+they are data/API contracts, including `ask_leasium`, `provider="leasium"`,
+`leasium_invoice_v1`, and `leasium_receipts`.
+
+Stored rows are handled by new `scripts/rebrand_relby_data.py`: dry-run by
+default, prints before/after row-field diffs, and only commits with `--apply`.
+Targeted tables are reserved platform org/admin, branded communication
+templates, tenant onboarding delivery/review/submitted snapshots, maintenance
+work-order notification metadata, and owner statement dispatch receipts. It is
+provider-inert: no SendGrid/Twilio/Xero/payment/reconciliation calls.
+
+Verification: red-first renderer and health tests failed on the old brand, then
+passed after the code changes. Targeted communications, Work preview/digest,
+webhook auth, mailbox alias, auth user-agent, register-template, owner-PDF, and
+AI mailbox tests passed. Full `.venv/bin/python -m ruff check apps stewart tests
+scripts` passed, and full `.venv/bin/python -m pytest` passed with 764 passed,
+1 skipped, and 10 warnings. Dry-run of the data script could not connect because
+local Postgres on `localhost:5432` was not running; run it against a Neon branch
+and review the printed diff before any `--apply`.
 
 ## Continuation - 2026-06-26 (People Owners all-entities fan-out)
 

@@ -1,4 +1,4 @@
-"""Ask Leasium API tests."""
+"""Ask Relby API tests."""
 
 from typing import Any
 from uuid import UUID, uuid4

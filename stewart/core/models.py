@@ -486,7 +486,7 @@ class EntityPaymentInstruction(Base):
 
     One active row per entity. These are the landlord's *receiving* details
     (EFT / PayID, optional BPAY, free-text notes) the operator chooses to show
-    tenants so they know how and what to pay. Leasium does not process payments
+    tenants so they know how and what to pay. Relby does not process payments
     or move money; reconciliation stays in the existing Basiq/Xero engine.
     """
 
@@ -602,7 +602,7 @@ class AppUser(Base):
     auth_provider_id: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Platform-admin tier flag. Platform admins are normal AppUser rows under the
-    # reserved "Leasium Platform" organisation; their cross-org privilege comes
+    # reserved "Relby Platform" organisation; their cross-org privilege comes
     # from this flag, not from that org's data. server_default false.
     is_platform_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false", default=False

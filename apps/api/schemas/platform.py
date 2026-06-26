@@ -1,7 +1,7 @@
 """Schemas for the platform-admin client provisioning + management API.
 
 These power the /admin surface: a platform admin acts *across* client
-organisations, never inside the reserved "Leasium Platform" org. See
+organisations, never inside the reserved "Relby Platform" org. See
 docs/platform-admin-tier-ia.md.
 """
 

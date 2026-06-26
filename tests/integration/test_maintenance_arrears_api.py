@@ -478,7 +478,7 @@ def test_maintenance_sendgrid_receipt_requires_configured_secret(
 
     accepted_response = client.post(
         "/api/v1/maintenance/work-orders/webhooks/sendgrid-events",
-        headers={"x-leasium-webhook-secret": "sg-secret"},
+        headers={"x-relby-webhook-secret": "sg-secret"},
         json=[],
     )
     assert accepted_response.status_code == 204
@@ -934,8 +934,8 @@ def test_maintenance_work_order_sends_assignment_notification_and_records_provid
     assert preview["channel"] == "email"
     assert preview["provider"] == "sendgrid"
     assert preview["recipient_email"] == settings.dev_user_email
-    assert preview["subject"] == "Leasium work assigned: Replace shopfront lock"
-    assert "Maintenance has been assigned to you in Leasium." in preview["body_text"]
+    assert preview["subject"] == "Relby work assigned: Replace shopfront lock"
+    assert "Maintenance has been assigned to you in Relby." in preview["body_text"]
     assert "Work: Replace shopfront lock" in preview["body_text"]
     assert preview["template_key"] == "custom_work_notice"
     assert preview["template_version"] == "v2"
@@ -970,7 +970,7 @@ def test_work_assignment_sendgrid_receipt_requires_configured_secret(
 
     accepted_response = client.post(
         "/api/v1/work-assignments/webhooks/sendgrid-events",
-        headers={"x-leasium-webhook-secret": "sg-secret"},
+        headers={"x-relby-webhook-secret": "sg-secret"},
         json=[],
     )
     assert accepted_response.status_code == 204
@@ -1274,7 +1274,7 @@ def test_notification_center_can_send_assignment_notice_sms_without_clobbering_e
     assert sms_preview["provider"] == "twilio"
     assert sms_preview["recipient_phone"] == "+61400111222"
     assert sms_preview["subject"] is None
-    assert "Leasium: Maintenance assigned" in sms_preview["body_text"]
+    assert "Relby: Maintenance assigned" in sms_preview["body_text"]
     assert "SMS-ready notice job" in sms_preview["body_text"]
     assert attempts == [work_order_id]
 
@@ -1536,7 +1536,7 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert operator_preview["channel"] == "email"
     assert operator_preview["provider"] == "sendgrid"
     assert operator_preview["recipient_email"] == assignee.email
-    assert operator_preview["subject"] == "Leasium Daily Work digest: 1 items"
+    assert operator_preview["subject"] == "Relby Daily Work digest: 1 items"
     assert "Digest-ready maintenance job" in operator_preview["body_text"]
     assert operator_preview["template_key"] == "custom_work_digest"
     assert operator_preview["template_version"] == "v3"
@@ -1626,7 +1626,7 @@ def test_work_assignment_digest_runner_generates_review_only_operator_digest(
     assert digest_preview["channel"] == "email"
     assert digest_preview["provider"] == "sendgrid"
     assert digest_preview["recipient_email"] == assignee.email
-    assert digest_preview["subject"] == "Leasium Daily Work digest: 1 items"
+    assert digest_preview["subject"] == "Relby Daily Work digest: 1 items"
     assert "Digest-ready maintenance job" in digest_preview["body_text"]
     assert digest_preview["template_key"] == "custom_work_digest"
     assert digest_preview["template_version"] == "v3"
@@ -1922,7 +1922,7 @@ def test_work_assignment_digest_delivery_requires_approval_and_records_receipts(
         "custom_work_digest"
     )
     delivery_preview = center["digest_receipts"][0]["rendered_message_preview"]
-    assert delivery_preview["subject"] == "Leasium Daily Work digest: 1 items"
+    assert delivery_preview["subject"] == "Relby Daily Work digest: 1 items"
     assert "Digest delivery maintenance job" in delivery_preview["body_text"]
     assert delivery_preview["template_key"] == "custom_work_digest"
     assert delivery_preview["template_version"] == "v3"

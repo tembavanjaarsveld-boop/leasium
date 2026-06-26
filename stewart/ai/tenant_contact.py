@@ -85,7 +85,7 @@ def extract_tenant_contact(
         )
 
     prompt = (
-        "You are the Leasium tenant contact-update assistant. The operator"
+        "You are the Relby tenant contact-update assistant. The operator"
         " forwards a tenant message that may contain updated contact"
         " details. Extract only the contact fields the operator can review"
         " before applying to the Tenant record."

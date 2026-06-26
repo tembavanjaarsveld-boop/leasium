@@ -424,7 +424,7 @@ def test_owner_portal_lists_safe_maintenance_snapshot_for_linked_properties(
             "comments": [
                 {
                     "visibility": "internal",
-                    "body": "Internal-only comment must not leave Leasium.",
+                    "body": "Internal-only comment must not leave Relby.",
                 }
             ],
             "contractor_delivery": {

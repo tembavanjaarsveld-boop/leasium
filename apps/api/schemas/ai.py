@@ -1,4 +1,4 @@
-"""Ask Leasium AI Q&A + inbox triage schemas."""
+"""Ask Relby AI Q&A + inbox triage schemas."""
 
 from typing import Literal
 from uuid import UUID
@@ -99,7 +99,7 @@ class InboxTriageRead(BaseModel):
 # Promote — v2 of the inbox processor. The operator reviews the AI
 # classification, confirms or overrides the matched property/tenant/lease,
 # and clicks Promote. The backend creates a draft in the appropriate
-# Leasium surface (no provider mutation; the draft sits in its initial
+# Relby surface (no provider mutation; the draft sits in its initial
 # review state until the operator approves the next step from inside that
 # surface).
 InboxPromoteKind = Literal[

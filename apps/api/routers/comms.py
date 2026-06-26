@@ -111,8 +111,8 @@ WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 DEFAULT_DISMISS_DAYS = 7
 DISMISS_METADATA_KEY = "comms_dismiss"
 SENDGRID_INBOUND_SECRET_DETAIL = "SendGrid inbound secret is invalid."
-AI_MAILBOX_RECIPIENTS = {"ai@leasium.ai"}
-AI_MAILBOX_ALIAS_DOMAINS = {"inbox.leasium.ai"}
+AI_MAILBOX_RECIPIENTS = {"ai@relby.ai"}
+AI_MAILBOX_ALIAS_DOMAINS = {"inbox.relby.ai"}
 _FORWARDED_FROM_RE = re.compile(r"(?im)^\s*From:\s*(?P<value>.+)$")
 COMMS_TEMPLATE_PREVIEW_GUARDRAILS = [
     "Template preview is review-only; it saves nothing and never sends any message.",
@@ -4372,7 +4372,8 @@ def _verify_sendgrid_inbound_secret(request: Request, settings: Settings) -> Non
     if not expected:
         return
     supplied = (
-        request.headers.get("x-leasium-sendgrid-inbound-secret")
+        request.headers.get("x-relby-sendgrid-inbound-secret")
+        or request.headers.get("x-leasium-sendgrid-inbound-secret")
         or request.headers.get("x-sendgrid-inbound-secret")
         or request.query_params.get("token")
         or request.query_params.get("secret")
@@ -4616,19 +4617,19 @@ def _render_ai_mailbox_raw_email(message: InboundMessage) -> bytes:
         f"To: {_raw_email_header_value(message.to_address)}",
         f"Subject: {_raw_email_header_value(message.subject)}",
         f"Date: {message.created_at.isoformat()}",
-        "X-Leasium-Source: ai_mailbox",
-        f"X-Leasium-Trust-State: {_raw_email_header_value(message.trust_state)}",
+        "X-Relby-Source: ai_mailbox",
+        f"X-Relby-Trust-State: {_raw_email_header_value(message.trust_state)}",
     ]
     if message.original_sender:
         lines.append(
-            f"X-Leasium-Original-Sender: {_raw_email_header_value(message.original_sender)}"
+            f"X-Relby-Original-Sender: {_raw_email_header_value(message.original_sender)}"
         )
     quarantine_reason = metadata.get("quarantine_reason")
     if isinstance(quarantine_reason, str) and quarantine_reason:
-        lines.append(f"X-Leasium-Quarantine-Reason: {quarantine_reason}")
+        lines.append(f"X-Relby-Quarantine-Reason: {quarantine_reason}")
     for key, value in sorted((message.auth_result or {}).items()):
         lines.append(
-            f"X-Leasium-Auth-{_raw_email_header_value(str(key)).upper()}: "
+            f"X-Relby-Auth-{_raw_email_header_value(str(key)).upper()}: "
             f"{_raw_email_header_value(str(value))}"
         )
     lines.extend(["", message.body_text or ""])

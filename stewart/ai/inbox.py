@@ -1,14 +1,14 @@
-"""Inbox triage — classify an inbound email/message into a Leasium action.
+"""Inbox triage — classify an inbound email/message into a Relby action.
 
 Tier 3 of the 2026-05-22 UX review (the AI inbox processor, equivalent
 to Re-Leased Credia Action). The operator pastes the body of a tenant
 or contractor email; the AI returns a structured classification plus a
-suggested next step inside Leasium. v1 deliberately stops at suggest —
+suggested next step inside Relby. v1 deliberately stops at suggest —
 no records are created automatically. The operator clicks through to
 the right surface (Operations, Tenants, Properties) where the existing
 review-first workflow takes over.
 
-Guardrails (mirroring Ask Leasium):
+Guardrails (mirroring Ask Relby):
 - Read-only. The triage helper never writes or sends anything.
 - The model must be explicit when it cannot classify confidently — a
   `low_confidence` warning surfaces in the response.
@@ -141,14 +141,14 @@ def triage_inbox(
         )
 
     prompt = (
-        "You are the Leasium inbox triage assistant. The operator forwards"
+        "You are the Relby inbox triage assistant. The operator forwards"
         " an inbound email or message from a tenant, contractor, agent, or"
-        " supplier. Your job is to classify the message into one Leasium"
+        " supplier. Your job is to classify the message into one Relby"
         " action category and suggest the next step inside the platform."
         "\n\nRules:"
         "\n1. Read-only. Never instruct the operator to send a message,"
         " post an invoice, or reconcile a payment. Always route them to a"
-        " reviewed Leasium workflow instead."
+        " reviewed Relby workflow instead."
         "\n2. Pick exactly one `kind` from the enum. Tenant/vendor messages"
         " usually use maintenance_request, payment_or_arrears, lease_change,"
         " tenant_contact, or vendor_or_contractor. Operator-forwarded mailbox"
@@ -160,7 +160,7 @@ def triage_inbox(
         " verbatim — paraphrase."
         "\n4. The `suggested_action` is one short imperative sentence"
         " starting with a verb the operator would actually do inside"
-        " Leasium (Open, Create draft, Triage, Review, Ignore)."
+        " Relby (Open, Create draft, Triage, Review, Ignore)."
         "\n5. `suggested_target_kind` picks the surface that maps to"
         " the action: maintenance_work_order, arrears_case, tenant,"
         " lease, property, smart_intake, or none for messages that"

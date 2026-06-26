@@ -328,7 +328,7 @@ def test_register_import_template_downloads_no_mutation_workbook(
     assert response.headers["content-type"] == (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    assert "leasium-migration-template.xlsx" in response.headers["content-disposition"]
+    assert "relby-migration-template.xlsx" in response.headers["content-disposition"]
 
     workbook = load_workbook(BytesIO(response.content), data_only=True)
     assert workbook.sheetnames == [

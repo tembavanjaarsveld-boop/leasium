@@ -467,7 +467,7 @@ def test_contractor_reply_records_operator_in_app_notification_cue(
             "channel": "in_app",
             "provider": "leasium",
             "status": "ready",
-            "detail": "Assignment notification is ready inside Leasium.",
+            "detail": "Assignment notification is ready inside Relby.",
         },
         "history": [],
     }

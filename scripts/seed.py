@@ -1,4 +1,4 @@
-"""Seed local development data for Leasium."""
+"""Seed local development data for Relby."""
 
 from datetime import date
 

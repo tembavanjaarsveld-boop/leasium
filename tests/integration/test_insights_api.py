@@ -352,7 +352,7 @@ def test_insights_overview_summarises_live_operations_without_leaking_tool_input
     assert accounting["approved_unsynced_invoice_count"] == 1
     assert accounting["readiness_issue_count"] >= 1
     assert accounting["readiness_blocker_count"] >= 1
-    assert "local Leasium metadata only" in accounting["guardrails"][0]
+    assert "local Relby metadata only" in accounting["guardrails"][0]
 
     snapshot = body["owner_entity_snapshot"]
     assert snapshot["ownership_profile_counts"]["trust"] == 1

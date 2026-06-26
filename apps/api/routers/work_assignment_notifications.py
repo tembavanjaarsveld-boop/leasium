@@ -148,9 +148,9 @@ SYSTEM_NOTICE_TEMPLATES = [
         key="work_assignment_notification",
         name="Standard assignment notice",
         default_version="v1",
-        subject_preview="New Leasium work assigned",
+        subject_preview="New Relby work assigned",
         content_summary=(
-            "Includes the work title, due date, source workspace, and a link back to Leasium."
+            "Includes the work title, due date, source workspace, and a link back to Relby."
         ),
         recovery_summary="Use for normal assignment sends and retries from Work.",
     ),
@@ -159,7 +159,7 @@ SYSTEM_NOTICE_TEMPLATES = [
         key="work_assignment_follow_up",
         name="Follow-up assignment notice",
         default_version="v1",
-        subject_preview="Leasium work follow-up needed",
+        subject_preview="Relby work follow-up needed",
         content_summary=(
             "Emphasises due reminders, escalation watch dates, and the assigned operator."
         ),
@@ -172,7 +172,7 @@ SYSTEM_DIGEST_TEMPLATES = [
         key="work_assignment_digest",
         name="Standard work digest",
         default_version="v1",
-        subject_preview="Leasium daily or weekly Work digest",
+        subject_preview="Relby daily or weekly Work digest",
         content_summary="Groups assigned work by urgency, follow-up status, and source workspace.",
         recovery_summary="Use for normal daily and weekly digest previews, sends, and retries.",
     ),
@@ -181,7 +181,7 @@ SYSTEM_DIGEST_TEMPLATES = [
         key="work_assignment_digest_owner_review",
         name="Owner review digest",
         default_version="v1",
-        subject_preview="Leasium owner review digest",
+        subject_preview="Relby owner review digest",
         content_summary=(
             "Highlights owner-facing review items, approvals, blockers, and overdue follow-ups."
         ),
@@ -342,7 +342,7 @@ def _template_catalog_with_configured_defaults(
                 key=configured_notice_key,
                 name="Configured assignment notice",
                 default_version=configured_notice_version,
-                subject_preview="New Leasium work assigned",
+                subject_preview="New Relby work assigned",
                 content_summary=(
                     "Uses the configured default assignment notice key from the API environment."
                 ),
@@ -513,7 +513,7 @@ def _email_setup_checks(
             ready=bool(webhook_url and settings.communications_webhook_secret),
             ready_detail=(
                 "Use this endpoint in SendGrid Event Webhook and configure the shared "
-                "webhook secret outside Leasium."
+                "webhook secret outside Relby."
             ),
             missing_detail=(
                 "Set PUBLIC_API_URL and COMMUNICATIONS_WEBHOOK_SECRET before configuring "
@@ -561,7 +561,7 @@ def _sms_setup_checks(
             ready=bool(callback_url and settings.communications_webhook_secret),
             ready_detail=(
                 "Use this endpoint for Work SMS status callbacks and configure the shared "
-                "webhook secret outside Leasium."
+                "webhook secret outside Relby."
             ),
             missing_detail=(
                 "Set PUBLIC_API_URL and COMMUNICATIONS_WEBHOOK_SECRET before configuring "
@@ -655,9 +655,9 @@ def _notification_center_channels(
             setup_checks=[
                 WorkAssignmentNotificationSetupCheckRead(
                     key="leasium_receipts",
-                    label="Leasium receipts",
+                    label="Relby receipts",
                     status="ready",
-                    detail="In-app assignment receipts are stored in Leasium work metadata.",
+                    detail="In-app assignment receipts are stored in Relby work metadata.",
                 )
             ],
         ),

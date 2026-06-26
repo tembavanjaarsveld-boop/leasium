@@ -1197,7 +1197,7 @@ def build_register_import_dry_run(
                 "vendor_directory",
                 "Vendor and contractor directory",
                 "Vendor scope, property coverage, and status appear as "
-                "source-of-truth data but Leasium does not yet have a vendor register.",
+                "source-of-truth data but Relby does not yet have a vendor register.",
                 "Vendors",
                 len(vendors),
             )

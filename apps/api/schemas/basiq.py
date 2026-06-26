@@ -89,7 +89,7 @@ class BasiqConnectStartRead(BaseModel):
 class BasiqConnectionStatusRead(BaseModel):
     """Local-only view of an entity's Basiq consent connection state.
 
-    Computed purely from Leasium configuration and database rows -- loading it
+    Computed purely from Relby configuration and database rows -- loading it
     never calls Basiq, mints a token, or mutates anything.
     """
 

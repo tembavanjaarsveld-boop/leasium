@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from stewart.core.models import InvoiceDraft
 
-# Default Leasium accent; per-entity branding overrides this once configured.
+# Default Relby accent; per-entity branding overrides this once configured.
 DEFAULT_ACCENT = "#15565a"
 DEFAULT_INK = "#1b2430"
 DEFAULT_MUTED = "#5d6b7a"
