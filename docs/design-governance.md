@@ -188,6 +188,14 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · All-mode bug fixes + nav smoke rework · existing desktop/mobile
+  smoke surfaces (`inbox`, `notifications` mobile 390, `comms`,
+  `mobile-bottom-nav`, `nav-consolidation`) · fixes: AI-inbox classify button
+  re-enabled in all-entities mode (it was permanently disabled); notifications
+  mobile summary shows the merged needs-you line instead of a "Choose an entity"
+  dead-end; nav smokes assert the removed shell switcher is gone · deferred:
+  app-flows integration greening + notifications channel-readiness/per-entity
+  sends (see `app-flows-allmode-followup-2026-06-26.md`).
 - 2026-06-26 · Properties calendar/map/metrics org-wide · existing
   desktop/mobile smoke surfaces checked through `properties-map-calendar` and
   `properties-ux` (34/34) · fixes: calendar lease events, map mapped/unmapped
