@@ -230,6 +230,19 @@ function commsQueueReviewDate(value: string | null | undefined) {
   return value?.slice(0, 10) || "undated";
 }
 
+// In all-entities mode the merged rows have no single snapshot timestamp, so
+// the CSV date falls back to the latest row timestamp (ISO strings compare
+// chronologically). Returns null when there are no rows.
+function latestRowTimestamp(values: (string | null | undefined)[]) {
+  let latest: string | null = null;
+  for (const value of values) {
+    if (value && (latest === null || value > latest)) {
+      latest = value;
+    }
+  }
+  return latest;
+}
+
 function commsTemplateCatalogReviewDate(
   templates: BrandedCommunicationTemplateRecord[],
 ) {
@@ -1105,13 +1118,14 @@ function CommsContent() {
   >(null);
   const [templateCatalogCsvCopyReceipt, setTemplateCatalogCsvCopyReceipt] =
     useState<string | null>(null);
-  // In all-mode the merged rows have no single generated_at; pass null so the
-  // CSV records "undated" while still exporting every entity's drafts.
+  // In all-mode the merged rows have no single snapshot generated_at, so the
+  // CSV date uses the latest exported row's timestamp (the queue candidate's
+  // generated_at / the outbound event's occurred_at) instead of "undated".
   const queueGeneratedAt = allMode
-    ? null
+    ? latestRowTimestamp(candidates.map((candidate) => candidate.generated_at))
     : (queueQuery.data?.generated_at ?? null);
   const outboundLogGeneratedAt = allMode
-    ? null
+    ? latestRowTimestamp(outboundLogEvents.map((event) => event.occurred_at))
     : (outboundLogQuery.data?.generated_at ?? null);
   const reviewCsv = () => {
     if (!queueLoaded) {
