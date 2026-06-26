@@ -188,6 +188,12 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Relby AI no-prepick toolbar follow-up · screenshot reviewed at
+  `output/playwright/relby-ai-no-prepick-toolbar.png` · fixes: the landing
+  composer no longer shows the Ask-about trust selector until the operator is
+  actually asking a question, including pinned `/intake?entity_id=...` links;
+  initial document upload state is Files + Approval first + disabled Ask only ·
+  none deferred.
 - 2026-06-26 · Relby AI no-prepick document upload · screenshots reviewed at
   `output/playwright/leasium-ai-workspace-1440.png` and
   `output/playwright/leasium-ai-workspace-390.png` · fixes: Files/drop now works

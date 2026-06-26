@@ -1729,6 +1729,11 @@ export function Dashboard({
   );
   const dashboardAskEntityId =
     scopedEntityId || (!isIntakeWorkspace ? entitiesQuery.data?.[0]?.id ?? "" : "");
+  const askScopeVisible =
+    !isIntakeWorkspace ||
+    landingQuestion.trim().length > 0 ||
+    landingAsking ||
+    landingAsks.length > 0;
 
   const dashboardOverviewQuery = useQuery<DashboardOverviewRecord>({
     queryKey: ["dashboard-overview", scopedEntityId, asOf],
@@ -3211,25 +3216,24 @@ export function Dashboard({
                         )}
                         Files
                       </button>
-                      {/* Ask is still trust-scoped. Uploads use this only as an
-                          optional holding trust; review-side filing is the
-                          authoritative decision. */}
-                      <span className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-accent/25 bg-white px-3 text-sm font-medium text-leasium-teal-strong shadow-leasiumXs">
-                        <Building2 size={16} className="shrink-0" />
-                        <span className="shrink-0 text-muted-foreground">
-                          Ask about
+                      {askScopeVisible ? (
+                        <span className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-accent/25 bg-white px-3 text-sm font-medium text-leasium-teal-strong shadow-leasiumXs">
+                          <Building2 size={16} className="shrink-0" />
+                          <span className="shrink-0 text-muted-foreground">
+                            Ask about
+                          </span>
+                          <span className="min-w-[7.5rem] max-w-[12rem]">
+                            <EntityPicker
+                              entities={entitiesQuery.data}
+                              loading={entitiesQuery.isLoading}
+                              value={selectedEntityId}
+                              onChange={setSelectedEntityId}
+                              allowAllEntities={false}
+                              tone="inline"
+                            />
+                          </span>
                         </span>
-                        <span className="min-w-[7.5rem] max-w-[12rem]">
-                          <EntityPicker
-                            entities={entitiesQuery.data}
-                            loading={entitiesQuery.isLoading}
-                            value={selectedEntityId}
-                            onChange={setSelectedEntityId}
-                            allowAllEntities={false}
-                            tone="inline"
-                          />
-                        </span>
-                      </span>
+                      ) : null}
                       <span className="hidden min-h-11 items-center gap-2 rounded-full border border-warning/25 bg-white px-3 text-sm font-medium text-warning-strong shadow-leasiumXs sm:inline-flex">
                         <ShieldCheck size={16} />
                         Approval first
@@ -3289,14 +3293,18 @@ export function Dashboard({
                         type="button"
                         onClick={() => {
                           if ("ask" in chip && chip.ask) {
-                            void handleLandingAsk(chip.ask);
+                            if (scopedEntityId) {
+                              void handleLandingAsk(chip.ask);
+                              return;
+                            }
+                            setLandingQuestion(chip.ask);
                             return;
                           }
                           fileInputRef.current?.click();
                         }}
                         disabled={
                           "ask" in chip && chip.ask
-                            ? !scopedEntityId
+                            ? landingAsking
                             : !provisionalIntakeEntityId
                         }
                         className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/15 bg-white px-3 text-sm font-medium text-primary-hover shadow-leasiumXs transition hover:border-primary/35 hover:bg-primary-soft disabled:opacity-50"

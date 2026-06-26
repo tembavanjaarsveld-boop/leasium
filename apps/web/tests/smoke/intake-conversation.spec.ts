@@ -153,6 +153,29 @@ test("Relby AI landing finishes loading without a pinned entity", async ({
 
   await expect(page.getByPlaceholder(/Ask Relby anything/)).toBeVisible();
   await expect(page.getByText("Checking live portfolio")).toHaveCount(0);
+  await expect(page.getByText("Ask about")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Files" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Ask" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Overdue?" }).click();
+  await expect(page.getByPlaceholder(/Ask Relby anything/)).toHaveValue(
+    "What's overdue?",
+  );
+  await expect(page.getByText("Ask about")).toBeVisible();
+});
+
+test("Relby AI pinned landing still hides the ask picker until a question", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/intake?entity_id=entity-1");
+
+  await expect(page.getByPlaceholder(/Ask Relby anything/)).toBeVisible();
+  await expect(page.getByText("Ask about")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Files" })).toBeEnabled();
+
+  await page.getByPlaceholder(/Ask Relby anything/).fill("What's overdue?");
+  await expect(page.getByText("Ask about")).toBeVisible();
 });
 
 test("Relby AI file drop works without choosing a trust first", async ({
@@ -227,6 +250,7 @@ test("Relby AI file drop works without choosing a trust first", async ({
   await expect(composer).toBeVisible();
   await expect(page.getByRole("button", { name: "Files" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Ask" })).toBeDisabled();
+  await expect(page.getByText("Ask about")).toHaveCount(0);
 
   const dataTransfer = await page.evaluateHandle(() => {
     const transfer = new DataTransfer();
