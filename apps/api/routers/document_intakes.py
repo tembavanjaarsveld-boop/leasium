@@ -55,6 +55,9 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
+from stewart.domain.tenant_onboarding_completion import (
+    complete_onboarding_for_signed_or_active_lease,
+)
 
 from apps.api.deps import (
     CurrentUser,
@@ -1376,6 +1379,12 @@ def _mark_tenant_uploaded_lease_match_signed(
                 intake.document,
             ),
         },
+    )
+    complete_onboarding_for_signed_or_active_lease(
+        onboarding,
+        lease,
+        reason="signed_lease_autocomplete",
+        user_id=user.id,
     )
 
 

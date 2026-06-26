@@ -2972,7 +2972,21 @@ def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
     assert lease is not None
     lease.annual_rent_cents = 12500000
     lease.status = LeaseStatus.pending
-    onboarding.status = TenantOnboardingStatus.applied
+    onboarding.status = TenantOnboardingStatus.reviewed
+    onboarding.delivery_data = {
+        "reminders": {
+            "enabled": True,
+            "schedule": [
+                {
+                    "key": "first",
+                    "label": "First reminder",
+                    "status": "scheduled",
+                    "scheduled_at": datetime.now(UTC).isoformat(),
+                }
+            ],
+            "next_reminder_at": datetime.now(UTC).isoformat(),
+        }
+    }
     session.commit()
     base_settings = get_settings()
     app.dependency_overrides[get_settings] = lambda: base_settings.model_copy(
@@ -3036,6 +3050,12 @@ def test_document_intake_accepts_tenant_lease_match_without_mutating_lease(
     assert lease.status == LeaseStatus.pending
     assert lease.annual_rent_cents == 12500000
     assert lease.updated_at.replace(tzinfo=None) == original_updated_at.replace(tzinfo=None)
+    assert onboarding.status == TenantOnboardingStatus.applied
+    assert onboarding.applied_at is not None
+    assert onboarding.review_data["completion_reason"] == "signed_lease_autocomplete"
+    assert onboarding.delivery_data["reminders"]["completed_reason"] == (
+        "signed_lease_autocomplete"
+    )
     assert document.document_metadata["accepted_lease_match"] is True
     assert document.document_metadata["accepted_lease_match_id"] == str(intake.id)
     assert session.scalars(select(LeaseIntake)).all() == []
@@ -3637,6 +3657,47 @@ def test_tenant_portal_lease_questions_gate_signing_and_apply(
     signed_agreement = sign_response.json()["lease_agreement"]
     assert signed_agreement["status"] == "signed"
     assert signed_agreement["signed_at"] is not None
+
+
+def test_tenant_portal_lease_signing_autocompletes_pre_applied_onboarding(
+    client: TestClient,
+    session: Session,
+) -> None:
+    scope = _seed_portal_scope(session)
+    onboarding = session.get(TenantOnboarding, UUID(scope["onboarding_id"]))
+    assert onboarding is not None
+    onboarding.status = TenantOnboardingStatus.reviewed
+    onboarding.delivery_data = {
+        "reminders": {
+            "enabled": True,
+            "schedule": [
+                {
+                    "key": "first",
+                    "label": "First reminder",
+                    "status": "scheduled",
+                    "scheduled_at": datetime.now(UTC).isoformat(),
+                }
+            ],
+            "next_reminder_at": datetime.now(UTC).isoformat(),
+        }
+    }
+    session.commit()
+
+    sign_response = client.post(
+        "/api/v1/tenant-portal/lease-agreement/sign",
+        headers={"x-tenant-portal-token": scope["token"]},
+        json={"accepted": True},
+    )
+
+    assert sign_response.status_code == 200
+    session.refresh(onboarding)
+    assert onboarding.status == TenantOnboardingStatus.applied
+    assert onboarding.applied_at is not None
+    assert onboarding.review_data["completion_reason"] == "signed_lease_autocomplete"
+    assert onboarding.delivery_data["reminders"]["completed_reason"] == (
+        "signed_lease_autocomplete"
+    )
+    assert sign_response.json()["lease_agreement"]["status"] == "signed"
 
 
 def test_tenant_portal_lease_signing_rejects_pending_opensign_request(

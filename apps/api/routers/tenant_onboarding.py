@@ -42,6 +42,9 @@ from stewart.domain.tenant_migration import (
     find_active_onboarding,
     is_migration_onboarding,
 )
+from stewart.domain.tenant_onboarding_completion import (
+    complete_onboarding_for_signed_or_active_lease,
+)
 from stewart.integrations.communications import (
     DeliveryResult,
     TenantOnboardingInvite,
@@ -896,6 +899,13 @@ def _apply_opensign_webhook_event(
             source="opensign_webhook",
             signing_updates=signing_updates,
         )
+        lease = session.get(Lease, onboarding.lease_id)
+        if lease is not None and lease.deleted_at is None:
+            complete_onboarding_for_signed_or_active_lease(
+                onboarding,
+                lease,
+                reason="signed_lease_autocomplete",
+            )
         return {"applied": True}
     section = lease_agreement_section(onboarding)
     signing_data.update(signing_updates)

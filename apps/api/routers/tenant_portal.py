@@ -55,6 +55,9 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
+from stewart.domain.tenant_onboarding_completion import (
+    complete_onboarding_for_signed_or_active_lease,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.tenant_onboarding import TenantOnboardingSubmit
@@ -2364,6 +2367,11 @@ def sign_tenant_portal_lease_agreement(
             detail=SIGNING_LOCKED_REASON,
         )
     mark_lease_agreement_signed(scope.onboarding, actor=scope.auth.actor)
+    complete_onboarding_for_signed_or_active_lease(
+        scope.onboarding,
+        scope.lease,
+        reason="signed_lease_autocomplete",
+    )
     audit_log(
         session,
         actor=scope.auth.actor,

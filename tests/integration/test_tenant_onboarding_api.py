@@ -23,9 +23,11 @@ from stewart.core.models import (
     StoredDocument,
     Tenant,
     TenantOnboarding,
+    TenantOnboardingStatus,
 )
 from stewart.integrations.communications import DeliveryResult
 from stewart.integrations.opensign import LeaseSignatureResult, SignedLeaseDocumentResult
+from tests.support.provider_guardrail import assert_no_provider_mutation_audit_rows
 
 
 def _entity_id(session: Session) -> str:
@@ -144,6 +146,43 @@ def _attach_lease_document(session: Session, onboarding_id: str) -> StoredDocume
     session.add(document)
     session.commit()
     return document
+
+
+def _create_stuck_onboarding_for_lease(
+    session: Session,
+    lease: Lease,
+    *,
+    status: TenantOnboardingStatus,
+    token_suffix: str,
+) -> TenantOnboarding:
+    tenant = session.get(Tenant, lease.tenant_id)
+    assert tenant is not None
+    onboarding = TenantOnboarding(
+        entity_id=tenant.entity_id,
+        lease_id=lease.id,
+        tenant_id=lease.tenant_id,
+        token=f"stuck-{token_suffix}",
+        status=status,
+        submitted_data={},
+        review_data={},
+        delivery_data={
+            "reminders": {
+                "enabled": True,
+                "schedule": [
+                    {
+                        "key": "first",
+                        "label": "First reminder",
+                        "status": "scheduled",
+                        "scheduled_at": utcnow().isoformat(),
+                    }
+                ],
+                "next_reminder_at": utcnow().isoformat(),
+            }
+        },
+    )
+    session.add(onboarding)
+    session.flush()
+    return onboarding
 
 
 def test_tenant_onboarding_link_public_submit_waits_for_review_before_apply(
@@ -881,6 +920,63 @@ def test_migrated_tenant_onboarding_creates_applied_row_without_provider(
     assert tenant.legal_name == "Onboarding Tenant Pty Ltd"
 
 
+def test_signed_onboarding_self_heal_backfill_is_dry_run_guarded_and_idempotent(
+    client: TestClient,
+    session: Session,
+) -> None:
+    from scripts.backfill_signed_onboarding_completion import (
+        plan_signed_onboarding_completion_self_heal,
+    )
+
+    active_lease = session.get(Lease, UUID(_lease_id(client, session)))
+    assert active_lease is not None
+    active_lease.status = LeaseStatus.active
+    stuck = _create_stuck_onboarding_for_lease(
+        session,
+        active_lease,
+        status=TenantOnboardingStatus.sent,
+        token_suffix="active-self-heal",
+    )
+
+    pending_lease = session.get(Lease, UUID(_lease_id(client, session)))
+    assert pending_lease is not None
+    pending_lease.status = LeaseStatus.pending
+    pending = _create_stuck_onboarding_for_lease(
+        session,
+        pending_lease,
+        status=TenantOnboardingStatus.sent,
+        token_suffix="pending-self-heal",
+    )
+    session.commit()
+
+    dry_run = plan_signed_onboarding_completion_self_heal(session, apply_changes=False)
+
+    assert [change.onboarding_id for change in dry_run] == [stuck.id]
+    session.refresh(stuck)
+    assert stuck.status == TenantOnboardingStatus.sent
+    assert stuck.applied_at is None
+
+    applied = plan_signed_onboarding_completion_self_heal(session, apply_changes=True)
+
+    assert [change.onboarding_id for change in applied] == [stuck.id]
+    session.flush()
+    session.refresh(stuck)
+    session.refresh(pending)
+    assert stuck.status == TenantOnboardingStatus.applied
+    assert stuck.applied_at is not None
+    assert stuck.review_data["completion_reason"] == "self_heal_pre_signed_lease"
+    assert stuck.delivery_data["reminders"]["completed_reason"] == (
+        "self_heal_pre_signed_lease"
+    )
+    assert pending.status == TenantOnboardingStatus.sent
+    assert pending.applied_at is None
+
+    rerun = plan_signed_onboarding_completion_self_heal(session, apply_changes=True)
+
+    assert rerun == []
+    assert_no_provider_mutation_audit_rows(session)
+
+
 def test_migrated_tenant_onboarding_send_portal_invite_delivers(
     client: TestClient,
     session: Session,
@@ -1316,6 +1412,124 @@ def test_tenant_onboarding_send_lease_pack_rejects_active_opensign_request(
         "An e-signature request is already waiting for completion."
     )
     assert signature_requests == []
+
+
+def test_tenant_onboarding_opensign_completion_autocompletes_pre_applied_onboarding(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    secret = _opensign_webhook_secret(monkeypatch)
+
+    def fake_download(signed_file_url, settings):  # noqa: ANN001, ARG001
+        return SignedLeaseDocumentResult(
+            status="downloaded",
+            content_type="application/pdf",
+            file_data=b"%PDF signed lease",
+        )
+
+    monkeypatch.setattr(
+        tenant_onboarding_router,
+        "download_signed_lease_document",
+        fake_download,
+    )
+    lease = session.get(Lease, UUID(_lease_id(client, session)))
+    assert lease is not None
+    lease.status = LeaseStatus.pending
+    onboarding = _create_stuck_onboarding_for_lease(
+        session,
+        lease,
+        status=TenantOnboardingStatus.reviewed,
+        token_suffix="opensign-autocomplete",
+    )
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "opensign",
+                "status": "sent",
+                "envelope_id": "opensign-doc-autocomplete-1",
+                "document_id": "document-autocomplete-1",
+                "sent_at": utcnow().isoformat(),
+            }
+        },
+    )
+    session.commit()
+
+    response = _opensign_webhook_post(
+        client,
+        {
+            "event": "completed",
+            "type": "request-sign",
+            "objectId": "opensign-doc-autocomplete-1",
+            "file": "https://files.opensign.test/signed-autocomplete-1.pdf",
+        },
+        secret,
+    )
+
+    assert response.status_code == 204
+    session.refresh(onboarding)
+    assert onboarding.status == TenantOnboardingStatus.applied
+    assert onboarding.applied_at is not None
+    assert onboarding.reviewed_at is not None
+    assert onboarding.submitted_at is not None
+    assert onboarding.review_data["completion_reason"] == "signed_lease_autocomplete"
+    assert onboarding.review_data["completion_history"][0]["previous_status"] == "reviewed"
+    assert onboarding.delivery_data["reminders"]["completed_reason"] == (
+        "signed_lease_autocomplete"
+    )
+    assert onboarding.delivery_data["reminders"]["next_reminder_at"] is None
+    signing = onboarding.delivery_data["lease_agreement"]["signing"]
+    assert signing["status"] == "completed"
+    assert signing["signed_at"] is not None
+    assert_no_provider_mutation_audit_rows(session)
+
+
+def test_tenant_onboarding_opensign_non_terminal_event_does_not_complete_onboarding(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    secret = _opensign_webhook_secret(monkeypatch)
+    lease = session.get(Lease, UUID(_lease_id(client, session)))
+    assert lease is not None
+    lease.status = LeaseStatus.pending
+    onboarding = _create_stuck_onboarding_for_lease(
+        session,
+        lease,
+        status=TenantOnboardingStatus.reviewed,
+        token_suffix="opensign-viewed",
+    )
+    set_lease_agreement_section(
+        onboarding,
+        {
+            "signing": {
+                "provider": "opensign",
+                "status": "sent",
+                "envelope_id": "opensign-doc-viewed-1",
+                "document_id": "document-viewed-1",
+                "sent_at": utcnow().isoformat(),
+            }
+        },
+    )
+    session.commit()
+
+    response = _opensign_webhook_post(
+        client,
+        {
+            "event": "viewed",
+            "type": "request-sign",
+            "objectId": "opensign-doc-viewed-1",
+        },
+        secret,
+    )
+
+    assert response.status_code == 204
+    session.refresh(onboarding)
+    assert onboarding.status == TenantOnboardingStatus.reviewed
+    assert onboarding.applied_at is None
+    assert "completion_reason" not in onboarding.review_data
+    assert onboarding.delivery_data["reminders"]["next_reminder_at"] is not None
 
 
 def test_tenant_onboarding_opensign_webhook_marks_lease_signed(
