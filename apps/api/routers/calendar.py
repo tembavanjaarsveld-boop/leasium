@@ -104,7 +104,6 @@ def _property_link(entity_id: UUID, property_id: UUID | None) -> str:
     params: dict[str, str] = {"entity_id": str(entity_id)}
     if property_id is not None:
         params["property_id"] = str(property_id)
-    params["view"] = "calendar"
     return f"/properties?{urlencode(params)}"
 
 

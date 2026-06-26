@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
@@ -6,43 +6,6 @@ test.beforeEach(async ({ page }) => {
   await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
-
-// Injects a single active lease whose review (insights) and expiry both fall in
-// July 2026, so the month grid renders a rent-review and a lease-expiry chip in
-// the same default month without depending on the far-future shared fixtures.
-async function routeJulyLeaseEvents(page: Page) {
-  await page.route("**/api/v1/rent-roll**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([
-        {
-          entity_id: "entity-1",
-          entity_name: "Acme Holdings Pty Ltd",
-          property_id: "property-1",
-          property_name: "Queen Street Retail Centre",
-          tenancy_unit_id: "unit-1",
-          unit_label: "Shop 3",
-          lease_id: "lease-1",
-          tenant_id: "tenant-1",
-          tenant_name: "Bright Cafe",
-          lease_status: "active",
-          commencement_date: "2025-07-01",
-          expiry_date: "2026-07-20",
-          tenant_billing_email: null,
-          annual_rent_cents: 9600000,
-          rent_frequency: "monthly",
-          charge_rules: [],
-          charge_rules_total_cents: 0,
-          next_due_date: null,
-          gst_readiness_blockers: [],
-          xero_readiness_blockers: [],
-          invoice_readiness_blockers: [],
-        },
-      ]),
-    });
-  });
-}
 
 test("map view shows mapped and unmapped counts from property metadata", async ({
   page,
@@ -162,99 +125,4 @@ test("coordinate inputs reject out-of-range values", async ({ page }) => {
   ).toBeVisible();
   await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1);
   expect(patchCount).toBe(0);
-});
-
-test("calendar month grid places rent review and lease expiry chips on their dates", async ({
-  page,
-}) => {
-  await routeJulyLeaseEvents(page);
-  await page.goto("/properties?view=calendar");
-
-  await expect(
-    page.getByRole("group", { name: "Calendar layout" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Month", exact: true }).click();
-
-  await expect(
-    page.getByRole("heading", { name: "July 2026" }),
-  ).toBeVisible();
-  await expect(page.locator('[data-date="2026-07-01"]')).toContainText(
-    "rent review",
-  );
-  await expect(page.locator('[data-date="2026-07-20"]')).toContainText(
-    "lease expiry",
-  );
-});
-
-test("calendar chips deep-link to the property record", async ({ page }) => {
-  await routeJulyLeaseEvents(page);
-  await page.goto("/properties?view=calendar");
-
-  await expect(
-    page.getByRole("group", { name: "Calendar layout" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Month", exact: true }).click();
-
-  const expiryChip = page.locator('[data-date="2026-07-20"] a').first();
-  await expect(expiryChip).toHaveAttribute("href", /property_id=property-1/);
-});
-
-test("calendar month navigation works by keyboard", async ({ page }) => {
-  await page.goto("/properties?view=calendar");
-
-  await expect(
-    page.getByRole("group", { name: "Calendar layout" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Month", exact: true }).click();
-
-  // The earliest event (the rent review) anchors the default month.
-  await expect(
-    page.getByRole("heading", { name: "July 2026" }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Next month" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "August 2026" }),
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Previous month" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "July 2026" }),
-  ).toBeVisible();
-});
-
-test("calendar month grid respects owner_tag filter", async ({ page }) => {
-  // The Eagle Street trust owns no lease-event property, so its calendar feed
-  // is empty under the owner_tag filter.
-  await page.goto(
-    "/properties?view=calendar&owner_tag=eagle%20street%20property%20trust",
-  );
-  await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await expect(
-    page.getByText(
-      "No rent reviews or lease expiries match the current filters.",
-    ),
-  ).toBeVisible();
-
-  // The Queen Street trust owns the rent-review property; its event flows into
-  // the month grid.
-  await page.goto(
-    "/properties?view=calendar&owner_tag=queen%20street%20property%20trust",
-  );
-  await expect(
-    page.getByRole("group", { name: "Calendar layout" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Month", exact: true }).click();
-
-  await expect(
-    page.getByRole("heading", { name: "July 2026" }),
-  ).toBeVisible();
-  await expect(page.locator('[data-date="2026-07-01"]')).toContainText(
-    "rent review",
-  );
 });

@@ -11,8 +11,7 @@ function initialPropertyView(value: string | string[] | undefined) {
     view === "cards" ||
     view === "board" ||
     view === "table" ||
-    view === "map" ||
-    view === "calendar"
+    view === "map"
   ) {
     if (view === "cards") {
       return "board";

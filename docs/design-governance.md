@@ -592,6 +592,18 @@ fixes · deferrals.
   bottom nav area · provider guardrails unchanged: preview/open-source actions
   do not send email/SMS, dispatch providers, call Xero/Basiq, reconcile
   payments, or mutate source records · none deferred.
+- 2026-06-26 · Properties calendar removal · Temba confirmed the Work Calendar
+  is the proper calendar home, so no new Figma frame was needed; this is a
+  removal from the existing Properties toolbar · screens checked at 1440/390
+  (`output/playwright/properties-calendar-removal-1440.png`,
+  `output/playwright/properties-calendar-removal-390.png`) · fixes in-slice:
+  removed Calendar from the Properties segmented control, made legacy
+  `/properties?view=calendar` URLs fall back to Cards, and pointed Work
+  calendar lease source links at the property record instead of the removed
+  Properties calendar view · slop test passed: desktop controls fit as
+  Cards/Table/Map, mobile first viewport remains uncluttered, no overlap ·
+  provider guardrails unchanged: Work calendar stays read-only, and no
+  provider/comms/payment/reconciliation mutation path changed · none deferred.
 - 2026-06-20 · AI Mailbox property/task/owner-admin promotion guardrails ·
   reused the shipped AI Mailbox conversation plan card without new tokens ·
   screens checked at 1440/390
@@ -1094,8 +1106,8 @@ remove entries by shipping a slice whose UX pass covers them.
 - **Horizon Properties desktop v1 (2026-06-10, Remba pending):** production
   implementation from the approved Figma Properties target (`55:2`) on
   `/properties`. The page now opens on Cards with the Figma-style title/subtitle,
-  Cards/Table/Map/Calendar switcher, live stat strip, property card grid, dashed
-  Add property tile, and review-first trust pill. Existing Table, Map, Calendar,
+  Cards/Table/Map switcher, live stat strip, property card grid, dashed
+  Add property tile, and review-first trust pill. Existing Table, Map,
   create/edit, image/evidence, billing, document, and all-entities flows remain
   in place; explicit `property_id` deep links and card selections now hand off
   to the Horizon Property detail screen. No API, provider, payment,
@@ -1172,8 +1184,8 @@ remove entries by shipping a slice whose UX pass covers them.
   the shell. Follow-up Properties mobile polish matches `59:427` more closely:
   the default mobile board now uses compact property rows instead of image-heavy
   cards, shows only the Rent roll and Renewals stat cards in the first mobile
-  viewport, and hides board-only controls while keeping direct Map/Calendar
-  mobile tabs visible. Notifications send/retry controls now have explicit
+  viewport, and hides board-only controls while keeping direct Map mobile tabs
+  visible. Notifications send/retry controls now have explicit
   mobile smoke coverage for the 44px touch floor. Follow-up Smart Intake mobile
   polish matches `59:521` more closely: bare `/intake` now stays landing-first,
   uses the compact drop/snap panel and queue cards, and opens review only from

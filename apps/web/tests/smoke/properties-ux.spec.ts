@@ -110,7 +110,7 @@ test("desktop Properties opens on the Horizon cards frame", async ({ page }) => 
   );
   await expect(page.getByRole("tab", { name: "Table" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Map" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Calendar" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Calendar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "New property" })).toBeVisible();
 
   await expect(page.getByText("Occupancy")).toBeVisible();
@@ -384,134 +384,27 @@ test("desktop property billing confirms charge add and supports inline delete", 
   ]);
 });
 
-test("mobile properties calendar view keeps filters and review actions touch safe", async ({
+test("legacy properties calendar URL falls back to cards", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/properties?view=calendar");
 
   await expect(
     page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("tab", { name: "Calendar" }),
-  ).toHaveAttribute("aria-selected", "true");
-  await expect(page).toHaveURL(/view=calendar/);
-
-  await expect(page.getByText("Review queue")).toBeVisible();
-  await expect(
-    page.getByText(/Queen Street Retail Centre.*rent review/).first(),
-  ).toBeVisible();
-
-  await expectTouchTarget(page.getByRole("tab", { name: "Calendar" }));
-  await expectTouchTarget(
-    page.getByRole("button", { name: /^Rent reviews/ }).first(),
-  );
-  await expectTouchTarget(
-    page.getByRole("button", { name: /^Next 90/ }).first(),
-  );
-  await expectTouchTarget(page.getByRole("button", { name: "Copy schedule" }));
-  await expectTouchTarget(
-    page.getByRole("button", { name: "Copy follow-ups" }),
-  );
-  await expectTouchTarget(page.getByRole("link", { name: "Open next" }).first());
-});
-
-test("properties calendar creates lease follow-up tasks without provider side effects", async ({
-  page,
-}) => {
-  const followUpRequests: Array<Record<string, unknown>> = [];
-  const blockedCalls: string[] = [];
-  await page.route("**/api/v1/obligations/lease-event-follow-ups", async (route) => {
-    followUpRequests.push(route.request().postDataJSON() as Record<string, unknown>);
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({
-        entity_id: "entity-1",
-        as_of: "2026-06-02",
-        horizon_days: 90,
-        property_ids: ["property-1"],
-        created_count: 1,
-        skipped_count: 1,
-        guardrails: [
-          "Lease calendar follow-up creation only creates internal obligation tasks.",
-          "It does not send email or SMS, dispatch providers, post invoices, sync Xero/Basiq, reconcile payments, or mutate leases.",
-        ],
-        created: [],
-        skipped: [],
-      }),
-    });
-  });
-  await page.route("**/api/v1/{work-assignments,comms,xero,basiq}/**", async (route) => {
-    const request = route.request();
-    const pathname = new URL(request.url()).pathname;
-    if (request.method() === "GET" && pathname === "/api/v1/comms/queue/counts") {
-      await route.fallback();
-      return;
-    }
-    blockedCalls.push(pathname);
-    await route.fulfill({
-      status: 418,
-      contentType: "application/json",
-      body: JSON.stringify({ detail: "Provider side effect must stay unused." }),
-    });
-  });
-
-  await page.goto("/properties?view=calendar&owner_tag=queen%20street%20property%20trust");
-
-  await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "Calendar" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Cards" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await page.getByRole("button", { name: "Create next 90 tasks" }).click();
+  await expect(page).not.toHaveURL(/view=calendar/);
   await expect(
-    page.getByText("Created 1 lease follow-up task. 1 already existed."),
+    page.getByRole("list", { name: "Property cards" }),
   ).toBeVisible();
-  expect(followUpRequests).toHaveLength(1);
-  expect(followUpRequests[0]).toMatchObject({
-    entity_id: "entity-1",
-    horizon_days: 90,
-  });
-  expect(followUpRequests[0].property_ids).toEqual(["property-1", "property-2"]);
-  expect(blockedCalls).toEqual([]);
-});
-
-test("properties calendar leaves full portfolio follow-up runs unscoped", async ({
-  page,
-}) => {
-  const followUpRequests: Array<Record<string, unknown>> = [];
-  await page.route("**/api/v1/obligations/lease-event-follow-ups", async (route) => {
-    followUpRequests.push(route.request().postDataJSON() as Record<string, unknown>);
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({
-        entity_id: "entity-1",
-        as_of: "2026-06-02",
-        horizon_days: 90,
-        property_ids: [],
-        created_count: 0,
-        skipped_count: 0,
-        guardrails: [
-          "Lease calendar follow-up creation only creates internal obligation tasks.",
-          "It does not send email or SMS, dispatch providers, post invoices, sync Xero/Basiq, reconcile payments, or mutate leases.",
-        ],
-        created: [],
-        skipped: [],
-      }),
-    });
-  });
-
-  await page.goto("/properties?view=calendar");
-  await page.getByRole("button", { name: "Create next 90 tasks" }).click();
-
-  expect(followUpRequests).toHaveLength(1);
-  expect(followUpRequests[0]).toMatchObject({
-    entity_id: "entity-1",
-    horizon_days: 90,
-    property_ids: [],
-  });
+  await expectTouchTarget(
+    page.getByRole("tab", { name: "Cards" }),
+  );
 });
 
 test("mobile properties map view keeps focus controls touch safe", async ({

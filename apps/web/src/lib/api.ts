@@ -1749,35 +1749,6 @@ export type ObligationRecord = {
   metadata: Record<string, unknown>;
 };
 
-export type LeaseEventFollowUpSkippedRecord = {
-  lease_id: string;
-  property_id: string;
-  tenancy_unit_id: string;
-  category: string;
-  due_date: string;
-  reason: "existing_obligation";
-  obligation_id: string;
-};
-
-export type LeaseEventFollowUpRunRecord = {
-  entity_id: string;
-  as_of: string;
-  horizon_days: number;
-  property_ids: string[];
-  created_count: number;
-  skipped_count: number;
-  guardrails: string[];
-  created: ObligationRecord[];
-  skipped: LeaseEventFollowUpSkippedRecord[];
-};
-
-export type LeaseEventFollowUpRunPayload = {
-  entity_id: string;
-  property_ids?: string[];
-  as_of?: string;
-  horizon_days?: number;
-};
-
 export type ComplianceCheckKind =
   | "fire_safety"
   | "insurance"
@@ -5270,18 +5241,6 @@ export function createObligation(payload: ObligationPayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
-}
-
-export function createLeaseEventFollowUps(
-  payload: LeaseEventFollowUpRunPayload,
-) {
-  return request<LeaseEventFollowUpRunRecord>(
-    "/obligations/lease-event-follow-ups",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
 }
 
 export function updateObligation(

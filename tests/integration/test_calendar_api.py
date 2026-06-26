@@ -121,6 +121,7 @@ def test_calendar_events_returns_read_only_union_with_window_and_entity_scope(
     assert events[0]["severity"] == "warning"
     assert events[0]["source"] == {"table": "lease", "id": str(lease.id)}
     assert events[0]["link"].startswith("/properties?")
+    assert "view=calendar" not in events[0]["link"]
     assert events[1]["source"] == {"table": "maintenance_work_order", "id": str(work_order.id)}
     assert events[1]["link"] == f"/operations/maintenance/{work_order.id}"
     assert events[2]["source"] == {"table": "compliance_check", "id": str(compliance_check.id)}

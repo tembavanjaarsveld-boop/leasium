@@ -27,6 +27,23 @@ passed); eslint on `property-workspace.tsx` + `properties-ux.spec.ts`; Next
 `typegen` + `tsc --noEmit`; `git diff --check`; screenshot capture spec (temp
 only, removed) passed 2 and saved the UX artifacts.
 
+## Continuation - 2026-06-26 (Properties calendar removal)
+
+Temba asked to remove the extra Calendar entry from Properties because the
+proper calendar lives under Work. `/properties` now exposes Cards, Table, and
+Map only; `?view=calendar` falls back to Cards, and Work calendar lease source
+links open the property record without a stale `view=calendar` parameter.
+The old Properties calendar smoke coverage was removed; Work calendar smoke
+coverage remains the canonical calendar check.
+
+Verification: red-first Properties smoke failed on the still-visible Calendar
+tab; red-first calendar API test failed on `view=calendar` source links. Final
+checks passed: calendar API pytest (3), ruff on calendar router/test, web
+eslint on touched files, `tsc --noEmit`, focused Properties smoke (2),
+Properties map smoke (6), Work calendar smoke (3). UX screenshots captured at
+`output/playwright/properties-calendar-removal-1440.png` and
+`output/playwright/properties-calendar-removal-390.png`; UX log updated.
+
 ## Continuation - 2026-06-26 (Switcher removal slice 9: Operations row-trust actions)
 
 Slice 9 is committed locally on `main`: Operations compliance and row-backed

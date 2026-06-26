@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Verifies the Review-queue cards no longer overflow their grid cells, against
-// the deployed site (Properties → Calendar view) using the saved audit session.
+// Verifies Work Calendar agenda cards no longer overflow their grid cells,
+// against the deployed site using the saved audit session.
 import { chromium, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,7 @@ const context = await browser.newContext({
   viewport: { width: 1440, height: 900 },
 });
 const page = await context.newPage();
-await page.goto(`${baseUrl}/properties?view=calendar`, {
+await page.goto(`${baseUrl}/operations?tab=calendar`, {
   waitUntil: "domcontentloaded",
   timeout: 45000,
 });
@@ -37,7 +37,10 @@ await page
   )
   .catch(() => null);
 await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => null);
-await page.getByText("Review queue").first().waitFor({ timeout: 20000 }).catch(() => null);
+await page
+  .getByRole("heading", { name: "Operations calendar" })
+  .waitFor({ timeout: 20000 })
+  .catch(() => null);
 await page.waitForTimeout(2000);
 
 const url = page.url();
@@ -48,9 +51,9 @@ if (/\/(sign-in|welcome|access)/.test(url)) {
 }
 
 const result = await page.evaluate(() => {
-  // The review-queue title is the bold first line inside each card link.
+  // The agenda title is the bold first line inside each calendar event card.
   const titles = Array.from(
-    document.querySelectorAll("a .font-semibold.line-clamp-2"),
+    document.querySelectorAll("article .font-semibold.text-foreground"),
   );
   let maxOverflow = 0;
   let overflowing = 0;
@@ -75,6 +78,6 @@ const pass =
   result.titlesFound > 0 &&
   result.overflowing === 0 &&
   result.docOverflow <= 2;
-console.log(pass ? "REVIEW_QUEUE_PASS" : "REVIEW_QUEUE_FAIL");
+console.log(pass ? "WORK_CALENDAR_PASS" : "WORK_CALENDAR_FAIL");
 await browser.close();
 process.exit(pass ? 0 : 1);
