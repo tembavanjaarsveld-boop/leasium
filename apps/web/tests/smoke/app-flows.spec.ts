@@ -862,8 +862,10 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
     page.getByRole("heading", { name: "Billing Readiness" }),
   ).toBeVisible();
   await page.getByRole("tab", { name: /Send & get paid/ }).click();
+  // Month-end close checks are per-entity (hidden in all-entities mode); the
+  // delivery panel is the stable all-entities waypoint for this tab.
   await expect(
-    page.getByRole("heading", { name: "Month-end close checks" }),
+    page.getByRole("heading", { name: "Send & track payments" }),
   ).toBeVisible();
 
   const deliveryPanel = page.locator("section").filter({
@@ -901,13 +903,11 @@ test("billing readiness mobile actions keep 44px touch targets", async ({
   await deliveryFilterButton(/^All\b/).click();
   expect(forbiddenFilterRequests).toEqual([]);
 
-  await expectTouchTarget(page.getByRole("link", { name: "Open recovery" }));
-  await expectTouchTarget(
-    page.getByRole("link", { name: "Review payments" }).first(),
-  );
-  await expectTouchTarget(
-    page.getByRole("link", { name: "Open statements" }).first(),
-  );
+  // Month-end close shortcuts (Open recovery / Review payments / Open
+  // statements) are per-entity (Xero books close per trust) and live in the
+  // month-end checklist, which is hidden in the all-entities view. The recovery
+  // workflow itself stays reachable here via the delivery "Needs action" filter
+  // checked above.
   const staleDispatchCard = page
     .getByTestId("billing-delivery-mobile-card")
     .filter({ hasText: "INV-1001" })
@@ -3239,8 +3239,7 @@ test("maintenance detail mobile billing actions keep 44px touch targets", async 
 test("notification center shows work notices and digest receipts", async ({
   page,
 }) => {
-  await page.goto("/");
-  await page.getByRole("link", { name: "Open notifications" }).click();
+  await page.goto("/notifications");
   await expect(page).toHaveURL(/\/notifications$/);
 
   await expect(
@@ -4367,13 +4366,12 @@ test("properties All entities view merges across entities and drops into one", a
     }
   });
 
-  await page.goto("/properties?entity_id=entity-1");
+  // All-entities is the default view now (the global switcher is gone).
+  await page.goto("/properties");
 
   await expect(
     page.getByRole("heading", { name: "Properties" }),
   ).toBeVisible();
-
-  await selectAllEntitiesFromWorkspaceSwitcher(page);
 
   await expect(
     page.getByText("4 properties across 2 entities").last(),
@@ -4382,7 +4380,6 @@ test("properties All entities view merges across entities and drops into one", a
   expect(propertyByEntityRequests).not.toContain(
     "/api/v1/premises/by-entity/entity-2",
   );
-  await expect(page).toHaveURL(/entity_id=__all_entities__/);
   await expect(page.getByRole("button", { name: "New property" })).toBeDisabled();
 
   const cards = page.getByRole("list", { name: "Property cards" });
@@ -4408,10 +4405,6 @@ test("properties All entities view merges across entities and drops into one", a
   await secondaryCard
     .getByRole("button", { name: "Open property Rivergum Industrial Estate" })
     .click();
-  await expect(page.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
-    "entity-2",
-  );
   await expect(page).toHaveURL(/property_id=property-secondary-1/);
   await expect(
     page.getByRole("heading", { name: "Rivergum Industrial Estate" }),
@@ -4439,7 +4432,6 @@ test("fresh storage defaults a multi-entity org to All entities", async ({
   await expect(
     page.getByText("4 properties across 2 entities").last(),
   ).toBeVisible();
-  await expect(page).toHaveURL(/entity_id=__all_entities__/);
 
   const cards = page.getByRole("list", { name: "Property cards" });
   await expect(
@@ -6610,32 +6602,22 @@ test("settings shows Xero readiness and records mappings", async ({ page }) => {
   const sidebar = page.getByRole("complementary", {
     name: "Primary navigation",
   });
-  const shellEntitySwitcher = sidebar.getByRole("group", {
-    name: "Workspace switcher",
-  });
   const primaryNav = sidebar.getByRole("navigation", { name: "Primary" });
   const settingsNavLink = primaryNav
     .getByRole("link", { name: /^Settings/ })
     .first();
   const searchButton = page.getByRole("button", { name: "Open search" });
-  await expect(shellEntitySwitcher).toBeVisible();
-  await expect(shellEntitySwitcher.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
-    "entity-1",
-  );
+  // The global entity switcher was removed from the shell; settings scopes via
+  // its own in-page entity picker.
   await expect(primaryNav).toBeVisible();
   await expect(settingsNavLink).toBeVisible();
   await expect(searchButton).toBeVisible();
-  const entitySwitcherFits = await shellEntitySwitcher.evaluate(
-    (node) => node.scrollWidth <= node.clientWidth + 1,
-  );
   const primaryNavFits = await primaryNav.evaluate(
     (node) => node.scrollWidth <= node.clientWidth + 1,
   );
   const settingsNavFits = await settingsNavLink.evaluate(
     (node) => node.scrollWidth <= node.clientWidth + 1,
   );
-  expect(entitySwitcherFits).toBe(true);
   expect(primaryNavFits).toBe(true);
   expect(settingsNavFits).toBe(true);
   await expect(page.getByRole("tab", { name: /^Overview\b/ })).toBeVisible();

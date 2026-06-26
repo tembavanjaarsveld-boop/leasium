@@ -31,7 +31,8 @@ test("notifications render the Horizon review queue without provider mutation on
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
   await expect(
-    page.getByText(/Work notices and digest receipts/i),
+    // All-entities default: "N work notices and M digest receipts across every entity."
+    page.getByText(/work notices and .*digest receipts/i),
   ).toBeVisible();
   for (const channel of ["Email", "SMS", "In-app"]) {
     await expect(

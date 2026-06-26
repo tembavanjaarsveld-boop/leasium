@@ -1490,10 +1490,7 @@ function NoticeRow({
             <SecondaryButton
               type="button"
               className="h-9 px-2.5"
-              disabled={isSending || allMode}
-              title={
-                allMode ? "Select a single entity to send" : undefined
-              }
+              disabled={isSending}
               onClick={() => onSend(notice)}
             >
               <Send size={14} />
@@ -1504,10 +1501,7 @@ function NoticeRow({
             <SecondaryButton
               type="button"
               className="h-9 px-2.5"
-              disabled={isSendingSms || allMode}
-              title={
-                allMode ? "Select a single entity to send" : undefined
-              }
+              disabled={isSendingSms}
               onClick={() => onSendSms(notice)}
             >
               <MessageSquare size={14} />
@@ -1596,8 +1590,7 @@ function MobileNoticeCard({
             <SecondaryButton
               type="button"
               className="min-h-11 rounded-[10px] border-transparent bg-primary px-3 text-xs text-primary-foreground hover:bg-primary-hover"
-              disabled={isSending || allMode}
-              title={allMode ? "Select a single entity to send" : undefined}
+              disabled={isSending}
               onClick={() => onSend(notice)}
             >
               {isSending ? "Sending…" : noticeRecoveryLabel(notice)}
@@ -1606,8 +1599,7 @@ function MobileNoticeCard({
             <SecondaryButton
               type="button"
               className="min-h-11 rounded-[10px] border-transparent bg-primary px-3 text-xs text-primary-foreground hover:bg-primary-hover"
-              disabled={isSendingSms || allMode}
-              title={allMode ? "Select a single entity to send" : undefined}
+              disabled={isSendingSms}
               onClick={() => onSendSms(notice)}
             >
               {isSendingSms ? "Sending…" : smsNoticeRecoveryLabel(notice)}
@@ -1661,8 +1653,7 @@ function MobileReceiptCard({
           <SecondaryButton
             type="button"
             className="min-h-11 rounded-[10px] border-transparent bg-primary px-3 text-xs text-primary-foreground hover:bg-primary-hover"
-            disabled={isSendingDigest || allMode}
-            title={allMode ? "Select a single entity to send" : undefined}
+            disabled={isSendingDigest}
             onClick={() => onRetryDigest(receipt)}
           >
             {isSendingDigest ? "Sending…" : digestRecoveryLabel(receipt)}
@@ -1830,19 +1821,32 @@ function NotificationsWorkspace() {
     ],
   });
 
+  // Channel readiness + provider setup checks are org-level (SendGrid/Twilio
+  // live in env, shared across trusts), but the org-wide center returns
+  // channels: []. In all-mode read them from the first accessible entity's
+  // center so the readiness strip and setup checks still render.
+  const firstEntityId = entitiesQuery.data?.[0]?.id ?? "";
+  const channelReadinessQuery = useQuery({
+    queryKey: ["work-assignment-notification-center-channels", firstEntityId],
+    queryFn: () => getWorkAssignmentNotificationCenter(firstEntityId),
+    enabled: allMode && Boolean(firstEntityId),
+  });
+
   const markReadMutation = useMutation({
     mutationFn: () =>
       markWorkAssignmentNotificationCenterRead(scopedEntityId),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", scopedEntityId],
+        // Prefix match so the all-mode fan-out (org-wide / per-entity keys)
+        // refetches too, not just the single-entity center.
+        queryKey: ["work-assignment-notification-center"],
       }),
   });
 
   const retryDigestMutation = useMutation({
     mutationFn: (receipt: WorkAssignmentNotificationCenterDigestRecord) =>
       runWorkAssignmentDigest({
-        entity_id: scopedEntityId,
+        entity_id: receipt.entity_id || scopedEntityId,
         cadence: receipt.cadence,
         send_email_approved: true,
         delivery_trigger: "recovery",
@@ -1850,14 +1854,16 @@ function NotificationsWorkspace() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", scopedEntityId],
+        // Prefix match so the all-mode fan-out (org-wide / per-entity keys)
+        // refetches too, not just the single-entity center.
+        queryKey: ["work-assignment-notification-center"],
       }),
   });
 
   const sendNoticeMutation = useMutation({
     mutationFn: (notice: WorkAssignmentNotificationCenterItemRecord) =>
       sendWorkAssignmentNoticeEmail({
-        entity_id: scopedEntityId,
+        entity_id: notice.entity_id || scopedEntityId,
         target_id: notice.target_id,
         target_type: notice.target_type,
         delivery_trigger:
@@ -1868,14 +1874,16 @@ function NotificationsWorkspace() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", scopedEntityId],
+        // Prefix match so the all-mode fan-out (org-wide / per-entity keys)
+        // refetches too, not just the single-entity center.
+        queryKey: ["work-assignment-notification-center"],
       }),
   });
 
   const sendSmsNoticeMutation = useMutation({
     mutationFn: (notice: WorkAssignmentNotificationCenterItemRecord) =>
       sendWorkAssignmentNoticeSms({
-        entity_id: scopedEntityId,
+        entity_id: notice.entity_id || scopedEntityId,
         target_id: notice.target_id,
         target_type: notice.target_type,
         delivery_trigger:
@@ -1886,12 +1894,25 @@ function NotificationsWorkspace() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: ["work-assignment-notification-center", scopedEntityId],
+        // Prefix match so the all-mode fan-out (org-wide / per-entity keys)
+        // refetches too, not just the single-entity center.
+        queryKey: ["work-assignment-notification-center"],
       }),
   });
 
   const center = centerQuery.data;
-  const centerChannels = center?.channels ?? [];
+  const centerChannels = allMode
+    ? (channelReadinessQuery.data?.channels ?? [])
+    : (center?.channels ?? []);
+  // Guardrail bar + reviewed-state: org-level guardrails come from the first
+  // entity's center in all-mode; the reviewed timestamp from the merged
+  // fan-out (refetched after mark-read), else the single-entity center.
+  const centerGuardrails = allMode
+    ? (channelReadinessQuery.data?.guardrails ?? [])
+    : (center?.guardrails ?? []);
+  const centerLastReadAt = allMode
+    ? (centerFanOut.data[0]?.last_read_at ?? null)
+    : (center?.last_read_at ?? null);
 
   // Merged, entity-tagged list views the UI reads in all-mode. Notice/receipt
   // rows do not embed an entity id, so each row is tagged from the center it
@@ -2042,12 +2063,17 @@ function NotificationsWorkspace() {
     [digestReceipts, digestChannelFilter, digestFilter],
   );
   const providerReadinessCsvText = () => {
-    if (!center) {
+    // Channel readiness is org-level; in all-mode it comes from the first
+    // entity's center (channelReadinessQuery), else the single-entity center.
+    const guardrails = allMode
+      ? channelReadinessQuery.data?.guardrails
+      : center?.guardrails;
+    if (!guardrails) {
       return "";
     }
     return providerReadinessCsv({
       channels: centerChannels,
-      guardrails: center.guardrails,
+      guardrails,
     });
   };
   const copyCsvToClipboard = async (csv: string) => {
@@ -2084,6 +2110,15 @@ function NotificationsWorkspace() {
     );
   };
   const reviewPacketCsv = () => {
+    if (allMode) {
+      return workNotificationReviewPacketCsv({
+        entityName: "All entities",
+        generatedAt: null,
+        guardrails: channelReadinessQuery.data?.guardrails ?? [],
+        notices: mergedNotices,
+        digestReceipts: mergedDigestReceipts,
+      });
+    }
     if (!center) {
       return "";
     }
@@ -2177,19 +2212,14 @@ function NotificationsWorkspace() {
       <SecondaryButton
         type="button"
         disabled={
-          !scopedEntityId ||
-          !center ||
-          center.unread_count === 0 ||
-          markReadMutation.isPending ||
-          allMode
+          countTotals.unread === 0 || markReadMutation.isPending
         }
-        title={allMode ? "Select a single entity to mark reviewed" : undefined}
         onClick={() => markReadMutation.mutate()}
       >
         <CheckCircle2 size={15} />
         Mark reviewed
       </SecondaryButton>
-      {center && !allMode ? (
+      {hasCenterData ? (
         <ExportMenu
           actions={[
             {
@@ -2349,12 +2379,12 @@ function NotificationsWorkspace() {
             ) : null
           }
         >
-          {center?.guardrails.length ? (
+          {centerGuardrails.length ? (
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-              <span>{center.guardrails[0]}</span>
+              <span>{centerGuardrails[0]}</span>
               <span>
-                {center.last_read_at
-                  ? `Reviewed ${formatDateTime(center.last_read_at)}`
+                {centerLastReadAt
+                  ? `Reviewed ${formatDateTime(centerLastReadAt)}`
                 : "Not reviewed yet"}
               </span>
             </div>
@@ -2543,16 +2573,7 @@ function NotificationsWorkspace() {
                       <SecondaryButton
                         type="button"
                         className="h-9 px-2.5"
-                        disabled={
-                          !scopedEntityId ||
-                          retryDigestMutation.isPending ||
-                          allMode
-                        }
-                        title={
-                          allMode
-                            ? "Select a single entity to send"
-                            : undefined
-                        }
+                        disabled={retryDigestMutation.isPending}
                         onClick={() => retryDigestMutation.mutate(receipt)}
                       >
                         <Send size={14} />
