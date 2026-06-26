@@ -156,7 +156,10 @@ import {
   propertyOwnershipTagDirectory,
   propertyUsesOwnerBilling,
 } from "@/lib/property-ownership";
-import { propertyMapLocation } from "@/lib/property-map";
+import {
+  propertyMapDisplayLocation,
+  propertyMapLocation,
+} from "@/lib/property-map";
 import type { PropertyMapMarker } from "@/components/properties/PropertyLeafletMap";
 import { PropertyMapUnmappedPanel } from "@/components/properties/PropertyMapUnmappedPanel";
 
@@ -8856,21 +8859,24 @@ function PropertyMapView({
       expiry: nextExpiryByPropertyId.get(property.id),
     }),
   );
-  // Real coordinates split the focus-filtered set into pinned markers and an
-  // unmapped fallback list. Portfolio-wide counts ignore the focus filter so
-  // the header reads the true mapped/unmapped coverage.
-  const mappedFocusProperties = mapProperties.filter((property) =>
-    propertyMapLocation(property),
+  // Exact saved coordinates are preferred, while local AU locality fallbacks
+  // keep imported address-only portfolios visible until each pin is refined.
+  const shownFocusProperties = mapProperties.filter((property) =>
+    propertyMapDisplayLocation(property),
   );
-  const unmappedFocusProperties = mapProperties.filter(
+  const needsPinFocusProperties = mapProperties.filter(
     (property) => !propertyMapLocation(property),
   );
-  const mappedCount = properties.filter((property) =>
+  const shownCount = properties.filter((property) =>
+    propertyMapDisplayLocation(property),
+  ).length;
+  const pinnedCount = properties.filter((property) =>
     propertyMapLocation(property),
   ).length;
-  const unmappedCount = properties.length - mappedCount;
-  const mapMarkers: PropertyMapMarker[] = mappedFocusProperties.map(
+  const needsPinCount = properties.length - pinnedCount;
+  const mapMarkers: PropertyMapMarker[] = shownFocusProperties.map(
     (property) => {
+      const location = propertyMapDisplayLocation(property)!;
       const occupancy = occupancyByPropertyId.get(property.id);
       const expiry = nextExpiryByPropertyId.get(property.id);
       const isLeaseRisk = propertyMapFocusMatches({
@@ -8888,7 +8894,7 @@ function PropertyMapView({
         : isLeaseRisk
           ? "warning"
           : "primary";
-      return { property, tone };
+      return { property, location, tone };
     },
   );
   const leaseRiskCount = properties.filter((property) =>
@@ -8944,9 +8950,14 @@ function PropertyMapView({
       <div className="grid gap-3 rounded-md border border-border bg-white p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="grid gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone="primary">{mappedCount} mapped</StatusBadge>
-            <StatusBadge tone={unmappedCount ? "warning" : "success"}>
-              {unmappedCount} unmapped
+            <StatusBadge tone={shownCount ? "primary" : "neutral"}>
+              {shownCount} shown
+            </StatusBadge>
+            <StatusBadge tone={pinnedCount ? "success" : "neutral"}>
+              {pinnedCount} pinned
+            </StatusBadge>
+            <StatusBadge tone={needsPinCount ? "warning" : "success"}>
+              {needsPinCount} needs pin
             </StatusBadge>
             <StatusBadge tone={leaseRiskCount ? "warning" : "neutral"}>
               {leaseRiskCount} lease risk
@@ -8996,7 +9007,7 @@ function PropertyMapView({
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid content-start gap-3">
-          {mappedFocusProperties.length ? (
+          {shownFocusProperties.length ? (
             <div className="min-h-[420px] overflow-hidden rounded-md border border-border">
               <PropertyLeafletMap
                 markers={mapMarkers}
@@ -9006,14 +9017,14 @@ function PropertyMapView({
             </div>
           ) : (
             <div className="grid min-h-[220px] place-items-center rounded-md border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-              {unmappedFocusProperties.length
-                ? "No mapped properties match this focus yet. Set a pin below to place them on the map."
+              {needsPinFocusProperties.length
+                ? "No map locations match this focus yet. Set a pin below to place them on the map."
                 : "No properties match this map focus."}
             </div>
           )}
           <PropertyMapUnmappedPanel
             entityId={entityId}
-            properties={unmappedFocusProperties}
+            properties={needsPinFocusProperties}
           />
         </div>
         <div className="grid content-start gap-2">

@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
 });
 
-test("map view shows mapped and unmapped counts from property metadata", async ({
+test("map view shows saved and approximate location coverage", async ({
   page,
 }) => {
   await page.goto("/properties?view=map");
@@ -16,18 +16,20 @@ test("map view shows mapped and unmapped counts from property metadata", async (
     "aria-selected",
     "true",
   );
-  // All-entities view: property-1 carries metadata.map_location; property-2,
-  // property-3, and the entity-2 property (property-secondary-1) do not.
-  await expect(page.getByText("1 mapped")).toBeVisible();
-  await expect(page.getByText("3 unmapped")).toBeVisible();
+  // All-entities view: property-1 carries an exact metadata.map_location.
+  // The other properties should still appear through local AU locality
+  // fallbacks so the map does not start empty for address-only portfolios.
+  await expect(page.getByText("4 shown")).toBeVisible();
+  await expect(page.getByText("1 pinned")).toBeVisible();
+  await expect(page.getByText("3 needs pin")).toBeVisible();
 });
 
-test("map view lists unmapped properties with Google Maps address links", async ({
+test("map view lists properties needing exact pins with Google Maps address links", async ({
   page,
 }) => {
   await page.goto("/properties?view=map");
 
-  await expect(page.getByText("Unmapped properties")).toBeVisible();
+  await expect(page.getByText("Needs exact pin")).toBeVisible();
 
   const mapsLink = page
     .locator('a[href*="google.com/maps/search"]')
@@ -38,13 +40,29 @@ test("map view lists unmapped properties with Google Maps address links", async 
   expect(href).toContain(encodeURIComponent("24 Queen Street"));
 });
 
-test("map view renders one Leaflet marker per property with coordinates", async ({
+test("map view renders one Leaflet marker per property with a display location", async ({
   page,
 }) => {
   await page.goto("/properties?view=map");
 
-  // Only the mapped property (property-1) becomes a Leaflet marker.
-  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1);
+  const markers = page.locator(".leaflet-marker-icon");
+  await expect(markers).toHaveCount(4);
+  const markerPositions = await markers.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const box = (node as HTMLElement).getBoundingClientRect();
+      return {
+        left: box.left,
+        top: box.top,
+      };
+    }),
+  );
+  const lefts = markerPositions.map((position) => position.left);
+  const tops = markerPositions.map((position) => position.top);
+  const visibleSpread = Math.max(
+    Math.max(...lefts) - Math.min(...lefts),
+    Math.max(...tops) - Math.min(...tops),
+  );
+  expect(visibleSpread).toBeGreaterThan(32);
 });
 
 test("map marker click selects the property", async ({ page }) => {
@@ -72,7 +90,7 @@ test("setting manual coordinates patches property metadata and adds a pin", asyn
   });
 
   await page.goto("/properties?view=map");
-  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1);
+  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(4);
 
   await page
     .getByRole("button", { name: "Set location for Queen Street Warehouse" })
@@ -85,8 +103,8 @@ test("setting manual coordinates patches property metadata and adds a pin", asyn
     .fill("153.02");
   await page.getByRole("button", { name: "Save pin" }).click();
 
-  // The new pin joins the map and the row leaves the unmapped list.
-  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(2);
+  // The marker remains on the map and the row leaves the needs-pin list.
+  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(4);
   await expect(
     page.getByRole("button", {
       name: "Set location for Queen Street Warehouse",
@@ -111,7 +129,7 @@ test("coordinate inputs reject out-of-range values", async ({ page }) => {
   });
 
   await page.goto("/properties?view=map");
-  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1);
+  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(4);
 
   await page
     .getByRole("button", { name: "Set location for Queen Street Warehouse" })
@@ -123,6 +141,6 @@ test("coordinate inputs reject out-of-range values", async ({ page }) => {
   await expect(
     page.getByText("Latitude must be -90 to 90 and longitude -180 to 180."),
   ).toBeVisible();
-  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1);
+  await expect(page.locator(".leaflet-marker-icon")).toHaveCount(4);
   expect(patchCount).toBe(0);
 });

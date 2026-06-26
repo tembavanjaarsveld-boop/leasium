@@ -43,6 +43,10 @@ to live here is preserved at
   pointing through soft-deleted units/leases.
 - Properties calendar removal is shipped. Calendar lives under Work; Properties
   exposes Cards, Table, and Map, and stale `?view=calendar` falls back to Cards.
+- Properties map address-only fallback is shipped. Exact `metadata.map_location`
+  pins remain preferred, but AU address/postcode-only rows now render approximate
+  local pins with a "needs pin" refinement list, so `/properties?view=map` no
+  longer starts as an empty unmapped planner.
 - Switcher-removal work has multiple shipped slices across Portfolio QA,
   snapshots/drafts, Contractors, Tenants, Operations, row-trust Comms, and
   Billing Readiness. Before starting the next piece, read the current roadmap and

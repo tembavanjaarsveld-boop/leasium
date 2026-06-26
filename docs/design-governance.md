@@ -188,6 +188,13 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Properties map address-only fallback · screenshots reviewed at
+  `output/playwright/properties-map-approx-1440.png` and
+  `output/playwright/properties-map-approx-390.png` · fixes: address-only AU
+  properties now render approximate local pins before exact coordinates are
+  saved, map badges distinguish shown/pinned/needs-pin counts, exact saved pins
+  retain top click priority, bounds fitting waits for Leaflet layout, and mobile
+  fit padding keeps useful pins clear of the fixed bottom nav · none deferred.
 - 2026-06-26 · Relby AI no-prepick toolbar follow-up · screenshot reviewed at
   `output/playwright/relby-ai-no-prepick-toolbar.png` · fixes: the landing
   composer no longer shows the Ask-about trust selector until the operator is

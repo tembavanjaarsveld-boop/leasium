@@ -426,9 +426,9 @@ test("mobile properties map view keeps focus controls touch safe", async ({
   await expect(page.getByText("Regional focus")).toBeVisible();
   await expect(page.getByText("0/0")).toHaveCount(0);
 
-  // Unmapped properties fall back to an address-lookup list rather than the
-  // schematic pins of v1.
-  await expect(page.getByText("Unmapped properties")).toBeVisible();
+  // Address-only properties show approximate map pins while still offering
+  // exact-pin refinement.
+  await expect(page.getByText("Needs exact pin")).toBeVisible();
 
   await expectTouchTarget(page.getByRole("tab", { name: "Map" }));
   await expectTouchTarget(

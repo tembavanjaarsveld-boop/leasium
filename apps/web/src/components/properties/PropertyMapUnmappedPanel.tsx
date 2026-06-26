@@ -21,9 +21,9 @@ function regionLabel(property: PropertyRecord): string {
   );
 }
 
-// Lists portfolio properties that have no map_location yet. Each row carries a
-// Google Maps lookup link plus an inline editor that writes a manual pin back
-// into property metadata. The PATCH replaces metadata wholesale on the
+// Lists portfolio properties that have no exact map_location yet. Each row
+// carries a Google Maps lookup link plus an inline editor that writes a manual
+// pin back into property metadata. The PATCH replaces metadata wholesale on the
 // backend, so every save spreads the property's existing metadata first.
 export function PropertyMapUnmappedPanel({
   entityId,
@@ -90,12 +90,12 @@ export function PropertyMapUnmappedPanel({
   return (
     <section className="grid gap-2 rounded-md border border-border bg-white p-3 text-sm">
       <div className="flex items-center justify-between gap-2">
-        <div className="font-semibold">Unmapped properties</div>
+        <div className="font-semibold">Needs exact pin</div>
         <StatusBadge tone="warning">{properties.length}</StatusBadge>
       </div>
       <p className="text-xs text-muted-foreground">
-        Look the address up, then set a pin so it joins the map. Coordinates are
-        stored locally on the property and never trigger a provider call.
+        Approximate pins use local suburb or postcode data when available. Look
+        the address up, then save a precise pin locally on the property.
       </p>
       <ul className="grid gap-2">
         {properties.map((property) => {

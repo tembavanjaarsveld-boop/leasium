@@ -6,10 +6,11 @@ import L from "leaflet";
 import { useEffect, useRef } from "react";
 
 import type { PropertyRecord } from "@/lib/api";
-import { propertyMapLocation } from "@/lib/property-map";
+import type { PropertyMapLocation } from "@/lib/property-map";
 
 export type PropertyMapMarker = {
   property: PropertyRecord;
+  location: PropertyMapLocation;
   // Drives the marker fill so lease-risk / vacancy focus reads at a glance.
   tone: "primary" | "warning" | "danger";
 };
@@ -29,10 +30,19 @@ const TONE_FILL: Record<PropertyMapMarker["tone"], string> = {
   danger: "var(--color-danger, #dc2626)",
 };
 
-function markerHtml(tone: PropertyMapMarker["tone"], selected: boolean): string {
+function markerHtml(
+  tone: PropertyMapMarker["tone"],
+  selected: boolean,
+  precision: PropertyMapLocation["precision"],
+): string {
   const fill = TONE_FILL[tone];
-  const ring = selected ? "var(--color-foreground, #0f172a)" : "#ffffff";
-  return `<span style="display:grid;width:44px;height:44px;place-items:center;border-radius:9999px;"><span style="display:block;width:24px;height:24px;border-radius:9999px;background:${fill};border:3px solid ${ring};box-shadow:0 1px 3px rgba(15,23,42,0.35);"></span></span>`;
+  const ring = selected
+    ? "var(--color-foreground, #0f172a)"
+    : precision === "approximate"
+      ? "var(--color-warning, #d97706)"
+      : "#ffffff";
+  const opacity = precision === "approximate" ? "0.78" : "1";
+  return `<span style="display:grid;width:44px;height:44px;place-items:center;border-radius:9999px;"><span style="display:block;width:24px;height:24px;border-radius:9999px;background:${fill};border:3px solid ${ring};opacity:${opacity};box-shadow:0 1px 3px rgba(15,23,42,0.35);"></span></span>`;
 }
 
 // Client-only Leaflet canvas. Loaded through next/dynamic with ssr:false so
@@ -83,24 +93,26 @@ export default function PropertyLeafletMap({
     }
     const layer = L.layerGroup().addTo(map);
     const coordinates: L.LatLngTuple[] = [];
+    let fitTimerId: number | null = null;
 
-    for (const { property, tone } of markers) {
-      const location = propertyMapLocation(property);
-      if (!location) {
-        continue;
-      }
+    for (const { property, tone, location } of markers) {
       const selected = property.id === selectedPropertyId;
       const icon = L.divIcon({
         className: "leasium-map-pin",
-        html: markerHtml(tone, selected),
+        html: markerHtml(tone, selected, location.precision),
         iconSize: [44, 44],
         iconAnchor: [22, 22],
       });
+      const label =
+        location.precision === "approximate"
+          ? `${property.name} (approximate)`
+          : property.name;
       const marker = L.marker([location.lat, location.lng], {
         icon,
-        title: property.name,
-        alt: property.name,
+        title: label,
+        alt: label,
         keyboard: true,
+        zIndexOffset: location.precision === "exact" ? 1000 : 0,
       });
       // keyboard:true makes the marker tabbable and fires click on Enter, so a
       // single click handler covers pointer and keyboard activation.
@@ -108,7 +120,7 @@ export default function PropertyLeafletMap({
       marker.addTo(layer);
       const element = marker.getElement();
       if (element) {
-        element.setAttribute("aria-label", property.name);
+        element.setAttribute("aria-label", label);
         element.setAttribute("role", "button");
       }
       coordinates.push([location.lat, location.lng]);
@@ -119,18 +131,31 @@ export default function PropertyLeafletMap({
       .sort()
       .join("|");
     if (signature !== viewSignatureRef.current) {
-      viewSignatureRef.current = signature;
-      if (coordinates.length === 1) {
-        map.setView(coordinates[0], 13);
-      } else if (coordinates.length > 1) {
-        map.fitBounds(L.latLngBounds(coordinates), {
-          padding: [40, 40],
-          maxZoom: 14,
-        });
-      }
+      const fitView = (commitSignature: boolean) => {
+        map.invalidateSize({ animate: false });
+        if (coordinates.length === 1) {
+          map.setView(coordinates[0], 13);
+        } else if (coordinates.length > 1) {
+          const mobileBottomPadding =
+            (containerRef.current?.clientWidth ?? 0) < 640 ? 240 : 40;
+          map.fitBounds(L.latLngBounds(coordinates), {
+            paddingTopLeft: [40, 40],
+            paddingBottomRight: [40, mobileBottomPadding],
+            maxZoom: 14,
+          });
+        }
+        if (commitSignature) {
+          viewSignatureRef.current = signature;
+        }
+      };
+      fitView(false);
+      fitTimerId = window.setTimeout(() => fitView(true), 50);
     }
 
     return () => {
+      if (fitTimerId !== null) {
+        window.clearTimeout(fitTimerId);
+      }
       layer.remove();
     };
   }, [markers, selectedPropertyId]);
