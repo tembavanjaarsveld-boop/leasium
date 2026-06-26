@@ -21,6 +21,7 @@ build/
 *.egg-info/
 *.tsbuildinfo
 .DS_Store
+.fuse_hidden*
 .env.neon
 .vercel
 # Operator/tenant data — stray Office docs (e.g. Smart Intake test leases) land
