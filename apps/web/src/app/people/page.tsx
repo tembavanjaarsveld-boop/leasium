@@ -22,16 +22,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
-import { EntityPicker } from "@/components/entity-picker";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { QueryProvider } from "@/components/query-provider";
 import { SkeletonRows, StatusBadge } from "@/components/ui";
 import type { ContractorRecord, TenantRecord } from "@/lib/api";
 import { listContractors, listEntities, listTenants } from "@/lib/api";
 import {
-  ENTITY_CHANGED_EVENT,
-  ENTITY_STORAGE_KEY,
-  defaultEntitySelection,
+  ALL_ENTITIES_VALUE,
   isAllEntities,
   scopeEntityId,
 } from "@/lib/entity-selection";
@@ -162,23 +159,11 @@ function PeopleContent() {
     queryFn: listEntities,
   });
 
-  const [selectedEntityId, setSelectedEntityId] = useState("");
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(ENTITY_STORAGE_KEY);
-    if (stored) setSelectedEntityId(stored);
-  }, []);
-  useEffect(() => {
-    if (!selectedEntityId) return;
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ENTITY_STORAGE_KEY, selectedEntityId);
-    window.dispatchEvent(new Event(ENTITY_CHANGED_EVENT));
-  }, [selectedEntityId]);
-  useEffect(() => {
-    if (selectedEntityId) return;
-    const fallback = defaultEntitySelection(entitiesQuery.data ?? []);
-    if (fallback) setSelectedEntityId(fallback);
-  }, [entitiesQuery.data, selectedEntityId]);
+  // The portfolio is all-entities by default — the global entity switcher is
+  // gone and the entity is now a per-list trust tag (?trust_tag, below). The
+  // org-wide read path always runs; a single entity is reached via the tag, not
+  // a page-level pin.
+  const selectedEntityId = ALL_ENTITIES_VALUE;
 
   const { operatingMode, isResolved } = useOperatingMode();
   const showOwners = operatingMode !== "self_managed_owner";
@@ -300,14 +285,7 @@ function PeopleContent() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-[1040px] gap-[14px] px-5 py-6 lg:px-9">
         <section className="flex flex-wrap items-center justify-between gap-3">

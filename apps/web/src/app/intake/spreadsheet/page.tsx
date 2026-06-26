@@ -212,27 +212,34 @@ function SpreadsheetImportWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          allowAllEntities={false}
-          onChange={(value) => {
-            setSelectedEntityId(value);
-            if (value) {
-              window.localStorage.setItem(ENTITY_STORAGE_KEY, value);
-            }
-          }}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-5">
         <PageHeader
           title="Spreadsheet Intake"
           description="Review a portfolio workbook before Relby creates or updates register records."
           actions={
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Entity
+                </span>
+                <div className="w-full max-w-xs">
+                  <EntityPicker
+                    entities={entitiesQuery.data}
+                    loading={entitiesQuery.isLoading}
+                    value={selectedEntityId}
+                    allowAllEntities={false}
+                    tone="inline"
+                    onChange={(value) => {
+                      setSelectedEntityId(value);
+                      if (value) {
+                        window.localStorage.setItem(ENTITY_STORAGE_KEY, value);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
               <SecondaryButton
                 type="button"
                 onClick={() => templateMutation.mutate()}

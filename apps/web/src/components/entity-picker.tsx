@@ -16,6 +16,11 @@ type EntityPickerProps = {
   // all-entities view is not meaningful (single-entity config / provider
   // connection) can pass false to hide it.
   allowAllEntities?: boolean;
+  // Where the trigger renders. "sidebar" (default) is the dark navy
+  // workspace-switcher card; "inline" is a light, bordered field for
+  // entity-scoped pages that own their picker in the page header (Settings,
+  // Statements, Money, etc.) now that the global switcher is gone.
+  tone?: "sidebar" | "inline";
 };
 
 // Portfolios past this size get a type-ahead filter at the top of the list.
@@ -35,7 +40,9 @@ export function EntityPicker({
   value,
   onChange,
   allowAllEntities = true,
+  tone = "sidebar",
 }: EntityPickerProps) {
+  const inline = tone === "inline";
   const hasMultiple = (entities?.length ?? 0) > 1;
   const showAllEntities = allowAllEntities && hasMultiple;
   const isEmpty = !loading && (entities?.length ?? 0) === 0;
@@ -175,13 +182,19 @@ export function EntityPicker({
             setOpen(true);
           }
         }}
-        className="group flex min-h-6 w-full min-w-0 items-center gap-1 rounded-sm text-left text-[11px] font-medium leading-4 text-leasium-slate-300 transition duration-200 ease-leasium hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-default disabled:hover:text-leasium-slate-300"
+        className={cn(
+          "group flex w-full min-w-0 items-center text-left font-medium transition duration-200 ease-leasium focus-visible:outline-none",
+          inline
+            ? "min-h-11 gap-2 rounded-xl border border-border-strong bg-white px-3 text-sm text-foreground shadow-leasiumXs hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-white"
+            : "min-h-6 gap-1 rounded-sm text-[11px] leading-4 text-leasium-slate-300 hover:text-white focus-visible:ring-2 focus-visible:ring-white/40 disabled:cursor-default disabled:hover:text-leasium-slate-300",
+        )}
       >
         <span className="min-w-0 flex-1 truncate">{triggerLabel}</span>
         <ChevronDown
-          size={12}
+          size={inline ? 14 : 12}
           className={cn(
             "shrink-0 transition duration-200 ease-leasium",
+            inline && "text-muted-foreground",
             open && "rotate-180",
           )}
         />

@@ -353,17 +353,24 @@ function ContractorDetailContent() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-          allowAllEntities={false}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-6xl gap-5 px-5 py-6">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Entity
+          </span>
+          <div className="w-full max-w-xs">
+            <EntityPicker
+              entities={entitiesQuery.data}
+              loading={entitiesQuery.isLoading}
+              value={selectedEntityId}
+              onChange={setSelectedEntityId}
+              allowAllEntities={false}
+              tone="inline"
+            />
+          </div>
+        </div>
         {isLoading ? (
           <PeopleRecordLayout
             backHref="/people?tab=vendors"

@@ -413,15 +413,7 @@ function MoneyContent() {
 
   return (
     <main className="min-h-screen bg-leasium-canvas">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-          allowAllEntities={false}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-6xl gap-4 px-5 py-6 md:px-9">
         <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -432,6 +424,21 @@ function MoneyContent() {
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Billing readiness, arrears, and Xero - review-first end to end.
             </p>
+            <div className="mt-3 flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Entity
+              </span>
+              <div className="w-full max-w-xs">
+                <EntityPicker
+                  entities={entitiesQuery.data}
+                  loading={entitiesQuery.isLoading}
+                  value={selectedEntityId}
+                  onChange={setSelectedEntityId}
+                  allowAllEntities={false}
+                  tone="inline"
+                />
+              </div>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href={BILLING_REVIEW_HREF} className={horizonActionLinkClass}>

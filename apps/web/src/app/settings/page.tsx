@@ -3733,17 +3733,24 @@ function SettingsWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-          allowAllEntities={false}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto max-w-7xl px-5 py-5">
+        <div className="mb-4 flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Entity
+          </span>
+          <div className="w-full max-w-xs">
+            <EntityPicker
+              entities={entitiesQuery.data}
+              loading={entitiesQuery.isLoading}
+              value={selectedEntityId}
+              onChange={setSelectedEntityId}
+              allowAllEntities={false}
+              tone="inline"
+            />
+          </div>
+        </div>
         <div className="grid min-h-[calc(100dvh-6rem)] overflow-hidden rounded-2xl border border-leasium-card-border bg-white shadow-leasiumCard lg:grid-cols-[292px_minmax(0,1fr)]">
           <aside className="border-b border-border bg-muted/25 lg:border-b-0 lg:border-r">
             <div className="px-5 py-5">

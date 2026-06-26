@@ -1524,15 +1524,7 @@ function StatementsContent() {
 
   return (
     <main className="min-h-screen">
-      <AppHeader>
-        <EntityPicker
-          entities={entitiesQuery.data}
-          loading={entitiesQuery.isLoading}
-          value={selectedEntityId}
-          onChange={setSelectedEntityId}
-          allowAllEntities={false}
-        />
-      </AppHeader>
+      <AppHeader />
 
       <div className="mx-auto grid max-w-5xl gap-4 px-5 py-6">
         <PageHeader
@@ -1544,7 +1536,17 @@ function StatementsContent() {
           }
         />
 
-        <section className="grid gap-3 sm:grid-cols-2">
+        <section className="grid gap-3 sm:grid-cols-3">
+          <Field label="Entity">
+            <EntityPicker
+              entities={entitiesQuery.data}
+              loading={entitiesQuery.isLoading}
+              value={selectedEntityId}
+              onChange={setSelectedEntityId}
+              allowAllEntities={false}
+              tone="inline"
+            />
+          </Field>
           <Field label="Month">
             <Input
               type="month"
