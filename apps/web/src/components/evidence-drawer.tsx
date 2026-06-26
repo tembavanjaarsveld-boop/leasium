@@ -198,13 +198,19 @@ function DetailLink({
   href,
   children,
   className,
+  truncate = true,
 }: {
   href?: string;
   children: ReactNode;
   className?: string;
+  truncate?: boolean;
 }) {
   if (!href) {
-    return <span className={className}>{children}</span>;
+    return (
+      <span className={cn(className, truncate ? undefined : "break-words")}>
+        {children}
+      </span>
+    );
   }
   return (
     <a
@@ -214,13 +220,23 @@ function DetailLink({
         className,
       )}
     >
-      <span className="truncate">{children}</span>
+      <span className={cn("min-w-0", truncate ? "truncate" : "break-words")}>
+        {children}
+      </span>
       <ExternalLink size={13} className="shrink-0" />
     </a>
   );
 }
 
-function EvidenceSummary({
+function CountPill({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex min-h-6 items-center rounded-full border border-border bg-white px-2 text-leasium-micro font-semibold text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
+function EvidenceSummaryItem({
   icon,
   label,
   value,
@@ -234,19 +250,51 @@ function EvidenceSummary({
   href?: string;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[18px_minmax(0,1fr)] gap-2">
-      <div className="mt-0.5 text-primary">{icon}</div>
+    <div className="grid min-w-0 grid-cols-[28px_minmax(0,1fr)] gap-2">
+      <div className="flex size-7 items-center justify-center rounded-md bg-white text-primary shadow-leasiumXs">
+        {icon}
+      </div>
       <div className="min-w-0">
-        <div className="text-xs font-medium uppercase text-muted-foreground">
+        <div className="text-leasium-micro font-semibold uppercase text-muted-foreground">
           {label}
         </div>
-        <DetailLink href={href} className="mt-0.5 text-sm">
+        <DetailLink
+          href={href}
+          className="mt-0.5 max-w-full text-sm"
+          truncate={false}
+        >
           {value}
         </DetailLink>
         {detail ? (
-          <div className="mt-0.5 text-xs text-muted-foreground">{detail}</div>
+          <div className="mt-0.5 break-words text-xs leading-5 text-muted-foreground">
+            {detail}
+          </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function SectionHeading({
+  icon,
+  title,
+  count,
+}: {
+  icon: ReactNode;
+  title: string;
+  count?: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
+          {icon}
+        </span>
+        <h3 className="min-w-0 text-sm font-semibold text-foreground">
+          {title}
+        </h3>
+      </div>
+      {count ? <CountPill>{count}</CountPill> : null}
     </div>
   );
 }
@@ -263,9 +311,12 @@ function ChangeRow({ change }: { change: EvidenceFieldChange }) {
       : change.sourceLocation?.detail;
 
   return (
-    <div className="grid gap-2 py-3">
+    <div
+      className="grid gap-3 rounded-md border border-border bg-white p-3 shadow-leasiumXs"
+      data-testid="evidence-change-row"
+    >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0 text-sm font-semibold">
+        <div className="min-w-0 text-sm font-semibold text-foreground">
           {change.label ?? fieldLabel(change.field)}
         </div>
         {change.confidence !== undefined ? (
@@ -275,33 +326,39 @@ function ChangeRow({ change }: { change: EvidenceFieldChange }) {
           </Pill>
         ) : null}
       </div>
-      <div className="grid gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] sm:items-start">
-        <div className="min-w-0 rounded-md bg-muted px-3 py-2 text-muted-foreground">
-          <div className="text-xs font-medium uppercase">Before</div>
-          <div className="mt-1 break-words">
+      <div className="grid gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] sm:items-stretch">
+        <div className="min-w-0 rounded-md border border-border bg-muted/40 px-3 py-2 text-muted-foreground">
+          <div className="text-leasium-micro font-semibold uppercase">
+            Before
+          </div>
+          <div className="mt-1 break-words leading-5">
             {formatEvidenceValue(change.before)}
           </div>
         </div>
-        <ArrowRight
-          aria-hidden="true"
-          size={16}
-          className="hidden justify-self-center text-muted-foreground sm:block"
-        />
-        <div className="min-w-0 rounded-md bg-primary-soft px-3 py-2 text-primary-hover">
-          <div className="text-xs font-medium uppercase">After</div>
-          <div className="mt-1 break-words font-medium">
+        <div className="hidden items-center justify-center sm:flex">
+          <span className="flex size-8 items-center justify-center rounded-full border border-border bg-white text-muted-foreground">
+            <ArrowRight aria-hidden="true" size={15} />
+          </span>
+        </div>
+        <div className="min-w-0 rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-primary-hover">
+          <div className="text-leasium-micro font-semibold uppercase">
+            After
+          </div>
+          <div className="mt-1 break-words font-semibold leading-5">
             {formatEvidenceValue(change.after)}
           </div>
         </div>
       </div>
       {locationLabel ? (
-        <div className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-start gap-2 rounded-md bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
           <MapPin size={13} className="mt-0.5 shrink-0" />
           <div className="min-w-0">
-            <DetailLink href={locationHref} className="text-xs">
+            <DetailLink href={locationHref} className="max-w-full text-xs">
               {locationLabel}
             </DetailLink>
-            {locationDetail ? <span> - {locationDetail}</span> : null}
+            {locationDetail ? (
+              <span className="break-words"> - {locationDetail}</span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -320,23 +377,27 @@ function HistoryRow({
   const meta = [row.actor, occurredAt].filter(Boolean).join(" - ");
 
   return (
-    <div className="grid grid-cols-[18px_minmax(0,1fr)] gap-2 py-2.5">
-      <CheckCircle2
-        size={16}
-        className={cn(
-          "mt-0.5",
-          toneClasses[row.tone ?? "neutral"].split(" ")[1],
-        )}
-      />
+    <div
+      className="grid grid-cols-[28px_minmax(0,1fr)] gap-3 py-3"
+      data-testid="evidence-audit-row"
+    >
+      <span className="flex size-7 items-center justify-center rounded-full border border-border bg-white">
+        <CheckCircle2
+          size={15}
+          className={cn(toneClasses[row.tone ?? "neutral"].split(" ")[1])}
+        />
+      </span>
       <div className="min-w-0">
-        <div className="text-sm font-medium">{row.label}</div>
+        <div className="text-sm font-semibold text-foreground">{row.label}</div>
         {row.description ? (
-          <div className="mt-0.5 text-sm text-muted-foreground">
+          <div className="mt-0.5 break-words text-sm leading-5 text-muted-foreground">
             {row.description}
           </div>
         ) : null}
         {meta ? (
-          <div className="mt-1 text-xs text-muted-foreground">{meta}</div>
+          <div className="mt-1 text-xs leading-5 text-muted-foreground">
+            {meta}
+          </div>
         ) : null}
       </div>
     </div>
@@ -384,36 +445,54 @@ export function EvidenceSourceTrail({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-md border border-border bg-white shadow-leasiumXs",
+        "overflow-hidden rounded-2xl border border-border bg-white shadow-leasiumCard",
         className,
       )}
+      data-testid="evidence-source-trail"
       {...props}
     >
       {showHeader ? (
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-muted/20 px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <FileText size={17} className="text-primary" />
-              <h2 className="text-base font-semibold">{title}</h2>
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
+                <FileText size={17} />
+              </span>
+              <h2 className="text-lg font-semibold leading-7 text-foreground">
+                {title}
+              </h2>
             </div>
             {description ? (
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-2 max-w-3xl text-sm leading-5 text-muted-foreground">
                 {description}
               </p>
             ) : null}
           </div>
-          {actions ? (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
-          ) : null}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {changes.length ? (
+              <CountPill>
+                {changes.length} change{changes.length === 1 ? "" : "s"}
+              </CountPill>
+            ) : null}
+            {history.length ? (
+              <CountPill>
+                {history.length} audit row{history.length === 1 ? "" : "s"}
+              </CountPill>
+            ) : null}
+            {actions}
+          </div>
         </div>
       ) : null}
 
       {hasEvidence ? (
-        <div className="grid gap-4 p-4">
+        <div className="grid gap-5 p-4 sm:p-5">
           {hasSummary ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div
+              className="grid gap-3 rounded-md border border-border bg-muted/25 p-3 sm:grid-cols-2"
+              data-testid="evidence-source-provenance"
+            >
               {documentLabel ? (
-                <EvidenceSummary
+                <EvidenceSummaryItem
                   icon={<FileText size={16} />}
                   label="Source document"
                   value={documentLabel}
@@ -422,7 +501,7 @@ export function EvidenceSourceTrail({
                 />
               ) : null}
               {locationLabel ? (
-                <EvidenceSummary
+                <EvidenceSummaryItem
                   icon={<MapPin size={16} />}
                   label="Source location"
                   value={locationLabel}
@@ -431,7 +510,7 @@ export function EvidenceSourceTrail({
                 />
               ) : null}
               {confidence !== undefined ? (
-                <EvidenceSummary
+                <EvidenceSummaryItem
                   icon={<ShieldCheck size={16} />}
                   label="Confidence"
                   value={
@@ -442,7 +521,7 @@ export function EvidenceSourceTrail({
                 />
               ) : null}
               {appliedAtLabel || appliedBy ? (
-                <EvidenceSummary
+                <EvidenceSummaryItem
                   icon={<Clock3 size={16} />}
                   label="Applied"
                   value={appliedAtLabel ?? "Pending"}
@@ -452,17 +531,18 @@ export function EvidenceSourceTrail({
             </div>
           ) : null}
 
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">Field changes</h3>
-              {changes.length ? (
-                <span className="text-xs font-medium text-muted-foreground">
-                  {changes.length} change{changes.length === 1 ? "" : "s"}
-                </span>
-              ) : null}
-            </div>
+          <div className="grid gap-3">
+            <SectionHeading
+              icon={<FileText size={15} />}
+              title="Field changes"
+              count={
+                changes.length
+                  ? `${changes.length} change${changes.length === 1 ? "" : "s"}`
+                  : undefined
+              }
+            />
             {changes.length ? (
-              <div className="mt-2 divide-y divide-border">
+              <div className="grid gap-3">
                 {changes.map((change, index) => (
                   <ChangeRow
                     key={change.id ?? `${change.field}-${index}`}
@@ -471,26 +551,24 @@ export function EvidenceSourceTrail({
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
                 No before/after changes recorded.
               </p>
             )}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <History size={15} className="text-primary" />
-                <h3 className="text-sm font-semibold">Audit history</h3>
-              </div>
-              {history.length ? (
-                <span className="text-xs font-medium text-muted-foreground">
-                  {history.length} row{history.length === 1 ? "" : "s"}
-                </span>
-              ) : null}
-            </div>
+          <div className="grid gap-3">
+            <SectionHeading
+              icon={<History size={15} />}
+              title="Audit history"
+              count={
+                history.length
+                  ? `${history.length} row${history.length === 1 ? "" : "s"}`
+                  : undefined
+              }
+            />
             {history.length ? (
-              <div className="mt-2 divide-y divide-border">
+              <div className="divide-y divide-border rounded-md border border-border bg-muted/20 px-3">
                 {history.map((row, index) => (
                   <HistoryRow
                     key={row.id ?? `${row.label}-${index}`}
@@ -500,7 +578,7 @@ export function EvidenceSourceTrail({
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="rounded-md border border-dashed border-border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
                 No audit rows recorded.
               </p>
             )}

@@ -4924,6 +4924,21 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Source history" }),
   ).toBeVisible();
+  const sourceHistory = page
+    .getByTestId("evidence-source-trail")
+    .filter({ hasText: "Source history" });
+  await expect(
+    sourceHistory.getByTestId("evidence-source-provenance"),
+  ).toBeVisible();
+  await expect(
+    sourceHistory.getByTestId("evidence-change-row").first(),
+  ).toContainText("Before");
+  await expect(
+    sourceHistory.getByTestId("evidence-change-row").first(),
+  ).toContainText("After");
+  await expect(
+    sourceHistory.getByTestId("evidence-audit-row").first(),
+  ).toBeVisible();
   await expect(page.getByText("Tenant onboarding applied")).toBeVisible();
   await expect(page.getByText("Billing email").first()).toBeVisible();
   await expect(page.getByText("accounts@bright.example").first()).toBeVisible();
@@ -5062,6 +5077,31 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
 
   await page.getByRole("button", { name: "Fresh link" }).click();
   await expect(page.getByText("Fresh portal link copied.")).toBeVisible();
+});
+
+test("tenant source history keeps provenance and changes inside mobile width", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tenants/tenant-1");
+
+  const sourceHistory = page
+    .getByTestId("evidence-source-trail")
+    .filter({ hasText: "Source history" });
+
+  await expect(sourceHistory).toBeVisible();
+  await sourceHistory.scrollIntoViewIfNeeded();
+  await expect(
+    sourceHistory.getByTestId("evidence-source-provenance"),
+  ).toBeVisible();
+  await expect(
+    sourceHistory.getByTestId("evidence-change-row").first(),
+  ).toBeVisible();
+
+  const overflow = await sourceHistory.evaluate(
+    (element) => element.scrollWidth - element.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 test("tenant detail keeps provider detail in one responsive surface", async ({
