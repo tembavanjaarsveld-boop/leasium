@@ -1,6 +1,6 @@
 # Relby Product Roadmap
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 Relby is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Relby reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,29 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-27 Source history evidence trail redesign:** The shared
+  Source history panel used on tenant/property source trails now presents a
+  compact provenance strip, clear before/after change cards, wrapped citations,
+  and a quieter audit timeline instead of one heavy flat block. The redesign is
+  presentation-only and keeps the existing review-first evidence data, links,
+  confidence values, and provider guardrails unchanged.
+- [x] **2026-06-27 Tenant onboarding signed-lease self-heal:** A persisted
+  signed or active lease now completes its linked onboarding row instead of
+  leaving terminal signing evidence beside earlier "waiting" steps. OpenSign
+  completion, tenant-portal local signing, and accepted tenant-uploaded lease
+  matches call a shared provider-inert completion helper that moves pre-`applied`
+  rows to `applied`, stamps provenance, and closes reminder metadata. Added
+  `scripts/backfill_signed_onboarding_completion.py` for dry-run-first repair of
+  existing pre-complete rows whose lease is already signed/active; reruns are
+  no-ops and no provider/email/SMS/Xero/payment action is sent.
+- [x] **2026-06-27 Relby AI lease import current-date guard:** Lease Smart
+  Intake apply now filters lease-derived obligations at creation time so only
+  due-today and future attention items are imported. Historical rent reviews,
+  option notices, lease expiries, and other extracted lease follow-ups are
+  skipped instead of appearing as hundreds or thousands of days overdue on the
+  property Lease tab. The guard lives in the shared lease-intake helper, so it
+  covers Relby AI lease imports and the older lease upload path without changing
+  provider/comms/payment/Xero behaviour.
 - [x] **2026-06-26 Settings communication templates redesign:** Settings →
   Organisation → Comms now presents message templates in business language
   instead of exposing runtime keys, versions, and webhooks up front. The default

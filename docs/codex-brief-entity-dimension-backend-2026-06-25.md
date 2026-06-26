@@ -1,5 +1,12 @@
 # Codex brief — Entity-as-dimension, backend last mile (2026-06-25)
 
+> **STATUS — SHIPPED (verified 2026-06-27).** All four tickets landed in `2218e6e`
+> (B1 audit table in the commit body + B2 org-wide reads for `/comms/queue`,
+> `/comms/outbound-log`, `/work-assignments/notification-center` + B3
+> `test_org_wide_scope_api.py` coverage + B4 `api.ts` types); frontend wiring in
+> `10a4252`. `test_org_wide_scope_api.py` = 9 passed on `main` (2026-06-27).
+> Nothing left to build here — retained for history.
+
 **Owner:** Codex (backend + API client types only).
 **Companion plan:** `docs/multi-entity-dimension-plan-2026-06-25.md` (read it first).
 **Do NOT touch:** the entity switcher UI / page layouts — that's design-gated

@@ -1,6 +1,6 @@
 # Relby Next Chat Handover
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 This file is the short current-state handover. The full historical log that used
 to live here is preserved at
@@ -24,12 +24,25 @@ to live here is preserved at
 
 ## Current State
 
+- Source history evidence trails are redesigned. The shared tenant/property
+  Source history component now uses a compact provenance strip, clear
+  before/after cards, wrapped citations, and a quieter audit timeline, with
+  smoke coverage for desktop structure and mobile component overflow.
 - Settings -> Organisation -> Comms message-template UX is redesigned. The
   default Settings view now shows business-language message rows with
   Preview/Edit wording actions; Branding, Delivery receipts, and Advanced tabs
   hold sender defaults, provider receipt endpoints, runtime keys, override
   coverage, and the local CSV export. Stored template edits reuse the existing
   Comms template drawer; runtime rows stay preview-only.
+- Relby AI lease imports now create lease attention items only for due-today and
+  future dates. Backdated rent review, option notice, expiry, and other
+  lease-derived obligations are skipped at apply time instead of flooding the
+  property Lease attention queue.
+- Tenant onboarding signed-lease self-heal is shipped. OpenSign completion,
+  tenant-portal local signing, and accepted tenant-uploaded lease matches now
+  advance linked pre-complete onboarding rows to `applied` when the persisted
+  lease/signing state proves execution. `scripts/backfill_signed_onboarding_completion.py`
+  dry-runs existing signed/active lease rows and only mutates with `--apply`.
 - Relby AI no-prepick document upload is shipped. `/intake` accepts document
   upload/drop without forcing a trust pick first; extraction detects the trust
   and the review-side `File under trust` selector remains the filing decision.

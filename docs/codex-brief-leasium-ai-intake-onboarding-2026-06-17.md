@@ -1,5 +1,10 @@
 # Codex Brief — Leasium AI intake: onboarding completion for AI-brought-in leases
 
+> **SUPERSEDED (2026-06-27) for the onboarding-completion fix.** Build from
+> `docs/codex-brief-onboarding-self-heal-2026-06-27.md`, which refreshes the code
+> refs for the OpenSign swap + migrated-tenant path. Retained for the problem
+> framing and the building-as-property context (which shipped).
+
 **Date:** 2026-06-17. **Scope:** one focused fix. **Repo:**
 `/Users/tembavanjaarsveld/Documents/Stewart`, branch `main`, commits land directly
 on main (gmail author — see Conventions).

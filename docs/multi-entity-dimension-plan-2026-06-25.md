@@ -144,5 +144,10 @@ NODE_ENV=development NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs 
 
 ## Status
 
-Plan recorded 2026-06-25. Track A briefed to Codex (backend + API types). Tracks
-B/C follow A; C runs through the in-loop UX gate.
+Plan recorded 2026-06-25. **SHIPPED — verified 2026-06-27:** Track A in `2218e6e`
+(backend org-wide reads + B1 audit table + `test_org_wide_scope_api.py`) and
+`10a4252` (API types); Track B in `10a4252` (comms + notifications wired to the
+org-wide single call); Track C (switcher → filterable trust tag) across `99b308f`/
+`beab8a9`/`31f31d1`/`91527d6` (trust-tag filters), `aeeefb5` (Dashboard org-wide,
+no switcher), and `d617c2d` (remove global trust pills). The earlier "Track C is
+design-gated / pending" note is stale — it shipped.

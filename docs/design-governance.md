@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -188,6 +188,16 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-27 · Source history evidence trail redesign · screenshots reviewed at
+  `output/playwright/source-history-redesign-desktop-1440.png` and
+  `output/playwright/source-history-redesign-mobile-390.png` · fixes: the
+  shared Source history panel now uses a compact provenance strip, scannable
+  before/after change cards, softer confidence treatment, wrapped citations,
+  and a quieter audit timeline; smoke coverage now locks the provenance strip,
+  change rows, audit rows, and mobile component overflow · deferral: refresh the
+  canonical Figma component/frame for this shared evidence trail, logged in UX
+  debt because the redesign shipped directly from Temba's screenshot feedback
+  against existing Horizon tokens.
 - 2026-06-26 · Settings Organisation communication templates redesign ·
   screenshots reviewed at `output/playwright/settings-comms-messages-1440.png`,
   `output/playwright/settings-comms-advanced-1440.png`,
@@ -1001,6 +1011,13 @@ remove entries by shipping a slice whose UX pass covers them.
   which was approved in-thread from visual companion mockups and shipped
   against the existing Settings visual language before a committed Figma
   subsection frame existed.
+
+- **Source history evidence-trail Figma refresh (2026-06-27):** the shared
+  `EvidenceSourceTrail` component was redesigned in code from Temba's screenshot
+  feedback, using existing Horizon tokens and smoke/Playwright screenshot
+  verification. Add or refresh the canonical Figma component/frame so future
+  tenant/property/Portfolio QA source-history work pulls this compact
+  provenance + change-card + audit-timeline pattern from the design source.
 
 - **Leasium AI cross-page history surfacing** (2026-06-16) —
   shipped since the first slice: conversational review for both intake and the
