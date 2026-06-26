@@ -218,7 +218,12 @@ test("people hub keeps tenants and vendors inline", async ({ page }) => {
     page.getByText("Bright Spark Electrical", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("electrical", { exact: true })).toBeVisible();
-  await expect(page.getByText("Preferred")).toBeVisible();
+  await expect(
+    page
+      .getByRole("listitem")
+      .filter({ hasText: "Bright Spark Electrical" })
+      .getByText("Preferred"),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Open vendor directory/i }),
   ).toHaveCount(0);

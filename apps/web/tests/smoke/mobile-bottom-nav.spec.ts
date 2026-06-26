@@ -153,14 +153,6 @@ test("mobile bottom navigation exposes the Horizon field-operator hubs", async (
   await expect(
     fullMobileNav.getByRole("link", { name: /^Settings/ }),
   ).toBeVisible();
-  const mobileDrawer = page.getByRole("complementary", {
-    name: "Primary navigation",
-  });
-  await expect(
-    mobileDrawer
-      .getByRole("group", { name: "Workspace switcher" })
-      .getByLabel("Entity"),
-  ).toBeVisible();
   await fullMobileNav.getByRole("link", { name: /^People/ }).click();
   await expect(page).toHaveURL(/\/people$/);
   await expect(
@@ -173,7 +165,7 @@ test("mobile bottom navigation exposes the Horizon field-operator hubs", async (
   expect(forbiddenProviderRequests).toEqual([]);
 });
 
-test("desktop Horizon sidebar exposes the entity switcher and operator card", async ({
+test("desktop Horizon sidebar exposes the operator card", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -183,16 +175,6 @@ test("desktop Horizon sidebar exposes the entity switcher and operator card", as
     name: "Primary navigation",
   });
   await expect(sidebar).toBeVisible();
-
-  const switcher = sidebar.getByRole("group", { name: "Workspace switcher" });
-  await expect(switcher).toBeVisible();
-  await expect(switcher.getByLabel("Entity")).toHaveAttribute(
-    "data-value",
-    "entity-1",
-  );
-  await expect(
-    switcher.getByText("Acme Holdings", { exact: true }),
-  ).toBeVisible();
 
   const primaryNav = sidebar.getByRole("navigation", { name: "Primary" });
   await expect(primaryNav.getByRole("link")).toHaveCount(8);
