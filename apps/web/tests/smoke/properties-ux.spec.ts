@@ -182,6 +182,42 @@ test("desktop selected property opens on the Horizon detail frame", async ({
   await expect(page.getByRole("table").first()).toBeHidden();
 });
 
+test("lease attention update errors stay with the attention rows", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.route("**/api/v1/obligations/obligation-1", async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Tenancy unit not found." }),
+    });
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await page.getByRole("tab", { name: "Lease" }).click();
+  await page
+    .getByRole("button", { name: "Complete Insurance certificate renewal" })
+    .click();
+
+  const attentionSection = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Attention" }),
+  });
+  await expect(attentionSection.getByRole("alert")).toHaveText(
+    "Tenancy unit not found.",
+  );
+  await expect(
+    page
+      .locator("form")
+      .filter({ hasText: "Quick date" })
+      .getByText("Tenancy unit not found."),
+  ).toHaveCount(0);
+});
+
 test("lease editor saves monthly rent as annual storage", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
 

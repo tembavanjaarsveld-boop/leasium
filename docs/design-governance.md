@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-23
+Last updated: 2026-06-26
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -188,6 +188,12 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-26 · Property Lease Attention error placement · screenshots reviewed
+  at `output/playwright/lease-attention-error-1440.png` and
+  `output/playwright/lease-attention-error-390.png` · fixes: Complete/Waive
+  failures now render under the affected Attention row instead of inside the
+  Quick date form, keeping the create-date form separate from row-action
+  recovery · none deferred.
 - 2026-06-26 · All-mode bug fixes + nav smoke rework · existing desktop/mobile
   smoke surfaces (`inbox`, `notifications` mobile 390, `comms`,
   `mobile-bottom-nav`, `nav-consolidation`) · fixes: AI-inbox classify button

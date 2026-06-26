@@ -5732,6 +5732,16 @@ function Workspace({
                             <Ban size={15} className="text-danger" />
                           </SecondaryButton>
                         </div>
+                        {updateObligationMutation.error &&
+                        updateObligationMutation.variables?.obligation.id ===
+                          obligation.id ? (
+                          <p
+                            className="text-sm text-danger sm:col-span-2"
+                            role="alert"
+                          >
+                            {updateObligationMutation.error.message}
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -5846,11 +5856,6 @@ function Workspace({
                   {obligationMutation.error ? (
                     <p className="text-sm text-danger">
                       {obligationMutation.error.message}
-                    </p>
-                  ) : null}
-                  {updateObligationMutation.error ? (
-                    <p className="text-sm text-danger">
-                      {updateObligationMutation.error.message}
                     </p>
                   ) : null}
                   {obligationsQuery.error ? (

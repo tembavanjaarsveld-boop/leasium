@@ -4,11 +4,11 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Property, TenancyUnit, UserRole
+from stewart.core.models import Lease, Obligation, Property, RentChargeRule, TenancyUnit, UserRole
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import TenancyUnitCreate, TenancyUnitRead, TenancyUnitUpdate
@@ -82,6 +82,42 @@ def _get_unit_for_user(
     return unit, prop
 
 
+def _soft_delete_unit_cascade(unit: TenancyUnit, session: Session) -> None:
+    now = utcnow()
+    lease_ids = list(
+        session.scalars(select(Lease.id).where(Lease.tenancy_unit_id == unit.id))
+    )
+    live_leases = list(
+        session.scalars(
+            select(Lease).where(
+                Lease.tenancy_unit_id == unit.id,
+                Lease.deleted_at.is_(None),
+            )
+        )
+    )
+    if lease_ids:
+        for rule in session.scalars(
+            select(RentChargeRule).where(
+                RentChargeRule.lease_id.in_(lease_ids),
+                RentChargeRule.deleted_at.is_(None),
+            )
+        ):
+            rule.deleted_at = now
+    obligation_scope = [Obligation.tenancy_unit_id == unit.id]
+    if lease_ids:
+        obligation_scope.append(Obligation.lease_id.in_(lease_ids))
+    for obligation in session.scalars(
+        select(Obligation).where(
+            Obligation.deleted_at.is_(None),
+            or_(*obligation_scope),
+        )
+    ):
+        obligation.deleted_at = now
+    for lease in live_leases:
+        lease.deleted_at = now
+    unit.deleted_at = now
+
+
 @router.get("/{unit_id}", response_model=TenancyUnitRead)
 def get_tenancy_unit(
     unit_id: UUID,
@@ -126,7 +162,7 @@ def delete_tenancy_unit(
     session: Annotated[Session, Depends(get_session)],
 ) -> None:
     unit, prop = _get_unit_for_user(unit_id, user, session, WRITE_ROLES)
-    unit.deleted_at = utcnow()
+    _soft_delete_unit_cascade(unit, session)
     audit_log(
         session,
         actor=user.actor,

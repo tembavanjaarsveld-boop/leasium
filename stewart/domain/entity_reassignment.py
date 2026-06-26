@@ -219,12 +219,13 @@ def _resolve(
     moving_set = set(moving_ids)
     move_map = {mover.prop.id: mover.target.id for mover in movers}
 
-    # Map units and leases back to their property so unit/lease-scoped
-    # obligations move with the property too (not just property-scoped ones).
+    # Map every unit/lease back to its property so active legacy obligations on
+    # soft-deleted units or leases move with the property instead of staying
+    # stranded under the old entity.
     unit_to_prop: dict[UUID, UUID] = {}
     for unit_id, prop_id in session.execute(
         select(TenancyUnit.id, TenancyUnit.property_id).where(
-            TenancyUnit.property_id.in_(moving_ids), TenancyUnit.deleted_at.is_(None)
+            TenancyUnit.property_id.in_(moving_ids)
         )
     ):
         unit_to_prop[unit_id] = prop_id
@@ -232,7 +233,7 @@ def _resolve(
     if unit_to_prop:
         for lease_id, unit_id in session.execute(
             select(Lease.id, Lease.tenancy_unit_id).where(
-                Lease.tenancy_unit_id.in_(list(unit_to_prop)), Lease.deleted_at.is_(None)
+                Lease.tenancy_unit_id.in_(list(unit_to_prop))
             )
         ):
             lease_to_prop[lease_id] = unit_to_prop[unit_id]

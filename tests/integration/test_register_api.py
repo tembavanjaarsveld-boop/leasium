@@ -388,6 +388,50 @@ def test_reassign_single_property_moves_entity_label_and_obligation(
     assert repeat_body["skipped_property_count"] == 1
 
 
+def test_reassign_property_moves_legacy_obligation_on_soft_deleted_unit(
+    client: TestClient,
+    session: Session,
+) -> None:
+    skj = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert skj is not None
+    target_id = _reassign_target_entity(client, session, "Soft Deleted Unit Trust")
+    property_id = _reassign_make_property(
+        client, str(skj.id), "Legacy Unit Scoped Property", owner_legal_name="Old Trust"
+    )
+    unit = TenancyUnit(
+        property_id=UUID(property_id),
+        unit_label="Old Unit",
+        deleted_at=datetime.now(UTC),
+    )
+    tenant = Tenant(entity_id=skj.id, legal_name="Legacy Unit Tenant Pty Ltd")
+    session.add_all([unit, tenant])
+    session.flush()
+    lease = Lease(tenancy_unit_id=unit.id, tenant_id=tenant.id)
+    session.add(lease)
+    session.flush()
+    obligation = Obligation(
+        entity_id=skj.id,
+        tenancy_unit_id=unit.id,
+        lease_id=lease.id,
+        title="Legacy deleted-unit insurance",
+        due_date=date(2026, 7, 20),
+    )
+    session.add(obligation)
+    session.commit()
+
+    body = {"property_ids": [property_id], "target_entity_id": target_id}
+    preview = client.post("/api/v1/entities/reassign-properties/preview", json=body)
+    assert preview.status_code == 200
+    assert preview.json()["moved_obligation_count"] == 1
+
+    apply_response = client.post("/api/v1/entities/reassign-properties/apply", json=body)
+    assert apply_response.status_code == 201
+    assert apply_response.json()["moved_obligation_count"] == 1
+
+    session.expire_all()
+    assert str(session.get(Obligation, obligation.id).entity_id) == target_id
+
+
 def test_reassign_batch_moves_clean_tenant_and_flags_spanning(
     client: TestClient,
     session: Session,
@@ -719,6 +763,117 @@ def test_tenancy_unit_crud_inherits_property_scope(client: TestClient, session: 
 
     assert session.scalar(select(Property).where(Property.id == UUID(property_id))) is not None
     assert session.scalar(select(TenancyUnit).where(TenancyUnit.id == UUID(unit_id))) is not None
+
+
+def test_tenancy_unit_delete_cascades_leases_charge_rules_and_obligations(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_id = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Unit Cascade Plaza",
+            "street_address": "45 Cascade Lane",
+            "suburb": "Brisbane City",
+            "state": "QLD",
+            "postcode": "4000",
+            "property_type": "commercial_retail",
+        },
+    ).json()["id"]
+    unit_id = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "Shop 9", "sqm": 90},
+    ).json()["id"]
+    tenant_id = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "Unit Cascade Tenant Pty Ltd"},
+    ).json()["id"]
+    lease_id = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2027-12-31",
+        },
+    ).json()["id"]
+    charge_rule = RentChargeRule(
+        lease_id=UUID(lease_id),
+        charge_type=RentChargeType.base_rent,
+        amount_cents=425000,
+        frequency=RentFrequency.monthly,
+    )
+    legacy_lease = Lease(
+        tenancy_unit_id=UUID(unit_id),
+        tenant_id=UUID(tenant_id),
+        deleted_at=datetime.now(UTC),
+    )
+    session.add(legacy_lease)
+    session.flush()
+    legacy_charge_rule = RentChargeRule(
+        lease_id=legacy_lease.id,
+        charge_type=RentChargeType.outgoings,
+        amount_cents=75000,
+        frequency=RentFrequency.monthly,
+    )
+    unit_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        title="Unit fire door inspection",
+        due_date=date(2026, 7, 15),
+    )
+    lease_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        tenancy_unit_id=UUID(unit_id),
+        lease_id=UUID(lease_id),
+        title="Lease option reminder",
+        due_date=date(2026, 8, 1),
+    )
+    legacy_lease_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        lease_id=legacy_lease.id,
+        title="Legacy lease-only reminder",
+        due_date=date(2026, 8, 15),
+    )
+    property_obligation = Obligation(
+        entity_id=UUID(entity_id),
+        property_id=UUID(property_id),
+        title="Building insurance renewal",
+        due_date=date(2026, 9, 1),
+    )
+    session.add_all(
+        [
+            charge_rule,
+            legacy_charge_rule,
+            unit_obligation,
+            lease_obligation,
+            legacy_lease_obligation,
+            property_obligation,
+        ]
+    )
+    session.commit()
+
+    delete_response = client.delete(f"/api/v1/tenancy-units/{unit_id}")
+    assert delete_response.status_code == 204
+
+    session.expire_all()
+    assert session.get(TenancyUnit, UUID(unit_id)).deleted_at is not None
+    assert session.get(Lease, UUID(lease_id)).deleted_at is not None
+    assert session.get(Lease, legacy_lease.id).deleted_at is not None
+    assert session.get(RentChargeRule, charge_rule.id).deleted_at is not None
+    assert session.get(RentChargeRule, legacy_charge_rule.id).deleted_at is not None
+    assert session.get(Obligation, unit_obligation.id).deleted_at is not None
+    assert session.get(Obligation, lease_obligation.id).deleted_at is not None
+    assert session.get(Obligation, legacy_lease_obligation.id).deleted_at is not None
+    assert session.get(Obligation, property_obligation.id).deleted_at is None
+    assert session.get(Property, UUID(property_id)).deleted_at is None
+    assert session.get(Tenant, UUID(tenant_id)).deleted_at is None
 
 
 def test_tenant_crud_writes_audit_and_filters_soft_deleted(

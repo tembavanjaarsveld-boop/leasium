@@ -2,6 +2,31 @@
 
 Last updated: 2026-06-26
 
+## Continuation - 2026-06-26 (Lease Attention error placement + orphan prevention)
+
+Lease Attention follow-ups from the 1642 Anzac stuck-obligation fix are now
+handled locally. The property Attention Complete/Waive failure state renders
+under the affected Attention row instead of inside the Quick date form, with a
+focused smoke covering the failed PATCH case (`Tenancy unit not found.`) and UX
+screenshots at `output/playwright/lease-attention-error-1440.png` and
+`output/playwright/lease-attention-error-390.png`; UX pass log updated.
+
+Prevention work landed at the register layer: deleting a tenancy unit now
+soft-deletes its live leases, those leases' charge rules, and live obligations
+scoped to the unit or those leases, while leaving the property and tenant live.
+Property→entity reassignment also includes active legacy obligations that point
+through soft-deleted units or leases under the moving property, so they do not
+stay under the old trust. No provider calls, emails, SMS, Xero writes, payment,
+or reconciliation paths are touched.
+
+Verification: red-first focused pytest and Playwright smoke failed on the old
+behavior, then passed after the fixes. Final checks passed: ruff on touched
+backend/test files; `pytest tests/integration/test_register_api.py -q` (28
+passed); focused `properties-ux` smoke for Lease Attention error placement (1
+passed); eslint on `property-workspace.tsx` + `properties-ux.spec.ts`; Next
+`typegen` + `tsc --noEmit`; `git diff --check`; screenshot capture spec (temp
+only, removed) passed 2 and saved the UX artifacts.
+
 ## Continuation - 2026-06-26 (Switcher removal slice 9: Operations row-trust actions)
 
 Slice 9 is committed locally on `main`: Operations compliance and row-backed
