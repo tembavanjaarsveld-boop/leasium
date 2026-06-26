@@ -1784,7 +1784,8 @@ function NotificationsWorkspace() {
 
   // All-entities mode: the single-entity center query uses scopedEntityId
   // (empty in all-mode, so it stays disabled) and the page reads merged
-  // fan-out results. Single-entity writes are gated off while allMode is on.
+  // fan-out results. Per-notice writes (send/retry/SMS/digest) fire under the
+  // row's own trust (notice/receipt entity_id), so they stay enabled in all-mode.
   const allMode = isAllEntities(selectedEntityId);
   const scopedEntityId = scopeEntityId(selectedEntityId);
   const entityNameById = useMemo(
