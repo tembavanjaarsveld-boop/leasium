@@ -24,6 +24,11 @@ to live here is preserved at
 
 ## Current State
 
+- Workflows queue entity-scope hotfix is shipped. The portfolio-wide Workflows
+  tab now fans out review-queue reads per trust instead of calling the
+  entity-required `/workflows/queue` endpoint without `entity_id`; this removes
+  the "Field required" banner while keeping proposal approval/dismissal
+  review-first and provider-inert.
 - Relby AI Smart Intake matcher review UI is shipped. Lease document reviews now
   show deterministic property/tenant match candidates, exact same-document
   duplicate signals, and held-back low-confidence/manual-review states in the

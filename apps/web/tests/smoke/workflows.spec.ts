@@ -123,6 +123,15 @@ async function expectTouchTarget(control: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBeLessThanOrEqual(1);
+}
+
 async function installWorkflowRoutes(page: Page) {
   const rules: WorkflowRule[] = [{ ...initialRule }];
   const openProposals = new Map(
@@ -198,12 +207,26 @@ async function installWorkflowRoutes(page: Page) {
     }
 
     if (method === "GET" && path === "/workflows/queue") {
+      const requestEntityId = url.searchParams.get("entity_id");
+      if (!requestEntityId) {
+        await route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: [{ loc: ["query", "entity_id"], msg: "Field required" }],
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          entity_id: "entity-1",
-          proposals: Array.from(openProposals.values()),
+          entity_id: requestEntityId,
+          proposals:
+            requestEntityId === "entity-1"
+              ? Array.from(openProposals.values())
+              : [],
           guardrail:
             "Workflow proposals are review-only until an operator approves one.",
           generated_at: "2026-06-21T02:05:00.000Z",
@@ -318,6 +341,16 @@ test("workflows review queue approves and dismisses proposed actions locally", a
 }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   const forbiddenApiCalls = await installWorkflowRoutes(page);
+  const queueEntityIds: Array<string | null> = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/v1/workflows/queue"
+    ) {
+      queueEntityIds.push(url.searchParams.get("entity_id"));
+    }
+  });
 
   await page.goto("/operations?tab=workflows");
 
@@ -328,6 +361,9 @@ test("workflows review queue approves and dismisses proposed actions locally", a
   await expect(queue).toContainText("Prepare lease renewal pack");
   await expect(queue).toContainText("Queen Street Retail Centre");
   await expect(queue).toContainText("Lease expiry");
+  await expect(page.getByText("Field required")).toHaveCount(0);
+  expect(queueEntityIds).toEqual(expect.arrayContaining(["entity-1", "entity-2"]));
+  expect(queueEntityIds).not.toContain(null);
 
   const approveRow = queue
     .locator("article")
@@ -375,6 +411,7 @@ test("mobile workflows keep tab and proposal controls touch-safe", async ({
   const workflowsTab = tabs.getByRole("tab", { name: /Workflows/ });
   await expect(workflowsTab).toHaveAttribute("aria-selected", "true");
   await expectTouchTarget(workflowsTab);
+  await expectNoHorizontalOverflow(page);
 
   const queue = workflowsSurface(page)
     .locator("section")

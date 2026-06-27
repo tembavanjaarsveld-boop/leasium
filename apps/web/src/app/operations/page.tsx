@@ -3740,7 +3740,8 @@ function OperationsWorkspace() {
     queryKey: ["operations-workflow-queue", workflowScopeKey],
     queryFn: () =>
       listWorkflowQueue({ entity_id: scopedEntityId || undefined }),
-    enabled: activeTab === "workflows" && Boolean(workflowScopeKey),
+    enabled:
+      activeTab === "workflows" && !allMode && Boolean(workflowScopeKey),
   });
 
   // Fan-out copies of the primary list queries for all-entities mode. Each
@@ -3810,6 +3811,13 @@ function OperationsWorkspace() {
     queryFn: (entityId) => listArrearsCases({ entity_id: entityId }),
     orgWideQueryFn: () => listArrearsCases({}),
   });
+  const workflowProposalFanOut = useEntityFanOut({
+    entities: entitiesQuery.data,
+    enabled: activeTab === "workflows" && allMode,
+    keyPrefix: ["operations-workflow-proposals"],
+    queryFn: async (entityId) =>
+      (await listWorkflowQueue({ entity_id: entityId })).proposals,
+  });
 
   const invalidateOperations = () => {
     queryClient.invalidateQueries({
@@ -3832,6 +3840,9 @@ function OperationsWorkspace() {
     });
     queryClient.invalidateQueries({
       queryKey: ["operations-workflow-queue", scopedEntityId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["operations-workflow-proposals"],
     });
   };
 
@@ -4165,6 +4176,9 @@ function OperationsWorkspace() {
       queryClient.invalidateQueries({
         queryKey: ["operations-workflow-queue", workflowScopeKey],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-workflow-proposals"],
+      });
       setWorkflowForm(emptyWorkflowRuleForm);
       setWorkflowFormOpen(false);
       setWorkflowConfirmation(`Saved “${rule.name}”.`);
@@ -4209,15 +4223,28 @@ function OperationsWorkspace() {
       queryClient.invalidateQueries({
         queryKey: ["operations-workflow-queue", workflowScopeKey],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["operations-workflow-proposals"],
+      });
       setWorkflowConfirmation("Proposal dismissed.");
     },
   });
+
+  const workflowQueueLoading = allMode
+    ? workflowProposalFanOut.isLoading
+    : workflowQueueQuery.isLoading;
+  const workflowQueueFetching = allMode
+    ? workflowProposalFanOut.isFetching
+    : workflowQueueQuery.isFetching;
+  const workflowQueueError = allMode
+    ? workflowProposalFanOut.error
+    : workflowQueueQuery.error;
 
   const operationsLoading =
     entitiesQuery.isLoading ||
     calendarQuery.isLoading ||
     (activeTab === "workflows" &&
-      (workflowRulesQuery.isLoading || workflowQueueQuery.isLoading)) ||
+      (workflowRulesQuery.isLoading || workflowQueueLoading)) ||
     (allMode
       ? propertiesFanOut.isLoading ||
         tenantsFanOut.isLoading ||
@@ -4300,8 +4327,9 @@ function OperationsWorkspace() {
     [calendarQuery.data],
   );
   const workflowRules = workflowRulesQuery.data ?? EMPTY_WORKFLOW_RULES;
-  const workflowProposals =
-    workflowQueueQuery.data?.proposals ?? EMPTY_WORKFLOW_PROPOSALS;
+  const workflowProposals = allMode
+    ? workflowProposalFanOut.data
+    : (workflowQueueQuery.data?.proposals ?? EMPTY_WORKFLOW_PROPOSALS);
   const workflowEnabledCount = workflowRules.filter((rule) => rule.enabled).length;
   const sourceFilteredCalendarEvents = useMemo(
     () =>
@@ -4866,7 +4894,7 @@ function OperationsWorkspace() {
     securityWorkspaceQuery.error ||
     (activeTab === "workflows"
       ? workflowRulesQuery.error ||
-        workflowQueueQuery.error ||
+        workflowQueueError ||
         createWorkflowRuleMutation.error ||
         approveWorkflowProposalMutation.error ||
         dismissWorkflowProposalMutation.error
@@ -4886,7 +4914,11 @@ function OperationsWorkspace() {
     calendarQuery.refetch();
     if (activeTab === "workflows") {
       workflowRulesQuery.refetch();
-      workflowQueueQuery.refetch();
+      if (allMode) {
+        workflowProposalFanOut.refetch();
+      } else {
+        workflowQueueQuery.refetch();
+      }
     }
     if (allMode) {
       propertiesFanOut.refetch();
@@ -8412,10 +8444,14 @@ function OperationsWorkspace() {
                       actions={
                         <SecondaryButton
                           type="button"
-                          onClick={() => workflowQueueQuery.refetch()}
-                          disabled={workflowQueueQuery.isFetching}
+                          onClick={() =>
+                            allMode
+                              ? workflowProposalFanOut.refetch()
+                              : workflowQueueQuery.refetch()
+                          }
+                          disabled={workflowQueueFetching}
                         >
-                          {workflowQueueQuery.isFetching ? (
+                          {workflowQueueFetching ? (
                             <RefreshCw size={15} className="animate-spin" />
                           ) : (
                             <RefreshCw size={15} />
@@ -8506,7 +8542,7 @@ function OperationsWorkspace() {
                             </div>
                           </article>
                         ))}
-                        {!workflowQueueQuery.isLoading &&
+                        {!workflowQueueLoading &&
                         workflowProposals.length === 0 ? (
                           <EmptyState
                             icon={<ShieldCheck size={18} />}
@@ -8514,7 +8550,7 @@ function OperationsWorkspace() {
                             description="Enabled rules with matching records will appear here for approval."
                           />
                         ) : null}
-                        {workflowQueueQuery.isLoading ? (
+                        {workflowQueueLoading ? (
                           <div className="p-4 text-sm text-muted-foreground">
                             Checking workflow proposals.
                           </div>

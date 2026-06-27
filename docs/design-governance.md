@@ -188,6 +188,15 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-27 · Workflows queue entity-scope hotfix · screenshots reviewed at
+  `apps/web/output/playwright/workflows-entity-queue-hotfix-1440.png` and
+  `apps/web/output/playwright/workflows-entity-queue-hotfix-390.png` · fixes:
+  the portfolio-wide Workflows tab now fetches review proposals per trust so the
+  required entity-scoped queue endpoint is never called without `entity_id`;
+  the top-level "Field required" banner is gone while workflow proposals remain
+  review-first and provider-inert · slop test passed at 1440/390 with no
+  horizontal overflow or incoherent text overlap introduced; existing mobile
+  bottom navigation remains unchanged · none deferred.
 - 2026-06-27 · Smart Intake matcher review UI · screenshots reviewed at
   `apps/web/output/playwright/smart-intake-matcher-review-1440.png` and
   `apps/web/output/playwright/smart-intake-matcher-review-390.png` · fixes:
