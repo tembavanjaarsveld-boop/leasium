@@ -4111,6 +4111,65 @@ def test_document_intake_apply_lease_target_entity_wins_over_create_name(
     assert _row_count(session, Entity) == entities_before
 
 
+def test_document_intake_apply_lease_reuses_high_confidence_property_address_variant(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Final apply should not create a duplicate for common address abbreviations."""
+    entity_id = UUID(_writable_entity(session, "SJI No 5 Trust"))
+    existing_property = Property(
+        entity_id=entity_id,
+        name="1642 Anzac Avenue, North Lakes",
+        street_address="1642 Anzac Avenue, North Lakes QLD",
+        country_code="AU",
+        property_type="other",
+        has_solar_pv=False,
+        property_metadata={"source": "manual"},
+    )
+    session.add(existing_property)
+    session.commit()
+
+    extraction = _fake_smart_lease_extraction()
+    extraction["properties"] = [
+        {
+            **extraction["properties"][0],
+            "name": "1642 Anzac Ave, North Lakes",
+            "address": "1642 Anzac Ave, North Lakes QLD",
+            "unit_label": "Unit 5",
+        }
+    ]
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(entity_id), "extract": "false"},
+        files={"file": ("anzac-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake = session.get(DocumentIntake, UUID(create_response.json()["id"]))
+    assert intake is not None
+    intake.status = DocumentIntakeStatus.ready_for_review
+    intake.extracted_data = extraction
+    session.commit()
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={"review_data": extraction},
+    )
+
+    assert apply_response.status_code == 200, apply_response.text
+    body = apply_response.json()
+    assert body["review_data"]["applied"]["property_id"] == str(existing_property.id)
+    properties = list(
+        session.scalars(
+            select(Property).where(
+                Property.entity_id == entity_id,
+                Property.deleted_at.is_(None),
+            )
+        )
+    )
+    assert [prop.id for prop in properties] == [existing_property.id]
+
+
 def test_document_intake_suggested_entity_id_matches_extracted_trust(
     client: TestClient,
     session: Session,

@@ -1250,6 +1250,8 @@ export function IntakeConversationPanel({
     setTenantSetupPath(path);
   };
   const tenantSetupHold = leaseReview && tenantSetupPath === "review";
+  const propertyDecisionRequired =
+    Boolean(propertyDuplicate) && !propertyChoiceTouched;
   // "File under trust": the operator confirms the trust the records file under,
   // picks a different existing one, or creates a new trust inline. Default to
   // the trust detected from the lease (suggested_entity_id) when it matches an
@@ -1329,6 +1331,8 @@ export function IntakeConversationPanel({
   const [appliedRecord, setAppliedRecord] = useState<DocumentIntakeRecord | null>(
     intake.status === "applied" ? intake : null,
   );
+  const applyBlocked =
+    applying || !trustChosen || tenantSetupHold || propertyDecisionRequired;
 
   // Progressive disclosure: lead with the key facts and keep the "we didn't
   // find X" notes collapsed so they don't fill the screen.
@@ -1472,7 +1476,7 @@ export function IntakeConversationPanel({
   }: {
     approveHighConfidence?: boolean;
   } = {}) {
-    if (applying || !trustChosen || tenantSetupHold) return;
+    if (applyBlocked) return;
     setApplying(true);
     setApplyError(null);
     setAttentionMessage(null);
@@ -2215,12 +2219,21 @@ export function IntakeConversationPanel({
                 records.
               </p>
             ) : null}
+            {propertyDecisionRequired ? (
+              <p
+                data-testid="intake-property-decision-hold"
+                className="mt-3 text-sm text-warning-strong"
+              >
+                Choose Link existing or Create new for the possible duplicate
+                property before approving.
+              </p>
+            ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {leaseReview ? (
                 <SecondaryButton
                   type="button"
                   data-testid="intake-approve-high-confidence"
-                  disabled={applying || !trustChosen || tenantSetupHold}
+                  disabled={applyBlocked}
                   onClick={handleApproveHighConfidence}
                 >
                   {applying ? (
@@ -2235,7 +2248,7 @@ export function IntakeConversationPanel({
                 type="button"
                 data-testid="intake-create-all"
                 onClick={handleCreateAll}
-                disabled={applying || !trustChosen || tenantSetupHold}
+                disabled={applyBlocked}
               >
                 {applying ? (
                   <>

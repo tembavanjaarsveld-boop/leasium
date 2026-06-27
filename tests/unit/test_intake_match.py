@@ -66,6 +66,31 @@ def test_property_candidates_auto_match_name_and_street_variants() -> None:
     assert candidates[0].reason == "name + street match"
 
 
+def test_property_candidates_auto_match_address_only_street_suffix_variant() -> None:
+    existing = _property(
+        name="1642 Anzac Avenue, North Lakes",
+        street_address="1642 Anzac Avenue, North Lakes QLD",
+        suburb="North Lakes",
+    )
+    candidates = score_property_candidates(
+        {
+            "properties": [
+                {
+                    "name": None,
+                    "address": "1642 Anzac Ave, North Lakes QLD",
+                    "unit_label": "Unit 5",
+                }
+            ]
+        },
+        [existing],
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].property_id == existing.id
+    assert candidates[0].score >= AUTO_MATCH_THRESHOLD
+    assert candidates[0].reason == "address match"
+
+
 def test_property_candidates_warn_on_near_duplicate_below_auto_match() -> None:
     existing = _property(
         name="Harbour Trade Centre",

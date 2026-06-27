@@ -37,7 +37,12 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
-from stewart.domain.intake_match import _building_key, _building_level_name
+from stewart.domain.intake_match import (
+    AUTO_MATCH_THRESHOLD,
+    _building_key,
+    _building_level_name,
+    score_property_candidates,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.lease_intake import LeaseIntakeApplyRequest, LeaseIntakeRead
@@ -597,6 +602,36 @@ def _lease_property_metadata(intake: LeaseIntake, building_key: str | None) -> d
     return metadata
 
 
+def _score_matched_property(
+    entity_id: UUID,
+    data: dict[str, Any],
+    unit_label: str | None,
+    session: Session,
+) -> Property | None:
+    properties = list(
+        session.scalars(
+            select(Property).where(
+                Property.entity_id == entity_id,
+                Property.deleted_at.is_(None),
+            )
+        )
+    )
+    if not properties:
+        return None
+
+    candidates = score_property_candidates(
+        {"property": {**data, "unit_label": unit_label}},
+        properties,
+    )
+    auto_candidates = [
+        candidate for candidate in candidates if candidate.score >= AUTO_MATCH_THRESHOLD
+    ]
+    if len(auto_candidates) != 1:
+        return None
+    matched_id = auto_candidates[0].property_id
+    return next((prop for prop in properties if prop.id == matched_id), None)
+
+
 def _find_or_create_property(
     property_id: UUID | None,
     intake: LeaseIntake,
@@ -635,6 +670,11 @@ def _find_or_create_property(
         if existing is not None:
             _fill_blank_property_billing_fields(existing, data)
             return existing
+
+    scored_match = _score_matched_property(intake.entity_id, data, unit_label, session)
+    if scored_match is not None:
+        _fill_blank_property_billing_fields(scored_match, data)
+        return scored_match
 
     prop = Property(
         entity_id=intake.entity_id,

@@ -24,6 +24,12 @@ to live here is preserved at
 
 ## Current State
 
+- Smart Intake property duplicate guard is shipped. Property matching now
+  normalises common street suffixes and can auto-match address-only variants;
+  lease apply reuses a single high-confidence property candidate before creating
+  a new property. The review card also blocks likely duplicate properties until
+  the operator chooses Link existing or Create new. No provider/email/Xero/
+  payment path is added.
 - Smart Intake tenant setup path is shipped. Lease review now asks Existing
   tenant / New tenant / Needs review before apply. Existing tenant creates the
   lease/register records plus an internal migrated `applied` onboarding row so

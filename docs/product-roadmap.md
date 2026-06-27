@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-27 Smart Intake property duplicate guard:** Relby AI property
+  matching now treats common street suffix variants (`Ave`/`Avenue`,
+  `Rd`/`Road`, `Hwy`/`Highway`, etc.) as the same address, including
+  address-only extractions where the property name is blank. Lease apply also
+  runs the deterministic high-confidence property matcher before creating a new
+  property, so obvious variants like `1642 Anzac Ave` reuse the existing
+  `1642 Anzac Avenue` record. The review screen now holds a likely duplicate
+  property until the operator chooses `Link existing` or `Create new`; no
+  provider/email/Xero/payment path is added.
 - [x] **2026-06-27 Smart Intake tenant setup path:** Lease Smart Intake now asks
   the operator whether the tenant is an existing client, a new client, or still
   needs review before apply. Existing-tenant applies create the lease/register

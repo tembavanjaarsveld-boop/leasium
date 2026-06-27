@@ -902,7 +902,18 @@ test("matcher review surfaces candidates, holds blockers, and links approved cho
     "Likely duplicate — already in Acme Holdings Pty Ltd",
   );
   await expect(propertyDuplicate).toContainText("86% — building + street");
+  await expect(page.getByTestId("intake-property-decision-hold")).toContainText(
+    "Choose Link existing or Create new",
+  );
+  await expect(page.getByTestId("intake-create-all")).toBeDisabled();
+  await expect(page.getByTestId("intake-approve-high-confidence")).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId("intake-property-decision-hold")).toBeVisible();
+  await expect(page.getByTestId("intake-create-all")).toBeDisabled();
+  await page.setViewportSize({ width: 1280, height: 900 });
   await propertyDuplicate.getByRole("button", { name: "Create new" }).click();
+  await expect(page.getByTestId("intake-property-decision-hold")).toHaveCount(0);
+  await expect(page.getByTestId("intake-approve-high-confidence")).toBeEnabled();
 
   await page.getByTestId("intake-approve-high-confidence").click();
   const blockers = page.getByTestId("intake-high-confidence-blockers");

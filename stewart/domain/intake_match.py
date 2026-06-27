@@ -53,6 +53,14 @@ _CORPORATE_SUFFIXES = {
     "pty",
     "proprietary",
 }
+_STREET_SUFFIX_ALIASES = {
+    "av": "avenue",
+    "ave": "avenue",
+    "dr": "drive",
+    "hwy": "highway",
+    "rd": "road",
+    "st": "street",
+}
 
 
 def _str(value: Any) -> str | None:
@@ -130,11 +138,18 @@ def _building_level_name(name: str | None, building_key: str | None) -> str | No
     return stripped or None
 
 
-def _normalise(value: str | None, *, drop_suffixes: bool = True) -> str:
+def _normalise(
+    value: str | None,
+    *,
+    drop_suffixes: bool = True,
+    expand_street_suffixes: bool = False,
+) -> str:
     if not value:
         return ""
     cleaned = re.sub(r"[^a-z0-9]+", " ", value.lower())
     tokens = [token for token in cleaned.split() if token]
+    if expand_street_suffixes:
+        tokens = [_STREET_SUFFIX_ALIASES.get(token, token) for token in tokens]
     if drop_suffixes:
         tokens = [token for token in tokens if token not in _CORPORATE_SUFFIXES]
     return " ".join(tokens)
@@ -149,15 +164,26 @@ def _token_set_score(left: str, right: str) -> float:
     return (2 * overlap) / (len(left_tokens) + len(right_tokens))
 
 
-def _similarity(left: str | None, right: str | None) -> float:
-    normalised_left = _normalise(left)
-    normalised_right = _normalise(right)
+def _similarity(
+    left: str | None,
+    right: str | None,
+    *,
+    expand_street_suffixes: bool = False,
+) -> float:
+    normalised_left = _normalise(left, expand_street_suffixes=expand_street_suffixes)
+    normalised_right = _normalise(right, expand_street_suffixes=expand_street_suffixes)
     if not normalised_left or not normalised_right:
         return 0.0
     return max(
         SequenceMatcher(None, normalised_left, normalised_right).ratio(),
         _token_set_score(normalised_left, normalised_right),
     )
+
+
+def _address_similarity(left: str | None, right: str | None) -> float:
+    left = _strip_unit_tokens(left) if left else None
+    right = _strip_unit_tokens(right) if right else None
+    return _similarity(left, right, expand_street_suffixes=True)
 
 
 def _extracted_property(data: dict[str, Any]) -> dict[str, Any]:
@@ -209,7 +235,8 @@ def score_property_candidates(
             None,
             prop_suburb,
         )
-        name_score = _similarity(name, prop_name)
+        name_score = _similarity(name, prop_name, expand_street_suffixes=True)
+        address_score = _address_similarity(street, prop_street)
         prop_street_core = _street_core(prop_street, prop_name)
         street_match = bool(
             extracted_street_core and prop_street_core and extracted_street_core == prop_street_core
@@ -227,6 +254,9 @@ def score_property_candidates(
         elif street_match and name_score >= 0.92:
             score = 0.96
             reason = "name + street match"
+        elif street_match and not name and address_score >= 0.92:
+            score = 0.95
+            reason = "address match"
         elif street_match and name_score >= 0.55:
             score = min(0.89, 0.72 + (0.2 * name_score))
             reason = "street + name similarity"
