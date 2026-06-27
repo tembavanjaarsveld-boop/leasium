@@ -1,6 +1,7 @@
 """Smart Intake routes for review-first document ingestion."""
 
 import hashlib
+import re
 from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
@@ -394,6 +395,104 @@ def _records(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+TENANT_EMAIL_RE = re.compile(
+    r"(?<![\w.+-])([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})(?![\w.+-])",
+    re.IGNORECASE,
+)
+BILLING_EMAIL_LOCALS = {
+    "account",
+    "accounts",
+    "accounting",
+    "ap",
+    "billing",
+    "bills",
+    "finance",
+    "invoice",
+    "invoices",
+    "payable",
+    "payables",
+    "payments",
+    "remittance",
+    "rent",
+}
+GENERIC_BILLING_EMAIL_LOCALS = {
+    "admin",
+    "office",
+    "reception",
+}
+
+
+def _email_candidates(*values: Any) -> list[str]:
+    emails: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _str(value)
+        if not text:
+            continue
+        for match in TENANT_EMAIL_RE.finditer(text):
+            email = match.group(1).lower()
+            if email in seen:
+                continue
+            seen.add(email)
+            emails.append(email)
+    return emails
+
+
+def _email_local(email: str) -> str:
+    return email.split("@", 1)[0].lower()
+
+
+def _email_local_tokens(email: str) -> set[str]:
+    local = _email_local(email)
+    return {token for token in re.split(r"[._+\-]+", local) if token}
+
+
+def _has_billing_email_token(email: str) -> bool:
+    return bool(_email_local_tokens(email) & BILLING_EMAIL_LOCALS)
+
+
+def _has_generic_billing_email_token(email: str) -> bool:
+    return bool(_email_local_tokens(email) & GENERIC_BILLING_EMAIL_LOCALS)
+
+
+def _is_billing_email(email: str) -> bool:
+    return _has_billing_email_token(email) or _has_generic_billing_email_token(email)
+
+
+def _billing_email_from_candidates(emails: list[str]) -> str | None:
+    for email in emails:
+        if _email_local(email) in BILLING_EMAIL_LOCALS:
+            return email
+    for email in emails:
+        if _has_billing_email_token(email):
+            return email
+    for email in emails:
+        if _email_local(email) in GENERIC_BILLING_EMAIL_LOCALS:
+            return email
+    for email in emails:
+        if _has_generic_billing_email_token(email):
+            return email
+    return emails[0] if len(emails) == 1 else None
+
+
+def _tenant_contact_email_fields(party: dict[str, Any]) -> tuple[str | None, str | None]:
+    contact_email = _str(party.get("contact_email"))
+    billing_email = _str(party.get("billing_email"))
+    emails = _email_candidates(
+        contact_email,
+        billing_email,
+        party.get("contact"),
+        party.get("source_hint"),
+    )
+    if contact_email is None:
+        contact_email = next((email for email in emails if not _is_billing_email(email)), None)
+        if contact_email is None and emails:
+            contact_email = emails[0]
+    if billing_email is None:
+        billing_email = _billing_email_from_candidates(emails)
+    return contact_email, billing_email
 
 
 def _uuid_list(value: Any) -> list[UUID]:
@@ -1399,6 +1498,8 @@ def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str
             }
         )
 
+    tenant_contact_email, tenant_billing_email = _tenant_contact_email_fields(tenant_party)
+
     return {
         "property": {
             "name": _str(prop.get("name")),
@@ -1419,10 +1520,9 @@ def _generic_lease_review_to_lease_intake_data(data: dict[str, Any]) -> dict[str
             "trading_name": _str(tenant_party.get("trading_name")),
             "abn": _str(tenant_party.get("abn")),
             "contact_name": _str(tenant_party.get("contact")),
-            "contact_email": _str(tenant_party.get("contact_email")),
+            "contact_email": tenant_contact_email,
             "contact_phone": _str(tenant_party.get("contact_phone")),
-            "billing_email": _str(tenant_party.get("billing_email"))
-            or _str(tenant_party.get("contact_email")),
+            "billing_email": tenant_billing_email or tenant_contact_email,
         },
         "lease": {
             "status": "active",

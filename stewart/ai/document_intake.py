@@ -63,12 +63,25 @@ DOCUMENT_INTAKE_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["name", "role", "abn", "contact", "confidence", "source_hint"],
+                "required": [
+                    "name",
+                    "role",
+                    "abn",
+                    "contact",
+                    "contact_email",
+                    "contact_phone",
+                    "billing_email",
+                    "confidence",
+                    "source_hint",
+                ],
                 "properties": {
                     "name": {"type": ["string", "null"]},
                     "role": {"type": ["string", "null"]},
                     "abn": {"type": ["string", "null"]},
                     "contact": {"type": ["string", "null"]},
+                    "contact_email": {"type": ["string", "null"]},
+                    "contact_phone": {"type": ["string", "null"]},
+                    "billing_email": {"type": ["string", "null"]},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "source_hint": {"type": ["string", "null"]},
                 },
@@ -341,7 +354,14 @@ def extract_document_file(
         "that period (e.g. '$95,000 + GST per year' is $95,000 per year, not per "
         "month). If you cannot tell whether the amount is per month or per year, set "
         "the frequency to null and add a warning asking the operator to confirm the "
-        "rent frequency rather than guessing."
+        "rent frequency rather than guessing. For tenant parties, split visible "
+        "email addresses into structured contact_email and billing_email fields. "
+        "If exactly one tenant email is visible, use it for both contact_email and "
+        "billing_email. If multiple tenant emails are visible, use a named/person "
+        "email for contact_email and a role or generic mailbox such as accounts@, "
+        "billing@, finance@, invoices@, ap@, or admin@ for billing_email. Keep the "
+        "raw contact wording in contact when useful, but do not leave structured "
+        "email fields null when the email is visible in the document."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     try:

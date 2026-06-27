@@ -24,6 +24,13 @@ to live here is preserved at
 
 ## Current State
 
+- Smart Intake tenant email role inference is shipped. Lease intake now asks for
+  structured tenant `contact_email` / `billing_email` fields and the apply path
+  repairs obvious free-text contact blocks: one visible email fills both
+  contact and billing; multiple emails prefer named/person addresses for contact
+  and role/generic addresses such as `accounts@`, `billing@`, `finance@`,
+  `ap@`, or `admin@` for billing. This only prepares reviewed internal fields;
+  no email/provider action is sent.
 - Workflows queue entity-scope hotfix is shipped. The portfolio-wide Workflows
   tab now fans out review-queue reads per trust instead of calling the
   entity-required `/workflows/queue` endpoint without `entity_id`; this removes

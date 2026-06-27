@@ -16,6 +16,15 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-27 Smart Intake tenant email role inference:** Lease Smart
+  Intake now treats visible tenant email addresses as reviewable contact fields
+  instead of leaving them buried inside free-text contact notes. A single visible
+  tenant email is proposed for both contact and billing; when multiple emails
+  are present, named/person emails are preferred for contact and role/generic
+  mailboxes such as `accounts@`, `billing@`, `finance@`, `ap@`, or `admin@`
+  are preferred for billing. The apply path also repairs obvious legacy
+  free-text contact blocks before creating a tenant. No email is sent and no
+  provider path is added.
 - [x] **2026-06-27 Smart Intake review intelligence backend:** Relby AI now has
   a deterministic, provider-inert review matcher for lease intakes. The backend
   exposes read-only property/tenant match candidates, exact same-document

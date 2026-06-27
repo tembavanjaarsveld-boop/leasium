@@ -218,7 +218,12 @@ def extract_lease_file(
         "Capture property owner, trust, trustee, invoice issuer, and billing identity "
         "details only when they are explicitly stated. "
         "Use only facts present in the file. Return null for missing fields. "
-        "Use ISO dates, integer cents for money, and concise notes."
+        "Use ISO dates, integer cents for money, and concise notes. "
+        "For tenant emails, if exactly one email is visible use it for both "
+        "tenant.contact_email and tenant.billing_email. If multiple emails are "
+        "visible, use a named/person email for tenant.contact_email and a role "
+        "or generic mailbox such as accounts@, billing@, finance@, invoices@, "
+        "ap@, or admin@ for tenant.billing_email."
     )
     content: list[dict[str, str]] = [{"type": "input_text", "text": prompt}]
     extracted_text = _extract_document_text(file_data, filename, content_type)

@@ -1286,6 +1286,43 @@ def test_generic_lease_review_prefers_explicit_lease_dates() -> None:
     assert resolved["lease"]["expiry_date"] == "2027-12-10"
 
 
+def test_generic_lease_review_infers_tenant_email_roles_from_contact_text() -> None:
+    from apps.api.routers.document_intakes import (
+        _generic_lease_review_to_lease_intake_data,
+    )
+
+    data: dict[str, Any] = {
+        "document_type": "lease",
+        "properties": [{"name": "North Lakes Clinic", "address": "1642 Anzac Avenue"}],
+        "parties": [
+            {
+                "name": "City Fertility Centre Pty Ltd",
+                "role": "tenant",
+                "contact": (
+                    "Tenant notice address Suite 205, Level 2, 33 Longland Street, "
+                    "Newstead Qld 4006; emails gabe@cityfertility.com.au, "
+                    "admin@cityfertility.com.au; contact Gabe Sciarretta"
+                ),
+            }
+        ],
+        "key_dates": [
+            {"label": "Commencement", "date": "2026-05-01"},
+            {"label": "Expiry", "date": "2029-04-30"},
+        ],
+        "money_amounts": [{"label": "Annual rent", "amount": 57000, "frequency": "annual"}],
+    }
+
+    derived = _generic_lease_review_to_lease_intake_data(data)
+
+    assert derived["tenant"]["contact_email"] == "gabe@cityfertility.com.au"
+    assert derived["tenant"]["billing_email"] == "admin@cityfertility.com.au"
+
+    data["parties"][0]["contact"] = "Email: frontdesk@cityfertility.com.au"
+    derived_single = _generic_lease_review_to_lease_intake_data(data)
+    assert derived_single["tenant"]["contact_email"] == "frontdesk@cityfertility.com.au"
+    assert derived_single["tenant"]["billing_email"] == "frontdesk@cityfertility.com.au"
+
+
 def test_document_intake_apply_insurance_uses_lease_tenant_for_metadata(
     client: TestClient,
     session: Session,
