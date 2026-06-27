@@ -24,13 +24,11 @@ to live here is preserved at
 
 ## Current State
 
-- Relby AI Smart Intake review-intelligence backend is shipped. Lease document
-  reviews can now read deterministic property/tenant match candidates, see exact
-  same-document duplicate signals, and use an `approve_high_confidence` apply
-  mode that only proceeds for high-confidence, unambiguous rows while leaving
-  low-confidence or duplicate-suspected rows in `needs_attention`. The review
-  UI controls remain intentionally unbuilt until the Figma-approved frame and UX
-  pass.
+- Relby AI Smart Intake matcher review UI is shipped. Lease document reviews now
+  show deterministic property/tenant match candidates, exact same-document
+  duplicate signals, and held-back low-confidence/manual-review states in the
+  existing review surface. Apply remains the only mutation gate; no Xero,
+  SendGrid, Twilio, tenant email, payment, or reconciliation path is added.
 - Source history evidence trails are redesigned. The shared tenant/property
   Source history component now uses a compact provenance strip, clear
   before/after cards, wrapped citations, and a quieter audit timeline, with

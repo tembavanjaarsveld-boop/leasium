@@ -6,6 +6,8 @@ import {
   ChevronDown,
   DoorOpen,
   FileText,
+  CheckCircle2,
+  Link2,
   Loader2,
   Send,
   ShieldCheck,
@@ -30,13 +32,18 @@ import {
   applyDocumentIntake,
   askLeasium,
   createConversationThread,
+  getDocumentIntakeMatchCandidates,
   listEntities,
   listProperties,
   listTenants,
   type AskCitationRecord,
   type ConversationThreadRecord,
   type DocumentIntakeExtraction,
+  type DocumentIntakeDocumentDuplicateRecord,
+  type DocumentIntakeMatchCandidatesRecord,
+  type DocumentIntakePropertyCandidateRecord,
   type DocumentIntakeRecord,
+  type DocumentIntakeTenantCandidateRecord,
   type PropertyRecord,
   type TenantRecord,
 } from "@/lib/api";
@@ -252,10 +259,124 @@ type UnderstandingRow = {
   level: ConfidenceLevel;
 };
 
+type HighConfidenceReview = DocumentIntakeMatchCandidatesRecord & {
+  blockers: string[];
+};
+
 // The facts that map straight to what gets created. Everything else is
 // secondary and stays tucked behind "more details" so the card leads with
 // what the operator actually needs.
 const PRIMARY_UNDERSTANDING = new Set(["Tenant", "Property", "Unit", "Term", "Rent"]);
+const AUTO_MATCH_SCORE = 0.9;
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    : [];
+}
+
+function isLeaseDocument(
+  data: DocumentIntakeExtraction,
+  intake: DocumentIntakeRecord,
+): boolean {
+  return (
+    (text(data.document_type) ?? intake.document_type ?? "").toLowerCase() === "lease"
+  );
+}
+
+function scoreLabel(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function shortDateLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+  }).format(date);
+}
+
+function propertyCandidateLabel(
+  candidate: DocumentIntakePropertyCandidateRecord,
+): string {
+  return (
+    text(candidate.name) ??
+    text(candidate.street_address) ??
+    "existing property"
+  );
+}
+
+function tenantCandidateLabel(candidate: DocumentIntakeTenantCandidateRecord): string {
+  return (
+    text(candidate.legal_name) ??
+    text(candidate.trading_name) ??
+    "existing tenant"
+  );
+}
+
+function autoPropertyCandidate(
+  candidates: DocumentIntakePropertyCandidateRecord[],
+): DocumentIntakePropertyCandidateRecord | null {
+  // Backend `duplicate` marks the broad duplicate threshold; auto-match is the
+  // narrower single high-score case used by approve-all.
+  const autoCandidates = candidates.filter(
+    (candidate) => candidate.score >= AUTO_MATCH_SCORE,
+  );
+  return autoCandidates.length === 1 ? autoCandidates[0] : null;
+}
+
+function autoTenantCandidate(
+  candidates: DocumentIntakeTenantCandidateRecord[],
+): DocumentIntakeTenantCandidateRecord | null {
+  const autoCandidates = candidates.filter(
+    (candidate) => candidate.score >= AUTO_MATCH_SCORE,
+  );
+  return autoCandidates.length === 1 ? autoCandidates[0] : null;
+}
+
+function duplicatePropertyCandidate(
+  candidates: DocumentIntakePropertyCandidateRecord[],
+): DocumentIntakePropertyCandidateRecord | null {
+  return (
+    candidates.find(
+      (candidate) => candidate.duplicate && candidate.score < AUTO_MATCH_SCORE,
+    ) ?? null
+  );
+}
+
+function duplicateTenantCandidate(
+  candidates: DocumentIntakeTenantCandidateRecord[],
+): DocumentIntakeTenantCandidateRecord | null {
+  return (
+    candidates.find(
+      (candidate) => candidate.duplicate && candidate.score < AUTO_MATCH_SCORE,
+    ) ?? null
+  );
+}
+
+function highConfidenceReviewFrom(
+  record: DocumentIntakeRecord,
+): HighConfidenceReview | null {
+  const reviewData = isRecord(record.review_data) ? record.review_data : {};
+  const value = isRecord(reviewData.approve_high_confidence)
+    ? reviewData.approve_high_confidence
+    : null;
+  if (!value) return null;
+  return {
+    blockers: stringList(value.blockers),
+    property_candidates: Array.isArray(value.property_candidates)
+      ? (value.property_candidates as DocumentIntakePropertyCandidateRecord[])
+      : [],
+    tenant_candidates: Array.isArray(value.tenant_candidates)
+      ? (value.tenant_candidates as DocumentIntakeTenantCandidateRecord[])
+      : [],
+    document_duplicate: isRecord(value.document_duplicate)
+      ? (value.document_duplicate as DocumentIntakeDocumentDuplicateRecord)
+      : null,
+  };
+}
 
 // Sentinel value for the "File under trust" selector's create-new option. Any
 // real value is an Entity id, so a non-id sentinel is safe.
@@ -667,6 +788,175 @@ function GuardrailNote({ children }: { children: ReactNode }) {
   );
 }
 
+function DocumentDuplicateBanner({
+  duplicate,
+}: {
+  duplicate: DocumentIntakeDocumentDuplicateRecord;
+}) {
+  const uploaded = shortDateLabel(duplicate.processed_at);
+  const href = duplicate.intake_id
+    ? `/intake?review=${encodeURIComponent(duplicate.intake_id)}`
+    : "/intake";
+  return (
+    <div
+      data-testid="intake-document-duplicate"
+      className="rounded-xl border border-warning-strong/30 bg-warning-soft px-3 py-3 text-sm leading-6 text-warning-strong"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          <AlertTriangle size={16} className="mt-1 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-semibold">
+              You already processed this document
+              {uploaded ? ` — uploaded ${uploaded}` : ""}.
+            </p>
+            <p className="truncate text-xs text-warning-strong/80">
+              {duplicate.filename} · {duplicate.reason}
+            </p>
+          </div>
+        </div>
+        <Link
+          href={href}
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg px-2 text-sm font-semibold text-primary hover:underline"
+        >
+          Open existing
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function AutoMatchNotice({
+  kind,
+  label,
+  reason,
+  onConfirm,
+  onChange,
+}: {
+  kind: "property" | "tenant";
+  label: string;
+  reason: string;
+  onConfirm: () => void;
+  onChange: () => void;
+}) {
+  return (
+    <div
+      data-testid={`intake-${kind}-auto-match`}
+      className="rounded-xl border border-primary/25 bg-primary-soft/60 px-3 py-3 text-sm leading-6 text-primary-hover"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          <Link2 size={16} className="mt-1 shrink-0" aria-hidden="true" />
+          <p className="min-w-0">
+            Matched to existing {kind} — {reason}. Pre-selected.
+            <span className="block truncate font-semibold text-foreground">
+              {label}
+            </span>
+          </p>
+        </div>
+        <span className="flex flex-wrap gap-2">
+          <SecondaryButton
+            type="button"
+            className="min-h-11 px-3"
+            onClick={onConfirm}
+          >
+            Confirm
+          </SecondaryButton>
+          <button
+            type="button"
+            className="min-h-11 rounded-lg px-2 text-sm font-semibold text-primary hover:underline"
+            onClick={onChange}
+          >
+            Change
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function DuplicateCandidateCard({
+  kind,
+  label,
+  trustName,
+  score,
+  reason,
+  linked,
+  onLink,
+  onCreate,
+}: {
+  kind: "property" | "tenant";
+  label: string;
+  trustName: string;
+  score: number;
+  reason: string;
+  linked: boolean;
+  onLink: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <div
+      data-testid={`intake-${kind}-duplicate-card`}
+      className="rounded-xl border border-warning-strong/30 bg-warning-soft px-3 py-3 text-sm leading-6 text-warning-strong"
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle size={16} className="mt-1 shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="font-semibold">
+                Likely duplicate — already in {trustName}
+              </p>
+              <p className="truncate text-xs text-warning-strong/80">
+                {label} · {scoreLabel(score)} — {reason}
+              </p>
+            </div>
+          </div>
+          <StatusBadge tone={linked ? "neutral" : "warning"} className="text-xs">
+            {linked ? "Linking" : "Needs review"}
+          </StatusBadge>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton
+            type="button"
+            className="min-h-11 px-3"
+            onClick={onLink}
+          >
+            Link existing
+          </SecondaryButton>
+          <SecondaryButton
+            type="button"
+            className="min-h-11 px-3"
+            onClick={onCreate}
+          >
+            Create new
+          </SecondaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HighConfidenceBlockers({ blockers }: { blockers: string[] }) {
+  if (blockers.length === 0) return null;
+  return (
+    <div
+      data-testid="intake-high-confidence-blockers"
+      className="mt-3 rounded-xl border border-warning-strong/30 bg-warning-soft px-3 py-3 text-sm leading-6 text-warning-strong"
+    >
+      <p className="font-semibold">Held back for review</p>
+      <ul className="mt-2 space-y-1">
+        {blockers.map((blocker) => (
+          <li key={blocker} className="flex items-start gap-2">
+            <AlertTriangle size={13} className="mt-1 shrink-0" aria-hidden="true" />
+            <span>{blocker}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function intakeQuestion(data: DocumentIntakeExtraction, plan: PlanRow[]) {
   const docType = text(data.document_type)?.toLowerCase() ?? "";
   const hasProperty = items(data.properties).length > 0;
@@ -715,6 +1005,8 @@ export function IntakeConversationPanel({
   onApplied?: (rec: DocumentIntakeRecord) => void;
 }) {
   const data = useMemo(() => reviewExtraction(intake), [intake]);
+  const intakeIsReading = intake.status === "uploaded" || intake.status === "reading";
+  const leaseReview = useMemo(() => isLeaseDocument(data, intake), [data, intake]);
   // Org-wide match pool: a property/tenant under a *different* trust must be
   // visible to match against (and to pick manually), so the import can link a
   // cross-trust record instead of duplicating it. Filing still goes to the
@@ -734,36 +1026,101 @@ export function IntakeConversationPanel({
     queryFn: () => listEntities(),
     staleTime: 60_000,
   });
-  const propertyMatch = useMemo(
+  const matchCandidatesQuery = useQuery({
+    queryKey: ["intake-match-candidates", intake.id],
+    queryFn: () => getDocumentIntakeMatchCandidates(intake.id),
+    enabled: leaseReview && !intakeIsReading,
+    staleTime: 60_000,
+  });
+  const [highConfidenceReview, setHighConfidenceReview] =
+    useState<HighConfidenceReview | null>(() => highConfidenceReviewFrom(intake));
+  useEffect(() => {
+    setHighConfidenceReview(highConfidenceReviewFrom(intake));
+  }, [intake]);
+  const matchCandidates = highConfidenceReview ?? matchCandidatesQuery.data ?? null;
+  const documentDuplicate = matchCandidates?.document_duplicate ?? null;
+  const autoProperty = useMemo(
+    () => autoPropertyCandidate(matchCandidates?.property_candidates ?? []),
+    [matchCandidates],
+  );
+  const autoTenant = useMemo(
+    () => autoTenantCandidate(matchCandidates?.tenant_candidates ?? []),
+    [matchCandidates],
+  );
+  const propertyDuplicate = useMemo(
+    () => duplicatePropertyCandidate(matchCandidates?.property_candidates ?? []),
+    [matchCandidates],
+  );
+  const tenantDuplicate = useMemo(
+    () => duplicateTenantCandidate(matchCandidates?.tenant_candidates ?? []),
+    [matchCandidates],
+  );
+  const legacyPropertyMatch = useMemo(
     () => matchProperty(data, propertiesQuery.data ?? []),
     [data, propertiesQuery.data],
   );
-  const tenantMatch = useMemo(
+  const legacyTenantMatch = useMemo(
     () => matchTenant(data, tenantsQuery.data ?? []),
     [data, tenantsQuery.data],
   );
+  const propertyMatch = useMemo<RecordMatch | null>(() => {
+    const candidate = autoProperty ?? propertyDuplicate;
+    if (candidate) {
+      return {
+        id: candidate.property_id,
+        label: propertyCandidateLabel(candidate),
+      };
+    }
+    return legacyPropertyMatch;
+  }, [autoProperty, propertyDuplicate, legacyPropertyMatch]);
+  const tenantMatch = useMemo<RecordMatch | null>(() => {
+    const candidate = autoTenant ?? tenantDuplicate;
+    if (candidate) {
+      return {
+        id: candidate.tenant_id,
+        label: tenantCandidateLabel(candidate),
+      };
+    }
+    return legacyTenantMatch;
+  }, [autoTenant, tenantDuplicate, legacyTenantMatch]);
   // Whether to link the matched property/tenant or create a new one. Defaults
   // to linking when a match was found, but the operator can override either way
   // — so a new building that happens to share a street isn't forced onto an
   // existing property, and a genuine re-import can still link.
   const [linkProperty, setLinkProperty] = useState(false);
   const [linkTenant, setLinkTenant] = useState(false);
-  const propertyMatchId = propertyMatch?.id ?? null;
-  const tenantMatchId = tenantMatch?.id ?? null;
+  const [propertyChoiceTouched, setPropertyChoiceTouched] = useState(false);
+  const [tenantChoiceTouched, setTenantChoiceTouched] = useState(false);
+  const propertyShouldAutoLink =
+    Boolean(autoProperty) || (!propertyDuplicate && Boolean(legacyPropertyMatch));
+  const tenantShouldAutoLink =
+    Boolean(autoTenant) || (!tenantDuplicate && Boolean(legacyTenantMatch));
   useEffect(() => {
-    setLinkProperty(propertyMatchId !== null);
-  }, [propertyMatchId]);
+    setPropertyChoiceTouched(false);
+    setTenantChoiceTouched(false);
+  }, [intake.id]);
   useEffect(() => {
-    setLinkTenant(tenantMatchId !== null);
-  }, [tenantMatchId]);
+    if (!propertyChoiceTouched) {
+      setLinkProperty(propertyShouldAutoLink);
+    }
+  }, [propertyChoiceTouched, propertyShouldAutoLink]);
+  useEffect(() => {
+    if (!tenantChoiceTouched) {
+      setLinkTenant(tenantShouldAutoLink);
+    }
+  }, [tenantChoiceTouched, tenantShouldAutoLink]);
+  const chooseTenantLink = (linked: boolean) => {
+    setTenantChoiceTouched(true);
+    setLinkTenant(linked);
+  };
   // Manual override: the operator can link this lease to an existing property
   // even when nothing auto-matched (the common case where extraction found no
   // building), instead of being forced to type a name that creates a duplicate.
   const [manualPropertyId, setManualPropertyId] = useState("");
   useEffect(() => {
-    // A fresh extraction or a new auto-match supersedes a manual choice.
+    // A fresh extraction supersedes a manual choice.
     setManualPropertyId("");
-  }, [propertyMatchId, intake.id]);
+  }, [intake.id]);
   const selectedManualProperty = useMemo(
     () =>
       manualPropertyId
@@ -772,6 +1129,13 @@ export function IntakeConversationPanel({
         : null,
     [manualPropertyId, propertiesQuery.data],
   );
+  const choosePropertyLink = (linked: boolean) => {
+    setPropertyChoiceTouched(true);
+    setLinkProperty(linked);
+    if (linked) {
+      setManualPropertyId("");
+    }
+  };
   // The property actually being linked: an explicit pick wins, otherwise the
   // auto-match when the operator kept "Link existing".
   const effectivePropertyMatch = useMemo<RecordMatch | null>(
@@ -785,6 +1149,10 @@ export function IntakeConversationPanel({
           ? propertyMatch
           : null,
     [manualPropertyId, selectedManualProperty, linkProperty, propertyMatch],
+  );
+  const effectiveTenantMatch = useMemo<RecordMatch | null>(
+    () => (linkTenant ? tenantMatch : null),
+    [linkTenant, tenantMatch],
   );
   // "File under trust": the operator confirms the trust the records file under,
   // picks a different existing one, or creates a new trust inline. Default to
@@ -825,6 +1193,22 @@ export function IntakeConversationPanel({
     ? newTrustName.trim().length > 0
     : trustChoice !== "";
   const selectedTrust = entityOptions.find((entity) => entity.id === trustChoice);
+  const propertyDuplicateTrustName = useMemo(() => {
+    if (!propertyDuplicate) return selectedTrust?.name ?? "this trust";
+    const property = (propertiesQuery.data ?? []).find(
+      (item) => item.id === propertyDuplicate.property_id,
+    );
+    const entity = entityOptions.find((item) => item.id === property?.entity_id);
+    return entity?.name ?? selectedTrust?.name ?? "this trust";
+  }, [entityOptions, propertiesQuery.data, propertyDuplicate, selectedTrust?.name]);
+  const tenantDuplicateTrustName = useMemo(() => {
+    if (!tenantDuplicate) return selectedTrust?.name ?? "this trust";
+    const tenant = (tenantsQuery.data ?? []).find(
+      (item) => item.id === tenantDuplicate.tenant_id,
+    );
+    const entity = entityOptions.find((item) => item.id === tenant?.entity_id);
+    return entity?.name ?? selectedTrust?.name ?? "this trust";
+  }, [entityOptions, tenantDuplicate, tenantsQuery.data, selectedTrust?.name]);
 
   const understanding = useMemo(
     () => buildUnderstanding(data, intake.confidence),
@@ -832,14 +1216,13 @@ export function IntakeConversationPanel({
   );
   const plan = useMemo(
     () =>
-      buildPlan(data, effectivePropertyMatch, linkTenant ? tenantMatch : null),
-    [data, effectivePropertyMatch, tenantMatch, linkTenant],
+      buildPlan(data, effectivePropertyMatch, effectiveTenantMatch),
+    [data, effectivePropertyMatch, effectiveTenantMatch],
   );
   const nextQuestion = useMemo(() => intakeQuestion(data, plan), [data, plan]);
   const summary =
     text(intake.summary) ?? text(data.summary) ?? "I read this document.";
   const warnings = Array.isArray(data.warnings) ? data.warnings : [];
-  const intakeIsReading = intake.status === "uploaded" || intake.status === "reading";
 
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -934,7 +1317,13 @@ export function IntakeConversationPanel({
       <Field label="Link to an existing property">
         <Select
           value={manualPropertyId}
-          onChange={(e) => setManualPropertyId(e.target.value)}
+          onChange={(e) => {
+            setPropertyChoiceTouched(true);
+            setManualPropertyId(e.target.value);
+            if (e.target.value) {
+              setLinkProperty(false);
+            }
+          }}
         >
           <option value="">Create a new property</option>
           {(propertiesQuery.data ?? []).map((property) => (
@@ -979,17 +1368,29 @@ export function IntakeConversationPanel({
         : "text-muted-foreground hover:text-foreground",
     );
 
-  async function handleCreateAll() {
+  async function applyReviewedIntake({
+    approveHighConfidence = false,
+  }: {
+    approveHighConfidence?: boolean;
+  } = {}) {
     if (applying || !trustChosen) return;
     setApplying(true);
     setApplyError(null);
     setAttentionMessage(null);
+    if (!approveHighConfidence) {
+      setHighConfidenceReview(null);
+    }
     const links = isRecord(data.suggested_links) ? data.suggested_links : {};
     // Always apply the current edits. `edits` is seeded from the extraction, so
     // this is equivalent to the raw extraction when nothing was changed, but it
     // means corrections persist whether or not the edit form is open — closing
     // it with "Done" no longer silently discards them.
-    const reviewData = buildEditedReviewData(data, edits, linkProperty, linkTenant);
+    const reviewData = buildEditedReviewData(
+      data,
+      edits,
+      Boolean(effectivePropertyMatch),
+      Boolean(effectiveTenantMatch),
+    );
     try {
       const currentThread = await ensureThread();
       if (!currentThread) {
@@ -1011,7 +1412,7 @@ export function IntakeConversationPanel({
           !manualPropertyId && linkProperty
             ? text(links.tenancy_unit_id)
             : undefined,
-        tenantId: linkTenant ? (tenantMatch?.id ?? text(links.tenant_id)) : undefined,
+        tenantId: effectiveTenantMatch?.id ?? (linkTenant ? text(links.tenant_id) : undefined),
         leaseId:
           !manualPropertyId && linkProperty ? text(links.lease_id) : undefined,
         threadId: currentThread.id,
@@ -1019,8 +1420,10 @@ export function IntakeConversationPanel({
         // name. Never both — target wins on the backend, but we only send one.
         targetEntityId: creatingTrust ? undefined : trustChoice,
         createEntityName: creatingTrust ? newTrustName.trim() : undefined,
+        approveHighConfidence,
       });
       if (result.status === "needs_attention") {
+        setHighConfidenceReview(highConfidenceReviewFrom(result));
         setAttentionMessage(applyNeedsAttentionMessage(result));
         return;
       }
@@ -1038,6 +1441,14 @@ export function IntakeConversationPanel({
     } finally {
       setApplying(false);
     }
+  }
+
+  async function handleCreateAll() {
+    await applyReviewedIntake();
+  }
+
+  async function handleApproveHighConfidence() {
+    await applyReviewedIntake({ approveHighConfidence: true });
   }
 
   async function handleAsk() {
@@ -1195,6 +1606,9 @@ export function IntakeConversationPanel({
       {/* 2. AI turn — plain-English read + understanding card. */}
       <AiTurn>
         <Prose>{summary}</Prose>
+        {documentDuplicate ? (
+          <DocumentDuplicateBanner duplicate={documentDuplicate} />
+        ) : null}
         {understanding.length > 0 ? (
           <div
             data-testid="intake-understanding"
@@ -1381,6 +1795,62 @@ export function IntakeConversationPanel({
                 </p>
               )}
             </div>
+            {autoProperty ? (
+              <div className="mb-3">
+                <AutoMatchNotice
+                  kind="property"
+                  label={propertyCandidateLabel(autoProperty)}
+                  reason={autoProperty.reason}
+                  onConfirm={() => choosePropertyLink(true)}
+                  onChange={() => {
+                    choosePropertyLink(false);
+                    setEditing(true);
+                  }}
+                />
+              </div>
+            ) : null}
+            {propertyDuplicate ? (
+              <div className="mb-3">
+                <DuplicateCandidateCard
+                  kind="property"
+                  label={propertyCandidateLabel(propertyDuplicate)}
+                  trustName={propertyDuplicateTrustName}
+                  score={propertyDuplicate.score}
+                  reason={propertyDuplicate.reason}
+                  linked={linkProperty}
+                  onLink={() => choosePropertyLink(true)}
+                  onCreate={() => choosePropertyLink(false)}
+                />
+              </div>
+            ) : null}
+            {autoTenant ? (
+              <div className="mb-3">
+                <AutoMatchNotice
+                  kind="tenant"
+                  label={tenantCandidateLabel(autoTenant)}
+                  reason={autoTenant.reason}
+                  onConfirm={() => chooseTenantLink(true)}
+                  onChange={() => {
+                    chooseTenantLink(false);
+                    setEditing(true);
+                  }}
+                />
+              </div>
+            ) : null}
+            {tenantDuplicate ? (
+              <div className="mb-3">
+                <DuplicateCandidateCard
+                  kind="tenant"
+                  label={tenantCandidateLabel(tenantDuplicate)}
+                  trustName={tenantDuplicateTrustName}
+                  score={tenantDuplicate.score}
+                  reason={tenantDuplicate.reason}
+                  linked={linkTenant}
+                  onLink={() => chooseTenantLink(true)}
+                  onCreate={() => chooseTenantLink(false)}
+                />
+              </div>
+            ) : null}
             {editing ? (
               <div data-testid="intake-edit-form" className="space-y-3">
                 <div className="rounded-xl border border-border bg-white/70 p-3">
@@ -1397,14 +1867,14 @@ export function IntakeConversationPanel({
                       <div className="mb-2 inline-flex rounded-lg border border-border bg-muted p-0.5">
                         <button
                           type="button"
-                          onClick={() => setLinkProperty(true)}
+                          onClick={() => choosePropertyLink(true)}
                           className={segBtn(linkProperty)}
                         >
                           Link existing
                         </button>
                         <button
                           type="button"
-                          onClick={() => setLinkProperty(false)}
+                          onClick={() => choosePropertyLink(false)}
                           className={segBtn(!linkProperty)}
                         >
                           Create new
@@ -1448,14 +1918,14 @@ export function IntakeConversationPanel({
                       <div className="mb-2 inline-flex rounded-lg border border-border bg-muted p-0.5">
                         <button
                           type="button"
-                          onClick={() => setLinkTenant(true)}
+                          onClick={() => chooseTenantLink(true)}
                           className={segBtn(linkTenant)}
                         >
                           Link existing
                         </button>
                         <button
                           type="button"
-                          onClick={() => setLinkTenant(false)}
+                          onClick={() => chooseTenantLink(false)}
                           className={segBtn(!linkTenant)}
                         >
                           Create new
@@ -1571,6 +2041,7 @@ export function IntakeConversationPanel({
             <div className="mt-3">
               <GuardrailNote>{GUARDRAIL_PRE}</GuardrailNote>
             </div>
+            <HighConfidenceBlockers blockers={highConfidenceReview?.blockers ?? []} />
             {attentionMessage ? (
               <div
                 data-testid="intake-needs-attention"
@@ -1594,6 +2065,21 @@ export function IntakeConversationPanel({
               </p>
             ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              {leaseReview ? (
+                <SecondaryButton
+                  type="button"
+                  data-testid="intake-approve-high-confidence"
+                  disabled={applying || !trustChosen}
+                  onClick={handleApproveHighConfidence}
+                >
+                  {applying ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={16} />
+                  )}
+                  Approve all high-confidence rows
+                </SecondaryButton>
+              ) : null}
               <Button
                 type="button"
                 data-testid="intake-create-all"

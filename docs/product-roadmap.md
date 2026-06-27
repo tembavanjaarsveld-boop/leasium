@@ -25,8 +25,10 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
   low-confidence rows, and re-uploaded documents stay in `needs_attention` for
   manual link/new review. Existing Apply remains the only mutation gate and still
   creates internal records only; no Xero, SendGrid, Twilio, tenant email,
-  payment, or reconciliation call is added. The review-surface UI is intentionally
-  held for the required Figma-approved frame and UX pass.
+  payment, or reconciliation call is added. The review-surface UI is now shipped:
+  operators can review deterministic property/tenant candidates, exact duplicate
+  signals, and held-back low-confidence/manual-review rows in the existing Smart
+  Intake review flow while keeping Apply as the only mutation gate.
 - [x] **2026-06-27 Source history evidence trail redesign:** The shared
   Source history panel used on tenant/property source trails now presents a
   compact provenance strip, clear before/after change cards, wrapped citations,

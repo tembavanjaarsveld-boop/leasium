@@ -11770,6 +11770,18 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const documentIntakeMatchCandidates = path.match(
+      /^\/document-intakes\/([^/]+)\/match-candidates$/,
+    );
+    if (method === "GET" && documentIntakeMatchCandidates) {
+      await fulfillJson(route, {
+        property_candidates: [],
+        tenant_candidates: [],
+        document_duplicate: null,
+      });
+      return;
+    }
+
     const documentIntakeOpportunitySession = path.match(
       /^\/document-intakes\/([^/]+)\/ai-opportunity-session$/,
     );

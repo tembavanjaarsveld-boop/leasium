@@ -188,6 +188,16 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-27 · Smart Intake matcher review UI · screenshots reviewed at
+  `apps/web/output/playwright/smart-intake-matcher-review-1440.png` and
+  `apps/web/output/playwright/smart-intake-matcher-review-390.png` · fixes:
+  lease review now shows already-processed document signals, deterministic
+  property duplicate choices, high-score tenant auto-match confirmation, held
+  approve-all blockers, and a review-first approve-all action in the existing
+  Smart Intake panel; smoke coverage now locks the matcher candidates, explicit
+  link/new decisions, blocker response, clean approve-all pass, and provider-inert
+  apply path · slop test passed at 1440/390 with no horizontal overflow, no
+  incoherent text overlap, and 44px matcher action targets · none deferred.
 - 2026-06-27 · Source history evidence trail redesign · screenshots reviewed at
   `output/playwright/source-history-redesign-desktop-1440.png` and
   `output/playwright/source-history-redesign-mobile-390.png` · fixes: the

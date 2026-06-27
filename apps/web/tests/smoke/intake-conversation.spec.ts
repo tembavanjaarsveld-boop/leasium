@@ -96,6 +96,122 @@ const existingProperty = {
   postcode: "4000",
 };
 
+const matcherIntakeId = "intake-matcher-review-1";
+const matcherProperty = {
+  id: "property-matcher-anzac",
+  entity_id: "entity-1",
+  name: "1642 Anzac Highway Building A",
+  street_address: "1642 Anzac Highway",
+  suburb: "North Lakes",
+  state: "QLD",
+  postcode: "4509",
+};
+const matcherTenant = {
+  id: "tenant-matcher-physio",
+  entity_id: "entity-1",
+  legal_name: "Coastal Physio Pty Ltd",
+  trading_name: "Coastal Physio",
+  abn: "88001122334",
+};
+const matcherExtraction = {
+  document_type: "lease",
+  summary:
+    "Retail lease for Coastal Physio Pty Ltd at Unit 5, 1642 Anzac Highway.",
+  confidence: 0.91,
+  parties: [
+    {
+      name: "Coastal Physio Pty Ltd",
+      role: "tenant",
+      abn: "88 001 122 334",
+      confidence: 0.94,
+    },
+  ],
+  properties: [
+    {
+      name: "1642 Anzac Highway",
+      address: "1642 Anzac Highway",
+      unit_label: "Unit 5",
+      trust_name: "SJI No 5 Trust",
+      confidence: 0.93,
+    },
+  ],
+  key_dates: [
+    { label: "Lease start", date: "2026-07-01", confidence: 0.92 },
+    { label: "Lease expiry", date: "2031-06-30", confidence: 0.91 },
+  ],
+  money_amounts: [
+    {
+      label: "Annual rent",
+      amount: 78000,
+      currency: "$",
+      frequency: "year",
+      confidence: 0.42,
+    },
+  ],
+  obligations: [],
+  inspection_findings: [],
+  suggested_links: {},
+  warnings: [],
+  missing_information: [],
+};
+const matcherIntake = {
+  id: matcherIntakeId,
+  entity_id: "entity-1",
+  document_id: "document-matcher-review-1",
+  status: "ready_for_review",
+  document_type: "lease",
+  summary: matcherExtraction.summary,
+  confidence: 0.91,
+  extracted_data: matcherExtraction,
+  review_data: {},
+  openai_response_id: "resp-matcher-review-smoke",
+  error_message: null,
+  reviewed_at: null,
+  reviewed_by_user_id: null,
+  applied_at: null,
+  applied_by_user_id: null,
+  created_at: "2026-06-27T02:00:00.000Z",
+  updated_at: "2026-06-27T02:00:00.000Z",
+  filename: "Lease - SJI No 5 retail.pdf",
+  content_type: "application/pdf",
+  byte_size: 6789,
+  category: "lease",
+  suggested_entity_id: null as string | null,
+};
+const matcherCandidates = {
+  property_candidates: [
+    {
+      property_id: matcherProperty.id,
+      score: 0.86,
+      reason: "building + street",
+      duplicate: true,
+      name: matcherProperty.name,
+      street_address: matcherProperty.street_address,
+      suburb: matcherProperty.suburb,
+      state: matcherProperty.state,
+      postcode: matcherProperty.postcode,
+    },
+  ],
+  tenant_candidates: [
+    {
+      tenant_id: matcherTenant.id,
+      score: 1,
+      reason: "ABN match",
+      duplicate: true,
+      legal_name: matcherTenant.legal_name,
+      trading_name: matcherTenant.trading_name,
+      abn: matcherTenant.abn,
+    },
+  ],
+  document_duplicate: {
+    document_id: "document-matcher-review-existing",
+    intake_id: "intake-matcher-review-existing",
+    filename: "Lease - SJI No 5 retail.pdf",
+    reason: "same document content",
+    processed_at: "2026-06-12T02:00:00.000Z",
+  },
+};
+
 function multipartField(body: string, name: string) {
   const match = body.match(
     new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`),
@@ -634,6 +750,237 @@ test("links an existing property instead of creating a duplicate", async ({
   // Apply received the existing property id so the backend links rather than
   // creating a second property.
   expect(applyBody).toContain(existingProperty.id);
+});
+
+test("matcher review surfaces candidates, holds blockers, and links approved choices", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const applyPayloads: Array<Record<string, unknown>> = [];
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([matcherIntake]),
+      });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      path === `/document-intakes/${matcherIntakeId}/match-candidates`
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(matcherCandidates),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/properties") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([matcherProperty]),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/tenants") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([matcherTenant]),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${matcherIntakeId}/apply`
+    ) {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      applyPayloads.push(payload);
+      if (payload.approve_high_confidence) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...matcherIntake,
+            status: "needs_attention",
+            error_message: "Low-confidence extracted fields need review.",
+            review_data: {
+              ...matcherExtraction,
+              approve_high_confidence: {
+                applied: false,
+                blockers: [
+                  "Low-confidence extracted fields need review.",
+                  "This document was already processed.",
+                  "Likely duplicate property needs link/new review.",
+                ],
+                ...matcherCandidates,
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...matcherIntake,
+          status: "applied",
+          applied_at: "2026-06-27T02:05:00.000Z",
+          applied_by_user_id: "operator-1",
+          updated_at: "2026-06-27T02:05:00.000Z",
+          review_data: {
+            applied: {
+              property_id: matcherProperty.id,
+              property_name: matcherProperty.name,
+              created_lease_count: 1,
+              tenant_id: matcherTenant.id,
+              tenant_name: matcherTenant.legal_name,
+              obligation_count: 1,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await page
+    .getByTestId(`review-intake-${matcherIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  const plan = page.getByTestId("intake-plan");
+  await expect(plan).toBeVisible();
+
+  const documentDuplicate = page.getByTestId("intake-document-duplicate");
+  await expect(documentDuplicate).toContainText("already processed");
+  await expect(documentDuplicate).toContainText("uploaded 12 Jun");
+  await expect(documentDuplicate).toContainText("Lease - SJI No 5 retail.pdf");
+  await expect(documentDuplicate.getByRole("link", { name: "Open existing" })).toHaveAttribute(
+    "href",
+    /review=intake-matcher-review-existing/,
+  );
+
+  const tenantAutoMatch = page.getByTestId("intake-tenant-auto-match");
+  await expect(tenantAutoMatch).toContainText(
+    "Matched to existing tenant — ABN match. Pre-selected.",
+  );
+  await tenantAutoMatch.getByRole("button", { name: "Confirm" }).click();
+
+  const propertyDuplicate = page.getByTestId("intake-property-duplicate-card");
+  await expect(propertyDuplicate).toContainText(
+    "Likely duplicate — already in Acme Holdings Pty Ltd",
+  );
+  await expect(propertyDuplicate).toContainText("86% — building + street");
+  await propertyDuplicate.getByRole("button", { name: "Create new" }).click();
+
+  await page.getByTestId("intake-approve-high-confidence").click();
+  const blockers = page.getByTestId("intake-high-confidence-blockers");
+  await expect(blockers).toContainText("Low-confidence extracted fields need review.");
+  await expect(blockers).toContainText("This document was already processed.");
+  await expect(blockers).toContainText(
+    "Likely duplicate property needs link/new review.",
+  );
+  await expect(page.getByTestId("intake-created")).toHaveCount(0);
+  expect(applyPayloads[0]).toMatchObject({ approve_high_confidence: true });
+  expect(applyPayloads[0]).not.toHaveProperty("property_id");
+
+  await propertyDuplicate.getByRole("button", { name: "Link existing" }).click();
+  await page.getByTestId("intake-create-all").click();
+  await expect(page.getByTestId("intake-created")).toBeVisible();
+
+  const finalPayload = applyPayloads.find(
+    (payload) => payload.approve_high_confidence !== true,
+  );
+  expect(finalPayload).toMatchObject({
+    property_id: matcherProperty.id,
+    tenant_id: matcherTenant.id,
+  });
+});
+
+test("matcher approve-all applies when backend reports a clean pass", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  let applyPayload: Record<string, unknown> | null = null;
+  const cleanCandidates = {
+    property_candidates: [],
+    tenant_candidates: [
+      {
+        tenant_id: "tenant-1",
+        score: 1,
+        reason: "ABN match",
+        duplicate: true,
+        legal_name: "Bright Cafe Pty Ltd",
+        trading_name: "Bright Cafe",
+        abn: "34123456789",
+      },
+    ],
+    document_duplicate: null,
+  };
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([leaseIntake]),
+      });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      path === `/document-intakes/${leaseIntakeId}/match-candidates`
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(cleanCandidates),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${leaseIntakeId}/apply`
+    ) {
+      applyPayload = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(appliedLeaseIntake),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await page
+    .getByTestId(`review-intake-${leaseIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  await page.getByTestId("intake-approve-high-confidence").click();
+
+  await expect(page.getByTestId("intake-created")).toBeVisible();
+  expect(applyPayload).toMatchObject({ approve_high_confidence: true });
 });
 
 test("edit before creating sends the corrected lease term", async ({ page }) => {
