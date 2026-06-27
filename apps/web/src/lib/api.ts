@@ -814,6 +814,8 @@ export type TenantOnboardingRecord = {
   deleted_at: string | null;
 };
 
+export type TenantSetupPath = "existing" | "new" | "review";
+
 export type DeliveryChannelRecord = {
   channel?: string;
   status?: string;
@@ -6326,6 +6328,7 @@ export function applyDocumentIntake(
     // only one.
     targetEntityId?: string | null;
     createEntityName?: string | null;
+    tenantSetupPath?: TenantSetupPath | null;
     approveHighConfidence?: boolean;
   },
 ) {
@@ -6340,6 +6343,7 @@ export function applyDocumentIntake(
       thread_id: payload.threadId || undefined,
       target_entity_id: payload.targetEntityId || undefined,
       create_entity_name: payload.createEntityName || undefined,
+      tenant_setup_path: payload.tenantSetupPath || undefined,
       approve_high_confidence: payload.approveHighConfidence || undefined,
     }),
   });

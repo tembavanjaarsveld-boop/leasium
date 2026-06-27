@@ -65,6 +65,11 @@ from stewart.domain.intake_match import (
     score_property_candidates,
     score_tenant_candidates,
 )
+from stewart.domain.tenant_migration import (
+    build_migrated_onboarding,
+    find_active_onboarding,
+    generate_onboarding_token,
+)
 from stewart.domain.tenant_onboarding_completion import (
     complete_onboarding_for_signed_or_active_lease,
 )
@@ -1689,6 +1694,45 @@ def _apply_lease_document_intake(
     lease_intake.applied_lease_id = lease.id
     lease_intake.applied_at = utcnow()
     return lease_intake, prop, unit, tenant, lease, obligations
+
+
+def _ensure_migrated_tenant_onboarding(
+    *,
+    prop: Property,
+    tenant: Tenant,
+    lease: Lease,
+    user: CurrentUser,
+    session: Session,
+) -> TenantOnboarding:
+    existing = find_active_onboarding(session, lease.id, tenant.id)
+    if existing is not None:
+        return existing
+
+    now = utcnow()
+    onboarding = build_migrated_onboarding(
+        entity_id=prop.entity_id,
+        lease_id=lease.id,
+        tenant_id=tenant.id,
+        token=generate_onboarding_token(session),
+        now=now,
+        user_id=user.id,
+    )
+    session.add(onboarding)
+    session.flush()
+    audit_log(
+        session,
+        actor=user.actor,
+        user_id=user.id,
+        entity_id=prop.entity_id,
+        action="migrate",
+        target_table="tenant_onboarding",
+        target_id=onboarding.id,
+        tool_output_summary=(
+            "Created migrated tenant onboarding from Smart Intake apply; "
+            "portal invite still requires explicit operator approval."
+        ),
+    )
+    return onboarding
 
 
 def _tenant_upload_activation_review_data(
@@ -3902,6 +3946,17 @@ def apply_document_intake(
             return _read_intake(intake, session, user)
         payload = next_payload
     if document_type == "lease":
+        if payload.tenant_setup_path == "review":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=[
+                    {
+                        "loc": ["body", "tenant_setup_path"],
+                        "msg": "Choose existing tenant or new tenant onboarding before applying.",
+                        "type": "value_error",
+                    }
+                ],
+            )
         if _claim_intake_for_apply(intake, session) is None:
             return _read_intake(intake)
         try:
@@ -3912,22 +3967,45 @@ def apply_document_intake(
                 user,
                 session,
             )
+            tenant_onboarding = (
+                _ensure_migrated_tenant_onboarding(
+                    prop=prop,
+                    tenant=tenant,
+                    lease=lease,
+                    user=user,
+                    session=session,
+                )
+                if payload.tenant_setup_path == "existing"
+                else None
+            )
         except Exception:
             session.rollback()
             raise
         obligation_ids = [str(obligation.id) for obligation in obligations]
+        applied_summary = {
+            "action": "created_lease_register_records",
+            "lease_intake_id": str(lease_intake.id),
+            "property_id": str(prop.id),
+            "tenancy_unit_id": str(unit.id),
+            "tenant_id": str(tenant.id),
+            "tenant_name": tenant.legal_name,
+            "lease_id": str(lease.id),
+            "obligation_ids": obligation_ids,
+            "obligation_count": len(obligation_ids),
+        }
+        if payload.tenant_setup_path is not None:
+            applied_summary["tenant_setup_path"] = payload.tenant_setup_path
+            applied_summary["tenant_next_action"] = (
+                "send_portal_invite"
+                if payload.tenant_setup_path == "existing"
+                else "send_onboarding"
+            )
+        if tenant_onboarding is not None:
+            applied_summary["tenant_onboarding_id"] = str(tenant_onboarding.id)
+            applied_summary["tenant_onboarding_status"] = tenant_onboarding.status.value
         intake.review_data = {
             **reviewed,
-            "applied": {
-                "action": "created_lease_register_records",
-                "lease_intake_id": str(lease_intake.id),
-                "property_id": str(prop.id),
-                "tenancy_unit_id": str(unit.id),
-                "tenant_id": str(tenant.id),
-                "lease_id": str(lease.id),
-                "obligation_ids": obligation_ids,
-                "obligation_count": len(obligation_ids),
-            },
+            "applied": applied_summary,
         }
         intake.status = DocumentIntakeStatus.applied
         intake.applied_at = utcnow()

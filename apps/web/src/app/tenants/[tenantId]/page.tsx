@@ -443,6 +443,11 @@ function leasePackSentAt(item: TenantOnboardingRecord) {
   return item.delivery_data.lease_pack?.sent_at ?? null;
 }
 
+function isMigratedOnboarding(item: TenantOnboardingRecord | null | undefined) {
+  const reviewData = item?.review_data;
+  return isRecord(reviewData) && reviewData.origin === "migration";
+}
+
 function esignReceipt(
   deliveryData: TenantOnboardingRecord["delivery_data"],
 ) {
@@ -633,6 +638,34 @@ function onboardingProgressSteps({
   leaseAgreement: TenantLeaseAgreementRecord | null;
   hasLeaseDocument: boolean;
 }): WorkflowStep[] {
+  if (isMigratedOnboarding(item)) {
+    return [
+      {
+        key: "imported",
+        title: "Existing tenant imported",
+        detail: item.applied_at
+          ? `Applied ${formatDateTime(item.applied_at)}`
+          : "Onboarding form not required",
+        status: "done",
+      },
+      {
+        key: "portal_invite",
+        title: item.last_sent_at ? "Portal invite sent" : "Send portal invite",
+        detail: item.last_sent_at
+          ? `Sent ${formatDateTime(item.last_sent_at)}`
+          : "Ready when you approve the invite",
+        status: item.last_sent_at ? "done" : "current",
+      },
+      {
+        key: "portal_login",
+        title: "Tenant portal login",
+        detail: item.last_sent_at
+          ? "Waiting for tenant to claim access"
+          : "After portal invite",
+        status: item.last_sent_at ? "current" : "waiting",
+      },
+    ];
+  }
   const submitted = ["submitted", "reviewed", "applied"].includes(item.status);
   const approved = item.status === "applied";
   const sentAt = leasePackSentAt(item);
@@ -1736,6 +1769,7 @@ function TenantDetail() {
     tenantOnboardings.find((item) => item.status !== "cancelled") ??
     tenantOnboardings[0] ??
     null;
+  const primaryOnboardingIsMigration = isMigratedOnboarding(primaryOnboarding);
   const primaryOnboardingLeaseDocuments = primaryOnboarding
     ? tenantDocuments.filter(
         (document) =>
@@ -1765,6 +1799,37 @@ function TenantDetail() {
     ) ??
     primaryProgressSteps.at(-1) ??
     null;
+  const onboardingSummaryTitle = primaryOnboardingIsMigration
+    ? "Imported"
+    : (primaryProgressStep?.title ?? "Not started");
+  const onboardingSummaryDetail = primaryOnboardingIsMigration
+    ? "Onboarding skipped"
+    : primaryOnboarding
+      ? sentenceStatus(primaryOnboarding.status)
+      : "No invite sent";
+  const leasePackSummaryTitle = primarySigningStatus
+    ? primarySigningStatus.label
+    : primaryOnboardingIsMigration
+      ? "Existing lease"
+      : primaryOnboardingLeaseDocuments.length
+        ? "Lease attached"
+        : primaryOnboarding?.status === "applied"
+          ? "Needs lease file"
+          : "Pending approval";
+  const leasePackSummaryDetail = primarySigningStatus
+    ? primarySigningStatus.detail
+    : primaryOnboardingIsMigration
+      ? "Portal invite can be sent"
+      : primaryOnboarding
+        ? primaryProgressStep?.detail
+        : "Starts after onboarding";
+  const portalSummaryDetail = portalAccounts.length
+    ? `${portalAccounts.length} linked record${
+        portalAccounts.length === 1 ? "" : "s"
+      }`
+    : primaryOnboardingIsMigration
+      ? "Send portal invite"
+      : "Account-first onboarding";
   const activeLeaseCount = linkedLeases.filter(
     (lease) => lease.status === "active" || lease.status === "holding_over",
   ).length;
@@ -2346,12 +2411,10 @@ function TenantDetail() {
                   Onboarding
                 </div>
                 <div className="text-sm font-semibold">
-                  {primaryProgressStep?.title ?? "Not started"}
+                  {onboardingSummaryTitle}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {primaryOnboarding
-                    ? sentenceStatus(primaryOnboarding.status)
-                    : "No invite sent"}
+                  {onboardingSummaryDetail}
                 </div>
               </div>
               <div className="grid gap-1 px-1">
@@ -2360,20 +2423,10 @@ function TenantDetail() {
                   Lease pack
                 </div>
                 <div className="text-sm font-semibold">
-                  {primarySigningStatus
-                    ? primarySigningStatus.label
-                    : primaryOnboardingLeaseDocuments.length
-                      ? "Lease attached"
-                      : primaryOnboarding?.status === "applied"
-                        ? "Needs lease file"
-                        : "Pending approval"}
+                  {leasePackSummaryTitle}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {primarySigningStatus
-                    ? primarySigningStatus.detail
-                    : primaryOnboarding
-                      ? primaryProgressStep?.detail
-                      : "Starts after onboarding"}
+                  {leasePackSummaryDetail}
                 </div>
               </div>
               <div className="grid gap-1 px-1">
@@ -2389,11 +2442,7 @@ function TenantDetail() {
                     : "No active login"}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {portalAccounts.length
-                    ? `${portalAccounts.length} linked record${
-                        portalAccounts.length === 1 ? "" : "s"
-                      }`
-                    : "Account-first onboarding"}
+                  {portalSummaryDetail}
                 </div>
               </div>
               <div className="grid gap-1 px-1">
@@ -3275,6 +3324,7 @@ function TenantDetail() {
               ) : null}
               <div className="divide-y divide-border">
                 {tenantOnboardings.map((item) => {
+                  const itemMigrated = isMigratedOnboarding(item);
                   const onboardingDocuments = (
                     documentsQuery.data ?? []
                   ).filter(
@@ -3462,24 +3512,39 @@ function TenantDetail() {
                         <div className="grid min-w-0 gap-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge
-                              tone={statusTone(item.status, item.due_date)}
+                              tone={
+                                itemMigrated
+                                  ? "success"
+                                  : statusTone(item.status, item.due_date)
+                              }
                             >
-                              {sentenceStatus(item.status)}
+                              {itemMigrated ? "Imported" : sentenceStatus(item.status)}
                             </StatusBadge>
-                            {linkExpired && item.status === "sent" ? (
+                            {itemMigrated ? (
+                              <StatusBadge
+                                tone={item.last_sent_at ? "success" : "primary"}
+                              >
+                                {item.last_sent_at
+                                  ? "Portal invite sent"
+                                  : "Portal invite ready"}
+                              </StatusBadge>
+                            ) : null}
+                            {!itemMigrated && linkExpired && item.status === "sent" ? (
                               <StatusBadge tone="warning">
                                 Link expired
                               </StatusBadge>
                             ) : null}
-                            <span
-                              className={cn(
-                                "text-sm text-muted-foreground",
-                                dueRank(item.due_date) < 0 &&
-                                  "font-medium text-danger",
-                              )}
-                            >
-                              Due {formatDate(item.due_date)}
-                            </span>
+                            {!itemMigrated ? (
+                              <span
+                                className={cn(
+                                  "text-sm text-muted-foreground",
+                                  dueRank(item.due_date) < 0 &&
+                                    "font-medium text-danger",
+                                )}
+                              >
+                                Due {formatDate(item.due_date)}
+                              </span>
+                            ) : null}
                           </div>
                           {activeProgressStep ? (
                             <div className="text-sm text-muted-foreground">
@@ -3502,6 +3567,31 @@ function TenantDetail() {
                               <Send size={16} />
                               Invite to portal
                             </Button>
+                          ) : null}
+                          {itemMigrated && item.status === "applied" ? (
+                            <>
+                              <Button
+                                type="button"
+                                onClick={() =>
+                                  sendPortalInviteMutation.mutate(item.id)
+                                }
+                                disabled={sendPortalInviteMutation.isPending}
+                              >
+                                <Send size={16} />
+                                {item.last_sent_at
+                                  ? "Resend portal invite"
+                                  : "Send portal invite"}
+                              </Button>
+                              <SecondaryButton
+                                type="button"
+                                onClick={() =>
+                                  navigator.clipboard.writeText(item.portal_url)
+                                }
+                              >
+                                <ClipboardCopy size={15} />
+                                Copy portal link
+                              </SecondaryButton>
+                            </>
                           ) : null}
                           {item.status === "sent" && !linkExpired ? (
                             <SecondaryButton
@@ -3786,7 +3876,7 @@ function TenantDetail() {
                           ) : null}
                         </div>
                       ) : null}
-                      {item.status !== "cancelled" ? (
+                      {item.status !== "cancelled" && !itemMigrated ? (
                         <div className="grid gap-3 border-t border-border pt-4 text-sm">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -3914,6 +4004,7 @@ function TenantDetail() {
                         </div>
                       ) : null}
                       {item.status === "applied" &&
+                      !itemMigrated &&
                       leaseAgreement?.status !== "signed" ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
                           <div>
@@ -3984,6 +4075,7 @@ function TenantDetail() {
                         </div>
                       ) : null}
                       {item.status === "applied" &&
+                      !itemMigrated &&
                       leaseAgreement?.status === "signed" ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-success/25 bg-success/5 p-3 text-sm">
                           <div>
@@ -4325,8 +4417,7 @@ function TenantDetail() {
                           </SecondaryButton>
                         ) : activeOnboarding &&
                           activeOnboarding.status === "applied" &&
-                          (activeOnboarding.review_data as { origin?: string })
-                            .origin === "migration" ? (
+                          isMigratedOnboarding(activeOnboarding) ? (
                           <>
                             <Button
                               type="button"
@@ -4339,8 +4430,8 @@ function TenantDetail() {
                             >
                               <Send size={16} />
                               {activeOnboarding.last_sent_at
-                                ? "Resend login link"
-                                : "Send login link"}
+                                ? "Resend portal invite"
+                                : "Send portal invite"}
                             </Button>
                             <SecondaryButton
                               type="button"
@@ -4351,11 +4442,11 @@ function TenantDetail() {
                               }
                             >
                               <ClipboardCopy size={15} />
-                              Copy login link
+                              Copy portal link
                             </SecondaryButton>
                             {activeOnboarding.last_sent_at ? (
                               <StatusBadge tone="success">
-                                Login link sent
+                                Portal invite sent
                               </StatusBadge>
                             ) : null}
                           </>

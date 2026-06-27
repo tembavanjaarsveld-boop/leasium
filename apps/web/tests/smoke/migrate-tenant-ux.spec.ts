@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
   await seedPrimaryEntitySelection(page);
 });
 
-test("migrated applied onboarding shows send + copy login link on the lease", async ({
+test("migrated applied onboarding shows send + copy portal invite on the lease", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -54,16 +54,14 @@ test("migrated applied onboarding shows send + copy login link on the lease", as
   await page.goto("/tenants/tenant-1");
   await expect(page.getByRole("heading", { name: "Bright Cafe" })).toBeVisible();
 
-  const leases = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Linked leases" }) })
-    .first();
+  const leases = page.locator("#financials");
   await expect(
-    leases.getByRole("button", { name: "Send login link" }),
+    leases.getByRole("button", { name: "Send portal invite" }),
   ).toBeVisible();
   await expect(
-    leases.getByRole("button", { name: "Copy login link" }),
+    leases.getByRole("button", { name: "Copy portal link" }),
   ).toBeVisible();
+  await expect(page.getByText("Portal invite ready").first()).toBeVisible();
 
   await page.screenshot({
     path: "test-results/migrate-tenant-desktop-1440.png",
@@ -87,10 +85,7 @@ test("lease without onboarding offers set up portal login", async ({ page }) => 
   await page.goto("/tenants/tenant-1");
   await expect(page.getByRole("heading", { name: "Bright Cafe" })).toBeVisible();
 
-  const leases = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Linked leases" }) })
-    .first();
+  const leases = page.locator("#financials");
   await expect(
     leases.getByRole("button", { name: "Set up portal login" }).first(),
   ).toBeVisible();

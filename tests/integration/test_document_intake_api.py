@@ -29,6 +29,8 @@ from stewart.core.models import (
     StoredDocument,
     TenancyUnit,
     Tenant,
+    TenantOnboarding,
+    TenantOnboardingStatus,
     UserEntityRole,
     UserRole,
 )
@@ -3448,6 +3450,105 @@ def test_document_intake_apply_lease_creates_register_records(
     assert document is not None
     assert document.lease_id == lease.id
     assert document.document_metadata["applied_lease_id"] == str(lease.id)
+
+
+def test_document_intake_apply_existing_tenant_setup_creates_migrated_onboarding(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_smart_lease_existing_tenant"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = _entity_id(session)
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": entity_id},
+        files={"file": ("existing-tenant-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "tenant_setup_path": "existing",
+        },
+    )
+
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    applied = body["review_data"]["applied"]
+    assert applied["tenant_setup_path"] == "existing"
+    assert applied["tenant_next_action"] == "send_portal_invite"
+    assert applied["tenant_onboarding_status"] == "applied"
+
+    onboarding = session.get(TenantOnboarding, UUID(applied["tenant_onboarding_id"]))
+    assert onboarding is not None
+    assert onboarding.status == TenantOnboardingStatus.applied
+    assert onboarding.lease_id == UUID(applied["lease_id"])
+    assert onboarding.tenant_id == UUID(applied["tenant_id"])
+    assert onboarding.review_data["origin"] == "migration"
+    assert onboarding.delivery_data == {}
+    assert onboarding.last_sent_at is None
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_apply_review_tenant_setup_path_holds_records(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    document = StoredDocument(
+        entity_id=entity_id,
+        filename="tenant-setup-review.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.other,
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        summary="Lease",
+        confidence=0.9,
+        extracted_data=_fake_smart_lease_extraction(),
+        review_data=_fake_smart_lease_extraction(),
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake.id}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "tenant_setup_path": "review",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Choose existing tenant or new tenant onboarding" in response.text
+    session.refresh(intake)
+    assert intake.status == DocumentIntakeStatus.ready_for_review
+    assert session.scalar(select(func.count()).select_from(Lease)) == 0
+    assert session.scalar(select(func.count()).select_from(TenantOnboarding)) == 0
+    assert _provider_mutation_audit_rows(session) == []
 
 
 def test_document_intake_apply_lease_skips_past_obligation_dates(

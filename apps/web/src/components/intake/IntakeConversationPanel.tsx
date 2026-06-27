@@ -45,6 +45,7 @@ import {
   type DocumentIntakeRecord,
   type DocumentIntakeTenantCandidateRecord,
   type PropertyRecord,
+  type TenantSetupPath,
   type TenantRecord,
 } from "@/lib/api";
 
@@ -491,6 +492,54 @@ function leaseDatesFrom(data: DocumentIntakeExtraction): {
   return out;
 }
 
+function dateOnlyTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+}
+
+function leaseHasStarted(data: DocumentIntakeExtraction): boolean {
+  const explicitLease = isRecord(data.lease) ? data.lease : {};
+  const explicitStatus = text(explicitLease.status)?.toLowerCase();
+  if (explicitStatus === "active" || explicitStatus === "holding_over") {
+    return true;
+  }
+  const start = dateOnlyTime(leaseDatesFrom(data).commencement_date);
+  if (start === null) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return start <= today.getTime();
+}
+
+function inferredTenantSetupPath(
+  data: DocumentIntakeExtraction,
+  tenantMatch: RecordMatch | null,
+): TenantSetupPath {
+  return tenantMatch || leaseHasStarted(data) ? "existing" : "new";
+}
+
+const TENANT_SETUP_OPTIONS: Array<{
+  value: TenantSetupPath;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "existing",
+    label: "Existing tenant",
+    detail: "Skip the details form and make portal invite the next operator action.",
+  },
+  {
+    value: "new",
+    label: "New tenant",
+    detail: "Use onboarding first so the tenant confirms setup details.",
+  },
+  {
+    value: "review",
+    label: "Needs review",
+    detail: "Hold this intake until the setup path is clear.",
+  },
+];
+
 // Inline "edit before creating" — confirm/correct the values the operator
 // cares about (the lease term, rent, names) before anything is created.
 type EditState = {
@@ -692,6 +741,7 @@ function nextStepRows(
   entityId: string,
 ): NextStepRow[] {
   const tenantId = text(applied.tenant_id);
+  const tenantNextAction = text(applied.tenant_next_action);
   const xeroParams = new URLSearchParams([
     ["tab", "xero"],
     ["entity_id", entityId],
@@ -706,7 +756,21 @@ function nextStepRows(
     commsParams.set("target_id", tenantId);
   }
 
+  const rows: NextStepRow[] = [];
+  if (tenantId && tenantNextAction === "send_portal_invite") {
+    rows.push({
+      label: "Send tenant portal invite",
+      href: tenantHref(tenantId),
+    });
+  } else if (tenantId && tenantNextAction === "send_onboarding") {
+    rows.push({
+      label: "Send tenant onboarding",
+      href: tenantHref(tenantId),
+    });
+  }
+
   return [
+    ...rows,
     {
       label: "Sync tenant to Xero",
       href: `/settings?${xeroParams.toString()}`,
@@ -744,6 +808,18 @@ function buildCreated(
   if (tenantName || tenantId) {
     rows.push({
       label: `Tenant — ${tenantName ?? "created"}`,
+      href: tenantHref(tenantId),
+    });
+  }
+  const tenantNextAction = text(applied.tenant_next_action);
+  if (tenantNextAction === "send_portal_invite") {
+    rows.push({
+      label: "Tenant setup — portal invite ready",
+      href: tenantHref(tenantId),
+    });
+  } else if (tenantNextAction === "send_onboarding") {
+    rows.push({
+      label: "Tenant setup — onboarding next",
       href: tenantHref(tenantId),
     });
   }
@@ -1154,6 +1230,26 @@ export function IntakeConversationPanel({
     () => (linkTenant ? tenantMatch : null),
     [linkTenant, tenantMatch],
   );
+  const defaultTenantSetupPath = useMemo<TenantSetupPath>(
+    () => (leaseReview ? inferredTenantSetupPath(data, tenantMatch) : "new"),
+    [data, leaseReview, tenantMatch],
+  );
+  const [tenantSetupPath, setTenantSetupPath] =
+    useState<TenantSetupPath>(defaultTenantSetupPath);
+  const [tenantSetupTouched, setTenantSetupTouched] = useState(false);
+  useEffect(() => {
+    setTenantSetupTouched(false);
+  }, [intake.id]);
+  useEffect(() => {
+    if (!tenantSetupTouched) {
+      setTenantSetupPath(defaultTenantSetupPath);
+    }
+  }, [defaultTenantSetupPath, tenantSetupTouched]);
+  const chooseTenantSetupPath = (path: TenantSetupPath) => {
+    setTenantSetupTouched(true);
+    setTenantSetupPath(path);
+  };
+  const tenantSetupHold = leaseReview && tenantSetupPath === "review";
   // "File under trust": the operator confirms the trust the records file under,
   // picks a different existing one, or creates a new trust inline. Default to
   // the trust detected from the lease (suggested_entity_id) when it matches an
@@ -1223,6 +1319,9 @@ export function IntakeConversationPanel({
   const summary =
     text(intake.summary) ?? text(data.summary) ?? "I read this document.";
   const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+  const selectedTenantSetupOption =
+    TENANT_SETUP_OPTIONS.find((option) => option.value === tenantSetupPath) ??
+    TENANT_SETUP_OPTIONS[1];
 
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -1373,7 +1472,7 @@ export function IntakeConversationPanel({
   }: {
     approveHighConfidence?: boolean;
   } = {}) {
-    if (applying || !trustChosen) return;
+    if (applying || !trustChosen || tenantSetupHold) return;
     setApplying(true);
     setApplyError(null);
     setAttentionMessage(null);
@@ -1420,6 +1519,7 @@ export function IntakeConversationPanel({
         // name. Never both — target wins on the backend, but we only send one.
         targetEntityId: creatingTrust ? undefined : trustChoice,
         createEntityName: creatingTrust ? newTrustName.trim() : undefined,
+        tenantSetupPath: leaseReview ? tenantSetupPath : undefined,
         approveHighConfidence,
       });
       if (result.status === "needs_attention") {
@@ -1851,6 +1951,48 @@ export function IntakeConversationPanel({
                 />
               </div>
             ) : null}
+            {leaseReview ? (
+              <div
+                data-testid="intake-tenant-setup-path"
+                className="mb-3 rounded-xl border border-border bg-white/80 p-3"
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                    <ShieldCheck size={16} />
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    Tenant setup path
+                  </span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {TENANT_SETUP_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => chooseTenantSetupPath(option.value)}
+                      className={cn(
+                        "min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition",
+                        tenantSetupPath === option.value
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-white text-foreground hover:border-primary/40 hover:bg-primary-soft/40",
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p
+                  className={cn(
+                    "mt-2 text-xs leading-5",
+                    tenantSetupHold
+                      ? "text-warning-strong"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {selectedTenantSetupOption.detail}
+                </p>
+              </div>
+            ) : null}
             {editing ? (
               <div data-testid="intake-edit-form" className="space-y-3">
                 <div className="rounded-xl border border-border bg-white/70 p-3">
@@ -2064,12 +2206,21 @@ export function IntakeConversationPanel({
                 Choose a trust above to file these records under before approving.
               </p>
             ) : null}
+            {tenantSetupHold ? (
+              <p
+                data-testid="intake-tenant-setup-hold"
+                className="mt-3 text-sm text-warning-strong"
+              >
+                Choose Existing tenant or New tenant when you are ready to create
+                records.
+              </p>
+            ) : null}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {leaseReview ? (
                 <SecondaryButton
                   type="button"
                   data-testid="intake-approve-high-confidence"
-                  disabled={applying || !trustChosen}
+                  disabled={applying || !trustChosen || tenantSetupHold}
                   onClick={handleApproveHighConfidence}
                 >
                   {applying ? (
@@ -2084,7 +2235,7 @@ export function IntakeConversationPanel({
                 type="button"
                 data-testid="intake-create-all"
                 onClick={handleCreateAll}
-                disabled={applying || !trustChosen}
+                disabled={applying || !trustChosen || tenantSetupHold}
               >
                 {applying ? (
                   <>

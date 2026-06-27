@@ -16,6 +16,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-27 Smart Intake tenant setup path:** Lease Smart Intake now asks
+  the operator whether the tenant is an existing client, a new client, or still
+  needs review before apply. Existing-tenant applies create the lease/register
+  records and an internal migrated onboarding row in `applied` state, making
+  "Send tenant portal invite" the next action; new-tenant applies keep the
+  onboarding-first path. "Needs review" holds the apply instead of creating
+  ambiguous records. Creating the migrated row is provider-inert and does not
+  send the portal invite.
 - [x] **2026-06-27 Smart Intake tenant email role inference:** Lease Smart
   Intake now treats visible tenant email addresses as reviewable contact fields
   instead of leaving them buried inside free-text contact notes. A single visible
@@ -2047,3 +2055,5 @@ Shipped 2026-06-24 — Xero account/tax picker: the chart/tax preview now lets o
 Shipped 2026-06-24 — Xero manual contact picker: contact sync preview now returns the fetched Xero contacts and the unmatched tenants/properties, and contact-name matching is punctuation-insensitive (more auto-matches). The contact preview has an "Assign contacts manually" section so operators can link tenants/properties that didn't auto-match to a Xero contact from the live list; Apply saves locally (review-first, no Xero write). Clears the "Tenant Xero contact mapping missing" invoice blocker.
 
 Shipped 2026-06-24 — Existing-tenant migration into the portal (no re-onboarding): new POST /tenant-onboarding/migrated creates an onboarding row already in `applied` state with a migration provenance marker (`review_data.origin = "migration"`) and operator attribution, so a migrated tenant — whose details were imported from their existing lease — skips the confirm-details wizard and lands straight in the working portal once they claim their login. The confirm wizard stays gated on `status == "sent"`; nothing else changed there. Provider-inert on create; the existing send-portal-invite is relaxed to deliver a login link for migrated `applied` rows (still operator-triggered = explicit approval, §2.1 intact). Shared logic in `stewart/domain/tenant_migration.py`; bulk creator `scripts/migrate_existing_tenants.py` (in-process, idempotent, dry-run by default, flags tenants missing a contact/billing email since the portal claim verifies it). Verified: ruff (changed + full), pytest 105 across the onboarding + portal suites. Design record: [tenant-migration-portal-access-spec-2026-06-24.md](tenant-migration-portal-access-spec-2026-06-24.md). Follow-up (UX gate): expose the operator "Send portal invite" button for migrated `applied` rows (currently shown only for `sent`).
+
+Shipped 2026-06-27 — Smart Intake tenant setup path: lease review now asks Existing tenant / New tenant / Needs review before apply. Existing-tenant apply creates/reuses the migrated applied onboarding row from Smart Intake so the tenant record lands on "Send portal invite" instead of "Send onboarding"; new-tenant apply keeps onboarding-first; Needs review blocks apply. Tenant records now show migrated rows as Imported → Send portal invite → Tenant portal login and hide lease-pack controls on that existing-tenant path. Provider-inert: no tenant email, SendGrid/Twilio, Xero, payment, or reconciliation call runs from apply.

@@ -422,6 +422,7 @@ test("conversation-first intake panel reads the lease and creates records withou
   const threadId = "thread-intake-conversation-1";
   let createdThread = false;
   let applyThreadId: string | null = null;
+  let applyTenantSetupPath: unknown = null;
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -499,7 +500,12 @@ test("conversation-first intake panel reads the lease and creates records withou
       path === `/document-intakes/${leaseIntakeId}/apply`
     ) {
       applyCallCount += 1;
-      applyThreadId = (request.postDataJSON() as { thread_id?: string }).thread_id ?? null;
+      const payload = request.postDataJSON() as {
+        tenant_setup_path?: unknown;
+        thread_id?: string;
+      };
+      applyThreadId = payload.thread_id ?? null;
+      applyTenantSetupPath = payload.tenant_setup_path ?? null;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -556,6 +562,12 @@ test("conversation-first intake panel reads the lease and creates records withou
   await expect(plan).toContainText("Property");
   await expect(plan).toContainText("Tenant");
   await expect(plan).toContainText("Lease");
+  const setupPath = page.getByTestId("intake-tenant-setup-path");
+  await expect(setupPath).toContainText("Tenant setup path");
+  await expect(setupPath).toContainText("Existing tenant");
+  await expect(setupPath).toContainText(
+    "Skip the details form and make portal invite the next operator action.",
+  );
 
   // 4. Create all records → apply called exactly once → created + next steps.
   await page.getByTestId("intake-create-all").click();
@@ -608,6 +620,7 @@ test("conversation-first intake panel reads the lease and creates records withou
   expect(applyCallCount).toBe(1);
   expect(createdThread).toBe(true);
   expect(applyThreadId).toBe(threadId);
+  expect(applyTenantSetupPath).toBe("existing");
 
   // 5. Guardrail: no provider / mutation endpoint was hit during the flow.
   expect(forbiddenApiCalls).toEqual([]);
@@ -877,6 +890,11 @@ test("matcher review surfaces candidates, holds blockers, and links approved cho
   await expect(tenantAutoMatch).toContainText(
     "Matched to existing tenant — ABN match. Pre-selected.",
   );
+  const setupPath = page.getByTestId("intake-tenant-setup-path");
+  await expect(setupPath).toContainText("Existing tenant");
+  await expect(setupPath).toContainText(
+    "Skip the details form and make portal invite the next operator action.",
+  );
   await tenantAutoMatch.getByRole("button", { name: "Confirm" }).click();
 
   const propertyDuplicate = page.getByTestId("intake-property-duplicate-card");
@@ -894,7 +912,10 @@ test("matcher review surfaces candidates, holds blockers, and links approved cho
     "Likely duplicate property needs link/new review.",
   );
   await expect(page.getByTestId("intake-created")).toHaveCount(0);
-  expect(applyPayloads[0]).toMatchObject({ approve_high_confidence: true });
+  expect(applyPayloads[0]).toMatchObject({
+    approve_high_confidence: true,
+    tenant_setup_path: "existing",
+  });
   expect(applyPayloads[0]).not.toHaveProperty("property_id");
 
   await propertyDuplicate.getByRole("button", { name: "Link existing" }).click();
@@ -907,6 +928,7 @@ test("matcher review surfaces candidates, holds blockers, and links approved cho
   expect(finalPayload).toMatchObject({
     property_id: matcherProperty.id,
     tenant_id: matcherTenant.id,
+    tenant_setup_path: "existing",
   });
 });
 
@@ -980,7 +1002,10 @@ test("matcher approve-all applies when backend reports a clean pass", async ({
   await page.getByTestId("intake-approve-high-confidence").click();
 
   await expect(page.getByTestId("intake-created")).toBeVisible();
-  expect(applyPayload).toMatchObject({ approve_high_confidence: true });
+  expect(applyPayload).toMatchObject({
+    approve_high_confidence: true,
+    tenant_setup_path: "existing",
+  });
 });
 
 test("edit before creating sends the corrected lease term", async ({ page }) => {

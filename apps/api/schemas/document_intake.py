@@ -15,6 +15,7 @@ class DocumentIntakeReviewRequest(ApiModel):
 
 
 AiOpportunityDecision = Literal["pending", "answered", "accepted_for_review", "ignored"]
+TenantSetupPath = Literal["existing", "new", "review"]
 
 
 class DocumentIntakeAiOpportunityAnswerRequest(ApiModel):
@@ -65,6 +66,7 @@ class DocumentIntakeApplyRequest(ApiModel):
     thread_id: UUID | None = None
     target_entity_id: UUID | None = None
     create_entity_name: str | None = None
+    tenant_setup_path: TenantSetupPath | None = None
     approve_high_confidence: bool = False
 
 

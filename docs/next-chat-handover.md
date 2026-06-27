@@ -24,6 +24,12 @@ to live here is preserved at
 
 ## Current State
 
+- Smart Intake tenant setup path is shipped. Lease review now asks Existing
+  tenant / New tenant / Needs review before apply. Existing tenant creates the
+  lease/register records plus an internal migrated `applied` onboarding row so
+  the tenant record points to "Send portal invite"; new tenant keeps normal
+  onboarding; needs-review blocks apply. No tenant email/provider call is sent
+  from apply.
 - Smart Intake tenant email role inference is shipped. Lease intake now asks for
   structured tenant `contact_email` / `billing_email` fields and the apply path
   repairs obvious free-text contact blocks: one visible email fills both
