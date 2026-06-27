@@ -1574,6 +1574,42 @@ export type DocumentIntakeOpportunitySessionRecord = {
   updated_by_user_id?: string | null;
 };
 
+export type DocumentIntakePropertyCandidateRecord = {
+  property_id: string;
+  score: number;
+  reason: string;
+  duplicate: boolean;
+  name?: string | null;
+  street_address?: string | null;
+  suburb?: string | null;
+  state?: string | null;
+  postcode?: string | null;
+};
+
+export type DocumentIntakeTenantCandidateRecord = {
+  tenant_id: string;
+  score: number;
+  reason: string;
+  duplicate: boolean;
+  legal_name?: string | null;
+  trading_name?: string | null;
+  abn?: string | null;
+};
+
+export type DocumentIntakeDocumentDuplicateRecord = {
+  document_id: string;
+  intake_id?: string | null;
+  filename: string;
+  reason: string;
+  processed_at?: string | null;
+};
+
+export type DocumentIntakeMatchCandidatesRecord = {
+  property_candidates: DocumentIntakePropertyCandidateRecord[];
+  tenant_candidates: DocumentIntakeTenantCandidateRecord[];
+  document_duplicate?: DocumentIntakeDocumentDuplicateRecord | null;
+};
+
 export type DocumentIntakeRecord = {
   id: string;
   entity_id: string;
@@ -6204,6 +6240,12 @@ export function getDocumentIntake(intakeId: string) {
   return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}`);
 }
 
+export function getDocumentIntakeMatchCandidates(intakeId: string) {
+  return request<DocumentIntakeMatchCandidatesRecord>(
+    `/document-intakes/${intakeId}/match-candidates`,
+  );
+}
+
 export function extractDocumentIntake(intakeId: string) {
   return request<DocumentIntakeRecord>(
     `/document-intakes/${intakeId}/extract`,
@@ -6284,6 +6326,7 @@ export function applyDocumentIntake(
     // only one.
     targetEntityId?: string | null;
     createEntityName?: string | null;
+    approveHighConfidence?: boolean;
   },
 ) {
   return request<DocumentIntakeRecord>(`/document-intakes/${intakeId}/apply`, {
@@ -6297,6 +6340,7 @@ export function applyDocumentIntake(
       thread_id: payload.threadId || undefined,
       target_entity_id: payload.targetEntityId || undefined,
       create_entity_name: payload.createEntityName || undefined,
+      approve_high_confidence: payload.approveHighConfidence || undefined,
     }),
   });
 }

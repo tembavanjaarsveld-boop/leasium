@@ -1,5 +1,6 @@
 """Smart Intake routes for review-first document ingestion."""
 
+import hashlib
 from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
@@ -55,6 +56,14 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
+from stewart.domain.intake_match import (
+    AUTO_MATCH_THRESHOLD,
+    DUPLICATE_THRESHOLD,
+    PropertyCandidate,
+    TenantCandidate,
+    score_property_candidates,
+    score_tenant_candidates,
+)
 from stewart.domain.tenant_onboarding_completion import (
     complete_onboarding_for_signed_or_active_lease,
 )
@@ -80,8 +89,12 @@ from apps.api.routers.obligations import _validate_obligation_scope
 from apps.api.schemas.document_intake import (
     DocumentIntakeAiOpportunitySessionRequest,
     DocumentIntakeApplyRequest,
+    DocumentIntakeDocumentDuplicateRead,
+    DocumentIntakeMatchCandidatesRead,
+    DocumentIntakePropertyCandidateRead,
     DocumentIntakeRead,
     DocumentIntakeReviewRequest,
+    DocumentIntakeTenantCandidateRead,
 )
 from apps.api.schemas.lease_intake import LeaseIntakeApplyRequest
 from apps.api.tenant_lease_agreement import lease_agreement_section, mark_lease_agreement_signed
@@ -100,6 +113,8 @@ SUPPORTED_CONTENT_TYPES = {
 }
 ACTIVE_SIGNING_STATUSES = {"queued", "sent", "delivered"}
 AI_OPPORTUNITY_SESSION_KEY = "ai_opportunity_session"
+HIGH_CONFIDENCE_THRESHOLD = 0.8
+DOCUMENT_CONTENT_HASH_KEY = "content_sha256"
 
 
 def _normalise_entity_name(value: str) -> str:
@@ -408,6 +423,251 @@ def _reviewed_data(intake: DocumentIntake, payload: dict[str, Any] | None = None
     ):
         return {**extracted_data, **review_data}
     return review_data or extracted_data
+
+
+def _content_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _document_content_hash(document: StoredDocument) -> str:
+    return _content_sha256(document.file_data)
+
+
+def _metadata_with_content_hash(metadata: dict[str, Any] | None, data: bytes) -> dict[str, Any]:
+    next_metadata = dict(metadata or {})
+    next_metadata[DOCUMENT_CONTENT_HASH_KEY] = _content_sha256(data)
+    return next_metadata
+
+
+def _candidate_properties(intake: DocumentIntake, session: Session) -> list[Property]:
+    return list(
+        session.scalars(
+            select(Property).where(
+                Property.entity_id == intake.entity_id,
+                Property.deleted_at.is_(None),
+            )
+        )
+    )
+
+
+def _candidate_tenants(intake: DocumentIntake, session: Session) -> list[Tenant]:
+    return list(
+        session.scalars(
+            select(Tenant).where(
+                Tenant.entity_id == intake.entity_id,
+                Tenant.deleted_at.is_(None),
+            )
+        )
+    )
+
+
+def _property_candidate_read(
+    candidate: PropertyCandidate,
+    property_by_id: dict[UUID, Property],
+) -> DocumentIntakePropertyCandidateRead:
+    prop = property_by_id[candidate.property_id]
+    return DocumentIntakePropertyCandidateRead(
+        property_id=candidate.property_id,
+        score=candidate.score,
+        reason=candidate.reason,
+        duplicate=candidate.score >= DUPLICATE_THRESHOLD,
+        name=prop.name,
+        street_address=prop.street_address,
+        suburb=prop.suburb,
+        state=prop.state,
+        postcode=prop.postcode,
+    )
+
+
+def _tenant_candidate_read(
+    candidate: TenantCandidate,
+    tenant_by_id: dict[UUID, Tenant],
+) -> DocumentIntakeTenantCandidateRead:
+    tenant = tenant_by_id[candidate.tenant_id]
+    return DocumentIntakeTenantCandidateRead(
+        tenant_id=candidate.tenant_id,
+        score=candidate.score,
+        reason=candidate.reason,
+        duplicate=candidate.score >= DUPLICATE_THRESHOLD,
+        legal_name=tenant.legal_name,
+        trading_name=tenant.trading_name,
+        abn=tenant.abn,
+    )
+
+
+def _document_duplicate_candidate(
+    intake: DocumentIntake,
+    session: Session,
+    user: CurrentUser,
+) -> DocumentIntakeDocumentDuplicateRead | None:
+    document = intake.document
+    current_hash = _document_content_hash(document)
+    readable_ids = readable_entity_ids(session, user, READ_ROLES)
+    for candidate in session.scalars(
+        select(StoredDocument)
+        .where(
+            StoredDocument.id != document.id,
+            StoredDocument.entity_id.in_(readable_ids),
+            StoredDocument.deleted_at.is_(None),
+            StoredDocument.byte_size == document.byte_size,
+        )
+        .order_by(StoredDocument.created_at.desc())
+    ):
+        if _document_content_hash(candidate) != current_hash:
+            continue
+        linked_intake = session.scalar(
+            select(DocumentIntake)
+            .where(
+                DocumentIntake.document_id == candidate.id,
+                DocumentIntake.deleted_at.is_(None),
+            )
+            .order_by(DocumentIntake.created_at.desc())
+        )
+        return DocumentIntakeDocumentDuplicateRead(
+            document_id=candidate.id,
+            intake_id=linked_intake.id if linked_intake is not None else None,
+            filename=candidate.filename,
+            reason="same document content",
+            processed_at=(
+                linked_intake.applied_at
+                or linked_intake.reviewed_at
+                or linked_intake.created_at
+                if linked_intake is not None
+                else candidate.created_at
+            ),
+        )
+    return None
+
+
+def _match_candidates_read(
+    intake: DocumentIntake,
+    session: Session,
+    user: CurrentUser,
+    reviewed: dict[str, Any] | None = None,
+) -> DocumentIntakeMatchCandidatesRead:
+    data = reviewed if reviewed is not None else _reviewed_data(intake)
+    properties = _candidate_properties(intake, session)
+    tenants = _candidate_tenants(intake, session)
+    property_by_id = {prop.id: prop for prop in properties}
+    tenant_by_id = {tenant.id: tenant for tenant in tenants}
+    property_candidates = [
+        _property_candidate_read(candidate, property_by_id)
+        for candidate in score_property_candidates(data, properties)
+    ]
+    tenant_candidates = [
+        _tenant_candidate_read(candidate, tenant_by_id)
+        for candidate in score_tenant_candidates(data, tenants)
+    ]
+    return DocumentIntakeMatchCandidatesRead(
+        property_candidates=property_candidates,
+        tenant_candidates=tenant_candidates,
+        document_duplicate=_document_duplicate_candidate(intake, session, user),
+    )
+
+
+def _confidence_values(value: Any) -> list[float]:
+    values: list[float] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "confidence":
+                parsed = _confidence(child)
+                if parsed is not None:
+                    values.append(parsed)
+                continue
+            values.extend(_confidence_values(child))
+    elif isinstance(value, list):
+        for child in value:
+            values.extend(_confidence_values(child))
+    return values
+
+
+def _auto_match_id(candidates: list[Any], id_field: str) -> UUID | None:
+    auto_candidates = [
+        candidate for candidate in candidates if candidate.score >= AUTO_MATCH_THRESHOLD
+    ]
+    if len(auto_candidates) == 1:
+        return getattr(auto_candidates[0], id_field)
+    return None
+
+
+def _approve_high_confidence_payload(
+    intake: DocumentIntake,
+    reviewed: dict[str, Any],
+    payload: DocumentIntakeApplyRequest,
+    user: CurrentUser,
+    session: Session,
+) -> tuple[DocumentIntakeApplyRequest | None, dict[str, Any]]:
+    candidates = _match_candidates_read(intake, session, user, reviewed)
+    blockers: list[str] = []
+    document_type = _str(reviewed.get("document_type")) or intake.document_type
+    if document_type != "lease":
+        blockers.append("Approve-all is currently available for lease intakes only.")
+
+    values = _confidence_values(reviewed)
+    if not values or any(value < HIGH_CONFIDENCE_THRESHOLD for value in values):
+        blockers.append("Low-confidence extracted fields need review.")
+
+    if candidates.document_duplicate is not None:
+        blockers.append("This document was already processed.")
+
+    property_id = payload.property_id
+    if property_id is None:
+        auto_property_id = _auto_match_id(candidates.property_candidates, "property_id")
+        auto_property_count = sum(
+            1
+            for candidate in candidates.property_candidates
+            if candidate.score >= AUTO_MATCH_THRESHOLD
+        )
+        if auto_property_count > 1:
+            blockers.append("Multiple property matches need review.")
+        elif auto_property_id is not None:
+            property_id = auto_property_id
+        elif candidates.property_candidates:
+            blockers.append("Likely duplicate property needs link/new review.")
+
+    tenant_id = payload.tenant_id
+    if tenant_id is None:
+        auto_tenant_id = _auto_match_id(candidates.tenant_candidates, "tenant_id")
+        auto_tenant_count = sum(
+            1
+            for candidate in candidates.tenant_candidates
+            if candidate.score >= AUTO_MATCH_THRESHOLD
+        )
+        if auto_tenant_count > 1:
+            blockers.append("Multiple tenant matches need review.")
+        elif auto_tenant_id is not None:
+            tenant_id = auto_tenant_id
+        elif candidates.tenant_candidates:
+            blockers.append("Likely duplicate tenant needs link/new review.")
+
+    metadata = {
+        "applied": False,
+        "threshold": HIGH_CONFIDENCE_THRESHOLD,
+        "blockers": blockers,
+        "property_candidates": [
+            candidate.model_dump(mode="json") for candidate in candidates.property_candidates
+        ],
+        "tenant_candidates": [
+            candidate.model_dump(mode="json") for candidate in candidates.tenant_candidates
+        ],
+        "document_duplicate": (
+            candidates.document_duplicate.model_dump(mode="json")
+            if candidates.document_duplicate is not None
+            else None
+        ),
+    }
+    if blockers:
+        return None, metadata
+    return (
+        payload.model_copy(
+            update={
+                "property_id": property_id,
+                "tenant_id": tenant_id,
+                "approve_high_confidence": False,
+            }
+        ),
+        metadata,
+    )
 
 
 def _ai_opportunity_title(action: str | None, target: str | None) -> str:
@@ -3258,7 +3518,7 @@ async def create_document_intake(
         file_data=data,
         category=DocumentCategory.other,
         notes="Smart Intake upload",
-        document_metadata={"source": "smart_intake"},
+        document_metadata=_metadata_with_content_hash({"source": "smart_intake"}, data),
     )
     session.add(document)
     session.flush()
@@ -3299,6 +3559,16 @@ def get_document_intake(
         session,
         user,
     )
+
+
+@router.get("/{intake_id}/match-candidates", response_model=DocumentIntakeMatchCandidatesRead)
+def get_document_intake_match_candidates(
+    intake_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> DocumentIntakeMatchCandidatesRead:
+    intake = _get_intake(intake_id, user, session, READ_ROLES)
+    return _match_candidates_read(intake, session, user)
 
 
 @router.post("/from-document/{document_id}", response_model=DocumentIntakeRead)
@@ -3346,7 +3616,7 @@ def create_document_intake_from_document(
     session.add(intake)
     session.flush()
     document.document_metadata = {
-        **(document.document_metadata or {}),
+        **_metadata_with_content_hash(document.document_metadata, document.file_data),
         "smart_intake_id": str(intake.id),
         "smart_intake_promoted": True,
     }
@@ -3507,6 +3777,30 @@ def apply_document_intake(
         )
     reviewed = _reviewed_data(intake, payload.review_data)
     document_type = _str(reviewed.get("document_type")) or intake.document_type
+    if payload.approve_high_confidence:
+        next_payload, approval_review = _approve_high_confidence_payload(
+            intake,
+            reviewed,
+            payload,
+            user,
+            session,
+        )
+        if next_payload is None:
+            intake.review_data = {
+                **reviewed,
+                "approve_high_confidence": approval_review,
+            }
+            intake.status = DocumentIntakeStatus.needs_attention
+            blockers = approval_review.get("blockers")
+            intake.error_message = (
+                blockers[0]
+                if isinstance(blockers, list) and blockers
+                else "Review this intake before applying."
+            )
+            session.commit()
+            session.refresh(intake)
+            return _read_intake(intake, session, user)
+        payload = next_payload
     if document_type == "lease":
         if _claim_intake_for_apply(intake, session) is None:
             return _read_intake(intake)

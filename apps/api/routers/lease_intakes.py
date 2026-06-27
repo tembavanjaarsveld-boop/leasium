@@ -1,6 +1,5 @@
 """Lease upload intake routes."""
 
-import re
 from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
@@ -38,6 +37,7 @@ from stewart.core.models import (
     UserRole,
 )
 from stewart.core.settings import get_settings
+from stewart.domain.intake_match import _building_key, _building_level_name
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.lease_intake import LeaseIntakeApplyRequest, LeaseIntakeRead
@@ -571,78 +571,6 @@ def _apply_lease_records(
     return prop, unit, tenant, lease, obligations
 
 
-_UNIT_TOKEN_RE = re.compile(
-    r"\b(?:unit|u|suite|ste|shop|tenancy|lot|level|lvl)\s*\.?\s*\d+[a-z]?\b",
-    re.IGNORECASE,
-)
-_LEADING_UNIT_SLASH_RE = re.compile(r"^\s*\d+[a-z]?\s*/\s*")
-_BUILDING_TOKEN_RE = re.compile(
-    r"\b(?:building|bldg|block|blk|b)\s*\.?\s*(\d+[a-z]?)\b",
-    re.IGNORECASE,
-)
-_STATE_POSTCODE_RE = re.compile(
-    r"\b(?:qld|nsw|vic|sa|wa|tas|act|nt)\b\s*\d{0,4}",
-    re.IGNORECASE,
-)
-
-
-def _strip_unit_tokens(value: str) -> str:
-    value = _LEADING_UNIT_SLASH_RE.sub("", value)
-    return _UNIT_TOKEN_RE.sub(" ", value)
-
-
-def _building_token(*candidates: str | None) -> str | None:
-    """The building designator (e.g. ``b6``) found in a name/address, if any."""
-    for value in candidates:
-        if not value:
-            continue
-        match = _BUILDING_TOKEN_RE.search(value)
-        if match:
-            return f"b{match.group(1).lower()}"
-    return None
-
-
-def _street_core(street: str | None, name: str | None) -> str | None:
-    """A stable street core (leading number + first street word), unit/suburb
-    noise removed, so suffix and suburb variance don't break matching."""
-    source = (street or "").strip() or (name or "").strip()
-    if not source:
-        return None
-    cleaned = _strip_unit_tokens(source)
-    cleaned = _BUILDING_TOKEN_RE.sub(" ", cleaned)
-    cleaned = _STATE_POSTCODE_RE.sub(" ", cleaned)
-    cleaned = re.sub(r"[^a-z0-9]+", " ", cleaned.lower()).strip()
-    if not cleaned:
-        return None
-    tokens = cleaned.split()
-    number = tokens[0] if tokens[0].isdigit() else ""
-    first_word = next((token for token in tokens if not token.isdigit()), "")
-    core = f"{number} {first_word}".strip()
-    return core or None
-
-
-def _building_key(
-    name: str | None,
-    street_address: str | None,
-    unit_label: str | None = None,
-    suburb: str | None = None,
-) -> str | None:
-    """Stable identity for a *building within one entity*.
-
-    Returns ``None`` when no building designation is present, so single-building
-    properties keep the legacy exact-name match (no regression). Entity scoping
-    at the call site keeps any match within one trust, which is what makes
-    building-as-property safe even when a physical site spans entities.
-    """
-    token = _building_token(name, street_address)
-    if token is None:
-        return None
-    core = _street_core(street_address, name)
-    if core is None:
-        return None
-    return f"{core}|{token}"
-
-
 def _match_property_by_building_key(
     entity_id: UUID,
     building_key: str,
@@ -660,17 +588,6 @@ def _match_property_by_building_key(
         if _str(prop.property_metadata.get("building_key")) == building_key:
             return prop
     return None
-
-
-def _building_level_name(name: str | None, building_key: str | None) -> str | None:
-    """Drop the unit from a premises name so a new building property is stored
-    at building level (``Building 6, Unit 5, ...`` -> ``Building 6, ...``)."""
-    if building_key is None or not name:
-        return None
-    stripped = _strip_unit_tokens(name)
-    stripped = re.sub(r"\s*,\s*,\s*", ", ", stripped)
-    stripped = re.sub(r"\s{2,}", " ", stripped).strip(" ,")
-    return stripped or None
 
 
 def _lease_property_metadata(intake: LeaseIntake, building_key: str | None) -> dict[str, Any]:

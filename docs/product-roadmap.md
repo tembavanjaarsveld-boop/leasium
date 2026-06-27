@@ -16,6 +16,17 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-27 Smart Intake review intelligence backend:** Relby AI now has
+  a deterministic, provider-inert review matcher for lease intakes. The backend
+  exposes read-only property/tenant match candidates, exact same-document
+  duplicate signals from stored document bytes, and an `approve_high_confidence`
+  apply option that only proceeds when extracted confidence is high and the
+  match/new-record decision is unambiguous. Likely duplicate properties/tenants,
+  low-confidence rows, and re-uploaded documents stay in `needs_attention` for
+  manual link/new review. Existing Apply remains the only mutation gate and still
+  creates internal records only; no Xero, SendGrid, Twilio, tenant email,
+  payment, or reconciliation call is added. The review-surface UI is intentionally
+  held for the required Figma-approved frame and UX pass.
 - [x] **2026-06-27 Source history evidence trail redesign:** The shared
   Source history panel used on tenant/property source trails now presents a
   compact provenance strip, clear before/after change cards, wrapped citations,

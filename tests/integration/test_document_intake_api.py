@@ -2961,6 +2961,373 @@ def test_document_intake_apply_purchase_contract_routes_placeholder_property_to_
     assert session.scalars(select(TenancyUnit)).all() == []
 
 
+def test_document_intake_match_candidates_returns_ranked_matches_and_duplicate_document(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    existing_property = Property(
+        entity_id=entity_id,
+        name="Smart Lease Arcade",
+        street_address="44 Review Road, Brisbane City QLD 4000",
+        country_code="AU",
+        property_type="other",
+        has_solar_pv=False,
+        property_metadata={"source": "manual"},
+    )
+    existing_tenant = Tenant(
+        entity_id=entity_id,
+        legal_name="Smart Lease Retail Pty Ltd",
+        trading_name="Smart Lease Retail",
+        abn="98 765 432 100",
+    )
+    prior_document = StoredDocument(
+        entity_id=entity_id,
+        filename="prior-smart-lease.txt",
+        content_type="text/plain",
+        byte_size=len(b"retail lease"),
+        file_data=b"retail lease",
+        category=DocumentCategory.lease,
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add_all([existing_property, existing_tenant, prior_document])
+    session.flush()
+    prior_intake = DocumentIntake(
+        entity_id=entity_id,
+        document_id=prior_document.id,
+        status=DocumentIntakeStatus.applied,
+        document_type="lease",
+        summary="Already processed lease",
+        confidence=0.93,
+        extracted_data=_fake_smart_lease_extraction(),
+        review_data={"applied": {"lease_id": "existing"}},
+    )
+    session.add(prior_intake)
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(entity_id), "extract": "false"},
+        files={"file": ("smart-lease-copy.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+    intake = session.get(DocumentIntake, UUID(intake_id))
+    assert intake is not None
+    intake.status = DocumentIntakeStatus.ready_for_review
+    intake.document_type = "lease"
+    reviewed = _fake_smart_lease_extraction()
+    reviewed["properties"][0]["name"] = "Smart Lease Arcade Pty"
+    reviewed["properties"][0]["address"] = "44 Review Rd"
+    intake.extracted_data = reviewed
+    intake.review_data = reviewed
+    session.commit()
+
+    response = client.get(f"/api/v1/document-intakes/{intake_id}/match-candidates")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_duplicate"] is not None
+    assert body["document_duplicate"]["document_id"] == str(prior_document.id)
+    assert body["document_duplicate"]["intake_id"] == str(prior_intake.id)
+    assert body["document_duplicate"]["reason"] == "same document content"
+    assert body["property_candidates"][0]["property_id"] == str(existing_property.id)
+    assert body["property_candidates"][0]["score"] >= 0.9
+    assert body["property_candidates"][0]["reason"] == "name + street match"
+    assert body["property_candidates"][0]["duplicate"] is True
+    assert body["tenant_candidates"][0]["tenant_id"] == str(existing_tenant.id)
+    assert body["tenant_candidates"][0]["score"] == 1.0
+    assert body["tenant_candidates"][0]["reason"] == "ABN match"
+    assert body["tenant_candidates"][0]["duplicate"] is True
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_match_candidates_empty_for_unrelated_records(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    session.add_all(
+        [
+            Property(
+                entity_id=entity_id,
+                name="Northside Warehouse",
+                street_address="9 Industrial Circuit",
+                country_code="AU",
+                property_type="other",
+                has_solar_pv=False,
+            ),
+            Tenant(entity_id=entity_id, legal_name="Warehouse Tenant Pty Ltd"),
+        ]
+    )
+    session.flush()
+    document = StoredDocument(
+        entity_id=entity_id,
+        filename="unrelated-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.other,
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add(document)
+    session.flush()
+    intake = DocumentIntake(
+        entity_id=entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        summary="Lease",
+        confidence=0.9,
+        extracted_data=_fake_smart_lease_extraction(),
+        review_data=_fake_smart_lease_extraction(),
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.get(f"/api/v1/document-intakes/{intake.id}/match-candidates")
+
+    assert response.status_code == 200
+    assert response.json()["property_candidates"] == []
+    assert response.json()["tenant_candidates"] == []
+    assert response.json()["document_duplicate"] is None
+
+
+def test_document_intake_approve_high_confidence_applies_unambiguous_match(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_smart_lease_high_confidence"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = UUID(_entity_id(session))
+    existing_property = Property(
+        entity_id=entity_id,
+        name="Smart Lease Arcade",
+        street_address="44 Review Road",
+        country_code="AU",
+        property_type="other",
+        has_solar_pv=False,
+    )
+    existing_tenant = Tenant(
+        entity_id=entity_id,
+        legal_name="Smart Lease Retail Pty Ltd",
+        abn="98 765 432 100",
+    )
+    session.add_all([existing_property, existing_tenant])
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(entity_id)},
+        files={"file": ("smart-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "approve_high_confidence": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "applied"
+    applied = body["review_data"]["applied"]
+    assert applied["property_id"] == str(existing_property.id)
+    assert applied["tenant_id"] == str(existing_tenant.id)
+    assert session.scalar(select(func.count()).select_from(Property)) == 1
+    assert session.scalar(select(func.count()).select_from(Tenant)) == 1
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_approve_high_confidence_leaves_low_confidence_for_review(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    document = StoredDocument(
+        entity_id=entity_id,
+        filename="low-confidence-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.other,
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add(document)
+    session.flush()
+    extraction = _fake_smart_lease_extraction()
+    extraction["properties"][0]["confidence"] = 0.62
+    intake = DocumentIntake(
+        entity_id=entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        summary="Lease",
+        confidence=0.9,
+        extracted_data=extraction,
+        review_data=extraction,
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake.id}/apply",
+        json={"approve_high_confidence": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "needs_attention"
+    assert body["review_data"]["approve_high_confidence"]["applied"] is False
+    assert "Low-confidence extracted fields need review." in body["review_data"][
+        "approve_high_confidence"
+    ]["blockers"]
+    assert session.scalar(select(func.count()).select_from(Lease)) == 0
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_approve_high_confidence_blocks_duplicate_suspected_new_record(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    existing_property = Property(
+        entity_id=entity_id,
+        name="Harbour Trade Centre",
+        street_address="18 Harbour Road",
+        country_code="AU",
+        property_type="other",
+        has_solar_pv=False,
+    )
+    session.add(existing_property)
+    session.flush()
+    document = StoredDocument(
+        entity_id=entity_id,
+        filename="near-duplicate-lease.txt",
+        content_type="text/plain",
+        byte_size=5,
+        file_data=b"lease",
+        category=DocumentCategory.other,
+        document_metadata={"source": "smart_intake"},
+    )
+    session.add(document)
+    session.flush()
+    extraction = _fake_smart_lease_extraction()
+    extraction["properties"][0] = {
+        **extraction["properties"][0],
+        "name": "Harbour Logistics Centre",
+        "address": "18 Harbour Road",
+        "confidence": 0.94,
+    }
+    intake = DocumentIntake(
+        entity_id=entity_id,
+        document_id=document.id,
+        status=DocumentIntakeStatus.ready_for_review,
+        document_type="lease",
+        summary="Lease",
+        confidence=0.94,
+        extracted_data=extraction,
+        review_data=extraction,
+    )
+    session.add(intake)
+    session.commit()
+
+    response = client.post(
+        f"/api/v1/document-intakes/{intake.id}/apply",
+        json={"approve_high_confidence": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "needs_attention"
+    assert "Likely duplicate property needs link/new review." in body["review_data"][
+        "approve_high_confidence"
+    ]["blockers"]
+    assert body["review_data"]["approve_high_confidence"]["property_candidates"][0][
+        "property_id"
+    ] == str(existing_property.id)
+    assert session.scalar(select(func.count()).select_from(Property)) == 1
+    assert session.scalar(select(func.count()).select_from(Lease)) == 0
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_duplicate_link_reuses_selected_records(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return _fake_smart_lease_extraction(), "resp_duplicate_link_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+    entity_id = UUID(_entity_id(session))
+    property_before = _row_count(session, Property)
+    tenant_before = _row_count(session, Tenant)
+    existing_property = Property(
+        entity_id=entity_id,
+        name="Smart Lease Arcade",
+        street_address="44 Review Road",
+        country_code="AU",
+        property_type="other",
+        has_solar_pv=False,
+    )
+    existing_tenant = Tenant(
+        entity_id=entity_id,
+        legal_name="Smart Lease Retail Pty Ltd",
+        abn="98 765 432 100",
+    )
+    session.add_all([existing_property, existing_tenant])
+    session.commit()
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(entity_id)},
+        files={"file": ("smart-lease-duplicate.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+
+    response = client.post(
+        f"/api/v1/document-intakes/{create_response.json()['id']}/apply",
+        json={
+            "review_data": _fake_smart_lease_extraction(),
+            "property_id": str(existing_property.id),
+            "tenant_id": str(existing_tenant.id),
+        },
+    )
+
+    assert response.status_code == 200
+    applied = response.json()["review_data"]["applied"]
+    assert applied["property_id"] == str(existing_property.id)
+    assert applied["tenant_id"] == str(existing_tenant.id)
+    assert _row_count(session, Property) == property_before + 1
+    assert _row_count(session, Tenant) == tenant_before + 1
+    assert _provider_mutation_audit_rows(session) == []
+
+
 def test_document_intake_apply_lease_creates_register_records(
     client: TestClient,
     session: Session,

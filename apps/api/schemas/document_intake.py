@@ -65,6 +65,43 @@ class DocumentIntakeApplyRequest(ApiModel):
     thread_id: UUID | None = None
     target_entity_id: UUID | None = None
     create_entity_name: str | None = None
+    approve_high_confidence: bool = False
+
+
+class DocumentIntakePropertyCandidateRead(ApiModel):
+    property_id: UUID
+    score: float
+    reason: str
+    duplicate: bool
+    name: str | None = None
+    street_address: str | None = None
+    suburb: str | None = None
+    state: str | None = None
+    postcode: str | None = None
+
+
+class DocumentIntakeTenantCandidateRead(ApiModel):
+    tenant_id: UUID
+    score: float
+    reason: str
+    duplicate: bool
+    legal_name: str | None = None
+    trading_name: str | None = None
+    abn: str | None = None
+
+
+class DocumentIntakeDocumentDuplicateRead(ApiModel):
+    document_id: UUID
+    intake_id: UUID | None = None
+    filename: str
+    reason: str
+    processed_at: datetime | None = None
+
+
+class DocumentIntakeMatchCandidatesRead(ApiModel):
+    property_candidates: list[DocumentIntakePropertyCandidateRead] = Field(default_factory=list)
+    tenant_candidates: list[DocumentIntakeTenantCandidateRead] = Field(default_factory=list)
+    document_duplicate: DocumentIntakeDocumentDuplicateRead | None = None
 
 
 class DocumentIntakeRead(ApiModel):
