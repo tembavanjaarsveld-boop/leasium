@@ -118,7 +118,7 @@ const initialConversationThreads: MockConversationThread[] = [
   },
 ];
 
-const entities = [
+const initialEntities = [
   {
     id: entityId,
     organisation_id: "org-1",
@@ -150,6 +150,7 @@ const entities = [
     deleted_at: null,
   },
 ];
+let entities = jsonClone(initialEntities);
 
 const initialProperties = [
   {
@@ -2950,6 +2951,7 @@ export async function mockLeasiumApi(
   page: Page,
   options: MockLeasiumApiOptions = {},
 ) {
+  entities = jsonClone(initialEntities);
   properties = jsonClone(initialProperties);
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);

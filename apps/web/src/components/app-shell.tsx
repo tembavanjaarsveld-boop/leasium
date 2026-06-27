@@ -339,6 +339,16 @@ function commandAskHref(
   searchParams: URLSearchParams,
 ) {
   const params = new URLSearchParams({ ask: question, context_route: pathname });
+  const explicitEntityId = searchParams.get("entity_id");
+  const entityId =
+    explicitEntityId !== null
+      ? explicitEntityId
+      : typeof window !== "undefined"
+        ? window.localStorage.getItem(COMMS_BADGE_ENTITY_KEY)
+        : null;
+  if (entityId && !isAllEntities(entityId)) {
+    params.set("entity_id", entityId);
+  }
   const refs = commandContextRefs(pathname, searchParams);
   if (Object.keys(refs).length > 0) {
     params.set("context_record_refs", JSON.stringify(refs));

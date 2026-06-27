@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { mockLeasiumApi } from "./api-mocks";
+import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
 test.beforeEach(async ({ page }) => {
   await mockLeasiumApi(page);
@@ -29,11 +29,12 @@ async function openCommandSearch(page: Page) {
 }
 
 // The ⌘K command bar becomes a Relby AI launcher from any page: typing a
-// question surfaces an "Ask Relby AI" action that carries the text to
-// /intake?ask=… .
+// question surfaces an "Ask Relby AI" action that carries the text and the
+// selected trust to /intake?ask=… .
 test("command bar surfaces an Ask Relby AI action from any page", async ({
   page,
 }) => {
+  await seedPrimaryEntitySelection(page);
   await page.goto("/");
   await openCommandSearch(page);
 
@@ -44,9 +45,10 @@ test("command bar surfaces an Ask Relby AI action from any page", async ({
   const askRow = page.getByRole("link", { name: /Ask Relby AI:/ });
   await expect(askRow).toBeVisible();
   await expect(askRow).toHaveAttribute("href", /\/intake\?ask=/);
+  await expect(askRow).toHaveAttribute("href", /entity_id=entity-1/);
 });
 
-// /intake?ask=… answers the question inline in the landing composer.
+// /intake?entity_id=…&ask=… answers the question inline in the landing composer.
 test("intake answers a handed-off ?ask= question inline", async ({ page }) => {
   await page.route("**/api/v1/ai/ask", async (route) => {
     if (route.request().method() === "POST") {
@@ -63,7 +65,11 @@ test("intake answers a handed-off ?ask= question inline", async ({ page }) => {
     await route.fallback();
   });
 
-  await page.goto(`/intake?ask=${encodeURIComponent("when does the lease end")}`);
+  await page.goto(
+    `/intake?entity_id=entity-1&ask=${encodeURIComponent(
+      "when does the lease end",
+    )}`,
+  );
 
   await expect(
     page.getByRole("heading", { level: 1, name: "Relby AI" }),
