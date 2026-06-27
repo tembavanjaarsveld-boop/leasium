@@ -1,139 +1,163 @@
 # Relby Next Chat Handover
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
-This file is the short current-state handover. The full historical log that used
-to live here is preserved at
-[docs/handover/archive/next-chat-handover-2026-06-26-pre-trim.md](handover/archive/next-chat-handover-2026-06-26-pre-trim.md).
+Generated from Obsidian: `/Users/tembavanjaarsveld/Documents/Temba OS/10_Projects/Relby`
+Generator: `scripts/generate_obsidian_handover.py`
+
+The vault is canonical for product direction, active priorities, durable
+decisions, and AI handover context. This repo remains canonical for exact
+code, tests, migrations, deployment setup, recent commits, and
+implementation proof. If direction conflicts, surface the mismatch before
+editing; if code behavior conflicts, inspect the repo and tests.
+
+Refresh checklist: [docs/obsidian-mirror-checklist.md](obsidian-mirror-checklist.md).
 
 ## Read This First
 
 - Work lands directly on `main`; no PRs, no co-authors, no generated-with lines.
-- This trim was based on feature tip
-  `8886226 Remove intake landing trust pre-pick`; always start with
-  `git status --short` and `git log --oneline -12` before editing.
-- Provider guardrail is non-negotiable: never run a Xero write, SendGrid email,
-  Twilio SMS, tenant email, payment action, or reconciliation without explicit
-  operator approval. Tests must mock providers.
+- Start with the Obsidian notes listed in the mirror checklist, then inspect
+  `git status --short` and `git log --oneline -12`.
+- Provider guardrail is non-negotiable: no Xero write, SendGrid email, Twilio
+  SMS, tenant email, payment action, or reconciliation without explicit
+  operator approval.
 - UX-facing work uses the in-loop UX gate in
-  [docs/design-governance.md](design-governance.md): design source, screenshots,
-  slop check, fixes, and dated UX-pass log.
-- Source-of-truth status lives in this file, the top of
-  [docs/product-roadmap.md](product-roadmap.md), and the UX debt register in
   [docs/design-governance.md](design-governance.md).
+- Repo path: `/Users/tembavanjaarsveld/Documents/Stewart`.
 
-## Current State
+## Product Promise
 
-- Smart Intake property duplicate guard is shipped. Property matching now
-  normalises common street suffixes and can auto-match address-only variants;
-  lease apply reuses a single high-confidence property candidate before creating
-  a new property. The review card also blocks likely duplicate properties until
-  the operator chooses Link existing or Create new. No provider/email/Xero/
-  payment path is added.
-- Smart Intake tenant setup path is shipped. Lease review now asks Existing
-  tenant / New tenant / Needs review before apply. Existing tenant creates the
-  lease/register records plus an internal migrated `applied` onboarding row so
-  the tenant record points to "Send portal invite"; new tenant keeps normal
-  onboarding; needs-review blocks apply. No tenant email/provider call is sent
-  from apply.
-- Smart Intake tenant email role inference is shipped. Lease intake now asks for
-  structured tenant `contact_email` / `billing_email` fields and the apply path
-  repairs obvious free-text contact blocks: one visible email fills both
-  contact and billing; multiple emails prefer named/person addresses for contact
-  and role/generic addresses such as `accounts@`, `billing@`, `finance@`,
-  `ap@`, or `admin@` for billing. This only prepares reviewed internal fields;
-  no email/provider action is sent.
-- Workflows queue entity-scope hotfix is shipped. The portfolio-wide Workflows
-  tab now fans out review-queue reads per trust instead of calling the
-  entity-required `/workflows/queue` endpoint without `entity_id`; this removes
-  the "Field required" banner while keeping proposal approval/dismissal
-  review-first and provider-inert.
-- Relby AI Smart Intake matcher review UI is shipped. Lease document reviews now
-  show deterministic property/tenant match candidates, exact same-document
-  duplicate signals, and held-back low-confidence/manual-review states in the
-  existing review surface. Apply remains the only mutation gate; no Xero,
-  SendGrid, Twilio, tenant email, payment, or reconciliation path is added.
-- Source history evidence trails are redesigned. The shared tenant/property
-  Source history component now uses a compact provenance strip, clear
-  before/after cards, wrapped citations, and a quieter audit timeline, with
-  smoke coverage for desktop structure and mobile component overflow.
-- Settings -> Organisation -> Comms message-template UX is redesigned. The
-  default Settings view now shows business-language message rows with
-  Preview/Edit wording actions; Branding, Delivery receipts, and Advanced tabs
-  hold sender defaults, provider receipt endpoints, runtime keys, override
-  coverage, and the local CSV export. Stored template edits reuse the existing
-  Comms template drawer; runtime rows stay preview-only.
-- Relby AI lease imports now create lease attention items only for due-today and
-  future dates. Backdated rent review, option notice, expiry, and other
-  lease-derived obligations are skipped at apply time instead of flooding the
-  property Lease attention queue.
-- Tenant onboarding signed-lease self-heal is shipped. OpenSign completion,
-  tenant-portal local signing, and accepted tenant-uploaded lease matches now
-  advance linked pre-complete onboarding rows to `applied` when the persisted
-  lease/signing state proves execution. `scripts/backfill_signed_onboarding_completion.py`
-  dry-runs existing signed/active lease rows and only mutates with `--apply`.
-- Relby AI no-prepick document upload is shipped. `/intake` accepts document
-  upload/drop without forcing a trust pick first; extraction detects the trust
-  and the review-side `File under trust` selector remains the filing decision.
-- Relby AI toolbar follow-up is shipped in `8886226`: the initial landing
-  composer no longer shows `Ask about` / `Select entity`, even on
-  `/intake?entity_id=...`. The scope picker appears only once the operator is
-  actually asking a question.
-- Backend/data Relby brand pass is shipped. Recipient-visible backend defaults,
-  prompts, PDFs, comms copy, mailbox defaults, and platform seeds now say Relby.
-  `scripts/rebrand_relby_data.py` exists for stored rows; it dry-runs by default
-  and should be reviewed against a Neon branch before any `--apply`.
-- People Owners all-entities fan-out is shipped. `/people` can show owners from
-  all readable trusts while Settings/single-trust owner writes remain scoped.
+Documents should turn into work with as little re-keying as possible. Drop the
+contract, lease, invoice, certificate, guarantee, or handover pack; Relby reads
+it, matches it to the portfolio, suggests changed fields, and asks a human to
+review and approve before anything is committed.
+
+## Current Shipped State
+
+- Smart Intake property duplicate guard is shipped.
+- Smart Intake tenant setup path is shipped.
+- Smart Intake tenant email role inference is shipped.
+- Smart Intake review intelligence and matcher review UI are shipped.
+- Relby AI no-prepick document upload is shipped.
+- Relby AI toolbar follow-up is shipped.
+- Lease imports skip historical lease-derived obligations and import only
+  due-today or future attention items.
+- Tenant onboarding signed-lease self-heal is shipped.
+- Source history evidence trails are redesigned.
+- Settings communication-template UX is redesigned.
+- Backend/data Relby brand pass is shipped.
+- People Owners all-entities fan-out is shipped.
 - Lease Attention error placement and unit-orphan prevention are shipped.
-  Deleting a tenancy unit now soft-deletes its live leases, charge rules, and
-  scoped obligations; property entity reassignment catches legacy obligations
-  pointing through soft-deleted units/leases.
-- Properties calendar removal is shipped. Calendar lives under Work; Properties
-  exposes Cards, Table, and Map, and stale `?view=calendar` falls back to Cards.
-- Properties map address-only fallback is shipped. Exact `metadata.map_location`
-  pins remain preferred, but AU address/postcode-only rows now render approximate
-  local pins with a "needs pin" refinement list, so `/properties?view=map` no
-  longer starts as an empty unmapped planner.
-- Switcher-removal work has multiple shipped slices across Portfolio QA,
-  snapshots/drafts, Contractors, Tenants, Operations, row-trust Comms, and
-  Billing Readiness. Before starting the next piece, read the current roadmap and
-  recent commits because several older handover notes are now superseded.
-- Planning and market-research briefs were added in `5e13465`, including the
-  intake trust-detection brief, switcher-removal plan, backend rebrand handover,
-  competitor landscape, GTM plan, and video script.
+- Properties calendar removal and map address-only fallback are shipped.
+- Switcher-removal cleanup state is reconciled; old all-mode gap lists are
+  historical unless a fresh scoped bug is opened.
+- Customisable reporting v1 is scoped as Saved Report Views under Insights,
+  using existing review packets and exports.
+- Tenant portal account lifecycle v2 is scoped around invite renewal, tenant
+  recovery, multi-login management, and email-change handling.
+- Approvals and workflow depth is scoped as source-screen approval receipts:
+  the Work approvals inbox stays read-only.
+
+## Active Work Now
+
+1. Use [[../BUILD_QUEUE]] as the current Relby build-priority source.
+2. Verify the latest Relby AI deploy on `https://relby.ai/intake`.
+   Expected: initial composer shows Files + Approval first + disabled Ask, with
+   no trust picker until ask activity starts.
+   Latest check: unauthenticated read-only verification on 2026-06-27 reached
+   the operator-login gate. See [[INTAKE_PRODUCTION_VERIFICATION_2026-06-27]].
+3. Run `scripts/rebrand_relby_data.py` as a dry-run against a Neon branch before
+   any reviewed apply.
+   Latest check: dry-run attempted without `--apply` on 2026-06-27, but the
+   Neon database URL was not configured. See
+   [[REBRAND_DATA_DRY_RUN_2026-06-27]].
+4. Keep Smart Intake and document filing work review-first.
+
+## Current Active Tracks
+
+| Track | State | Notes |
+| --- | --- | --- |
+| Build queue | canonical v1 exists | [[../BUILD_QUEUE]] is now the short operator queue; repo roadmap remains the implementation record. |
+| Obsidian repo mirror | first generator exists | `scripts/generate_obsidian_handover.py` rebuilds `docs/next-chat-handover.md` from the Relby vault plus current git state; broader repo mirroring still pending. |
+| Platform stabilization v1 | proven on main | Commit `a34696c` passed backend, frontend, and all four smoke shards in GitHub Actions run `28302894535`. |
+| Switcher removal | reconciled | Old 103-failure plan and all-mode follow-up are historical. Start only fresh scoped all-mode bugs. |
+| Reporting v1 | scope defined | Build as Saved Report Views under Insights using existing review packets; no duplicate compliance roll-up. |
+| Tenant portal lifecycle | scope defined | Build on shipped account foundation; focus invite renewal, recovery, multi-login management, and email-change handling. |
+| Approval action depth | scope defined | Keep Approvals inbox read-only; deepen source-screen maintenance approvals, delegated reminders/escalations, and activity receipts. |
+| Relby brand/data pass | code shipped, stored-row review pending | Backend/data code pass is shipped. Stored Neon rows require dry-run branch review before any `--apply`. |
+| Smart Intake review intelligence | shipped | Backend and matcher review UI are now shipped. Do not rework extraction. |
+
+## Current Cautions
+
+- Do not mutate Xero, SendGrid, Twilio, tenant email, payment, or reconciliation
+  without explicit operator approval.
+- Do not treat repo docs as fully mirrored from the vault yet.
+- Do not touch extraction prompts/schema/model choices unless a slice explicitly
+  requires it.
+- Design-facing changes require the in-loop UX gate.
+
+## Operating Guardrails
+
+### Provider Mutation Guardrail
+
+Never run a Xero write, SendGrid email, Twilio SMS, tenant email, payment
+action, or reconciliation without explicit operator approval.
+
+Smart Intake and AI surfaces are review-first:
+
+extract -> confidence -> source -> approve/edit/ignore -> mutate only after
+approval.
+
+Tests must mock providers.
+
+### Design Gate
+
+Design-facing changes use the in-loop UX gate:
+
+- Figma-first for new or restructured core surfaces.
+- Build to the design source of truth.
+- Review screenshots at desktop and mobile.
+- Run the slop check.
+- Fix findings in-slice.
+- Log the UX pass in `docs/design-governance.md`.
+
+The old Remba queue is retired. Do not re-open historical Remba-pending work.
+
+## Local Git State
+
+- ` M CLAUDE.md`
+- `?? docs/codex-brief-matcher-review-ui-2026-06-27.md`
 
 ## Recent Feature Commits
 
-- `8886226` Remove intake landing trust pre-pick
-- `5e13465` Add planning and market research briefs
-- `237d285` Ignore FUSE hidden temp files
-- `ca608f2` Rebrand backend data copy to Relby
-- `0d33f97` Allow intake uploads without trust pre-pick
-- `8716875` Fix People owners all-entities view
-- `040f38f` Remove Properties calendar view
-- `5780c61` Fix Lease Attention errors and unit orphan cleanup
-- `ded8f9b` Row-trust comms + billing per-row dispatch in all-mode
-- `3aecbf5` Fix obligation status update 404 on soft-deleted unit
-- `2032580` Fix Relby AI landing stuck loader + dark-mode sm:bg-white panel
-- `510f5c7` Close notification-center + billing-recovery all-mode gaps
+- `991c6bc` Add Obsidian handover mirror
+- `a34696c` Stabilize Relby smoke handoffs
+- `96cb298` Guard Smart Intake property duplicates
+- `c0ca8a5` Add Smart Intake tenant setup path
+- `4cbde98` Infer tenant emails from Smart Intake contact text
+- `379db21` Fix Workflows queue entity scope
+- `7ffe42e` Ship Smart Intake matcher review UI
+- `6e23a4f` Add Smart Intake review-intelligence Codex brief
+- `61fd5e1` Add Smart Intake review matcher backend
+- `d793f69` Update shipped slice docs
+- `026ce32` Redesign source history evidence trail
+- `6f5c290` Skip past lease intake obligations
 
-## Next Sensible Work
+## Next Actions Now
 
-1. Verify the latest Relby AI deploy on `https://leasium.ai/intake`: initial
-   composer should show Files + Approval first + disabled Ask, with no trust
-   picker until ask activity starts.
-2. Run `scripts/rebrand_relby_data.py` as a dry-run against a Neon branch and
-   review the printed row diffs before considering `--apply`.
-3. Continue switcher-removal cleanup only after checking
-   [docs/product-roadmap.md](product-roadmap.md) and
-   [docs/superpowers/switcher-removal-completion-plan-2026-06-25.md](superpowers/switcher-removal-completion-plan-2026-06-25.md)
-   against the latest commits.
-4. Keep Smart Intake/document filing work review-first: extract, confidence,
-   source, approve/edit/ignore, then mutate locally only after approval.
-5. Keep the handover compact. New shipped slices should add a short current-state
-   bullet here only if they affect takeover; detailed proof belongs in commit
-   bodies, roadmap entries, UX logs, tests, or a dated brief.
+- Use [[BUILD_QUEUE]] as the current Relby build-priority source.
+- Verify the latest Relby AI deploy on `https://relby.ai/intake`.
+- Run `scripts/rebrand_relby_data.py` as a dry-run against a Neon branch before
+  considering any reviewed apply.
+- Keep Smart Intake/document filing work review-first.
+- Use [[Brain/CURRENT_BRAIN_STATE]] as the first Relby AI entry point.
+
+## Next Actions Later
+
+- Expand the generator beyond `docs/next-chat-handover.md` only if repeated
+  sessions show useful context is still missing from the generated handover.
+- Distil more SKJ property ops lessons into Relby product insight notes only,
+  without moving raw SKJ property data into Relby.
 
 ## Verification Cheatsheet
 
@@ -153,29 +177,22 @@ cd apps/web
 NODE_ENV=development NEXT_TEST_WASM_DIR=$PWD/node_modules/@next/swc-wasm-nodejs ./node_modules/.bin/playwright test tests/smoke/intake-conversation.spec.ts --reporter=line
 ```
 
-Use focused Playwright/pytest runs for small slices, then broaden when the slice
-touches shared flows or provider guardrails.
+Use focused checks for small slices, then broaden when touching shared flows
+or provider guardrails.
 
 ## Key Docs
 
-- [docs/product-roadmap.md](product-roadmap.md) - built features and next build
-  order.
-- [docs/design-governance.md](design-governance.md) - UX gate, pass log, and UX
-  debt register.
-- [docs/leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md)
-  - visual/product source of truth.
-- [docs/codex-brief-intake-detect-trust-2026-06-26.md](codex-brief-intake-detect-trust-2026-06-26.md)
-  - Relby AI trust-detection brief.
-- [docs/relby-backend-rebrand-handover-2026-06-26.md](relby-backend-rebrand-handover-2026-06-26.md)
-  - backend/data rebrand detail.
-- [docs/handover/archive/next-chat-handover-2026-06-26-pre-trim.md](handover/archive/next-chat-handover-2026-06-26-pre-trim.md) - full historical handover snapshot.
+- [docs/product-roadmap.md](product-roadmap.md) - shipped features and next
+  build order.
+- [docs/design-governance.md](design-governance.md) - UX gate, pass log, and
+  UX debt register.
+- [docs/leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md) - visual/product source.
+- [docs/obsidian-mirror-checklist.md](obsidian-mirror-checklist.md) - mirror
+  refresh protocol.
 
 ## Handover Hygiene
 
 - Target length: under 300 lines.
-- Keep newest, actionable context in this file; move old chronology into
+- Keep newest, actionable context here; keep long history in the vault or
   `docs/handover/archive/`.
-- Prefer links to detailed docs over copying long test logs or implementation
-  narratives.
-- When this file grows beyond quick-read size again, archive the old version and
-  replace it with a fresh current-state brief.
+- Regenerate this file instead of hand-copying Obsidian state.
