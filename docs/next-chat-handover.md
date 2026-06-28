@@ -166,12 +166,14 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Next Actions Later
 
-- Review/approve the Portfolio QA trust-workbench draft Figma frames
-  `188:988` and `188:1071`.
-- Review/approve the Settings and Message Templates draft Figma frames
-  `188:1109` and `188:1173`.
-- Review/approve the Properties and record-page grammar draft Figma frames
-  `190:988`, `190:989`, and `190:990`.
+- Rebuild Portfolio QA from the current Relby platform language; archived draft
+  frames `188:988` and `188:1071` are rejected notes only.
+- Extend Settings and Message Templates from current-platform Figma frame
+  `203:938`; archived draft frames `188:1109` and `188:1173` are rejected
+  notes only.
+- Continue Properties record work from current-platform Figma frame `203:1114`;
+  archived draft frames `190:988`, `190:989`, and `190:990` are rejected notes
+  only.
 - Use [[Brain/UX_PORTFOLIO_QA_REDESIGN_BRIEF_2026-06-28]] and
   [[Brain/UX_SETTINGS_MESSAGE_TEMPLATES_REFRESH_BRIEF_2026-06-28]] and
   [[Brain/UX_PROPERTIES_RECORD_GRAMMAR_BRIEF_2026-06-28]] when reviewing or

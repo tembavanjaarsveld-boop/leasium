@@ -5,14 +5,22 @@ This is the R3 brief from the full-platform UX cleanup. It follows
 `docs/ux-route-frame-index-2026-06-28.md`, and
 `docs/ux-navigation-deeplink-contract-2026-06-28.md`.
 
-Status: draft Figma source exists. Do not redesign `/portfolio-qa` in code
-until Temba approves the desktop and mobile draft frames.
+Status: the 2026-06-28 draft Figma source was rejected by Temba because it was
+too button-heavy and worse than the current Relby platform. Do not redesign
+`/portfolio-qa` from the archived draft nodes. A new pass must inherit the
+current app shell, card rhythm, tab treatment, and calm workspace hierarchy.
 
-Draft Figma source:
+Current Figma source:
 
-- Desktop: `03 Screens / Portfolio QA Trust Workbench - Draft 2026-06-28`
-  (`188:988`).
-- Mobile: `03 Screens / Portfolio QA Trust Workbench Mobile - Draft 2026-06-28`
+- Active platform page: `03 Current Platform`.
+- No approved replacement Portfolio QA frame exists after the rejection.
+
+Archived/rejected notes only:
+
+- `99 Archive - Rejected Drafts and Loose Concepts / REJECTED - do not
+  implement - Portfolio QA Trust Workbench - Draft 2026-06-28` (`188:988`).
+- `99 Archive - Rejected Drafts and Loose Concepts / REJECTED - do not
+  implement - Portfolio QA Trust Workbench Mobile - Draft 2026-06-28`
   (`188:1071`).
 
 ## Current State
@@ -54,6 +62,8 @@ Recommended structure:
 - Lane status for the five current lanes.
 - A compact evidence/confidence rail.
 - CSV/copy/export and enrichment queue detail below the first viewport.
+- Preserve the current Relby app shell and avoid turning each lane, state, or
+  guardrail into a button.
 
 ## IA Contract
 
@@ -80,9 +90,10 @@ Recommended structure:
 
 ## Update Targets
 
-- Figma: review and approve the draft Portfolio QA desktop/mobile frames, then
-  mark the approved nodes in the route/frame index.
-- Repo implementation after approval:
+- Figma: create a new current-platform Portfolio QA desktop/mobile frame only
+  after starting from the active Relby shell and current UI primitives. Do not
+  use archived nodes `188:988` and `188:1071` as visual source.
+- Repo implementation after a new approved current-platform frame exists:
   - `apps/web/src/app/portfolio-qa/page.tsx`
   - `apps/web/tests/smoke/portfolio-qa-guided.spec.ts`
   - `apps/web/tests/smoke/portfolio-qa-ux.spec.ts`

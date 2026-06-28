@@ -1038,23 +1038,20 @@ remove entries by shipping a slice whose UX pass covers them.
   Follow [`ux-platform-audit-roadmap-2026-06-28.md`](ux-platform-audit-roadmap-2026-06-28.md)
   and [`ux-route-frame-index-2026-06-28.md`](ux-route-frame-index-2026-06-28.md)
   before coding cleanup. R0 progress: the repeatable audit harness now has a
-  `platform` route preset, the Figma file has `03 Screens / Route Frame Index -
+  `platform` route preset, the Figma file has `04 Governance / Route Frame Index -
   2026-06-28` (`186:988`), and the repo has the same route/frame contract. The
   live Insights `Field required` P0 is fixed and covered by smoke/error-state
   screenshots. R1 progress: the repo has
   [`ux-navigation-deeplink-contract-2026-06-28.md`](ux-navigation-deeplink-contract-2026-06-28.md)
-  and Figma has `03 Screens / Navigation Deep-Link Contract - 2026-06-28`
+  and Figma has `04 Governance / Navigation Deep-Link Contract - 2026-06-28`
   (`187:997`). R3/R4 briefs are captured in
   [`ux-portfolio-qa-redesign-brief-2026-06-28.md`](ux-portfolio-qa-redesign-brief-2026-06-28.md)
   and
   [`ux-settings-message-templates-refresh-brief-2026-06-28.md`](ux-settings-message-templates-refresh-brief-2026-06-28.md).
-  R3/R4 draft Figma frames now exist: Portfolio QA desktop/mobile
-  `188:988`/`188:1071`, and Settings plus Message Templates desktop/mobile
-  `188:1109`/`188:1173`; they are pending Temba approval before implementation.
-  R5 draft Figma frames now also exist for record-page grammar `190:988`,
-  property desktop record `190:989`, and property mobile record `190:990`, with
-  implementation blocked until Temba approval and refreshed authenticated mobile
-  evidence.
+  Temba rejected the button-heavy R3/R4/R5 draft direction on 2026-06-28; the
+  rejected nodes were archived as `REJECTED - do not implement - ...`. Fresh
+  current-platform frames now exist for Settings (`203:938`) and Property
+  record (`203:1114`). Portfolio QA still needs a fresh current-platform pass.
   Back of queue: refresh signed-in desktop/mobile evidence once the operator
   login session can be renewed, then continue Portfolio QA, Settings, and
   Properties record changes in Figma first.

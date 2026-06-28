@@ -5,22 +5,33 @@ This is the R5 brief from the full-platform UX cleanup. It follows
 `docs/ux-route-frame-index-2026-06-28.md`, and
 `docs/ux-navigation-deeplink-contract-2026-06-28.md`.
 
-Status: draft Figma source exists. Do not restructure Properties or People
-record pages in code until Temba approves the record grammar and the desktop
-plus mobile property record drafts.
+Status: the 2026-06-28 draft Figma direction was rejected by Temba because it
+was visually worse than the current platform and too button-heavy. Do not use
+the archived draft nodes as implementation source. Continue from the current
+platform record baseline and make only surgical route/state/mobile
+improvements.
 
-## Draft Figma Source
+## Current Figma Source
 
-- Shared grammar: `03 Screens / Record Page Grammar - Draft 2026-06-28`
-  (`190:988`).
-- Property desktop: `03 Screens / Property Record Desktop - Draft 2026-06-28`
-  (`190:989`).
-- Property mobile: `03 Screens / Property Record Mobile - Draft 2026-06-28`
-  (`190:990`).
+- Active page: `03 Current Platform`.
+- Property record current-platform refresh:
+  `03 Current Platform / Property record - current platform refresh 2026-06-28`
+  (`203:1114`).
+- Property record baseline:
+  `03 Current Platform / Property detail - current platform baseline`
+  (`58:627`).
+- Portfolio workspace baseline: `03 Current Platform / Properties` (`55:2`).
+- Mobile portfolio baseline:
+  `03 Current Platform / Properties · Mobile` (`59:427`).
 
-The desktop and mobile frames were checked with Figma metadata and screenshots
-on 2026-06-28. The mobile draft keeps visible two-row tabs and the source-trail
-action at 44px height, with no bottom-nav overlap.
+Archived/rejected notes only:
+
+- `99 Archive - Rejected Drafts and Loose Concepts / REJECTED - do not
+  implement - Record Page Grammar - Draft 2026-06-28` (`190:988`).
+- `99 Archive - Rejected Drafts and Loose Concepts / REJECTED - do not
+  implement - Property Record Desktop - Draft 2026-06-28` (`190:989`).
+- `99 Archive - Rejected Drafts and Loose Concepts / REJECTED - do not
+  implement - Property Record Mobile - Draft 2026-06-28` (`190:990`).
 
 ## Current State
 
@@ -53,12 +64,16 @@ action at 44px height, with no bottom-nav overlap.
 The shared record-page grammar should cover Property, Tenant, Owner, and Vendor
 records without pretending every record exposes identical data.
 
-- Header: back link, record title, entity/status chips, and primary safe action.
+- Preserve the current header rhythm: back link, property thumbnail, record
+  title, metadata, small entity/status chips, and at most one primary command.
 - Metadata: address/contact, current relationship, financial/compliance state.
-- Tabs: Overview, Lease or Agreements, Billing, Documents, Activity/Audit.
+- Tabs: keep the compact current tab treatment for Overview, Lease or
+  Agreements, Billing, Documents, Activity/Audit.
 - Evidence: source document, confidence, before/after fields, and audit trail.
 - Dense proof: drawers or expandable rows, not cramped mini-links.
 - Mobile: visible 44px controls and no content hidden behind bottom navigation.
+- Do not flatten the page into button rows, approval banners, or internal route
+  labels.
 
 ## Guardrails
 
@@ -68,14 +83,17 @@ records without pretending every record exposes identical data.
   flow is designed and approved.
 - Existing `/properties?entity_id=...&property_id=...` links must keep working.
 - Authenticated mobile evidence is still blocked by operator login/MFA; mobile
-  implementation cannot be marked done from draft Figma alone.
+  implementation cannot be marked done from Figma cleanup alone.
 
 ## Update Targets
 
 - Figma:
-  - Review and approve the R5 record grammar and property record draft frames.
-  - Update route index frame `186:988` after approval.
-- Repo implementation after approval:
+  - Keep the archived R5 draft nodes as rejected notes only.
+  - Continue from current-platform refresh `203:1114` and change the smallest
+    possible visual surface.
+  - Keep route index frame `186:988` on the `04 Governance` page aligned with
+    the current-platform baseline.
+- Repo implementation:
   - `apps/web/src/app/properties/page.tsx`
   - `apps/web/src/components/property-workspace.tsx`
   - `apps/web/src/components/people-record-layout.tsx`

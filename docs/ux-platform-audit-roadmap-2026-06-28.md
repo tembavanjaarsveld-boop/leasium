@@ -28,30 +28,32 @@ without explicit operator approval.
 - R0 route/frame index:
   `docs/ux-route-frame-index-2026-06-28.md`.
 - Figma route/frame index:
-  `03 Screens / Route Frame Index - 2026-06-28` (`186:988`).
+  `04 Governance / Route Frame Index - 2026-06-28` (`186:988`).
 - R1 navigation/deep-link contract:
   `docs/ux-navigation-deeplink-contract-2026-06-28.md`.
 - Figma navigation/deep-link contract:
-  `03 Screens / Navigation Deep-Link Contract - 2026-06-28` (`187:997`).
+  `04 Governance / Navigation Deep-Link Contract - 2026-06-28` (`187:997`).
 - R3 Portfolio QA brief:
   `docs/ux-portfolio-qa-redesign-brief-2026-06-28.md`.
-- R3 draft Figma frames:
-  `03 Screens / Portfolio QA Trust Workbench - Draft 2026-06-28` (`188:988`)
-  and `03 Screens / Portfolio QA Trust Workbench Mobile - Draft 2026-06-28`
-  (`188:1071`).
+- R3 rejected Figma draft notes:
+  `99 Archive - Rejected Drafts and Loose Concepts / REJECTED - do not
+  implement - Portfolio QA Trust Workbench - Draft 2026-06-28` (`188:988`)
+  and the matching mobile frame (`188:1071`).
 - R4 Settings and Message Templates brief:
   `docs/ux-settings-message-templates-refresh-brief-2026-06-28.md`.
-- R4 draft Figma frames:
-  `03 Screens / Settings Message Templates Refresh - Draft 2026-06-28`
-  (`188:1109`) and
-  `03 Screens / Settings Message Templates Mobile - Draft 2026-06-28`
-  (`188:1173`).
+- R4 active Figma source:
+  `03 Current Platform / Settings - current platform refresh 2026-06-28`
+  (`203:938`), `03 Current Platform / Settings - current platform baseline`
+  (`55:439`), and `03 Current Platform / Settings · Mobile` (`59:677`).
+  Rejected draft notes are archived at `188:1109` and `188:1173`.
 - R5 Properties and record grammar brief:
   `docs/ux-properties-record-grammar-brief-2026-06-28.md`.
-- R5 draft Figma frames:
-  `03 Screens / Record Page Grammar - Draft 2026-06-28` (`190:988`),
-  `03 Screens / Property Record Desktop - Draft 2026-06-28` (`190:989`),
-  and `03 Screens / Property Record Mobile - Draft 2026-06-28` (`190:990`).
+- R5 active Figma source:
+  `03 Current Platform / Property record - current platform refresh 2026-06-28`
+  (`203:1114`), `03 Current Platform / Property detail - current platform
+  baseline` (`58:627`), `03 Current Platform / Properties` (`55:2`), and
+  `03 Current Platform / Properties · Mobile` (`59:427`). Rejected draft notes
+  are archived at `190:988`, `190:989`, and `190:990`.
 
 Important limitation: the authenticated desktop pass is current. The saved
 Playwright storage state was checked again on 2026-06-28 and is expired for
@@ -71,8 +73,13 @@ UX slice is marked done.
 - Changed the default audit URL to the canonical Relby domain
   `https://relby.ai`.
 - Added `npm run audit:live:test` for the provider-inert harness unit check.
-- Added Figma route/frame index `03 Screens / Route Frame Index - 2026-06-28`
+- Added Figma route/frame index `04 Governance / Route Frame Index - 2026-06-28`
   (`186:988`).
+- 2026-06-28 cleanup: Temba rejected the button-heavy R3/R4/R5 draft direction.
+  The draft nodes were moved to
+  `99 Archive - Rejected Drafts and Loose Concepts` and renamed
+  `REJECTED - do not implement - ...`. Fresh current-platform frames were added:
+  Settings refresh `203:938` and Property record refresh `203:1114`.
 - Added repo route/frame contract at
   `docs/ux-route-frame-index-2026-06-28.md`.
 
@@ -157,8 +164,9 @@ page.
 This is a discoverability and governance risk. If future agents cannot reliably
 find the approved frames, they will infer from code and drift the product again.
 
-2026-06-28 update: direct Figma Plugin API inspection can see `03 Screens`, and
-the Figma file now has `03 Screens / Route Frame Index - 2026-06-28` (`186:988`).
+2026-06-28 update: direct Figma Plugin API inspection can see the active pages,
+and the Figma file now has `04 Governance / Route Frame Index - 2026-06-28`
+(`186:988`).
 The remaining risk is connector/metadata discoverability and keeping the repo
 route index in sync with the Figma index.
 
@@ -299,7 +307,7 @@ Done means: Figma and docs define the route contract before code changes.
 
 2026-06-28 update: the repo contract now exists at
 `docs/ux-navigation-deeplink-contract-2026-06-28.md`, with Figma mirror
-`03 Screens / Navigation Deep-Link Contract - 2026-06-28` (`187:997`). It
+`04 Governance / Navigation Deep-Link Contract - 2026-06-28` (`187:997`). It
 locks the current hub, alias, URL-state, command-search, and mobile-nav
 contract. Remaining R1 choices are queued as design decisions: self-managed
 Owners gating, Portfolio QA URL-backed tabs, Settings nested URL state,
@@ -344,9 +352,9 @@ Design direction:
 Done means: approved Figma frame exists for desktop and mobile, then code
 implements that design with smoke coverage and a UX pass log entry.
 
-2026-06-28 update: draft Figma frames exist for desktop (`188:988`) and mobile
-(`188:1071`). They are not yet approved implementation source, so R3 code work
-remains blocked until Temba signs off on the frames.
+2026-06-28 update: the draft Figma frames (`188:988`, `188:1071`) were rejected
+and archived. R3 remains open, but the next design pass must start from the
+current Relby shell and avoid the rejected button-field dashboard treatment.
 
 ### R4 - Refresh Settings And Message Templates In Figma
 
@@ -365,10 +373,10 @@ Brief: `docs/ux-settings-message-templates-refresh-brief-2026-06-28.md`.
 Done means: future Settings slices pull from Figma instead of reverse
 engineering the shipped code.
 
-2026-06-28 update: draft Figma refresh frames exist for desktop (`188:1109`) and
-mobile (`188:1173`). The mobile draft corrects Message Templates inner tab
-controls to the 44px Relby standard. R4 code work remains blocked until Temba
-signs off on the frames.
+2026-06-28 update: the button-heavy draft refresh frames (`188:1109`,
+`188:1173`) were rejected and archived. A fresh current-platform Settings frame
+now exists at `203:938`; future R4 work should start there and preserve the
+two-pane workspace.
 
 ### R5 - Clarify Properties And Record Pages
 
@@ -388,11 +396,10 @@ Brief: `docs/ux-properties-record-grammar-brief-2026-06-28.md`.
 Done means: the user can tell the difference between "portfolio list/workspace"
 and "this property record" immediately.
 
-2026-06-28 update: draft Figma frames exist for the shared record grammar
-(`190:988`), property desktop record (`190:989`), and property mobile record
-(`190:990`). The mobile draft uses visible two-row 44px record tabs and avoids
-bottom-nav overlap. R5 code work remains blocked until Temba signs off on the
-frames and authenticated mobile evidence is refreshed.
+2026-06-28 update: the record grammar/property draft frames (`190:988`,
+`190:989`, `190:990`) were rejected and archived. A fresh current-platform
+property record frame now exists at `203:1114`; future R5 work should preserve
+the current record rhythm and add route/mobile improvements underneath it.
 
 ### R6 - System Polish For Best-In-Class Feel
 
@@ -428,10 +435,11 @@ keyboard/command walkthrough without new design debt.
 
 1. R0: refresh mobile auth evidence and Figma route/frame index.
 2. R1: Figma-first navigation/deep-link contract.
-3. R3: review/approve the Portfolio QA Figma draft, because it is the largest
-   live UX debt.
-4. R4: review/approve the Settings Figma refresh draft, because the shipped UI
-   is ahead of the design source.
-5. R5: review/approve the Properties and record-page grammar draft.
+3. R3: create a fresh current-platform Portfolio QA Figma pass, because the
+   archived draft direction was rejected.
+4. R4: continue from Settings current-platform refresh `203:938`, preserving
+   the shipped two-pane workspace.
+5. R5: continue from Property record current-platform refresh `203:1114`,
+   preserving the current record rhythm.
 6. R2 targeted fixes can happen opportunistically when backed by authenticated
    mobile screenshots and a narrow Figma/design-system decision.

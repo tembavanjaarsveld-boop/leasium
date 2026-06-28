@@ -8,7 +8,7 @@ Rule: navigation changes stay Figma-first. Code changes to tabs, redirects,
 command search, sidebar, or mobile navigation must name the approved source
 frame and update this contract when the route behaviour changes.
 
-Figma mirror: `03 Screens / Navigation Deep-Link Contract - 2026-06-28`
+Figma mirror: `04 Governance / Navigation Deep-Link Contract - 2026-06-28`
 (`187:997`).
 
 ## Current Navigation Shape
