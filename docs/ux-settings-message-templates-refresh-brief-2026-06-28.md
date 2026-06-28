@@ -5,8 +5,8 @@ This is the R4 brief from the full-platform UX cleanup. It follows
 `docs/ux-route-frame-index-2026-06-28.md`, and
 `docs/ux-navigation-deeplink-contract-2026-06-28.md`.
 
-Status: Figma source is stale. Do not restructure Settings or Message Templates
-from code-only inference.
+Status: draft Figma refresh exists. Do not restructure Settings or Message
+Templates in code until Temba approves the desktop and mobile draft frames.
 
 ## Current State
 
@@ -25,10 +25,17 @@ from code-only inference.
 - Existing Figma frames:
   - Settings desktop `55:439`.
   - Settings mobile `59:677`.
+- Draft refresh frames:
+  - Settings and Message Templates desktop:
+    `03 Screens / Settings Message Templates Refresh - Draft 2026-06-28`
+    (`188:1109`).
+  - Settings and Message Templates mobile:
+    `03 Screens / Settings Message Templates Mobile - Draft 2026-06-28`
+    (`188:1173`).
 - Repo route index marks `/settings` and top-level Settings tabs as stale
-  source.
+  source, now superseded by draft refresh nodes pending approval.
 - Organisation subtabs and Message Templates need committed desktop/mobile Figma
-  frames.
+  approval before implementation.
 - The shipped two-pane Settings workspace and Message Templates redesign are
   ahead of the current Figma source.
 
@@ -36,8 +43,7 @@ from code-only inference.
 
 - Authenticated mobile platform evidence is still blocked by expired login.
 - Existing mocked 390px checks are useful but not enough for R4 closure.
-- Message Template inner tab buttons currently use a smaller target than the
-  44px Relby standard.
+- The draft mobile Message Templates tabs were corrected to 44px controls.
 - The authenticated desktop audit sampled small-target debt on Settings
   Organisation Comms.
 
@@ -66,9 +72,8 @@ Settings template preview, edit, and export must not:
 ## Update Targets
 
 - Figma:
-  - Refresh Settings `55:439`.
-  - Refresh Settings Mobile `59:677`.
-  - Add committed Message Templates desktop and mobile frames.
+  - Review and approve the draft Settings and Message Templates desktop/mobile
+    frames (`188:1109`, `188:1173`).
   - Update route index frame `186:988`.
 - Repo implementation after approval:
   - `apps/web/src/app/settings/page.tsx`

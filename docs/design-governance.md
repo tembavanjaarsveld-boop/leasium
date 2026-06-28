@@ -1048,6 +1048,9 @@ remove entries by shipping a slice whose UX pass covers them.
   [`ux-portfolio-qa-redesign-brief-2026-06-28.md`](ux-portfolio-qa-redesign-brief-2026-06-28.md)
   and
   [`ux-settings-message-templates-refresh-brief-2026-06-28.md`](ux-settings-message-templates-refresh-brief-2026-06-28.md).
+  R3/R4 draft Figma frames now exist: Portfolio QA desktop/mobile
+  `188:988`/`188:1071`, and Settings plus Message Templates desktop/mobile
+  `188:1109`/`188:1173`; they are pending Temba approval before implementation.
   Back of queue: refresh signed-in desktop/mobile evidence once the operator
   login session can be renewed, then continue Portfolio QA, Settings, and
   Properties record changes in Figma first.

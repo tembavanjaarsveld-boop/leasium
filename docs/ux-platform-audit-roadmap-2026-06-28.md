@@ -35,8 +35,17 @@ without explicit operator approval.
   `03 Screens / Navigation Deep-Link Contract - 2026-06-28` (`187:997`).
 - R3 Portfolio QA brief:
   `docs/ux-portfolio-qa-redesign-brief-2026-06-28.md`.
+- R3 draft Figma frames:
+  `03 Screens / Portfolio QA Trust Workbench - Draft 2026-06-28` (`188:988`)
+  and `03 Screens / Portfolio QA Trust Workbench Mobile - Draft 2026-06-28`
+  (`188:1071`).
 - R4 Settings and Message Templates brief:
   `docs/ux-settings-message-templates-refresh-brief-2026-06-28.md`.
+- R4 draft Figma frames:
+  `03 Screens / Settings Message Templates Refresh - Draft 2026-06-28`
+  (`188:1109`) and
+  `03 Screens / Settings Message Templates Mobile - Draft 2026-06-28`
+  (`188:1173`).
 
 Important limitation: the authenticated desktop pass is current. The saved
 Playwright storage state was checked again on 2026-06-28 and is expired for
@@ -329,6 +338,10 @@ Design direction:
 Done means: approved Figma frame exists for desktop and mobile, then code
 implements that design with smoke coverage and a UX pass log entry.
 
+2026-06-28 update: draft Figma frames exist for desktop (`188:988`) and mobile
+(`188:1071`). They are not yet approved implementation source, so R3 code work
+remains blocked until Temba signs off on the frames.
+
 ### R4 - Refresh Settings And Message Templates In Figma
 
 Goal: make Settings a governed workspace, not a patchwork of shipped panels.
@@ -345,6 +358,11 @@ Brief: `docs/ux-settings-message-templates-refresh-brief-2026-06-28.md`.
 
 Done means: future Settings slices pull from Figma instead of reverse
 engineering the shipped code.
+
+2026-06-28 update: draft Figma refresh frames exist for desktop (`188:1109`) and
+mobile (`188:1173`). The mobile draft corrects Message Templates inner tab
+controls to the 44px Relby standard. R4 code work remains blocked until Temba
+signs off on the frames.
 
 ### R5 - Clarify Properties And Record Pages
 
@@ -396,8 +414,9 @@ keyboard/command walkthrough without new design debt.
 
 1. R0: refresh mobile auth evidence and Figma route/frame index.
 2. R1: Figma-first navigation/deep-link contract.
-3. R3: Portfolio QA redesign, because it is the largest live UX debt.
-4. R4: Settings Figma refresh, because the shipped UI is ahead of the design
-   source.
+3. R3: review/approve the Portfolio QA Figma draft, because it is the largest
+   live UX debt.
+4. R4: review/approve the Settings Figma refresh draft, because the shipped UI
+   is ahead of the design source.
 5. R2 targeted fixes can happen opportunistically when backed by authenticated
    mobile screenshots and a narrow Figma/design-system decision.

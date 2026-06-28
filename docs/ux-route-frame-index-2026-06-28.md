@@ -52,8 +52,8 @@ npm run audit:live:test
 | ID | Blocker | Queue Position | Unblock Signal |
 | --- | --- | --- | --- |
 | UX-BLOCKED-001 | Saved production audit session is expired for desktop and mobile. | Back of queue until operator login is available. | Temba refreshes the browser login via `npm run audit:live -- --login`. |
-| UX-BLOCKED-002 | `/portfolio-qa` has no committed Horizon frame. | R3. | Temba approves Portfolio QA desktop/mobile Figma frames. |
-| UX-BLOCKED-003 | Settings two-pane and Message Templates shipped UI are ahead of Figma. | R4. | Settings frame `55:439` and Message Templates subsection are refreshed in Figma. |
+| UX-BLOCKED-002 | `/portfolio-qa` has draft desktop/mobile Figma frames, not approved implementation source. | R3. | Temba approves Portfolio QA desktop/mobile Figma frames `188:988` and `188:1071`. |
+| UX-BLOCKED-003 | Settings two-pane and Message Templates have draft refresh frames, not approved implementation source. | R4. | Temba approves Settings and Message Templates desktop/mobile Figma frames `188:1109` and `188:1173`. |
 | UX-BLOCKED-004 | `/people?tab=owners` fallback needs intentional self-managed copy/state. | R1. | Temba chooses hide/redirect/explainer behaviour. |
 | UX-BLOCKED-005 | `/tasks` legacy redirect needs command/search decision. | R1. | Keep as documented alias or remove from command/search surfaces. |
 
@@ -95,18 +95,18 @@ npm run audit:live:test
 | `/statements` | Hidden/module route | Money `61:842` | `apps/web/src/app/statements/page.tsx` | Partial source | Needs route contract if expanded. |
 | `/money/statements` | Redirect | Money `61:842` | `apps/web/src/app/money/statements/page.tsx` | Documented alias | Redirects to statements route. |
 | `/money/billing` | Redirect | Money `61:842` | `apps/web/src/app/money/billing/page.tsx` | Documented alias | Redirects to Billing Readiness. |
-| `/money/xero` | Redirect | Settings `55:439` | `apps/web/src/app/money/xero/page.tsx` | Documented alias | Redirects to Xero/settings. |
-| `/money/basiq` | Redirect | Settings `55:439` | `apps/web/src/app/money/basiq/page.tsx` | Documented alias | Redirects to settings. |
+| `/money/xero` | Redirect | Settings `55:439`; R4 draft `188:1109` | `apps/web/src/app/money/xero/page.tsx` | Documented alias | Redirects to Xero/settings. |
+| `/money/basiq` | Redirect | Settings `55:439`; R4 draft `188:1109` | `apps/web/src/app/money/basiq/page.tsx` | Documented alias | Redirects to settings. |
 | `/insights` | Primary route | Insights `61:1063` | `apps/web/src/app/insights/page.tsx` | Approved source | Production `Field required` error is P0 triage. |
-| `/settings` | Primary route | Settings `55:439`; mobile `59:677` | `apps/web/src/app/settings/page.tsx` | Stale source | Shipped two-pane workspace needs Figma refresh. |
-| `/settings?tab=security` | Tab state | Settings `55:439` | `apps/web/src/app/settings/page.tsx` | Stale source |  |
-| `/settings?tab=notifications` | Tab state | Settings `55:439` | `apps/web/src/app/settings/page.tsx` | Stale source |  |
-| `/settings?tab=activity` | Tab state | Settings `55:439` | `apps/web/src/app/settings/page.tsx` | Stale source |  |
-| `/settings?tab=connect` | Tab state | Settings `55:439` | `apps/web/src/app/settings/page.tsx` | Stale source |  |
-| Settings Organisation subtabs | Client state | Settings `55:439` | `apps/web/src/app/settings/page.tsx` | Needs R4 refresh | Overview, payments, comms, and entities need committed Figma state. |
-| Settings Message Templates subtabs | Client state | Comms template density `116:812`; mobile `116:933` | `apps/web/src/app/settings/page.tsx` | Needs R4 refresh | Messages, branding, delivery receipts, and advanced need committed Figma state. |
-| `/portfolio-qa` | Hidden operator route | No committed Horizon frame | `apps/web/src/app/portfolio-qa/page.tsx` | Missing source | R3 flagship redesign as trust workbench. |
-| Portfolio QA tabs | Client state | No committed Horizon frame | `apps/web/src/app/portfolio-qa/page.tsx` | Missing source | Data QA, Contacts, Source History, Onboarding Prep, Billing Drafts. |
+| `/settings` | Primary route | Settings `55:439`; mobile `59:677`; R4 draft `188:1109`; mobile `188:1173` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval | Shipped two-pane workspace has draft Figma refresh; implementation waits for approval. |
+| `/settings?tab=security` | Tab state | Settings `55:439`; R4 draft `188:1109` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval |  |
+| `/settings?tab=notifications` | Tab state | Settings `55:439`; R4 draft `188:1109` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval |  |
+| `/settings?tab=activity` | Tab state | Settings `55:439`; R4 draft `188:1109` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval |  |
+| `/settings?tab=connect` | Tab state | Settings `55:439`; R4 draft `188:1109` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval |  |
+| Settings Organisation subtabs | Client state | Settings `55:439`; R4 draft `188:1109`; mobile `188:1173` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval | Overview, payments, comms, and entities have draft Figma treatment pending approval. |
+| Settings Message Templates subtabs | Client state | Comms template density `116:812`; mobile `116:933`; R4 draft `188:1109`; mobile `188:1173` | `apps/web/src/app/settings/page.tsx` | Draft refresh pending approval | Messages, branding, delivery receipts, and advanced have draft frames; mobile draft uses 44px tab controls. |
+| `/portfolio-qa` | Hidden operator route | Portfolio QA Trust Workbench draft `188:988`; mobile `188:1071` | `apps/web/src/app/portfolio-qa/page.tsx` | Draft source pending approval | R3 flagship redesign as trust workbench; implementation waits for approval. |
+| Portfolio QA tabs | Client state | Portfolio QA Trust Workbench draft `188:988`; mobile `188:1071` | `apps/web/src/app/portfolio-qa/page.tsx` | Draft source pending approval | Data QA, Contacts, Source History, Onboarding Prep, Billing Drafts. |
 | `/contractors` | Legacy/hidden route | People `61:580` or Vendor pattern | `apps/web/src/app/contractors/page.tsx` | Needs route contract | Decide whether it stays as legacy directory or moves fully under People. |
 | `/admin` | Platform route | Platform admin mailbox aliases `109:812`; mobile `109:908` | `apps/web/src/app/admin/page.tsx` | Approved source | Platform-only surface. |
 | Tenant portal mobile | Portal route | Tenant portal mobile `61:1251` | `apps/web/src/app/tenant-portal/*` | Approved mobile source | Desktop portal route contract is separate. |

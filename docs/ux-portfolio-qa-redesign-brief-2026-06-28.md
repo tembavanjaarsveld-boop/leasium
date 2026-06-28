@@ -5,8 +5,15 @@ This is the R3 brief from the full-platform UX cleanup. It follows
 `docs/ux-route-frame-index-2026-06-28.md`, and
 `docs/ux-navigation-deeplink-contract-2026-06-28.md`.
 
-Status: design source missing. Do not redesign `/portfolio-qa` in code until
-desktop and mobile Figma frames are approved.
+Status: draft Figma source exists. Do not redesign `/portfolio-qa` in code
+until Temba approves the desktop and mobile draft frames.
+
+Draft Figma source:
+
+- Desktop: `03 Screens / Portfolio QA Trust Workbench - Draft 2026-06-28`
+  (`188:988`).
+- Mobile: `03 Screens / Portfolio QA Trust Workbench Mobile - Draft 2026-06-28`
+  (`188:1071`).
 
 ## Current State
 
@@ -73,7 +80,8 @@ Recommended structure:
 
 ## Update Targets
 
-- Figma: add approved Portfolio QA desktop and mobile frames.
+- Figma: review and approve the draft Portfolio QA desktop/mobile frames, then
+  mark the approved nodes in the route/frame index.
 - Repo implementation after approval:
   - `apps/web/src/app/portfolio-qa/page.tsx`
   - `apps/web/tests/smoke/portfolio-qa-guided.spec.ts`
