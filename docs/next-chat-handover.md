@@ -72,13 +72,16 @@ review and approve before anything is committed.
    Neon database URL was not configured. See
    [[REBRAND_DATA_DRY_RUN_2026-06-27]].
 4. Keep Smart Intake and document filing work review-first.
+5. For design-review cleanup, follow
+   [[UX_PLATFORM_AUDIT_ROADMAP_2026-06-28]]. R0 source mapping is now repaired;
+   the remaining R0 evidence refresh waits for an operator login/MFA session.
 
 ## Current Active Tracks
 
 | Track | State | Notes |
 | --- | --- | --- |
 | Build queue | canonical v1 exists | [[../BUILD_QUEUE]] is now the short operator queue; repo roadmap remains the implementation record. |
-| Obsidian repo mirror | first generator exists | `scripts/generate_obsidian_handover.py` rebuilds `docs/next-chat-handover.md` from the Relby vault plus current git state; broader repo mirroring still pending. |
+| Obsidian repo mirror | first generator proven | `scripts/generate_obsidian_handover.py` rebuilds `docs/next-chat-handover.md`; GitHub Actions run `28303215963` passed on `a457b38`. Broader repo mirroring still pending. |
 | Platform stabilization v1 | proven on main | Commit `a34696c` passed backend, frontend, and all four smoke shards in GitHub Actions run `28302894535`. |
 | Switcher removal | reconciled | Old 103-failure plan and all-mode follow-up are historical. Start only fresh scoped all-mode bugs. |
 | Reporting v1 | scope defined | Build as Saved Report Views under Insights using existing review packets; no duplicate compliance roll-up. |
@@ -86,6 +89,8 @@ review and approve before anything is committed.
 | Approval action depth | scope defined | Keep Approvals inbox read-only; deepen source-screen maintenance approvals, delegated reminders/escalations, and activity receipts. |
 | Relby brand/data pass | code shipped, stored-row review pending | Backend/data code pass is shipped. Stored Neon rows require dry-run branch review before any `--apply`. |
 | Smart Intake review intelligence | shipped | Backend and matcher review UI are now shipped. Do not rework extraction. |
+| Full-platform UX cleanup | R0 partly repaired | Signed-in desktop evidence exists; the audit harness now has a `platform` preset, and Figma/repo route indexes exist. Mobile evidence refresh is waiting on operator login/MFA. |
+| Navigation/deep-link contract | source-defined | R1 is defined in [[UX_NAVIGATION_DEEPLINK_CONTRACT_2026-06-28]]; apply open choices only inside their matching Figma-first slices. |
 
 ## Current Cautions
 
@@ -95,6 +100,9 @@ review and approve before anything is committed.
 - Do not touch extraction prompts/schema/model choices unless a slice explicitly
   requires it.
 - Design-facing changes require the in-loop UX gate.
+- UX cleanup must be evidence-first and Figma-first: do not use stale
+  signed-out mobile captures or code-only inference as the source for design
+  fixes.
 
 ## Operating Guardrails
 
@@ -130,6 +138,8 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Recent Feature Commits
 
+- `4162f7c` Lock Relby UX audit source map
+- `a457b38` Refresh Obsidian handover mirror
 - `991c6bc` Add Obsidian handover mirror
 - `a34696c` Stabilize Relby smoke handoffs
 - `96cb298` Guard Smart Intake property duplicates
@@ -140,8 +150,6 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 - `6e23a4f` Add Smart Intake review-intelligence Codex brief
 - `61fd5e1` Add Smart Intake review matcher backend
 - `d793f69` Update shipped slice docs
-- `026ce32` Redesign source history evidence trail
-- `6f5c290` Skip past lease intake obligations
 
 ## Next Actions Now
 
@@ -151,9 +159,22 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
   considering any reviewed apply.
 - Keep Smart Intake/document filing work review-first.
 - Use [[Brain/CURRENT_BRAIN_STATE]] as the first Relby AI entry point.
+- For Relby design-review cleanup, continue
+  [[Brain/UX_PLATFORM_AUDIT_ROADMAP_2026-06-28]] R0 from the repaired
+  route/frame index: refresh the signed-in audit session and rerun the platform
+  desktop/mobile capture when operator login/MFA is available.
 
 ## Next Actions Later
 
+- Redesign Portfolio QA in Figma as the flagship trust-workbench cleanup.
+- Refresh the Settings and Message templates Figma frames so shipped UI and
+  design source match.
+- Use [[Brain/UX_PORTFOLIO_QA_REDESIGN_BRIEF_2026-06-28]] and
+  [[Brain/UX_SETTINGS_MESSAGE_TEMPLATES_REFRESH_BRIEF_2026-06-28]] when those
+  Figma lanes reopen.
+- Apply the open R1 route decisions from
+  [[Brain/UX_NAVIGATION_DEEPLINK_CONTRACT_2026-06-28]] only inside their
+  matching Figma-first slices.
 - Expand the generator beyond `docs/next-chat-handover.md` only if repeated
   sessions show useful context is still missing from the generated handover.
 - Distil more SKJ property ops lessons into Relby product insight notes only,
