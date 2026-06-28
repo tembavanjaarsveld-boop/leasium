@@ -1293,6 +1293,7 @@ const rentRoll = [
         xero_tax_type: null,
         start_date: "2025-07-01",
         end_date: null,
+        next_invoice_date: "2026-05-15",
         next_due_date: "2026-06-01",
         arrears_or_advance: "advance",
       },
@@ -12198,6 +12199,7 @@ export async function mockLeasiumApi(
         gst_treatment?: string;
         xero_account_code?: string | null;
         xero_tax_type?: string | null;
+        next_invoice_date?: string | null;
         next_due_date?: string | null;
       };
       await fulfillJson(
@@ -12213,6 +12215,7 @@ export async function mockLeasiumApi(
           xero_tax_type: payload.xero_tax_type ?? null,
           start_date: null,
           end_date: null,
+          next_invoice_date: payload.next_invoice_date ?? null,
           next_due_date: payload.next_due_date ?? null,
           arrears_or_advance: "advance",
         },

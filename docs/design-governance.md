@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -188,6 +188,18 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-29 · Property Billing quick charge rule schedule dates · existing
+  current-platform Property detail / Billing panel; verified with the
+  `properties-ux` smoke file including the charge-rule add/delete flow and the
+  existing mobile Properties coverage · fixes: the form now captures `Invoice
+  sent` beside `Next due`, keeps the submit confirmation near the Add charge
+  button after the form grew taller, and shows both dates in the lease charge
+  list; backend charge rules now store the invoice date separately and billing
+  drafts use it as the local issue date · no tenant email, Xero, payment,
+  reconciliation, or provider mutation path changed · deferral: no new Figma
+  frame because this is a narrow extension of the approved current-platform
+  billing panel; authenticated production mobile evidence remains part of the
+  R0 login/MFA refresh.
 - 2026-06-28 · Insights overview error-state hotfix · screenshots reviewed at
   `output/playwright/insights-overview-error-1440.png` and
   `output/playwright/insights-overview-error-390.png` · fixes: all-entities mode

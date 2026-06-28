@@ -1971,6 +1971,7 @@ export type RentRollRow = {
     xero_tax_type: string | null;
     start_date: string | null;
     end_date: string | null;
+    next_invoice_date: string | null;
     next_due_date: string | null;
     arrears_or_advance: string;
   }>;
@@ -1989,6 +1990,7 @@ export type ChargeRuleRecord = {
   gst_treatment: string;
   xero_account_code: string | null;
   xero_tax_type: string | null;
+  next_invoice_date: string | null;
   next_due_date: string | null;
   frequency?: string | null;
   start_date?: string | null;

@@ -1795,6 +1795,7 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
             "gst_treatment": "taxable",
             "xero_account_code": "200",
             "xero_tax_type": "OUTPUT",
+            "next_invoice_date": "2026-05-15",
             "next_due_date": "2026-06-01",
             "metadata": {"source": "test"},
         },
@@ -1802,11 +1803,14 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     assert create_response.status_code == 201
     charge_rule_body = create_response.json()
     charge_rule_id = charge_rule_body["id"]
+    assert charge_rule_body["next_invoice_date"] == "2026-05-15"
+    assert charge_rule_body["next_due_date"] == "2026-06-01"
     assert charge_rule_body["metadata"] == {"source": "test"}
 
     list_response = client.get(f"/api/v1/charge-rules?property_id={property_id}")
     assert list_response.status_code == 200
     assert [row["id"] for row in list_response.json()] == [charge_rule_id]
+    assert list_response.json()[0]["next_invoice_date"] == "2026-05-15"
 
     rent_roll_response = client.get(
         f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}&as_of=2026-05-18"
@@ -1818,6 +1822,7 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     assert rent_roll_body[0]["expiry_date"] == "2028-12-31"
     assert rent_roll_body[0]["next_review_date"] == "2027-01-01"
     assert rent_roll_body[0]["charge_rules_total_cents"] == 1100000
+    assert rent_roll_body[0]["charge_rules"][0]["next_invoice_date"] == "2026-05-15"
     assert rent_roll_body[0]["next_due_date"] == "2026-06-01"
     assert rent_roll_body[0]["invoice_readiness_blockers"] == []
     assert rent_roll_body[0]["xero_readiness_blockers"] == [
@@ -1835,11 +1840,15 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     assert billing_batch["skipped"] == 0
     billing_draft = billing_batch["drafts"][0]
     assert billing_draft["status"] == "needs_review"
+    assert billing_draft["issue_date"] == "2026-05-15"
+    assert billing_draft["due_date"] == "2026-06-01"
     assert billing_draft["total_cents"] == 1100000
     assert billing_draft["document_id"]
     assert billing_draft["metadata"]["source"] == "charge_rule_batch"
     assert billing_draft["metadata"]["guardrail"].startswith("No invoice PDF")
     assert billing_draft["lines"][0]["source_hint"] == "test"
+    assert billing_draft["lines"][0]["metadata"]["next_invoice_date"] == "2026-05-15"
+    assert billing_draft["lines"][0]["metadata"]["next_due_date"] == "2026-06-01"
 
     repeat_billing_batch_response = client.post(
         "/api/v1/billing-drafts/from-charge-rules",

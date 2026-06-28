@@ -1320,7 +1320,11 @@ def create_billing_drafts_from_charge_rules(
             continue
 
         total_cents = sum(rule.amount_cents for rule in charge_rules)
+        invoice_dates = [
+            rule.next_invoice_date for rule in charge_rules if rule.next_invoice_date is not None
+        ]
         due_dates = [rule.next_due_date for rule in charge_rules if rule.next_due_date is not None]
+        issue_date = min(invoice_dates) if invoice_dates else payload.as_of or date.today()
         due_date = min(due_dates) if due_dates else None
         line_labels = ", ".join(
             f"{rule.charge_type.value.replace('_', ' ')} {rule.frequency.value}"
@@ -1372,7 +1376,7 @@ def create_billing_drafts_from_charge_rules(
             status=BillingDraftStatus.needs_review,
             title=title,
             currency="AUD",
-            issue_date=payload.as_of or date.today(),
+            issue_date=issue_date,
             due_date=due_date,
             total_cents=total_cents,
             notes=(
@@ -1413,6 +1417,11 @@ def create_billing_drafts_from_charge_rules(
                         "xero_tax_type": rule.xero_tax_type,
                         "start_date": rule.start_date.isoformat() if rule.start_date else None,
                         "end_date": rule.end_date.isoformat() if rule.end_date else None,
+                        "next_invoice_date": (
+                            rule.next_invoice_date.isoformat()
+                            if rule.next_invoice_date
+                            else None
+                        ),
                         "next_due_date": (
                             rule.next_due_date.isoformat() if rule.next_due_date else None
                         ),

@@ -978,6 +978,7 @@ class RentChargeRule(Base):
     xero_tax_type: Mapped[str | None] = mapped_column(Text)
     start_date: Mapped[date | None] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
+    next_invoice_date: Mapped[date | None] = mapped_column(Date)
     next_due_date: Mapped[date | None] = mapped_column(Date)
     arrears_or_advance: Mapped[str] = mapped_column(Text, nullable=False, default="advance")
     charge_rule_metadata: Mapped[dict[str, Any]] = mapped_column(
@@ -1002,6 +1003,11 @@ Index(
 Index(
     "rent_charge_rule_next_due_idx",
     RentChargeRule.next_due_date,
+    postgresql_where=RentChargeRule.deleted_at.is_(None),
+)
+Index(
+    "rent_charge_rule_next_invoice_idx",
+    RentChargeRule.next_invoice_date,
     postgresql_where=RentChargeRule.deleted_at.is_(None),
 )
 

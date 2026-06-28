@@ -1,6 +1,6 @@
 # Relby Product Roadmap
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 Relby is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Relby reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-29 Charge-rule invoice/send date:** Property Billing quick
+  charge rules now capture two dates for rent schedules: `Invoice sent` and
+  `Next due`. The charge-rule API stores `next_invoice_date` separately from
+  `next_due_date`, rent-roll responses expose both on each rule, and local
+  billing drafts created from charge rules use the invoice date as
+  `issue_date` while keeping the rent due date as `due_date`. This supports
+  SKJ-style schedules such as invoices sent on the 15th with rent due on the
+  1st. No tenant email, Xero, payment, reconciliation, or provider path changed.
 - [x] **2026-06-28 Insights all-entities overview guard:** `/insights` no
   longer calls the entity-scoped overview endpoint without `entity_id` when the
   page is in all-entities mode. It anchors the overview to the first available

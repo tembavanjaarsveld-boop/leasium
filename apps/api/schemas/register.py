@@ -540,6 +540,7 @@ class RentChargeRuleCreate(BaseModel):
     xero_tax_type: str | None = None
     start_date: date | None = None
     end_date: date | None = None
+    next_invoice_date: date | None = None
     next_due_date: date | None = None
     arrears_or_advance: str = "advance"
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -554,6 +555,7 @@ class RentChargeRuleUpdate(BaseModel):
     xero_tax_type: str | None = None
     start_date: date | None = None
     end_date: date | None = None
+    next_invoice_date: date | None = None
     next_due_date: date | None = None
     arrears_or_advance: str | None = None
     metadata: dict[str, Any] | None = None
@@ -570,6 +572,7 @@ class RentChargeRuleRead(ApiModel):
     xero_tax_type: str | None
     start_date: date | None
     end_date: date | None
+    next_invoice_date: date | None
     next_due_date: date | None
     arrears_or_advance: str
     metadata: dict[str, Any] = Field(
@@ -591,6 +594,7 @@ class RentRollChargeRuleRead(ApiModel):
     xero_tax_type: str | None
     start_date: date | None
     end_date: date | None
+    next_invoice_date: date | None
     next_due_date: date | None
     arrears_or_advance: str
 

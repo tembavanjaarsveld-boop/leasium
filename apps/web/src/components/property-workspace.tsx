@@ -352,6 +352,7 @@ const chargeRuleSchema = z.object({
   gst_treatment: z.enum(["taxable", "gst_free", "input_taxed", "out_of_scope"]),
   xero_account_code: z.string().optional(),
   xero_tax_type: z.string().optional(),
+  next_invoice_date: z.string().min(1, "Invoice sent date is required"),
   next_due_date: z.string().min(1, "Next due is required"),
 });
 
@@ -423,6 +424,7 @@ const defaultChargeRuleFormValues: ChargeRuleFormValues = {
   gst_treatment: "taxable",
   xero_account_code: "",
   xero_tax_type: "",
+  next_invoice_date: dateOnly(new Date()),
   next_due_date: dateOnly(new Date()),
 };
 
@@ -3315,6 +3317,7 @@ function Workspace({
         gst_treatment: values.gst_treatment,
         xero_account_code: cleanText(values.xero_account_code),
         xero_tax_type: cleanText(values.xero_tax_type),
+        next_invoice_date: values.next_invoice_date,
         next_due_date: values.next_due_date,
         arrears_or_advance: "advance",
         metadata: {},
@@ -3328,7 +3331,9 @@ function Workspace({
       setChargeRuleNotice({
         message: `Added ${chargeTypeLabel(values.charge_type)} — ${formatMoney(
           amountCents,
-        )} ${frequencyLabel(values.frequency)}, next due ${formatDate(
+        )} ${frequencyLabel(values.frequency)}, invoice sent ${formatDate(
+          values.next_invoice_date,
+        )}, next due ${formatDate(
           values.next_due_date,
         )}.`,
       });
@@ -3337,6 +3342,8 @@ function Workspace({
         lease_id: values.lease_id,
         charge_type: values.charge_type,
         frequency: values.frequency,
+        next_invoice_date: values.next_invoice_date,
+        next_due_date: values.next_due_date,
       });
     },
   });
@@ -5762,25 +5769,6 @@ function Workspace({
                       Add the recurring charge that will feed invoices.
                     </p>
                   </div>
-                  {chargeRuleNotice ? (
-                    <div
-                      role="status"
-                      aria-live="polite"
-                      className="flex items-start justify-between gap-2 rounded-md bg-primary/10 px-2.5 py-2 text-xs"
-                    >
-                      <span className="flex items-start gap-1.5 font-medium text-primary">
-                        <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
-                        {chargeRuleNotice.message}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setChargeRuleNotice(null)}
-                        className="shrink-0 font-semibold text-muted-foreground transition hover:text-foreground"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  ) : null}
                   <Field
                     label="Lease"
                     error={chargeRuleForm.formState.errors.lease_id?.message}
@@ -5853,17 +5841,31 @@ function Workspace({
                       </Select>
                     </Field>
                   </div>
-                  <Field
-                    label="Next due"
-                    error={
-                      chargeRuleForm.formState.errors.next_due_date?.message
-                    }
-                  >
-                    <Input
-                      type="date"
-                      {...chargeRuleForm.register("next_due_date")}
-                    />
-                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="Invoice sent"
+                      error={
+                        chargeRuleForm.formState.errors.next_invoice_date
+                          ?.message
+                      }
+                    >
+                      <Input
+                        type="date"
+                        {...chargeRuleForm.register("next_invoice_date")}
+                      />
+                    </Field>
+                    <Field
+                      label="Next due"
+                      error={
+                        chargeRuleForm.formState.errors.next_due_date?.message
+                      }
+                    >
+                      <Input
+                        type="date"
+                        {...chargeRuleForm.register("next_due_date")}
+                      />
+                    </Field>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Xero account">
                       <Input
@@ -5891,6 +5893,25 @@ function Workspace({
                     <Plus size={16} />
                     Add charge
                   </Button>
+                  {chargeRuleNotice ? (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-start justify-between gap-2 rounded-md bg-primary/10 px-2.5 py-2 text-xs"
+                    >
+                      <span className="flex items-start gap-1.5 font-medium text-primary">
+                        <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        {chargeRuleNotice.message}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setChargeRuleNotice(null)}
+                        className="shrink-0 font-semibold text-muted-foreground transition hover:text-foreground"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
                   {chargeRuleMutation.error ? (
                     <p className="text-sm text-danger">
                       {friendlyError(chargeRuleMutation.error)}
@@ -5931,7 +5952,9 @@ function Workspace({
                                     : ""}
                                 </div>
                                 <div className="text-muted-foreground">
-                                  Next due {formatDate(rule.next_due_date)}
+                                  Invoice sent{" "}
+                                  {formatDate(rule.next_invoice_date)} · Next due{" "}
+                                  {formatDate(rule.next_due_date)}
                                 </div>
                               </div>
                               <SecondaryButton

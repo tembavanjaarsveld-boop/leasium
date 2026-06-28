@@ -364,9 +364,15 @@ test("desktop property billing confirms charge add and supports inline delete", 
 
   // Adding a charge surfaces an explicit success confirmation (the bug fix).
   await chargeForm.getByRole("spinbutton").fill("8000");
+  await chargeForm.getByLabel("Invoice sent").fill("2026-05-15");
+  await chargeForm.getByLabel("Next due").fill("2026-06-01");
   await chargeForm.getByRole("button", { name: "Add charge" }).click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Added Base rent" }),
+    page
+      .getByRole("status")
+      .filter({
+        hasText: /invoice sent 15 May 2026, next due 01 (Jun|June) 2026/,
+      }),
   ).toBeVisible();
 
   // The inline delete removes a rule and confirms it.
