@@ -138,6 +138,8 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Recent Feature Commits
 
+- `57887c2` Add Relby R5 record grammar draft
+- `43a93cf` Refresh Relby UX draft handover
 - `f99f2a3` Document Relby Figma UX drafts
 - `3bc29ee` Refresh Relby UX handover
 - `4162f7c` Lock Relby UX audit source map
@@ -148,8 +150,6 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 - `c0ca8a5` Add Smart Intake tenant setup path
 - `4cbde98` Infer tenant emails from Smart Intake contact text
 - `379db21` Fix Workflows queue entity scope
-- `7ffe42e` Ship Smart Intake matcher review UI
-- `6e23a4f` Add Smart Intake review-intelligence Codex brief
 
 ## Next Actions Now
 
@@ -170,9 +170,12 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
   `188:988` and `188:1071`.
 - Review/approve the Settings and Message Templates draft Figma frames
   `188:1109` and `188:1173`.
+- Review/approve the Properties and record-page grammar draft Figma frames
+  `190:988`, `190:989`, and `190:990`.
 - Use [[Brain/UX_PORTFOLIO_QA_REDESIGN_BRIEF_2026-06-28]] and
-  [[Brain/UX_SETTINGS_MESSAGE_TEMPLATES_REFRESH_BRIEF_2026-06-28]] when
-  reviewing or implementing those Figma lanes.
+  [[Brain/UX_SETTINGS_MESSAGE_TEMPLATES_REFRESH_BRIEF_2026-06-28]] and
+  [[Brain/UX_PROPERTIES_RECORD_GRAMMAR_BRIEF_2026-06-28]] when reviewing or
+  implementing those Figma lanes.
 - Apply the open R1 route decisions from
   [[Brain/UX_NAVIGATION_DEEPLINK_CONTRACT_2026-06-28]] only inside their
   matching Figma-first slices.
