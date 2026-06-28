@@ -1051,6 +1051,10 @@ remove entries by shipping a slice whose UX pass covers them.
   R3/R4 draft Figma frames now exist: Portfolio QA desktop/mobile
   `188:988`/`188:1071`, and Settings plus Message Templates desktop/mobile
   `188:1109`/`188:1173`; they are pending Temba approval before implementation.
+  R5 draft Figma frames now also exist for record-page grammar `190:988`,
+  property desktop record `190:989`, and property mobile record `190:990`, with
+  implementation blocked until Temba approval and refreshed authenticated mobile
+  evidence.
   Back of queue: refresh signed-in desktop/mobile evidence once the operator
   login session can be renewed, then continue Portfolio QA, Settings, and
   Properties record changes in Figma first.

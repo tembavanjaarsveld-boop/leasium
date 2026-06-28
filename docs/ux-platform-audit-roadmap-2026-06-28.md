@@ -46,6 +46,12 @@ without explicit operator approval.
   (`188:1109`) and
   `03 Screens / Settings Message Templates Mobile - Draft 2026-06-28`
   (`188:1173`).
+- R5 Properties and record grammar brief:
+  `docs/ux-properties-record-grammar-brief-2026-06-28.md`.
+- R5 draft Figma frames:
+  `03 Screens / Record Page Grammar - Draft 2026-06-28` (`190:988`),
+  `03 Screens / Property Record Desktop - Draft 2026-06-28` (`190:989`),
+  and `03 Screens / Property Record Mobile - Draft 2026-06-28` (`190:990`).
 
 Important limitation: the authenticated desktop pass is current. The saved
 Playwright storage state was checked again on 2026-06-28 and is expired for
@@ -368,6 +374,8 @@ signs off on the frames.
 
 Goal: make Properties and People share one record-page grammar.
 
+Brief: `docs/ux-properties-record-grammar-brief-2026-06-28.md`.
+
 - In Figma, define the property record shape: header, core metadata, tabs,
   primary action lane, documents/evidence, and activity/audit.
 - Decide whether the current Properties workspace modes stay as portfolio modes
@@ -379,6 +387,12 @@ Goal: make Properties and People share one record-page grammar.
 
 Done means: the user can tell the difference between "portfolio list/workspace"
 and "this property record" immediately.
+
+2026-06-28 update: draft Figma frames exist for the shared record grammar
+(`190:988`), property desktop record (`190:989`), and property mobile record
+(`190:990`). The mobile draft uses visible two-row 44px record tabs and avoids
+bottom-nav overlap. R5 code work remains blocked until Temba signs off on the
+frames and authenticated mobile evidence is refreshed.
 
 ### R6 - System Polish For Best-In-Class Feel
 
@@ -418,5 +432,6 @@ keyboard/command walkthrough without new design debt.
    live UX debt.
 4. R4: review/approve the Settings Figma refresh draft, because the shipped UI
    is ahead of the design source.
-5. R2 targeted fixes can happen opportunistically when backed by authenticated
+5. R5: review/approve the Properties and record-page grammar draft.
+6. R2 targeted fixes can happen opportunistically when backed by authenticated
    mobile screenshots and a narrow Figma/design-system decision.

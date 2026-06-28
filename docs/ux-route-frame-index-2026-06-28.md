@@ -13,6 +13,8 @@ sign-off before code changes.
 
 - Roadmap: `docs/ux-platform-audit-roadmap-2026-06-28.md`
 - UX governance: `docs/design-governance.md`
+- R5 record grammar brief:
+  `docs/ux-properties-record-grammar-brief-2026-06-28.md`
 - Figma file: `Leasium - Design Source of Truth`
   (`PO2jOANgmqgZHfqWZXOZGU`)
 - Figma route index: `03 Screens / Route Frame Index - 2026-06-28`
@@ -56,6 +58,7 @@ npm run audit:live:test
 | UX-BLOCKED-003 | Settings two-pane and Message Templates have draft refresh frames, not approved implementation source. | R4. | Temba approves Settings and Message Templates desktop/mobile Figma frames `188:1109` and `188:1173`. |
 | UX-BLOCKED-004 | `/people?tab=owners` fallback needs intentional self-managed copy/state. | R1. | Temba chooses hide/redirect/explainer behaviour. |
 | UX-BLOCKED-005 | `/tasks` legacy redirect needs command/search decision. | R1. | Keep as documented alias or remove from command/search surfaces. |
+| UX-BLOCKED-006 | Properties and People record-page grammar has draft Figma source, not approved implementation source. | R5. | Temba approves record grammar `190:988` plus property desktop/mobile frames `190:989` and `190:990`. |
 
 ## Route Map
 
@@ -69,7 +72,7 @@ npm run audit:live:test
 | `/properties` | Primary route | Properties `55:2`; mobile `59:427` | `apps/web/src/app/properties/page.tsx`, `apps/web/src/components/property-workspace.tsx` | Approved source | Covers card/table/map portfolio modes. |
 | `/properties?view=table` | Query state | Properties `55:2` | `apps/web/src/components/property-workspace.tsx` | Approved source | URL state exists. |
 | `/properties?view=map` | Query state | Properties `55:2` | `apps/web/src/components/property-workspace.tsx` | Approved source | URL state exists. |
-| `/properties?property_id=...` | Record state | Property detail `58:627` | `apps/web/src/components/property-workspace.tsx` | Needs R5 clarification | Current route still reads like portfolio workspace plus selected record. |
+| `/properties?property_id=...` | Record state | Property detail `58:627`; R5 grammar draft `190:988`; desktop `190:989`; mobile `190:990` | `apps/web/src/components/property-workspace.tsx` | Draft source pending approval | Preserve current inbound links; optional future tab state is `property_tab=overview|lease|billing|documents|activity`. |
 | `/people?tab=tenants` | Tab state | People `61:580` | `apps/web/src/app/people/page.tsx` | Approved source | Touch targets need R2 mobile/desktop tightening. |
 | `/people?tab=owners` | Gated tab state | People `61:580` | `apps/web/src/app/people/page.tsx` | Needs R1 decision | Self-managed mode falls back to tenants; needs intentional copy/state. |
 | `/people?tab=vendors` | Tab state | People `61:580` | `apps/web/src/app/people/page.tsx` | Approved source |  |
