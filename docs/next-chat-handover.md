@@ -138,6 +138,8 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Recent Feature Commits
 
+- `f99f2a3` Document Relby Figma UX drafts
+- `3bc29ee` Refresh Relby UX handover
 - `4162f7c` Lock Relby UX audit source map
 - `a457b38` Refresh Obsidian handover mirror
 - `991c6bc` Add Obsidian handover mirror
@@ -148,8 +150,6 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 - `379db21` Fix Workflows queue entity scope
 - `7ffe42e` Ship Smart Intake matcher review UI
 - `6e23a4f` Add Smart Intake review-intelligence Codex brief
-- `61fd5e1` Add Smart Intake review matcher backend
-- `d793f69` Update shipped slice docs
 
 ## Next Actions Now
 
@@ -166,12 +166,13 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Next Actions Later
 
-- Redesign Portfolio QA in Figma as the flagship trust-workbench cleanup.
-- Refresh the Settings and Message templates Figma frames so shipped UI and
-  design source match.
+- Review/approve the Portfolio QA trust-workbench draft Figma frames
+  `188:988` and `188:1071`.
+- Review/approve the Settings and Message Templates draft Figma frames
+  `188:1109` and `188:1173`.
 - Use [[Brain/UX_PORTFOLIO_QA_REDESIGN_BRIEF_2026-06-28]] and
-  [[Brain/UX_SETTINGS_MESSAGE_TEMPLATES_REFRESH_BRIEF_2026-06-28]] when those
-  Figma lanes reopen.
+  [[Brain/UX_SETTINGS_MESSAGE_TEMPLATES_REFRESH_BRIEF_2026-06-28]] when
+  reviewing or implementing those Figma lanes.
 - Apply the open R1 route decisions from
   [[Brain/UX_NAVIGATION_DEEPLINK_CONTRACT_2026-06-28]] only inside their
   matching Figma-first slices.
