@@ -75,6 +75,9 @@ type AccountingReadinessView = NonNullable<
   generated_source?: string | null;
 };
 
+const INSIGHTS_OVERVIEW_ERROR_DESCRIPTION =
+  "Retry the load. If it keeps failing, use the portfolio rollup below while the entity overview is checked.";
+
 function dateOnly(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -1332,15 +1335,15 @@ function InsightsWorkspace() {
     () => new Map(entities.map((entity) => [entity.id, entity.name])),
     [entities],
   );
-  const snapshotEntityId = snapshotEntityOverride || entities[0]?.id || "";
-
   const selectedEntity = entities.find((entity) => entity.id === scopedEntityId);
-  const activeEntityId = selectedEntity?.id ?? "";
-  const overviewScopeActive = allMode || Boolean(activeEntityId);
+  const defaultEntityId = entities[0]?.id ?? "";
+  const activeEntityId = selectedEntity?.id ?? (allMode ? defaultEntityId : "");
+  const snapshotEntityId = snapshotEntityOverride || activeEntityId;
+  const overviewScopeActive = Boolean(activeEntityId);
 
   const overviewQuery = useQuery({
-    queryKey: ["insights-overview", scopedEntityId, asOf],
-    queryFn: () => getInsightsOverview(scopedEntityId || undefined, asOf),
+    queryKey: ["insights-overview", activeEntityId, asOf],
+    queryFn: () => getInsightsOverview(activeEntityId, asOf),
     enabled: overviewScopeActive,
   });
 
@@ -1541,7 +1544,7 @@ function InsightsWorkspace() {
             <EmptyState
               icon={<AlertTriangle size={18} />}
               title="Insights could not load"
-              description={friendlyError(overviewError)}
+              description={INSIGHTS_OVERVIEW_ERROR_DESCRIPTION}
               action={
                 <SecondaryButton
                   type="button"

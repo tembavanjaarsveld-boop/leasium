@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -188,6 +188,17 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-28 · Insights overview error-state hotfix · screenshots reviewed at
+  `output/playwright/insights-overview-error-1440.png` and
+  `output/playwright/insights-overview-error-390.png` · fixes: all-entities mode
+  now anchors the entity-scoped overview request to an explicit entity id, so
+  `/insights` no longer asks the backend for an overview without `entity_id`;
+  the error card now shows operator recovery guidance instead of raw API detail
+  such as `Field required` · reused the existing EmptyState, Button, and
+  portfolio rollup layout; no new Figma frame, tokens, provider path, email,
+  payment, Xero, or reconciliation action · verified the Insights smoke suite
+  (6 passed), eslint, and diff check · authenticated production rerun remains
+  deferred to the R0 login/MFA evidence refresh.
 - 2026-06-27 · Workflows queue entity-scope hotfix · screenshots reviewed at
   `apps/web/output/playwright/workflows-entity-queue-hotfix-1440.png` and
   `apps/web/output/playwright/workflows-entity-queue-hotfix-390.png` · fixes:
@@ -1019,6 +1030,27 @@ fixes · deferrals.
 Genuinely open UX work, extracted from the closed Remba queue and from
 flags open as of 2026-06-12. Add new entries with a date and reason;
 remove entries by shipping a slice whose UX pass covers them.
+
+- **Full-platform UX audit roadmap (2026-06-28):** live authenticated desktop
+  sweep captured the primary app, hidden operator routes, and tab states at
+  `output/ux/live-platform-audit-2026-06-28/`; the repeatable Playwright mobile
+  session is expired and must be refreshed before mobile cleanup is trusted.
+  Follow [`ux-platform-audit-roadmap-2026-06-28.md`](ux-platform-audit-roadmap-2026-06-28.md)
+  and [`ux-route-frame-index-2026-06-28.md`](ux-route-frame-index-2026-06-28.md)
+  before coding cleanup. R0 progress: the repeatable audit harness now has a
+  `platform` route preset, the Figma file has `03 Screens / Route Frame Index -
+  2026-06-28` (`186:988`), and the repo has the same route/frame contract. The
+  live Insights `Field required` P0 is fixed and covered by smoke/error-state
+  screenshots. R1 progress: the repo has
+  [`ux-navigation-deeplink-contract-2026-06-28.md`](ux-navigation-deeplink-contract-2026-06-28.md)
+  and Figma has `03 Screens / Navigation Deep-Link Contract - 2026-06-28`
+  (`187:997`). R3/R4 briefs are captured in
+  [`ux-portfolio-qa-redesign-brief-2026-06-28.md`](ux-portfolio-qa-redesign-brief-2026-06-28.md)
+  and
+  [`ux-settings-message-templates-refresh-brief-2026-06-28.md`](ux-settings-message-templates-refresh-brief-2026-06-28.md).
+  Back of queue: refresh signed-in desktop/mobile evidence once the operator
+  login session can be renewed, then continue Portfolio QA, Settings, and
+  Properties record changes in Figma first.
 
 - **Settings Figma frame refresh (2026-06-18):** `/settings` shipped the
   operator-approved two-pane Settings workspace (primary app sidebar, middle

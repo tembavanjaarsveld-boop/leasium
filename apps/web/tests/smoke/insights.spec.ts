@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
@@ -69,6 +69,81 @@ test("insights renders the Horizon first-screen cockpit", async ({ page }) => {
   await expect(page.getByText("Vacancy listed")).toBeVisible();
   await expect(page.getByRole("tablist")).toHaveCount(0);
   expect(unsafeRequests).toEqual([]);
+});
+
+test("insights all-entities mode does not request overview without an entity id", async ({
+  page,
+}) => {
+  const malformedOverviewRequests: string[] = [];
+  await page.route("**/api/v1/insights/overview**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "GET" && !url.searchParams.get("entity_id")) {
+      malformedOverviewRequests.push(url.toString());
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: [{ loc: ["query", "entity_id"], msg: "Field required" }],
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/insights");
+
+  await expect(
+    page.getByRole("heading", { name: "Portfolio rollup" }),
+  ).toBeVisible();
+  await expect(page.getByText("Insights could not load")).toHaveCount(0);
+  await expect(page.getByText("Field required")).toHaveCount(0);
+  expect(malformedOverviewRequests).toEqual([]);
+});
+
+test("insights overview errors use recovery guidance instead of API details", async ({
+  page,
+}) => {
+  await mkdir("../../output/playwright", { recursive: true });
+  await page.route("**/api/v1/insights/overview**", async (route) => {
+    await route.fulfill({
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: [{ loc: ["query", "entity_id"], msg: "Field required" }],
+      }),
+    });
+  });
+
+  await page.goto("/insights");
+
+  await expect(page.getByText("Insights could not load")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Retry the load. If it keeps failing, use the portfolio rollup below while the entity overview is checked.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Field required")).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../../output/playwright/insights-overview-error-1440.png",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+
+  await expect(page.getByText("Insights could not load")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Retry the load. If it keeps failing, use the portfolio rollup below while the entity overview is checked.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Field required")).toHaveCount(0);
+  await page.screenshot({
+    path: "../../output/playwright/insights-overview-error-390.png",
+  });
 });
 
 test("insights exports review packet CSV from loaded overview data", async ({

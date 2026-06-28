@@ -59,7 +59,9 @@ password gate. Leave it blank locally to skip the gate.
 - `make lint` runs backend and frontend lint checks.
 - `make format` formats backend and frontend files.
 - `npm --prefix apps/web run audit:live` runs the repeatable live UX/performance
-  audit after a signed-in storage state has been saved.
+  audit after a signed-in storage state has been saved. Use
+  `LEASIUM_AUDIT_URL=https://www.relby.ai LEASIUM_AUDIT_ROUTE_PRESET=platform`
+  for the full platform route inventory.
 
 ## Modules
 

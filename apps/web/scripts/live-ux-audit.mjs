@@ -8,10 +8,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
-const outputDir = path.resolve(repoRoot, "output/playwright/live-audit");
-const defaultStoragePath = path.join(outputDir, "storage-state.json");
+const outputDir = path.resolve(
+  process.env.LEASIUM_AUDIT_OUTPUT_DIR ??
+    path.join(repoRoot, "output/playwright/live-audit"),
+);
+const defaultStoragePath = path.resolve(
+  repoRoot,
+  "output/playwright/live-audit/storage-state.json",
+);
 
-const baseUrl = (process.env.LEASIUM_AUDIT_URL ?? "https://leasium.ai").replace(
+const baseUrl = (process.env.LEASIUM_AUDIT_URL ?? "https://relby.ai").replace(
   /\/$/,
   "",
 );
@@ -41,6 +47,68 @@ export const DEFAULT_ROUTE_SPECS = [
   ["/settings", "Settings", /Settings|Security|Organisation|Xero/i],
 ];
 
+export const PLATFORM_ROUTE_SPECS = [
+  ...DEFAULT_ROUTE_SPECS,
+  ["/inbox", "AI Inbox", /Inbox|Mailbox|Trusted|Quarantine/i],
+  ["/properties?view=table", "Properties table", /Properties|Portfolio/i],
+  ["/properties?view=map", "Properties map", /Properties|Map/i],
+  ["/people?tab=tenants", "People tenants", /People|Tenants/i],
+  ["/people?tab=owners", "People owners", /People|Owners|Tenants/i],
+  ["/people?tab=vendors", "People vendors", /People|Vendors/i],
+  ["/people?tab=prospects", "People prospects", /People|Prospects/i],
+  ["/operations?tab=approvals", "Work approvals", /Work|Approvals/i],
+  ["/operations?tab=workflows", "Work workflows", /Workflows|Rules/i],
+  ["/operations?tab=calendar", "Work calendar", /Calendar|Work/i],
+  ["/operations?tab=maintenance", "Work maintenance", /Maintenance|Work/i],
+  ["/operations?tab=compliance", "Work compliance", /Compliance|Work/i],
+  ["/operations?tab=arrears", "Work arrears", /Arrears|Work/i],
+  ["/comms", "Comms queue", /Comms|Queue|Message/i],
+  ["/notifications", "Notifications", /Notifications|Digest|Notice/i],
+  ["/tasks", "Tasks legacy redirect", /Work|Operations|Tasks/i],
+  [
+    "/billing-readiness?tab=readiness",
+    "Billing readiness fix issues",
+    /Billing Readiness|Fix issues|Review invoice|Xero|GST/i,
+  ],
+  [
+    "/billing-readiness?tab=billing-drafts",
+    "Billing readiness review approve",
+    /Billing Readiness|Review|Approve|Draft/i,
+  ],
+  [
+    "/billing-readiness?tab=delivery",
+    "Billing readiness send get paid",
+    /Billing Readiness|Delivery|Paid|Send/i,
+  ],
+  ["/statements", "Owner statements", /Statements|Owner/i],
+  [
+    "/settings?tab=security",
+    "Settings people access",
+    /Settings|People|Access|Security/i,
+  ],
+  [
+    "/settings?tab=notifications",
+    "Settings notifications",
+    /Settings|Notifications/i,
+  ],
+  ["/settings?tab=activity", "Settings activity audit", /Settings|Activity|Audit/i],
+  ["/settings?tab=connect", "Settings integrations", /Settings|Integrations|Xero/i],
+  ["/portfolio-qa", "Portfolio QA data", /Portfolio QA|Data QA|Cleanup/i],
+  ["/contractors", "Contractors legacy directory", /Contractors|Vendors|People/i],
+  ["/reports", "Reports", /Reports|Insights|Saved/i],
+  ["/admin", "Platform admin", /Platform admin|Mailbox aliases|Admin/i],
+  ["/work/comms", "Work comms", /Comms|Work|Message/i],
+  ["/money/statements", "Money statements redirect", /Statements|Money/i],
+  ["/money/billing", "Money billing redirect", /Billing Readiness|Money/i],
+  ["/money/xero", "Money Xero redirect", /Settings|Xero|Money/i],
+  ["/money/basiq", "Money Basiq redirect", /Settings|Basiq|Money/i],
+  ["/people/tenants", "People tenants redirect", /People|Tenants/i],
+  ["/people/vendors", "People vendors redirect", /People|Vendors/i],
+];
+
+const routePreset =
+  routePresetFromArgs() ?? process.env.LEASIUM_AUDIT_ROUTE_PRESET ?? "core";
+
 const viewports = [
   { name: "desktop", use: devices["Desktop Chrome"] },
   { name: "mobile", use: devices["iPhone 13"] },
@@ -65,11 +133,12 @@ async function main() {
 
   const routeSpecs = parseRoutes(
     process.env.LEASIUM_AUDIT_ROUTES,
-    DEFAULT_ROUTE_SPECS,
+    routePresetSpecs(routePreset),
   );
   const report = {
     generated_at: new Date().toISOString(),
     base_url: baseUrl,
+    route_preset: routePreset,
     storage_state: storagePath,
     settle_ms: settleMs,
     timeout_ms: timeoutMs,
@@ -122,11 +191,60 @@ export function parseRoutes(raw, fallback) {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean)
-    .map((pathname) => ({
-      pathname: pathname.startsWith("/") ? pathname : `/${pathname}`,
-      label: pathname.replace(/^\//, "") || "Dashboard",
-      readyPattern: null,
-    }));
+    .map((value) => {
+      const [labelCandidate, pathnameCandidate] = splitRouteOverride(value);
+      const pathname = pathnameCandidate ?? labelCandidate;
+      const normalizedPathname = pathname.startsWith("/")
+        ? pathname
+        : `/${pathname}`;
+      return {
+        pathname: normalizedPathname,
+        label:
+          pathnameCandidate && labelCandidate
+            ? labelCandidate
+            : normalizedPathname.replace(/^\//, "") || "Dashboard",
+        readyPattern: null,
+      };
+    });
+}
+
+export function routePresetSpecs(preset) {
+  const normalized = String(preset ?? "core").toLowerCase();
+  if (normalized === "platform" || normalized === "full-platform") {
+    return PLATFORM_ROUTE_SPECS;
+  }
+  if (normalized === "core") {
+    return DEFAULT_ROUTE_SPECS;
+  }
+  throw new Error(
+    `Unknown LEASIUM_AUDIT_ROUTE_PRESET \"${preset}\". Use \"core\" or \"platform\".`,
+  );
+}
+
+function routePresetFromArgs() {
+  const valueArg = process.argv.find((arg) => arg.startsWith("--route-preset="));
+  if (valueArg) return valueArg.split("=").slice(1).join("=");
+  if (process.argv.includes("--platform")) return "platform";
+  if (process.argv.includes("--core")) return "core";
+  return null;
+}
+
+function splitRouteOverride(value) {
+  const equalsIndex = value.indexOf("=");
+  if (equalsIndex > 0) {
+    return [
+      value.slice(0, equalsIndex).trim(),
+      value.slice(equalsIndex + 1).trim(),
+    ];
+  }
+  const colonIndex = value.indexOf(":");
+  if (colonIndex > 0 && !value.startsWith("http")) {
+    return [
+      value.slice(0, colonIndex).trim(),
+      value.slice(colonIndex + 1).trim(),
+    ];
+  }
+  return [value, null];
 }
 
 async function fileExists(filePath) {
@@ -441,6 +559,7 @@ function renderMarkdown(data) {
     "",
     `Generated: ${data.generated_at}`,
     `Base URL: ${data.base_url}`,
+    `Route preset: ${data.route_preset}`,
     `Settle wait: ${data.settle_ms}ms`,
     "",
   ];
@@ -503,11 +622,13 @@ function renderMarkdown(data) {
   lines.push("## How to refresh the signed-in session");
   lines.push("");
   lines.push(
-    "From `apps/web`, run `npm run audit:live -- --login`, sign in in the opened browser, then press Enter in the terminal.",
+    "From `apps/web`, run `LEASIUM_AUDIT_URL=https://www.relby.ai npm run audit:live -- --login`, sign in in the opened browser, then press Enter in the terminal.",
   );
-  lines.push("Then run `npm run audit:live` for a desktop/mobile route audit.");
   lines.push(
-    "If `pnpm` is available, the equivalent commands are `pnpm audit:live -- --login` and `pnpm audit:live`.",
+    "Then run `LEASIUM_AUDIT_URL=https://www.relby.ai LEASIUM_AUDIT_ROUTE_PRESET=platform npm run audit:live` for the desktop/mobile platform route audit.",
+  );
+  lines.push(
+    "If `pnpm` is available, the equivalent commands are `pnpm audit:live -- --login` and `pnpm audit:live` with the same environment variables.",
   );
   lines.push("");
   return `${lines.join("\n")}\n`;
@@ -524,19 +645,22 @@ function trimUrl(rawUrl) {
 
 function printHelp() {
   console.log(`
-Live UX/performance audit for Leasium.
+Live UX/performance audit for Relby.
 
 Usage:
-  npm run audit:live -- --login Save a signed-in browser session
-  npm run audit:live            Audit desktop and mobile routes
+  npm run audit:live -- --login         Save a signed-in browser session
+  npm run audit:live                    Audit desktop and mobile core routes
+  npm run audit:live -- --platform      Audit desktop and mobile platform routes
 
-  pnpm audit:live -- --login    Same, when pnpm is available
-  pnpm audit:live               Same, when pnpm is available
+  pnpm audit:live -- --login            Same, when pnpm is available
+  pnpm audit:live                       Same, when pnpm is available
 
 Environment:
-  LEASIUM_AUDIT_URL            Base URL. Defaults to https://leasium.ai
+  LEASIUM_AUDIT_URL            Base URL. Defaults to https://relby.ai
+  LEASIUM_AUDIT_OUTPUT_DIR     Output directory. Defaults to output/playwright/live-audit
   LEASIUM_AUDIT_STORAGE        Storage-state path. Defaults to output/playwright/live-audit/storage-state.json
   LEASIUM_AUDIT_ROUTES         Comma-separated routes. Defaults to core MVP routes
+  LEASIUM_AUDIT_ROUTE_PRESET   Route inventory: core or platform. Defaults to core
   LEASIUM_AUDIT_SETTLE_MS      Extra wait before screenshots. Defaults to 4000
   LEASIUM_AUDIT_TIMEOUT_MS     Route timeout. Defaults to 45000
   LEASIUM_AUDIT_HEADLESS=0     Show the browser during audits

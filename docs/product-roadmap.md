@@ -1,6 +1,6 @@
 # Relby Product Roadmap
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Relby is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Relby reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -16,6 +16,14 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-06-28 Insights all-entities overview guard:** `/insights` no
+  longer calls the entity-scoped overview endpoint without `entity_id` when the
+  page is in all-entities mode. It anchors the overview to the first available
+  entity for the per-entity panels while the cross-entity portfolio rollup stays
+  visible, and overview failures now show plain recovery guidance instead of raw
+  API detail such as `Field required`. No provider, email, payment, Xero, or
+  reconciliation path changed. Verified with the Insights smoke suite, eslint,
+  and desktop/mobile error-state screenshots.
 - [x] **2026-06-27 Smart Intake property duplicate guard:** Relby AI property
   matching now treats common street suffix variants (`Ave`/`Avenue`,
   `Rd`/`Road`, `Hwy`/`Highway`, etc.) as the same address, including

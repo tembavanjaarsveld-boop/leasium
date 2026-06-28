@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   classifyBudgetStatus,
   DEFAULT_ROUTE_SPECS,
+  PLATFORM_ROUTE_SPECS,
   isSignedOutPageState,
   parseRoutes,
+  routePresetSpecs,
 } from "./live-ux-audit.mjs";
 
 test("default live-audit routes follow the current hub IA", () => {
@@ -57,4 +59,27 @@ test("custom route parsing still accepts comma-separated route overrides", () =>
     { pathname: "/operations", label: "operations", readyPattern: null },
     { pathname: "/settings", label: "settings", readyPattern: null },
   ]);
+});
+
+test("custom route parsing supports stable labels", () => {
+  assert.deepEqual(parseRoutes("Work approvals=/operations?tab=approvals", []), [
+    {
+      pathname: "/operations?tab=approvals",
+      label: "Work approvals",
+      readyPattern: null,
+    },
+  ]);
+});
+
+test("platform preset covers the hidden operator route inventory", () => {
+  const paths = PLATFORM_ROUTE_SPECS.map(([pathname]) => pathname);
+
+  assert.equal(routePresetSpecs("core"), DEFAULT_ROUTE_SPECS);
+  assert.equal(routePresetSpecs("platform"), PLATFORM_ROUTE_SPECS);
+  assert(paths.includes("/inbox"));
+  assert(paths.includes("/portfolio-qa"));
+  assert(paths.includes("/settings?tab=activity"));
+  assert(paths.includes("/operations?tab=compliance"));
+  assert(paths.includes("/billing-readiness?tab=delivery"));
+  assert(paths.length > DEFAULT_ROUTE_SPECS.length);
 });

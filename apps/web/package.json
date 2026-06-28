@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test:smoke": "playwright test",
     "audit:live": "node scripts/live-ux-audit.mjs",
+    "audit:live:test": "node --test scripts/live-ux-audit.test.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {
