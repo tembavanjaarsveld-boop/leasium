@@ -53,6 +53,9 @@ review and approve before anything is committed.
   tenant invoice setup home.
 - Record-level tabs are standardised on the shared compact pill rail across
   Property detail and People record headers.
+- Tenant billing schedule uses the saved-setup progressive disclosure rule:
+  existing schedule lines stay visible, the editor collapses behind Add line,
+  and Delete tenant sits in a bottom danger zone.
 - Switcher-removal cleanup state is reconciled; old all-mode gap lists are
   historical unless a fresh scoped bug is opened.
 - Customisable reporting v1 is scoped as Saved Report Views under Insights,

@@ -1701,6 +1701,8 @@ function TenantDetail() {
   const [chargeRuleForm, setChargeRuleForm] = useState<TenantChargeRuleForm>(
     defaultTenantChargeRuleForm,
   );
+  const [billingScheduleEditorOpen, setBillingScheduleEditorOpen] =
+    useState(false);
   const [chargeRuleNotice, setChargeRuleNotice] = useState<string | null>(null);
   const [chargeRuleValidationError, setChargeRuleValidationError] = useState<
     string | null
@@ -1977,6 +1979,10 @@ function TenantDetail() {
     enabled: Boolean(tenantId && billingLeaseId),
   });
   const billingChargeRules = chargeRulesQuery.data ?? [];
+  const billingScheduleHasLines = billingChargeRules.length > 0;
+  const billingScheduleEditorExpanded =
+    !chargeRulesQuery.isLoading &&
+    (!billingScheduleHasLines || billingScheduleEditorOpen);
   const duplicateChargeType = billingChargeRules.some(
     (rule) => rule.charge_type === chargeRuleForm.charge_type,
   );
@@ -2046,6 +2052,7 @@ function TenantDetail() {
         xero_account_code: "",
         xero_tax_type: "",
       }));
+      setBillingScheduleEditorOpen(false);
     },
   });
 
@@ -2521,6 +2528,30 @@ function TenantDetail() {
     createChargeRuleMutation.mutate(payload);
   }
 
+  function confirmDeleteTenant() {
+    if (!tenant) {
+      return;
+    }
+    const activeLeases = linkedLeases.filter(
+      (lease) =>
+        lease.status === "active" || lease.status === "holding_over",
+    ).length;
+    const warning =
+      activeLeases > 0
+        ? `\n\n${activeLeases} active lease${
+            activeLeases === 1 ? "" : "s"
+          } will stay on file but lose their tenant link.`
+        : "";
+    if (
+      typeof window === "undefined" ||
+      window.confirm(
+        `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
+      )
+    ) {
+      deleteTenantMutation.mutate();
+    }
+  }
+
   function submitDocument(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     uploadDocumentMutation.mutate();
@@ -2679,7 +2710,6 @@ function TenantDetail() {
             </SecondaryButton>
           }
           summary={
-            <>
             <section className="grid gap-4 bg-white/60 py-4 sm:grid-cols-2 xl:grid-cols-5">
               <div className="grid gap-1 px-1">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
@@ -2754,43 +2784,6 @@ function TenantDetail() {
                 </div>
               </div>
             </section>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  const activeLeases = linkedLeases.filter(
-                    (lease) =>
-                      lease.status === "active" ||
-                      lease.status === "holding_over",
-                  ).length;
-                  const warning =
-                    activeLeases > 0
-                      ? `\n\n${activeLeases} active lease${
-                          activeLeases === 1 ? "" : "s"
-                        } will stay on file but lose their tenant link.`
-                      : "";
-                  if (
-                    typeof window === "undefined" ||
-                    window.confirm(
-                      `Delete ${tenantName(tenant)}? This soft-deletes the tenant and can be restored from the database if needed.${warning}`,
-                    )
-                  ) {
-                    deleteTenantMutation.mutate();
-                  }
-                }}
-                disabled={deleteTenantMutation.isPending}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-danger/80 transition duration-200 ease-leasium hover:bg-danger/5 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Delete tenant"
-              >
-                {deleteTenantMutation.isPending ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Trash2 size={14} />
-                )}
-                Delete tenant
-              </button>
-            </div>
-            </>
           }
         >
           {deleteTenantMutation.error ? (
@@ -3694,11 +3687,51 @@ function TenantDetail() {
                     title="Billing schedule"
                     icon={<CalendarClock size={17} />}
                     description="Recurring tenant invoice lines for this lease."
+                    actions={
+                      billingScheduleHasLines ? (
+                        <SecondaryButton
+                          type="button"
+                          onClick={() =>
+                            setBillingScheduleEditorOpen((open) => !open)
+                          }
+                          aria-expanded={billingScheduleEditorExpanded}
+                          aria-controls="tenant-billing-schedule-editor"
+                          className="rounded-full"
+                        >
+                          <Plus size={15} />
+                          Add line
+                          <ChevronDown
+                            size={15}
+                            className={cn(
+                              "transition-transform duration-200 ease-leasium motion-reduce:transition-none",
+                              billingScheduleEditorExpanded
+                                ? "rotate-180"
+                                : "rotate-0",
+                            )}
+                          />
+                        </SecondaryButton>
+                      ) : null
+                    }
                   >
-                    <form
-                      className="grid gap-3 border-b border-border p-4"
-                      onSubmit={submitChargeRule}
+                    <div
+                      id="tenant-billing-schedule-editor"
+                      aria-hidden={!billingScheduleEditorExpanded}
+                      className={cn(
+                        "overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-leasium motion-reduce:transition-none",
+                        billingScheduleEditorExpanded
+                          ? "max-h-[900px] translate-y-0 opacity-100"
+                          : "max-h-0 -translate-y-1 opacity-0",
+                      )}
                     >
+                      <div>
+                        <form
+                          className="border-b border-border p-4"
+                          onSubmit={submitChargeRule}
+                        >
+                          <fieldset
+                            disabled={!billingScheduleEditorExpanded}
+                            className="grid gap-3"
+                          >
                       <Field label="Lease">
                         <Select
                           value={billingLeaseId}
@@ -3903,27 +3936,31 @@ function TenantDetail() {
                         )}
                         Add schedule line
                       </Button>
-                      {chargeRuleNotice ? (
-                        <div
-                          role="status"
-                          aria-live="polite"
-                          className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-medium text-primary"
-                        >
-                          {chargeRuleNotice}
-                        </div>
-                      ) : null}
-                      {chargeRuleValidationError ||
-                      createChargeRuleMutation.error ||
-                      chargeRulesQuery.error ? (
-                        <p className="text-sm text-danger">
-                          {chargeRuleValidationError ??
-                            friendlyError(
-                              createChargeRuleMutation.error ??
-                                chargeRulesQuery.error,
-                            )}
-                        </p>
-                      ) : null}
-                    </form>
+                          </fieldset>
+                        </form>
+                      </div>
+                    </div>
+
+                    {chargeRuleNotice ? (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="mx-4 mt-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-medium text-primary"
+                      >
+                        {chargeRuleNotice}
+                      </div>
+                    ) : null}
+                    {chargeRuleValidationError ||
+                    createChargeRuleMutation.error ||
+                    chargeRulesQuery.error ? (
+                      <p className="px-4 pt-3 text-sm text-danger">
+                        {chargeRuleValidationError ??
+                          friendlyError(
+                            createChargeRuleMutation.error ??
+                              chargeRulesQuery.error,
+                          )}
+                      </p>
+                    ) : null}
 
                     <div className="grid gap-2 p-4">
                       {chargeRulesQuery.isLoading ? (
@@ -5481,6 +5518,26 @@ function TenantDetail() {
             </ul>
           </div>
         ) : null}
+
+        <div
+          data-testid="tenant-danger-zone"
+          className="flex justify-end border-t border-border pt-4"
+        >
+          <button
+            type="button"
+            onClick={confirmDeleteTenant}
+            disabled={deleteTenantMutation.isPending}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-danger/30 bg-danger/10 px-4 text-sm font-semibold text-danger shadow-leasiumXs transition duration-200 ease-leasium hover:border-danger/50 hover:bg-danger/15 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100"
+            aria-label="Delete tenant"
+          >
+            {deleteTenantMutation.isPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Trash2 size={15} />
+            )}
+            Delete tenant
+          </button>
+        </div>
         </PeopleRecordLayout>
       </div>
     </main>

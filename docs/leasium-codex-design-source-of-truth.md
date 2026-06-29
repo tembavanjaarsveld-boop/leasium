@@ -1356,6 +1356,12 @@ Primary hub count is 7; Settings remains visible as the utility destination.
   Use larger segmented cards only for workspace mode switches that need
   descriptions/counts; use plain/underline tabs only for lower-level filters or
   dense table sub-tabs.
+- **Saved setup panels collapse their editors.** Once a setup surface has saved
+  rows (billing schedule lines, template rules, mapped accounts, etc.), keep the
+  saved rows visible and collapse the editor behind a clear Add action. Empty
+  setup states can keep the editor open. The collapsed editor must preserve a
+  44px Add control, `aria-expanded`, disabled or unmounted hidden fields, and a
+  short ease-leasium expansion that respects reduced motion.
 - **Settings uses a two-pane workspace, not a flat dump.** Keep Settings simple
   for non-technical operators: the primary app sidebar stays left, Settings
   opens a middle category pane, and the selected category opens as the

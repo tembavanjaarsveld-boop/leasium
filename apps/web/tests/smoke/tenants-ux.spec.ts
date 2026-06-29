@@ -544,6 +544,29 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
       has: page.getByRole("heading", { name: "Billing schedule" }),
     })
     .first();
+  await expect(
+    billingSchedule.getByText("Base rent - $8,000 Monthly"),
+  ).toBeVisible();
+  const addLineToggle = billingSchedule.getByRole("button", {
+    name: "Add line",
+  });
+  await expect(addLineToggle).toBeVisible();
+  await expect(addLineToggle).toHaveAttribute("aria-expanded", "false");
+  const billingEditor = page.locator("#tenant-billing-schedule-editor");
+  await expect(billingEditor).toHaveAttribute("aria-hidden", "true");
+  await expect
+    .poll(async () => (await billingEditor.boundingBox())?.height ?? 0)
+    .toBeLessThan(4);
+  await expect(billingSchedule.getByLabel("Amount")).toBeDisabled();
+
+  await addLineToggle.click();
+  await expect(addLineToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(billingEditor).toHaveAttribute("aria-hidden", "false");
+  await expect
+    .poll(async () => (await billingEditor.boundingBox())?.height ?? 0)
+    .toBeGreaterThan(300);
+  await expect(billingSchedule.getByLabel("Amount")).toBeVisible();
+
   await billingSchedule.getByRole("combobox").nth(1).selectOption("outgoings");
   await billingSchedule.getByLabel("Amount").fill("425");
   await billingSchedule.getByLabel("Starts").fill("2026-08-01");
@@ -571,6 +594,32 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
     tenant_facing: true,
   });
   await expect(page.getByText(/Added Outgoings/)).toBeVisible();
+  await expect(addLineToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(billingEditor).toHaveAttribute("aria-hidden", "true");
+  await expect
+    .poll(async () => (await billingEditor.boundingBox())?.height ?? 0)
+    .toBeLessThan(4);
+  await expect(billingSchedule.getByLabel("Amount")).toBeDisabled();
+
+  const tenantDangerZone = page.getByTestId("tenant-danger-zone");
+  await expect(tenantDangerZone).toBeVisible();
+  const deleteTenantButton = tenantDangerZone.getByRole("button", {
+    name: "Delete tenant",
+  });
+  await expect(deleteTenantButton).toBeVisible();
+  await expect(deleteTenantButton).toHaveClass(/rounded-full/);
+  await expect(deleteTenantButton).toHaveClass(/border-danger/);
+  const dangerZoneFollowsTabPanel = await tenantDangerZone.evaluate((zone) => {
+    const tabPanel = document.querySelector(
+      '[role="tabpanel"][aria-label="Lease & Billing"]',
+    );
+    return Boolean(
+      tabPanel &&
+        tabPanel.compareDocumentPosition(zone) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+  expect(dangerZoneFollowsTabPanel).toBe(true);
 
   await tabs.getByRole("tab", { name: "Portal" }).click();
   await expect(
