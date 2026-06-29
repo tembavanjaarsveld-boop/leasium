@@ -52,7 +52,8 @@ review and approve before anything is committed.
 - Tenant record Lease & Billing invoice setup is shipped as the first-time
   tenant invoice setup home.
 - Record-level tabs are standardised on the shared compact pill rail across
-  Property detail and People record headers.
+  Property detail and People record headers, with active tabs using Relby blue
+  plus the teal logo-dot accent.
 - Tenant billing schedule uses the saved-setup progressive disclosure rule:
   existing schedule lines stay visible, the editor collapses behind Add line,
   and Delete tenant sits in a bottom danger zone.

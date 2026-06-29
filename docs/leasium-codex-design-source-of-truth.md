@@ -1350,8 +1350,9 @@ Primary hub count is 7; Settings remains visible as the utility destination.
 - Use global search / command palette with `Cmd+K` or `Ctrl+K`.
 - **Record-level tabs use the compact pill rail.** Property, Tenant, Owner,
   Vendor, and future relationship records should use the shared `RecordTabs`
-  primitive: rounded-full rail, active filled pill, quiet inactive pill-buttons,
-  44px touch target, and URL/deep-link aware state when the tab changes content.
+  primitive: rounded-full rail, active Relby-blue filled pill with a small
+  teal brand dot, quiet inactive pill-buttons, 44px touch target, and
+  URL/deep-link aware state when the tab changes content.
   Avoid mixing this with plain text tabs or underline tabs at the same hierarchy.
   Use larger segmented cards only for workspace mode switches that need
   descriptions/counts; use plain/underline tabs only for lower-level filters or

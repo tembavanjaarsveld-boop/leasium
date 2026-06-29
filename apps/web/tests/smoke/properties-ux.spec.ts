@@ -202,6 +202,10 @@ test("property and tenant records use the same compact pill tab standard", async
   });
   await expect(activePropertyTab).toHaveAttribute("data-state", "active");
   await expect(activePropertyTab).toHaveClass(/rounded-full/);
+  await expect(activePropertyTab).toHaveClass(/bg-primary/);
+  await expect(
+    activePropertyTab.locator('[data-ui="record-tab-brand-dot"]'),
+  ).toHaveClass(/bg-accent/);
   await expectTouchTarget(activePropertyTab);
 
   await page.goto("/tenants/tenant-1?tab=lease-billing");
@@ -219,6 +223,10 @@ test("property and tenant records use the same compact pill tab standard", async
   });
   await expect(activeTenantTab).toHaveAttribute("data-state", "active");
   await expect(activeTenantTab).toHaveClass(/rounded-full/);
+  await expect(activeTenantTab).toHaveClass(/bg-primary/);
+  await expect(
+    activeTenantTab.locator('[data-ui="record-tab-brand-dot"]'),
+  ).toHaveClass(/bg-accent/);
   await expectTouchTarget(activeTenantTab);
 });
 

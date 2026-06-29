@@ -33,10 +33,22 @@ export function RecordTabs<TTab extends RecordTab>({
       {tabs.map((tab, index) => {
         const selected = activeTab ? activeTab === tab.id : index === 0;
         const tabClassName = cn(
-          "inline-flex min-h-11 shrink-0 items-center rounded-full px-3.5 transition duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
+          "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3.5 transition duration-200 ease-leasium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
           selected
-            ? "bg-leasium-navy-800 text-white shadow-leasiumXs"
+            ? "bg-primary text-white shadow-leasiumXs"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        );
+        const content = (
+          <>
+            {selected ? (
+              <span
+                aria-hidden="true"
+                data-ui="record-tab-brand-dot"
+                className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_0_2px_rgba(255,255,255,0.18)]"
+              />
+            ) : null}
+            <span>{tab.label}</span>
+          </>
         );
 
         if (onTabChange) {
@@ -51,7 +63,7 @@ export function RecordTabs<TTab extends RecordTab>({
               className={tabClassName}
               onClick={() => onTabChange(tab.id)}
             >
-              {tab.label}
+              {content}
             </button>
           );
         }
@@ -63,7 +75,7 @@ export function RecordTabs<TTab extends RecordTab>({
             data-state={selected ? "active" : "inactive"}
             className={tabClassName}
           >
-            {tab.label}
+            {content}
           </a>
         );
       })}
