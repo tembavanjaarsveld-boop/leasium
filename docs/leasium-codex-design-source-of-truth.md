@@ -1651,6 +1651,10 @@ Secondary: View demo portfolio
 
 Property pages should show lease and operational readiness.
 
+Properties opens as an all-portfolio surface. Do not block `New property` behind
+an old page-level entity selector: the property drawer must ask the operator to
+pick or create the owner/trust explicitly before submit.
+
 Suggested sections:
 ```txt
 Property summary

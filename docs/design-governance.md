@@ -1438,10 +1438,11 @@ remove entries by shipping a slice whose UX pass covers them.
   the Properties entity picker gains a dropdown-only `All entities` option when more
   than one entity exists. It merges every accessible entity's properties into one
   Portfolio list, each row labelled with its entity (desktop table + mobile cards).
-  It is a browse-only mode: selecting a property drops the workspace into that
-  property's own entity context; `New property` is disabled until a single entity is
-  chosen. No new top-level nav item (honours the 7-item cap), no provider/API mutation
-  — entity-scoped queries stay disabled in all-mode. Verified by eslint + tsc +
+  Selecting a property drops the workspace into that property's own entity context;
+  `New property` opens the explicit entity pick/create drawer from the all-portfolio
+  view rather than relying on a page-level entity selector. No new top-level nav item
+  (honours the 7-item cap), no provider/API mutation — entity-scoped queries stay
+  disabled in all-mode. Verified by eslint + tsc +
   Playwright smoke (merged view + drop-into-entity selection; existing property/
   portfolio specs green). Remba should review the all-mode row density and the
   per-row entity label treatment with the wider Properties workspace pass.

@@ -4384,9 +4384,24 @@ test("properties All entities view merges across entities and drops into one", a
   expect(propertyByEntityRequests).not.toContain(
     "/api/v1/premises/by-entity/entity-2",
   );
-  await expect(page.getByRole("button", { name: "New property" })).toBeDisabled();
+  const newPropertyButton = page.getByRole("button", { name: "New property" });
+  await expect(newPropertyButton).toBeEnabled();
+  await newPropertyButton.click();
+  await expect(
+    page.getByRole("heading", { name: "New property", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Close property editor" }).last(),
+  ).toBeVisible();
+  await expect(
+    page.locator("select").filter({
+      has: page.getByRole("option", { name: "Select an entity…" }),
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close property editor" }).last().click();
 
   const cards = page.getByRole("list", { name: "Property cards" });
+  await expect(cards.getByRole("button", { name: /Add property/ })).toBeEnabled();
   const primaryCard = cards
     .getByRole("listitem")
     .filter({ hasText: "Queen Street Retail Centre" });

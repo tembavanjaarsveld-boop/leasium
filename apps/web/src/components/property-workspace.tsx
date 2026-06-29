@@ -2831,6 +2831,7 @@ function Workspace({
   const [newEntityType, setNewEntityType] = useState<EntityType | "">("");
   const hasNoEntities =
     entitiesQuery.isSuccess && (entitiesQuery.data?.length ?? 0) === 0;
+  const canStartPropertyCreate = Boolean(selectedEntityId) || hasNoEntities;
   // Brand-new organisations have no entities yet, so the entity list cannot
   // supply an organisation id. Fall back to the shared security-workspace
   // cache so the inline "create new entity" path still works (the New
@@ -4066,12 +4067,7 @@ function Workspace({
               <Button
                 type="button"
                 onClick={startPropertyCreate}
-                disabled={(!selectedEntityId && !hasNoEntities) || isAllEntities}
-                title={
-                  isAllEntities
-                    ? "Select a single entity to add a property"
-                    : undefined
-                }
+                disabled={!canStartPropertyCreate}
               >
                 <Plus size={16} />
                 New property
@@ -6730,7 +6726,7 @@ function Workspace({
                   isLoading={propertiesLoading}
                   isOwnerTagFiltered={Boolean(ownerTagFilter)}
                   hasProperties={propertyRecords.length > 0}
-                  canCreate={Boolean(selectedEntityId && !isAllEntities)}
+                  canCreate={canStartPropertyCreate}
                   rentDataAvailable={portfolioRentRollReady}
                   onSelect={(propertyId) => {
                     selectProperty(propertyId, { openDetail: true });

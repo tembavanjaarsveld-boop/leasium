@@ -59,6 +59,9 @@ review and approve before anything is committed.
 - Tenant billing schedule uses the saved-setup progressive disclosure rule:
   existing schedule lines stay visible, the editor collapses behind Add line,
   and Delete tenant sits in a bottom danger zone.
+- Properties all-portfolio `New property` and card `Add property` entrypoints
+  open the explicit owner/trust pick-or-create drawer; they no longer require an
+  old page-level entity selection.
 - Switcher-removal cleanup state is reconciled; old all-mode gap lists are
   historical unless a fresh scoped bug is opened.
 - Customisable reporting v1 is scoped as Saved Report Views under Insights,
