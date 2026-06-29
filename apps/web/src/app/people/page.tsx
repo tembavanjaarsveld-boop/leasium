@@ -304,7 +304,7 @@ function PeopleContent() {
           : ownersFanOut.data.length
         : null,
     vendors: contractorsLoading ? null : contractors.length,
-    prospects: null,
+    prospects: 0,
   };
 
   return (
@@ -355,15 +355,22 @@ function PeopleContent() {
                 onClick={() => selectTab(tab.key)}
                 className={
                   isActive
-                    ? "inline-flex min-h-11 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-semibold text-white transition"
-                    : "inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                    ? "inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary-hover"
+                    : "inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-muted-foreground transition duration-200 ease-leasium hover:bg-muted hover:text-foreground"
                 }
               >
+                {isActive ? (
+                  <span
+                    aria-hidden="true"
+                    data-ui="people-tab-brand-dot"
+                    className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_0_2px_rgba(255,255,255,0.18)]"
+                  />
+                ) : null}
                 <span>{tab.label}</span>
                 <span
                   className={
                     isActive
-                      ? "text-xs font-semibold text-white"
+                      ? "text-xs font-semibold text-primary-foreground/90"
                       : "text-xs font-semibold text-muted-foreground"
                   }
                 >

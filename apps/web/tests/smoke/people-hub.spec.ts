@@ -145,6 +145,29 @@ test("people hub renders tabs and the owners directory", async ({ page }) => {
   expect(forbiddenRequests).toEqual([]);
 });
 
+test("people hub type tabs use the brand active state and zero prospect count", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "managing_agent" });
+  await mockOwners(page);
+
+  await page.goto("/people");
+
+  const peopleTabs = page.getByRole("tablist", { name: "People types" });
+  await expect(peopleTabs).toBeVisible();
+
+  const prospectsTab = peopleTabs.getByRole("tab", { name: /Prospects/ });
+  await expect(prospectsTab).toContainText("0");
+
+  await prospectsTab.click();
+
+  await expect(prospectsTab).toHaveAttribute("aria-selected", "true");
+  await expect(prospectsTab).toHaveClass(/bg-primary/);
+  await expect(
+    prospectsTab.locator('[data-ui="people-tab-brand-dot"]'),
+  ).toHaveClass(/bg-accent/);
+});
+
 test("people hub All entities merges tenants and vendors across entities", async ({
   page,
 }) => {

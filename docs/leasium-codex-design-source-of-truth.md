@@ -1354,6 +1354,9 @@ Primary hub count is 7; Settings remains visible as the utility destination.
   teal brand dot, quiet inactive pill-buttons, 44px touch target, and
   URL/deep-link aware state when the tab changes content.
   Avoid mixing this with plain text tabs or underline tabs at the same hierarchy.
+  The People hub type selector (Tenants, Owners, Vendors, Prospects) uses the
+  same brand-active pill treatment with explicit count text; show `0` for known
+  empty tabs and reserve the dash only for loading or unknown counts.
   Use larger segmented cards only for workspace mode switches that need
   descriptions/counts; use plain/underline tabs only for lower-level filters or
   dense table sub-tabs.

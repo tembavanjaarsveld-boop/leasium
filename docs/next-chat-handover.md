@@ -54,6 +54,8 @@ review and approve before anything is committed.
 - Record-level tabs are standardised on the shared compact pill rail across
   Property detail and People record headers, with active tabs using Relby blue
   plus the teal logo-dot accent.
+- People hub type tabs now use the same Relby blue active pill treatment, and
+  Prospects shows a known-empty `0` count instead of a dash.
 - Tenant billing schedule uses the saved-setup progressive disclosure rule:
   existing schedule lines stay visible, the editor collapses behind Add line,
   and Delete tenant sits in a bottom danger zone.
