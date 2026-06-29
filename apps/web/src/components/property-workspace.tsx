@@ -62,6 +62,7 @@ import {
 import { InlineEditCell } from "@/components/inline-edit-cell";
 import { PropertyEntityReassignDrawer } from "@/components/property-entity-reassign";
 import { QueryProvider } from "@/components/query-provider";
+import { RecordTabs } from "@/components/record-tabs";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { defaultEntitySelection } from "@/lib/entity-selection";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
@@ -8243,32 +8244,12 @@ function PropertyDetailOverview({
         </Button>
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Property detail sections"
-        className="inline-flex w-fit flex-wrap items-center gap-0.5 rounded-full border border-border bg-white p-0.5 text-[12px] font-medium shadow-leasiumXs"
-      >
-        {propertyDetailTabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => onTabChange(tab.id)}
-              className={cn(
-                "inline-flex min-h-9 items-center rounded-full px-[14px] transition",
-                isActive
-                  ? "bg-leasium-navy-800 text-white"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <RecordTabs
+        tabs={propertyDetailTabs}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+        ariaLabel="Property detail sections"
+      />
 
       {activeTab === "overview" || activeTab === "activity" ? (
         <>

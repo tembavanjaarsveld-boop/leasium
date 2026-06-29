@@ -182,6 +182,46 @@ test("desktop selected property opens on the Horizon detail frame", async ({
   await expect(page.getByRole("table").first()).toBeHidden();
 });
 
+test("property and tenant records use the same compact pill tab standard", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+
+  const propertyTabs = page.locator(
+    '[data-ui="record-tabs"][aria-label="Property detail sections"]',
+  );
+  await expect(propertyTabs).toBeVisible();
+  await expect(propertyTabs).toHaveClass(/rounded-full/);
+  const activePropertyTab = propertyTabs.getByRole("tab", {
+    name: "Overview",
+  });
+  await expect(activePropertyTab).toHaveAttribute("data-state", "active");
+  await expect(activePropertyTab).toHaveClass(/rounded-full/);
+  await expectTouchTarget(activePropertyTab);
+
+  await page.goto("/tenants/tenant-1?tab=lease-billing");
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
+
+  const tenantTabs = page.locator(
+    '[data-ui="record-tabs"][aria-label="Tenant record sections"]',
+  );
+  await expect(tenantTabs).toBeVisible();
+  await expect(tenantTabs).toHaveClass(/rounded-full/);
+  const activeTenantTab = tenantTabs.getByRole("tab", {
+    name: "Lease & Billing",
+  });
+  await expect(activeTenantTab).toHaveAttribute("data-state", "active");
+  await expect(activeTenantTab).toHaveClass(/rounded-full/);
+  await expectTouchTarget(activeTenantTab);
+});
+
 test("lease attention update errors stay with the attention rows", async ({
   page,
 }) => {

@@ -1,6 +1,6 @@
 # Relby Next Chat Handover
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 Generated from Obsidian: `/Users/tembavanjaarsveld/Documents/Temba OS/10_Projects/Relby`
 Generator: `scripts/generate_obsidian_handover.py`
@@ -49,6 +49,10 @@ review and approve before anything is committed.
 - People Owners all-entities fan-out is shipped.
 - Lease Attention error placement and unit-orphan prevention are shipped.
 - Properties calendar removal and map address-only fallback are shipped.
+- Tenant record Lease & Billing invoice setup is shipped as the first-time
+  tenant invoice setup home.
+- Record-level tabs are standardised on the shared compact pill rail across
+  Property detail and People record headers.
 - Switcher-removal cleanup state is reconciled; old all-mode gap lists are
   historical unless a fresh scoped bug is opened.
 - Customisable reporting v1 is scoped as Saved Report Views under Insights,
@@ -138,6 +142,10 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Recent Feature Commits
 
+- `c611773` Add tenant lease billing setup
+- `0e418f9` Add charge rule invoice dates
+- `34a20d4` Record Relby current-platform Figma cleanup
+- `e124c57` Refresh Relby R5 handover
 - `57887c2` Add Relby R5 record grammar draft
 - `43a93cf` Refresh Relby UX draft handover
 - `f99f2a3` Document Relby Figma UX drafts
@@ -146,10 +154,6 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 - `a457b38` Refresh Obsidian handover mirror
 - `991c6bc` Add Obsidian handover mirror
 - `a34696c` Stabilize Relby smoke handoffs
-- `96cb298` Guard Smart Intake property duplicates
-- `c0ca8a5` Add Smart Intake tenant setup path
-- `4cbde98` Infer tenant emails from Smart Intake contact text
-- `379db21` Fix Workflows queue entity scope
 
 ## Next Actions Now
 

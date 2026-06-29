@@ -3,6 +3,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { PageTitle } from "@/components/ui";
+import {
+  RecordTabs,
+  type RecordTab,
+} from "@/components/record-tabs";
 import { cn } from "@/lib/utils";
 
 export const peopleRecordTabs = [
@@ -14,10 +18,7 @@ export const peopleRecordTabs = [
   { id: "activity", label: "Activity" },
 ] as const;
 
-export type PeopleRecordTab = {
-  id: string;
-  label: string;
-};
+export type PeopleRecordTab = RecordTab;
 
 export function PeopleRecordLayout({
   backHref,
@@ -72,43 +73,12 @@ export function PeopleRecordLayout({
           ) : null}
         </div>
 
-        <nav
-          aria-label={tabAriaLabel}
-          role={onTabChange ? "tablist" : undefined}
-          className="flex gap-2 overflow-x-auto border-y border-border py-2"
-        >
-          {tabsToRender.map((tab, index) => {
-            const selected = activeTab ? activeTab === tab.id : index === 0;
-            const className = cn(
-                "inline-flex min-h-11 shrink-0 items-center rounded-xl px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
-              selected
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            );
-
-            if (onTabChange) {
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  aria-controls={`${tab.id}-panel`}
-                  className={className}
-                  onClick={() => onTabChange(tab.id)}
-            >
-              {tab.label}
-                </button>
-              );
-            }
-
-            return (
-              <a key={tab.id} href={`#${tab.id}`} className={className}>
-                {tab.label}
-            </a>
-            );
-          })}
-        </nav>
+        <RecordTabs
+          tabs={tabsToRender}
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          ariaLabel={tabAriaLabel}
+        />
 
         {summary}
       </section>

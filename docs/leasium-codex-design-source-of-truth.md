@@ -1348,6 +1348,14 @@ Primary hub count is 7; Settings remains visible as the utility destination.
   snapshot and Work follow-up queues, not a new top-level Compliance nav item.
 - New human/relationship surfaces live under People, not as new top-level items (§10.5.1 cap).
 - Use global search / command palette with `Cmd+K` or `Ctrl+K`.
+- **Record-level tabs use the compact pill rail.** Property, Tenant, Owner,
+  Vendor, and future relationship records should use the shared `RecordTabs`
+  primitive: rounded-full rail, active filled pill, quiet inactive pill-buttons,
+  44px touch target, and URL/deep-link aware state when the tab changes content.
+  Avoid mixing this with plain text tabs or underline tabs at the same hierarchy.
+  Use larger segmented cards only for workspace mode switches that need
+  descriptions/counts; use plain/underline tabs only for lower-level filters or
+  dense table sub-tabs.
 - **Settings uses a two-pane workspace, not a flat dump.** Keep Settings simple
   for non-technical operators: the primary app sidebar stays left, Settings
   opens a middle category pane, and the selected category opens as the

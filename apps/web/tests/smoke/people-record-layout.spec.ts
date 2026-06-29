@@ -56,6 +56,14 @@ const recordTabs = [
   { id: "activity", label: "Activity" },
 ];
 
+const tenantRecordTabs = [
+  { id: "overview", label: "Overview" },
+  { id: "lease-billing", label: "Lease & Billing" },
+  { id: "portal", label: "Portal" },
+  { id: "documents", label: "Documents" },
+  { id: "activity", label: "Activity" },
+];
+
 function expectTouchTarget(box: { width: number; height: number } | null) {
   expect(box).not.toBeNull();
   expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -93,10 +101,6 @@ test.beforeEach(async ({ page }) => {
 test.describe("people record layout", () => {
   for (const record of [
     {
-      path: "/tenants/tenant-1",
-      heading: "Bright Cafe Pty Ltd",
-    },
-    {
       path: "/owners/owner-1",
       heading: "SKJ Holdings Pty Ltd",
     },
@@ -118,6 +122,8 @@ test.describe("people record layout", () => {
         name: "People record sections",
       });
       await expect(sectionsNav).toBeVisible();
+      await expect(sectionsNav).toHaveAttribute("data-ui", "record-tabs");
+      await expect(sectionsNav).toHaveClass(/rounded-full/);
       await expect(sectionsNav.getByRole("link")).toHaveText(
         recordTabs.map((tab) => tab.label),
       );
@@ -130,6 +136,33 @@ test.describe("people record layout", () => {
       }
     });
   }
+
+  test("/tenants/tenant-1 exposes tenant record tabs", async ({ page }) => {
+    await page.goto("/tenants/tenant-1?tab=lease-billing");
+
+    await expect(
+      page.getByRole("heading", { name: "Bright Cafe Pty Ltd" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const sectionsTabs = page.getByRole("tablist", {
+      name: "Tenant record sections",
+    });
+    await expect(sectionsTabs).toBeVisible();
+    await expect(sectionsTabs).toHaveAttribute("data-ui", "record-tabs");
+    await expect(sectionsTabs).toHaveClass(/rounded-full/);
+    await expect(sectionsTabs.getByRole("tab")).toHaveText(
+      tenantRecordTabs.map((tab) => tab.label),
+    );
+
+    for (const tab of tenantRecordTabs) {
+      await expect(
+        sectionsTabs.getByRole("tab", { name: tab.label }),
+      ).toHaveAttribute("aria-controls", `${tab.id}-panel`);
+    }
+    await expect(
+      sectionsTabs.getByRole("tab", { name: "Lease & Billing" }),
+    ).toHaveAttribute("data-state", "active");
+  });
 
   test("vendor detail recovers from a stale selected entity", async ({
     page,
