@@ -14,6 +14,11 @@ export const peopleRecordTabs = [
   { id: "activity", label: "Activity" },
 ] as const;
 
+export type PeopleRecordTab = {
+  id: string;
+  label: string;
+};
+
 export function PeopleRecordLayout({
   backHref,
   backLabel,
@@ -23,6 +28,10 @@ export function PeopleRecordLayout({
   summary,
   children,
   className,
+  tabs,
+  activeTab,
+  onTabChange,
+  tabAriaLabel = "People record sections",
 }: {
   backHref: string;
   backLabel: string;
@@ -32,7 +41,13 @@ export function PeopleRecordLayout({
   summary?: ReactNode;
   children: ReactNode;
   className?: string;
+  tabs?: readonly PeopleRecordTab[];
+  activeTab?: string;
+  onTabChange?: (tabId: string) => void;
+  tabAriaLabel?: string;
 }) {
+  const tabsToRender = tabs ?? peopleRecordTabs;
+
   return (
     <div className={cn("grid gap-5", className)}>
       <section className="grid gap-4">
@@ -58,23 +73,41 @@ export function PeopleRecordLayout({
         </div>
 
         <nav
-          aria-label="People record sections"
+          aria-label={tabAriaLabel}
+          role={onTabChange ? "tablist" : undefined}
           className="flex gap-2 overflow-x-auto border-y border-border py-2"
         >
-          {peopleRecordTabs.map((tab, index) => (
-            <a
-              key={tab.id}
-              href={`#${tab.id}`}
-              className={cn(
+          {tabsToRender.map((tab, index) => {
+            const selected = activeTab ? activeTab === tab.id : index === 0;
+            const className = cn(
                 "inline-flex min-h-11 shrink-0 items-center rounded-xl px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2",
-                index === 0
+              selected
                   ? "bg-foreground text-background"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
+            );
+
+            if (onTabChange) {
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={`${tab.id}-panel`}
+                  className={className}
+                  onClick={() => onTabChange(tab.id)}
             >
               {tab.label}
+                </button>
+              );
+            }
+
+            return (
+              <a key={tab.id} href={`#${tab.id}`} className={className}>
+                {tab.label}
             </a>
-          ))}
+            );
+          })}
         </nav>
 
         {summary}

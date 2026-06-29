@@ -27,7 +27,7 @@ import {
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-shell";
@@ -38,7 +38,10 @@ import {
   type EvidenceSourceDocument,
   type EvidenceSourceLocation,
 } from "@/components/evidence-drawer";
-import { PeopleRecordLayout } from "@/components/people-record-layout";
+import {
+  PeopleRecordLayout,
+  type PeopleRecordTab,
+} from "@/components/people-record-layout";
 import { QueryProvider } from "@/components/query-provider";
 import {
   Button,
@@ -58,9 +61,13 @@ import {
   ApiError,
   cancelTenantOnboarding,
   applyTenantOnboarding,
+  ChargeRulePayload,
+  ChargeRuleRecord,
+  createChargeRule,
   createDocumentIntakeFromDocument,
   createMigratedTenantOnboarding,
   createTenantOnboarding,
+  deleteChargeRule,
   deleteDocument,
   deleteTenant,
   dismissTenantContactChangeRequest,
@@ -71,6 +78,7 @@ import {
   getTenantCommsCorrespondence,
   getTenant,
   getTenantDetail,
+  listChargeRules,
   listDocumentIntakes,
   listDocuments,
   listLeasesByTenant,
@@ -119,6 +127,100 @@ type TenantForm = {
   billing_email: string;
   notes: string;
 };
+
+type TenantRecordTabId =
+  | "overview"
+  | "lease-billing"
+  | "portal"
+  | "documents"
+  | "activity";
+
+const tenantRecordTabs: readonly PeopleRecordTab[] = [
+  { id: "overview", label: "Overview" },
+  { id: "lease-billing", label: "Lease & Billing" },
+  { id: "portal", label: "Portal" },
+  { id: "documents", label: "Documents" },
+  { id: "activity", label: "Activity" },
+];
+
+function tenantRecordTabFromParam(value: string | null): TenantRecordTabId {
+  return tenantRecordTabs.some((tab) => tab.id === value)
+    ? (value as TenantRecordTabId)
+    : "overview";
+}
+
+type TenantChargeRuleForm = {
+  charge_type: string;
+  amount: string;
+  frequency: "annual" | "monthly" | "weekly";
+  gst_treatment: "taxable" | "gst_free" | "input_taxed" | "out_of_scope";
+  start_date: string;
+  end_date: string;
+  next_invoice_date: string;
+  next_due_date: string;
+  xero_account_code: string;
+  xero_tax_type: string;
+};
+
+const defaultTenantChargeRuleForm: TenantChargeRuleForm = {
+  charge_type: "base_rent",
+  amount: "",
+  frequency: "monthly",
+  gst_treatment: "taxable",
+  start_date: "",
+  end_date: "",
+  next_invoice_date: "",
+  next_due_date: "",
+  xero_account_code: "",
+  xero_tax_type: "",
+};
+
+const chargeTypes = [
+  { value: "base_rent", label: "Base rent" },
+  { value: "outgoings", label: "Outgoings" },
+  { value: "promotion_levy", label: "Promotion levy" },
+  { value: "utilities", label: "Utilities / solar" },
+  { value: "parking", label: "Parking" },
+  { value: "storage", label: "Storage" },
+  { value: "other", label: "Other" },
+] as const;
+
+const rentFrequencies = [
+  { value: "monthly", label: "Monthly" },
+  { value: "annual", label: "Annual" },
+  { value: "weekly", label: "Weekly" },
+] as const;
+
+const gstTreatments = [
+  { value: "taxable", label: "Taxable" },
+  { value: "gst_free", label: "GST free" },
+  { value: "input_taxed", label: "Input taxed" },
+  { value: "out_of_scope", label: "Out of scope" },
+] as const;
+
+function chargeTypeLabel(value: string) {
+  return (
+    chargeTypes.find((type) => type.value === value)?.label ??
+    value.replaceAll("_", " ")
+  );
+}
+
+function frequencyLabel(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+  return (
+    rentFrequencies.find((frequency) => frequency.value === value)?.label ??
+    value.replaceAll("_", " ")
+  );
+}
+
+function chargeAmountCents(value: string) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0
+    ? Math.round(amount * 100)
+    : null;
+}
 
 function formFromTenant(tenant: TenantRecord): TenantForm {
   return {
@@ -448,9 +550,7 @@ function isMigratedOnboarding(item: TenantOnboardingRecord | null | undefined) {
   return isRecord(reviewData) && reviewData.origin === "migration";
 }
 
-function esignReceipt(
-  deliveryData: TenantOnboardingRecord["delivery_data"],
-) {
+function esignReceipt(deliveryData: TenantOnboardingRecord["delivery_data"]) {
   const receipt = deliveryData.lease_pack?.esign;
   return isRecord(receipt) ? receipt : null;
 }
@@ -576,7 +676,7 @@ function leaseSigningStatus({
             ? "Signing request declined."
             : status === "voided"
               ? "Signing request voided."
-              : error ?? "Signing request could not be completed.",
+              : (error ?? "Signing request could not be completed."),
         tone: "danger" as const,
         envelopeId,
         signedDocumentId,
@@ -1052,7 +1152,10 @@ function correspondenceTargetLink(
       label: "Open tenant",
     };
   }
-  if (event.target_kind === "tenant_onboarding" || event.target_kind === "lease") {
+  if (
+    event.target_kind === "tenant_onboarding" ||
+    event.target_kind === "lease"
+  ) {
     return { href: `/tenants/${tenantId}`, label: "Open tenant workflow" };
   }
   if (event.target_kind === "obligation") {
@@ -1203,7 +1306,7 @@ function tenantInsuranceSummary(
   const intakeId = metadataString(metadata.insurance_document_intake_id);
   const updatedAt = metadataString(metadata.insurance_auto_updated_at);
   const document = documentId
-    ? documents.find((item) => item.id === documentId) ?? null
+    ? (documents.find((item) => item.id === documentId) ?? null)
     : null;
   const intake =
     (document ? intakeByDocumentId.get(document.id) : undefined) ??
@@ -1219,7 +1322,11 @@ function tenantInsuranceSummary(
     document,
     intake,
     updatedAt,
-    sourceLabel: intake ? "Smart Intake" : document ? "Tenant document" : "Tenant profile",
+    sourceLabel: intake
+      ? "Smart Intake"
+      : document
+        ? "Tenant document"
+        : "Tenant profile",
     statusText: confirmed
       ? expiryDate
         ? `Confirmed until ${formatDate(expiryDate)}`
@@ -1584,10 +1691,20 @@ function tenantEvidenceHistoryRows(
 function TenantDetail() {
   const params = useParams<{ tenantId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const tenantId = params.tenantId;
   const queryClient = useQueryClient();
+  const activeTenantTab = tenantRecordTabFromParam(searchParams.get("tab"));
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<TenantForm | null>(null);
+  const [selectedBillingLeaseId, setSelectedBillingLeaseId] = useState("");
+  const [chargeRuleForm, setChargeRuleForm] = useState<TenantChargeRuleForm>(
+    defaultTenantChargeRuleForm,
+  );
+  const [chargeRuleNotice, setChargeRuleNotice] = useState<string | null>(null);
+  const [chargeRuleValidationError, setChargeRuleValidationError] = useState<
+    string | null
+  >(null);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const documentFileInputRef = useRef<HTMLInputElement>(null);
   const [documentCategory, setDocumentCategory] =
@@ -1842,6 +1959,41 @@ function TenantDetail() {
     const intake = intakeByDocumentId.get(document.id);
     return intake && !["applied", "dismissed"].includes(intake.status);
   }).length;
+  const preferredBillingLease =
+    linkedLeases.find(
+      (lease) => lease.status === "active" || lease.status === "holding_over",
+    ) ??
+    linkedLeases[0] ??
+    null;
+  const billingLeaseId =
+    selectedBillingLeaseId || preferredBillingLease?.lease_id || "";
+  const selectedBillingLease =
+    linkedLeases.find((lease) => lease.lease_id === billingLeaseId) ??
+    preferredBillingLease;
+
+  const chargeRulesQuery = useQuery({
+    queryKey: ["tenant-charge-rules", tenantId, billingLeaseId],
+    queryFn: () => listChargeRules({ lease_id: billingLeaseId }),
+    enabled: Boolean(tenantId && billingLeaseId),
+  });
+  const billingChargeRules = chargeRulesQuery.data ?? [];
+  const duplicateChargeType = billingChargeRules.some(
+    (rule) => rule.charge_type === chargeRuleForm.charge_type,
+  );
+
+  useEffect(() => {
+    if (!billingLeaseId) {
+      return;
+    }
+    const today = dateOnly(new Date());
+    const leaseStart = selectedBillingLease?.commencement_date ?? "";
+    setChargeRuleForm((current) => ({
+      ...current,
+      start_date: current.start_date || leaseStart,
+      next_invoice_date: current.next_invoice_date || today,
+      next_due_date: current.next_due_date || leaseStart || today,
+    }));
+  }, [billingLeaseId, selectedBillingLease?.commencement_date]);
 
   const updateMutation = useMutation({
     mutationFn: (values: TenantForm) => {
@@ -1862,6 +2014,58 @@ function TenantDetail() {
       queryClient.invalidateQueries({ queryKey: ["tenant-detail", tenantId] });
       queryClient.invalidateQueries({ queryKey: ["tenants"] });
       setEditing(false);
+    },
+  });
+
+  const createChargeRuleMutation = useMutation({
+    mutationFn: (payload: ChargeRulePayload) => createChargeRule(payload),
+    onMutate: () => {
+      setChargeRuleNotice(null);
+      setChargeRuleValidationError(null);
+    },
+    onSuccess: (_rule, payload) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-charge-rules", tenantId, payload.lease_id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["charge-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll"] });
+      setChargeRuleNotice(
+        `Added ${chargeTypeLabel(payload.charge_type)} - ${formatMoney(
+          payload.amount_cents,
+        )} ${frequencyLabel(payload.frequency)}, active from ${formatDate(
+          payload.start_date,
+        )}${
+          payload.end_date
+            ? ` to ${formatDate(payload.end_date)}`
+            : " until lease end"
+        }.`,
+      );
+      setChargeRuleForm((current) => ({
+        ...current,
+        amount: "",
+        xero_account_code: "",
+        xero_tax_type: "",
+      }));
+    },
+  });
+
+  const deleteChargeRuleMutation = useMutation({
+    mutationFn: (rule: ChargeRuleRecord) => deleteChargeRule(rule.id),
+    onMutate: () => {
+      setChargeRuleNotice(null);
+      setChargeRuleValidationError(null);
+    },
+    onSuccess: (_result, rule) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tenant-charge-rules", tenantId, rule.lease_id],
+      });
+      queryClient.invalidateQueries({ queryKey: ["charge-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["rent-roll"] });
+      setChargeRuleNotice(
+        `Removed ${chargeTypeLabel(rule.charge_type)} - ${formatMoney(
+          rule.amount_cents,
+        )}.`,
+      );
     },
   });
 
@@ -2237,8 +2441,26 @@ function TenantDetail() {
     setEditing(true);
   }
 
+  function setTenantRecordTab(tabId: string) {
+    const nextTab = tenantRecordTabFromParam(tabId);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("tab", nextTab);
+    router.replace(
+      `/tenants/${encodeURIComponent(tenantId)}?${nextParams.toString()}`,
+      { scroll: false },
+    );
+  }
+
   function updateField(field: keyof TenantForm, value: string) {
     setForm((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function updateChargeRuleField<K extends keyof TenantChargeRuleForm>(
+    field: K,
+    value: TenantChargeRuleForm[K],
+  ) {
+    setChargeRuleForm((current) => ({ ...current, [field]: value }));
+    setChargeRuleValidationError(null);
   }
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
@@ -2247,6 +2469,56 @@ function TenantDetail() {
       return;
     }
     updateMutation.mutate(form);
+  }
+
+  function submitChargeRule(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const startDate =
+      chargeRuleForm.start_date ||
+      selectedBillingLease?.commencement_date ||
+      "";
+    const nextInvoiceDate =
+      chargeRuleForm.next_invoice_date || dateOnly(new Date());
+    const nextDueDate = chargeRuleForm.next_due_date || startDate;
+    const amountCents = chargeAmountCents(chargeRuleForm.amount);
+
+    if (!billingLeaseId) {
+      setChargeRuleValidationError("Select a lease before adding a charge.");
+      return;
+    }
+    if (amountCents === null) {
+      setChargeRuleValidationError("Enter a valid charge amount.");
+      return;
+    }
+    if (!startDate || !nextInvoiceDate || !nextDueDate) {
+      setChargeRuleValidationError(
+        "Confirm the start date, invoice sent date, and next due date.",
+      );
+      return;
+    }
+
+    const payload: ChargeRulePayload = {
+      lease_id: billingLeaseId,
+      charge_type: chargeRuleForm.charge_type,
+      amount_cents: amountCents,
+      frequency: chargeRuleForm.frequency,
+      gst_treatment: chargeRuleForm.gst_treatment,
+      xero_account_code: cleanText(chargeRuleForm.xero_account_code),
+      xero_tax_type: cleanText(chargeRuleForm.xero_tax_type),
+      start_date: startDate,
+      end_date: cleanText(chargeRuleForm.end_date),
+      next_invoice_date: nextInvoiceDate,
+      next_due_date: nextDueDate,
+      arrears_or_advance: "advance",
+      metadata: {
+        billing_schedule_owner: "lease",
+        tenant_record_setup: true,
+        tenant_facing: true,
+        property_informed: true,
+      },
+    };
+
+    createChargeRuleMutation.mutate(payload);
   }
 
   function submitDocument(event: React.FormEvent<HTMLFormElement>) {
@@ -2396,6 +2668,10 @@ function TenantDetail() {
           backLabel="Tenants"
           title={tenantName(tenant)}
           description="Onboarding, leases, access, documents, and source history."
+          tabs={tenantRecordTabs}
+          activeTab={activeTenantTab}
+          onTabChange={setTenantRecordTab}
+          tabAriaLabel="Tenant record sections"
           actions={
             <SecondaryButton type="button" onClick={startEdit}>
               <Edit3 size={15} />
@@ -2607,13 +2883,17 @@ function TenantDetail() {
               <Field label="Notes">
                 <Input
                   value={form.notes}
-                  onChange={(event) => updateField("notes", event.target.value)}
+                    onChange={(event) =>
+                      updateField("notes", event.target.value)
+                    }
                 />
               </Field>
               <div className="md:col-span-2">
                 <Button
                   type="submit"
-                  disabled={!form.legal_name.trim() || updateMutation.isPending}
+                    disabled={
+                      !form.legal_name.trim() || updateMutation.isPending
+                    }
                 >
                   <Save size={16} />
                   Save profile
@@ -2628,12 +2908,22 @@ function TenantDetail() {
           </SectionPanel>
         ) : null}
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.85fr)]">
+          <section
+            id={`${activeTenantTab}-panel`}
+            role="tabpanel"
+            aria-label={
+              tenantRecordTabs.find((tab) => tab.id === activeTenantTab)?.label
+            }
+            className="grid gap-5"
+          >
           <div className="order-2 grid gap-5 lg:order-2">
-            <SectionPanel id="overview" title="Profile" icon={<UserRound size={17} />}>
+              {activeTenantTab === "overview" ? (
+                <SectionPanel title="Profile" icon={<UserRound size={17} />}>
               <dl className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <div>
-                  <dt className="text-xs text-muted-foreground">Legal name</dt>
+                      <dt className="text-xs text-muted-foreground">
+                        Legal name
+                      </dt>
                   <dd className="font-medium">{tenant.legal_name}</dd>
                 </div>
                 {tenantIsResidential ? null : (
@@ -2663,12 +2953,15 @@ function TenantDetail() {
                   <dt className="text-xs text-muted-foreground">
                     Billing email
                   </dt>
-                  <dd>{tenant.billing_email ?? tenant.contact_email ?? "-"}</dd>
+                      <dd>
+                        {tenant.billing_email ?? tenant.contact_email ?? "-"}
+                      </dd>
                 </div>
               </dl>
             </SectionPanel>
+              ) : null}
 
-            {insuranceSummary ? (
+              {activeTenantTab === "overview" && insuranceSummary ? (
               <SectionPanel
                 title="Insurance"
                 icon={<ShieldCheck size={17} />}
@@ -2717,7 +3010,9 @@ function TenantDetail() {
                         ) : null}
                         <a
                           className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
-                          href={documentDownloadUrl(insuranceSummary.document.id)}
+                            href={documentDownloadUrl(
+                              insuranceSummary.document.id,
+                            )}
                           aria-label={`Download ${insuranceSummary.document.filename}`}
                         >
                           <Download size={15} />
@@ -2729,7 +3024,8 @@ function TenantDetail() {
               </SectionPanel>
             ) : null}
 
-            {pendingContactRequests.length ? (
+              {activeTenantTab === "overview" &&
+              pendingContactRequests.length ? (
               <SectionPanel
                 title="Tenant requests"
                 icon={<MessageSquare size={17} />}
@@ -2784,7 +3080,9 @@ function TenantDetail() {
                         ) : null}
                         {dismissContactRequestMutation.error ? (
                           <span className="text-sm text-danger">
-                            {friendlyError(dismissContactRequestMutation.error)}
+                              {friendlyError(
+                                dismissContactRequestMutation.error,
+                              )}
                           </span>
                         ) : null}
                         <SecondaryButton
@@ -2838,6 +3136,7 @@ function TenantDetail() {
               </SectionPanel>
             ) : null}
 
+              {activeTenantTab === "portal" ? (
             <SectionPanel
               title="Portal access"
               icon={<ShieldCheck size={17} />}
@@ -2852,8 +3151,8 @@ function TenantDetail() {
                         Invite another portal login
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        For a co-tenant or second contact. Existing logins stay
-                        linked.
+                            For a co-tenant or second contact. Existing logins
+                            stay linked.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -2928,9 +3227,13 @@ function TenantDetail() {
                               type="button"
                               className="min-h-11 px-3"
                               onClick={() =>
-                                unlinkPortalAccountMutation.mutate(account.id)
+                                    unlinkPortalAccountMutation.mutate(
+                                      account.id,
+                                    )
+                                  }
+                                  disabled={
+                                    unlinkPortalAccountMutation.isPending
                               }
-                              disabled={unlinkPortalAccountMutation.isPending}
                             >
                               <Link2 size={15} />
                               Unlink
@@ -2939,9 +3242,13 @@ function TenantDetail() {
                               type="button"
                               className="min-h-11 border-danger/30 px-3 text-danger hover:bg-danger/5"
                               onClick={() =>
-                                revokePortalAccountMutation.mutate(account.id)
+                                    revokePortalAccountMutation.mutate(
+                                      account.id,
+                                    )
+                                  }
+                                  disabled={
+                                    revokePortalAccountMutation.isPending
                               }
-                              disabled={revokePortalAccountMutation.isPending}
                             >
                               <X size={15} />
                               Revoke
@@ -2953,9 +3260,13 @@ function TenantDetail() {
                               type="button"
                               className="min-h-11 px-3"
                               onClick={() =>
-                                restorePortalAccountMutation.mutate(account.id)
+                                    restorePortalAccountMutation.mutate(
+                                      account.id,
+                                    )
+                                  }
+                                  disabled={
+                                    restorePortalAccountMutation.isPending
                               }
-                              disabled={restorePortalAccountMutation.isPending}
                             >
                               <Check size={15} />
                               Restore
@@ -3040,9 +3351,10 @@ function TenantDetail() {
                 ) : null}
               </div>
             </SectionPanel>
+              ) : null}
 
+              {activeTenantTab === "overview" ? (
             <SectionPanel
-              id="notes"
               title="Public facts"
               icon={<Sparkles size={17} />}
               actions={
@@ -3105,8 +3417,8 @@ function TenantDetail() {
                   </>
                 ) : (
                   <div className="text-muted-foreground">
-                    Missing public fields like ABN or registered address can be
-                    suggested with citations before applying.
+                        Missing public fields like ABN or registered address can
+                        be suggested with citations before applying.
                   </div>
                 )}
                 {previewEnrichmentMutation.error ||
@@ -3120,8 +3432,10 @@ function TenantDetail() {
                 ) : null}
               </div>
             </SectionPanel>
+              ) : null}
 
-            <SectionPanel id="files" title="Documents" icon={<FileText size={17} />}>
+              {activeTenantTab === "documents" ? (
+                <SectionPanel title="Documents" icon={<FileText size={17} />}>
               <form
                 className="grid gap-3 border-b border-border p-4"
                 onSubmit={submitDocument}
@@ -3167,14 +3481,18 @@ function TenantDetail() {
                   <Field label="Notes">
                     <Input
                       value={documentNotes}
-                      onChange={(event) => setDocumentNotes(event.target.value)}
+                          onChange={(event) =>
+                            setDocumentNotes(event.target.value)
+                          }
                       placeholder="Optional"
                     />
                   </Field>
                 </div>
                 <Button
                   type="submit"
-                  disabled={!documentFile || uploadDocumentMutation.isPending}
+                      disabled={
+                        !documentFile || uploadDocumentMutation.isPending
+                      }
                 >
                   <UploadCloud size={16} />
                   Upload document
@@ -3192,7 +3510,10 @@ function TenantDetail() {
                   const reviewId = promotedIntakeId(document, intake);
                   const matchLabel = tenantUploadMatchLabel(document);
                   return (
-                    <div key={document.id} className="grid gap-3 p-4 text-sm">
+                        <div
+                          key={document.id}
+                          className="grid gap-3 p-4 text-sm"
+                        >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -3200,7 +3521,10 @@ function TenantDetail() {
                               {document.filename}
                             </div>
                             <StatusBadge
-                              tone={documentReviewStatusTone(document, intake)}
+                                  tone={documentReviewStatusTone(
+                                    document,
+                                    intake,
+                                  )}
                             >
                               {documentReviewStatusLabel(document, intake)}
                             </StatusBadge>
@@ -3216,7 +3540,9 @@ function TenantDetail() {
                             </span>
                             <span>{formatBytes(document.byte_size)}</span>
                             <span>{formatDate(document.created_at)}</span>
-                            <span>Source: {documentSourceLabel(document)}</span>
+                                <span>
+                                  Source: {documentSourceLabel(document)}
+                                </span>
                             {intake?.document_type ? (
                               <span>
                                 {documentTypeLabel(intake.document_type)}
@@ -3224,7 +3550,10 @@ function TenantDetail() {
                             ) : null}
                           </div>
                           <div className="mt-2 text-xs text-muted-foreground">
-                            {intakeProvenanceNote(intake, document.metadata)}
+                                {intakeProvenanceNote(
+                                  intake,
+                                  document.metadata,
+                                )}
                           </div>
                           {document.notes ? (
                             <div className="mt-2 text-xs text-muted-foreground">
@@ -3291,7 +3620,9 @@ function TenantDetail() {
                       <div className="flex flex-wrap justify-center gap-2">
                         <Button
                           type="button"
-                          onClick={() => documentFileInputRef.current?.click()}
+                              onClick={() =>
+                                documentFileInputRef.current?.click()
+                              }
                         >
                           <UploadCloud size={16} />
                           Upload document
@@ -3309,11 +3640,360 @@ function TenantDetail() {
                 ) : null}
               </div>
             </SectionPanel>
+              ) : null}
           </div>
 
           <div className="order-1 grid gap-5 lg:order-1">
+              {activeTenantTab === "lease-billing" ? (
+                <>
+                  <SectionPanel
+                    title="Lease & Billing"
+                    icon={<Link2 size={17} />}
+                    description="Tenant invoice setup is tied to the lease, with property context carried through for rent, outgoings, and extras."
+                  >
+                    <div className="grid gap-4 p-4 text-sm sm:grid-cols-3">
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          Billing email
+                        </div>
+                        <div className="mt-1 font-medium">
+                          {tenant.billing_email ?? tenant.contact_email ?? "-"}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          Active lease
+                        </div>
+                        <div className="mt-1 font-medium">
+                          {selectedBillingLease
+                            ? `${selectedBillingLease.property_name} - ${selectedBillingLease.unit_label}`
+                            : "No lease linked"}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                        <div className="text-xs font-semibold uppercase text-muted-foreground">
+                          Rent
+                        </div>
+                        <div className="mt-1 font-medium">
+                          {selectedBillingLease
+                            ? formatMoney(
+                                selectedBillingLease.annual_rent_cents,
+                              )
+                            : "-"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                      Rent increases use a future-dated base rent line.
+                      Outgoings, utilities, solar, parking, and one-off extras
+                      can be added as separate schedule lines when they apply.
+                    </div>
+                  </SectionPanel>
+
+                  <SectionPanel
+                    title="Billing schedule"
+                    icon={<CalendarClock size={17} />}
+                    description="Recurring tenant invoice lines for this lease."
+                  >
+                    <form
+                      className="grid gap-3 border-b border-border p-4"
+                      onSubmit={submitChargeRule}
+                    >
+                      <Field label="Lease">
+                        <Select
+                          value={billingLeaseId}
+                          onChange={(event) => {
+                            setSelectedBillingLeaseId(event.target.value);
+                            setChargeRuleNotice(null);
+                            setChargeRuleValidationError(null);
+                          }}
+                          disabled={!linkedLeases.length}
+                        >
+                          <option value="">
+                            {linkedLeases.length
+                              ? "Select lease"
+                              : "No lease linked"}
+                          </option>
+                          {linkedLeases.map((lease) => (
+                            <option key={lease.lease_id} value={lease.lease_id}>
+                              {lease.property_name} - {lease.unit_label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Type">
+                          <Select
+                            value={chargeRuleForm.charge_type}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "charge_type",
+                                event.target.value,
+                              )
+                            }
+                          >
+                            {chargeTypes.map((type) => (
+                              <option key={type.value} value={type.value}>
+                                {type.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Amount">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={chargeRuleForm.amount}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "amount",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      {duplicateChargeType ? (
+                        <p className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2.5 py-2 text-xs text-warning">
+                          <AlertTriangle
+                            size={14}
+                            className="mt-0.5 shrink-0"
+                          />
+                          This lease already has a{" "}
+                          {chargeTypeLabel(chargeRuleForm.charge_type)} line. A
+                          new line will stack unless the dates replace the old
+                          period.
+                        </p>
+                      ) : null}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Frequency">
+                          <Select
+                            value={chargeRuleForm.frequency}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "frequency",
+                                event.target
+                                  .value as TenantChargeRuleForm["frequency"],
+                              )
+                            }
+                          >
+                            {rentFrequencies.map((frequency) => (
+                              <option
+                                key={frequency.value}
+                                value={frequency.value}
+                              >
+                                {frequency.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="GST">
+                          <Select
+                            value={chargeRuleForm.gst_treatment}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "gst_treatment",
+                                event.target
+                                  .value as TenantChargeRuleForm["gst_treatment"],
+                              )
+                            }
+                          >
+                            {gstTreatments.map((treatment) => (
+                              <option
+                                key={treatment.value}
+                                value={treatment.value}
+                              >
+                                {treatment.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Starts">
+                          <Input
+                            type="date"
+                            value={chargeRuleForm.start_date}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "start_date",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Ends">
+                          <Input
+                            type="date"
+                            value={chargeRuleForm.end_date}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "end_date",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Invoice sent">
+                          <Input
+                            type="date"
+                            value={chargeRuleForm.next_invoice_date}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "next_invoice_date",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Next due">
+                          <Input
+                            type="date"
+                            value={chargeRuleForm.next_due_date}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "next_due_date",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Xero account">
+                          <Input
+                            placeholder="200"
+                            value={chargeRuleForm.xero_account_code}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "xero_account_code",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                        <Field label="Tax type">
+                          <Input
+                            placeholder="OUTPUT"
+                            value={chargeRuleForm.xero_tax_type}
+                            onChange={(event) =>
+                              updateChargeRuleField(
+                                "xero_tax_type",
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <Button
+                        type="submit"
+                        disabled={
+                          !billingLeaseId ||
+                          chargeRulesQuery.isLoading ||
+                          createChargeRuleMutation.isPending
+                        }
+                      >
+                        {createChargeRuleMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Plus size={16} />
+                        )}
+                        Add schedule line
+                      </Button>
+                      {chargeRuleNotice ? (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-medium text-primary"
+                        >
+                          {chargeRuleNotice}
+                        </div>
+                      ) : null}
+                      {chargeRuleValidationError ||
+                      createChargeRuleMutation.error ||
+                      chargeRulesQuery.error ? (
+                        <p className="text-sm text-danger">
+                          {chargeRuleValidationError ??
+                            friendlyError(
+                              createChargeRuleMutation.error ??
+                                chargeRulesQuery.error,
+                            )}
+                        </p>
+                      ) : null}
+                    </form>
+
+                    <div className="grid gap-2 p-4">
+                      {chargeRulesQuery.isLoading ? (
+                        <SkeletonRows rows={2} />
+                      ) : null}
+                      {!chargeRulesQuery.isLoading &&
+                      billingChargeRules.length ? (
+                        <ul className="grid gap-2">
+                          {billingChargeRules.map((rule) => (
+                            <li
+                              key={rule.id}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-white px-3 py-2 text-sm"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-medium">
+                                  {chargeTypeLabel(rule.charge_type)} -{" "}
+                                  {formatMoney(rule.amount_cents)}
+                                  {rule.frequency
+                                    ? ` ${frequencyLabel(rule.frequency)}`
+                                    : ""}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  Active {formatDate(rule.start_date)}
+                                  {rule.end_date
+                                    ? ` to ${formatDate(rule.end_date)}`
+                                    : " until lease end"}{" "}
+                                  - Invoice sent{" "}
+                                  {formatDate(rule.next_invoice_date)}
+                                  {" - "}Next due{" "}
+                                  {formatDate(rule.next_due_date)}
+                                </div>
+                              </div>
+                              <SecondaryButton
+                                type="button"
+                                aria-label={`Delete ${chargeTypeLabel(
+                                  rule.charge_type,
+                                )} charge`}
+                                onClick={() =>
+                                  deleteChargeRuleMutation.mutate(rule)
+                                }
+                                disabled={deleteChargeRuleMutation.isPending}
+                                className="h-11 w-11 shrink-0 px-0 text-danger"
+                              >
+                                {deleteChargeRuleMutation.isPending ? (
+                                  <Loader2 size={15} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={15} />
+                                )}
+                              </SecondaryButton>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {!chargeRulesQuery.isLoading &&
+                      !billingChargeRules.length ? (
+                        <EmptyState
+                          icon={<CalendarClock size={18} />}
+                          title="No billing schedule yet"
+                          description="Add base rent, outgoings, utilities, solar, or other tenant charge lines for this lease."
+                        />
+                      ) : null}
+                      {deleteChargeRuleMutation.error ? (
+                        <p className="text-sm text-danger">
+                          {friendlyError(deleteChargeRuleMutation.error)}
+                        </p>
+                      ) : null}
+                    </div>
+                  </SectionPanel>
+
             <SectionPanel
-              id="tasks"
               title="Onboarding workflow"
               icon={<ShieldCheck size={17} />}
             >
@@ -3328,7 +4008,8 @@ function TenantDetail() {
                   const onboardingDocuments = (
                     documentsQuery.data ?? []
                   ).filter(
-                    (document) => document.tenant_onboarding_id === item.id,
+                          (document) =>
+                            document.tenant_onboarding_id === item.id,
                   );
                   const leaseDocuments = onboardingDocuments.filter(
                     (document) => document.category === "lease",
@@ -3352,9 +4033,13 @@ function TenantDetail() {
                     leasePackSent &&
                     latestLeaseDocument &&
                     signingStatus?.provider === "opensign" &&
-                    ["declined", "voided", "deleted", "failed", "skipped"].includes(
-                      signingStatus.status ?? "",
-                    );
+                          [
+                            "declined",
+                            "voided",
+                            "deleted",
+                            "failed",
+                            "skipped",
+                          ].includes(signingStatus.status ?? "");
                   const activationReviewStatus =
                     leaseActivationReviewStatus(leaseAgreement);
                   const leasePackEsign = esignReceipt(item.delivery_data);
@@ -3366,7 +4051,8 @@ function TenantDetail() {
                   const activeProgressStep =
                     progressSteps.find(
                       (step) =>
-                        step.status === "blocked" || step.status === "current",
+                              step.status === "blocked" ||
+                              step.status === "current",
                     ) ?? progressSteps.at(-1);
                   const reminderSteps = onboardingReminderSteps(
                     item.delivery_data,
@@ -3405,31 +4091,41 @@ function TenantDetail() {
                     <>
                       <dl className="grid gap-x-4 gap-y-3 border-t border-border pt-3 text-xs sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
                         <div className="min-w-0">
-                          <dt className="text-muted-foreground">Last sent</dt>
+                                <dt className="text-muted-foreground">
+                                  Last sent
+                                </dt>
                           <dd className="mt-1 font-medium">
                             {formatDate(item.last_sent_at)}
                           </dd>
                         </div>
                         <div className="min-w-0">
-                          <dt className="text-muted-foreground">Delivery</dt>
+                                <dt className="text-muted-foreground">
+                                  Delivery
+                                </dt>
                           <dd className="mt-1 font-medium">
                             {onboardingDeliveryLabel(item.delivery_data)}
                           </dd>
                         </div>
                         <div className="min-w-0">
-                          <dt className="text-muted-foreground">Reminders</dt>
+                                <dt className="text-muted-foreground">
+                                  Reminders
+                                </dt>
                           <dd className="mt-1 font-medium">
                             {onboardingReminderLabel(item.delivery_data)}
                           </dd>
                         </div>
                         <div className="min-w-0">
-                          <dt className="text-muted-foreground">Expires</dt>
+                                <dt className="text-muted-foreground">
+                                  Expires
+                                </dt>
                           <dd className="mt-1 font-medium">
                             {formatDate(item.expires_at)}
                           </dd>
                         </div>
                         <div className="min-w-0">
-                          <dt className="text-muted-foreground">Applied</dt>
+                                <dt className="text-muted-foreground">
+                                  Applied
+                                </dt>
                           <dd className="mt-1 font-medium">
                             {formatDate(item.applied_at)}
                           </dd>
@@ -3481,7 +4177,9 @@ function TenantDetail() {
                       ) : null}
                       {(item.delivery_data.receipts ?? []).length ? (
                         <div className="grid gap-2 border-t border-border pt-3 text-xs">
-                          <div className="font-semibold">Delivery timeline</div>
+                                <div className="font-semibold">
+                                  Delivery timeline
+                                </div>
                           {(item.delivery_data.receipts ?? [])
                             .slice(0, 3)
                             .map((receipt, index) => (
@@ -3518,18 +4216,26 @@ function TenantDetail() {
                                   : statusTone(item.status, item.due_date)
                               }
                             >
-                              {itemMigrated ? "Imported" : sentenceStatus(item.status)}
+                                    {itemMigrated
+                                      ? "Imported"
+                                      : sentenceStatus(item.status)}
                             </StatusBadge>
                             {itemMigrated ? (
                               <StatusBadge
-                                tone={item.last_sent_at ? "success" : "primary"}
+                                      tone={
+                                        item.last_sent_at
+                                          ? "success"
+                                          : "primary"
+                                      }
                               >
                                 {item.last_sent_at
                                   ? "Portal invite sent"
                                   : "Portal invite ready"}
                               </StatusBadge>
                             ) : null}
-                            {!itemMigrated && linkExpired && item.status === "sent" ? (
+                                  {!itemMigrated &&
+                                  linkExpired &&
+                                  item.status === "sent" ? (
                               <StatusBadge tone="warning">
                                 Link expired
                               </StatusBadge>
@@ -3562,7 +4268,9 @@ function TenantDetail() {
                               onClick={() =>
                                 sendPortalInviteMutation.mutate(item.id)
                               }
-                              disabled={sendPortalInviteMutation.isPending}
+                                    disabled={
+                                      sendPortalInviteMutation.isPending
+                                    }
                             >
                               <Send size={16} />
                               Invite to portal
@@ -3575,7 +4283,9 @@ function TenantDetail() {
                                 onClick={() =>
                                   sendPortalInviteMutation.mutate(item.id)
                                 }
-                                disabled={sendPortalInviteMutation.isPending}
+                                      disabled={
+                                        sendPortalInviteMutation.isPending
+                                      }
                               >
                                 <Send size={16} />
                                 {item.last_sent_at
@@ -3585,7 +4295,9 @@ function TenantDetail() {
                               <SecondaryButton
                                 type="button"
                                 onClick={() =>
-                                  navigator.clipboard.writeText(item.portal_url)
+                                        navigator.clipboard.writeText(
+                                          item.portal_url,
+                                        )
                                 }
                               >
                                 <ClipboardCopy size={15} />
@@ -3622,8 +4334,13 @@ function TenantDetail() {
                               Fresh link
                             </SecondaryButton>
                           ) : null}
-                          {onboardingNeedsContactFix(item.delivery_data) ? (
-                            <SecondaryButton type="button" onClick={startEdit}>
+                                {onboardingNeedsContactFix(
+                                  item.delivery_data,
+                                ) ? (
+                                  <SecondaryButton
+                                    type="button"
+                                    onClick={startEdit}
+                                  >
                               <Edit3 size={15} />
                               Fix contact
                             </SecondaryButton>
@@ -3634,7 +4351,9 @@ function TenantDetail() {
                               onClick={() =>
                                 cancelOnboardingMutation.mutate(item.id)
                               }
-                              disabled={cancelOnboardingMutation.isPending}
+                                    disabled={
+                                      cancelOnboardingMutation.isPending
+                                    }
                             >
                               <X size={15} />
                               Cancel
@@ -3660,7 +4379,9 @@ function TenantDetail() {
                               type="button"
                               onClick={() => {
                                 if (applyBlocked) {
-                                  reviewOnboardingMutation.mutate(item.id);
+                                        reviewOnboardingMutation.mutate(
+                                          item.id,
+                                        );
                                   return;
                                 }
                                 approveAndApplyOnboardingMutation.mutate(
@@ -3697,7 +4418,9 @@ function TenantDetail() {
                             className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 py-3 sm:grid-cols-[2rem_minmax(0,1fr)_7rem]"
                           >
                             <span
-                              className={workflowStepIconClass(step.status)}
+                                    className={workflowStepIconClass(
+                                      step.status,
+                                    )}
                               aria-label={workflowStepLabel(step.status)}
                             >
                               {step.status === "done" ? (
@@ -3758,7 +4481,9 @@ function TenantDetail() {
                               {leaseAgreement.signed_at ? (
                                 <span className="text-muted-foreground">
                                   Signed{" "}
-                                  {formatDateTime(leaseAgreement.signed_at)}
+                                        {formatDateTime(
+                                          leaseAgreement.signed_at,
+                                        )}
                                 </span>
                               ) : null}
                               <StatusBadge
@@ -3790,9 +4515,13 @@ function TenantDetail() {
                                         "Lease agreement"}
                                     </div>
                                     <StatusBadge
-                                      tone={leaseQuestionTone(question.status)}
+                                            tone={leaseQuestionTone(
+                                              question.status,
+                                            )}
                                     >
-                                      {leaseQuestionLabel(question.status)}
+                                            {leaseQuestionLabel(
+                                              question.status,
+                                            )}
                                     </StatusBadge>
                                   </div>
                                   <div className="text-muted-foreground">
@@ -3801,7 +4530,9 @@ function TenantDetail() {
                                   {question.answered_at ? (
                                     <div className="text-muted-foreground">
                                       Answered{" "}
-                                      {formatDateTime(question.answered_at)}
+                                            {formatDateTime(
+                                              question.answered_at,
+                                            )}
                                     </div>
                                   ) : null}
                                   <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
@@ -3813,7 +4544,8 @@ function TenantDetail() {
                                           setLeaseQuestionAnswersById(
                                             (current) => ({
                                               ...current,
-                                              [question.id]: event.target.value,
+                                                    [question.id]:
+                                                      event.target.value,
                                             }),
                                           )
                                         }
@@ -3828,11 +4560,13 @@ function TenantDetail() {
                                           !answerDraft.trim()
                                         }
                                         onClick={() =>
-                                          respondLeaseQuestionMutation.mutate({
+                                                respondLeaseQuestionMutation.mutate(
+                                                  {
                                             onboardingId: item.id,
                                             questionId: question.id,
                                             status: "answered",
-                                          })
+                                                  },
+                                                )
                                         }
                                       >
                                         <Send size={14} />
@@ -3846,11 +4580,13 @@ function TenantDetail() {
                                           !answerDraft.trim()
                                         }
                                         onClick={() =>
-                                          respondLeaseQuestionMutation.mutate({
+                                                respondLeaseQuestionMutation.mutate(
+                                                  {
                                             onboardingId: item.id,
                                             questionId: question.id,
                                             status: "resolved",
-                                          })
+                                                  },
+                                                )
                                         }
                                       >
                                         <Check size={14} />
@@ -3880,7 +4616,9 @@ function TenantDetail() {
                         <div className="grid gap-3 border-t border-border pt-4 text-sm">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <div className="font-semibold">Custom lease</div>
+                                    <div className="font-semibold">
+                                      Custom lease
+                                    </div>
                               <div className="text-muted-foreground">
                                 One-off lease for this onboarding.
                               </div>
@@ -3905,9 +4643,13 @@ function TenantDetail() {
                                   {latestLeaseDocument.filename}
                                 </div>
                                 <div className="mt-1 text-xs text-muted-foreground">
-                                  {formatBytes(latestLeaseDocument.byte_size)} -
-                                  uploaded{" "}
-                                  {formatDate(latestLeaseDocument.created_at)}
+                                        {formatBytes(
+                                          latestLeaseDocument.byte_size,
+                                        )}{" "}
+                                        - uploaded{" "}
+                                        {formatDate(
+                                          latestLeaseDocument.created_at,
+                                        )}
                                   {leaseDocuments.length > 1
                                     ? ` - ${leaseDocuments.length} lease versions`
                                     : ""}
@@ -3988,7 +4730,10 @@ function TenantDetail() {
                                 }
                               >
                                 {uploadCustomLeaseMutation.isPending ? (
-                                  <Loader2 size={16} className="animate-spin" />
+                                        <Loader2
+                                          size={16}
+                                          className="animate-spin"
+                                        />
                                 ) : (
                                   <UploadCloud size={16} />
                                 )}
@@ -3997,7 +4742,9 @@ function TenantDetail() {
                             </div>
                             {uploadCustomLeaseMutation.error ? (
                               <p className="text-sm text-danger">
-                                {friendlyError(uploadCustomLeaseMutation.error)}
+                                      {friendlyError(
+                                        uploadCustomLeaseMutation.error,
+                                      )}
                               </p>
                             ) : null}
                           </div>
@@ -4008,7 +4755,9 @@ function TenantDetail() {
                       leaseAgreement?.status !== "signed" ? (
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
                           <div>
-                            <div className="font-semibold">Lease pack next</div>
+                                  <div className="font-semibold">
+                                    Lease pack next
+                                  </div>
                             <div className="text-muted-foreground">
                               {latestLeaseDocument
                                 ? leasePackSent
@@ -4026,7 +4775,8 @@ function TenantDetail() {
                                 </StatusBadge>
                                 {signingStatus.envelopeId ? (
                                   <span className="text-xs text-muted-foreground">
-                                    Request {shortId(signingStatus.envelopeId)}
+                                          Request{" "}
+                                          {shortId(signingStatus.envelopeId)}
                                   </span>
                                 ) : null}
                                 {metadataString(
@@ -4092,7 +4842,8 @@ function TenantDetail() {
                               </StatusBadge>
                               {signingStatus?.envelopeId ? (
                                 <span className="text-xs text-muted-foreground">
-                                  Request {shortId(signingStatus.envelopeId)}
+                                        Request{" "}
+                                        {shortId(signingStatus.envelopeId)}
                                 </span>
                               ) : null}
                               {signingStatus?.signedDocumentId ? (
@@ -4124,7 +4875,10 @@ function TenantDetail() {
                                 disabled={onboardingActionPending}
                               >
                                 {activateLeaseMutation.isPending ? (
-                                  <Loader2 size={16} className="animate-spin" />
+                                        <Loader2
+                                          size={16}
+                                          className="animate-spin"
+                                        />
                                 ) : (
                                   <Check size={16} />
                                 )}
@@ -4154,7 +4908,9 @@ function TenantDetail() {
                           {activationReviewStatus ? (
                             <div className="basis-full rounded-md border border-border bg-white px-3 py-2 text-xs">
                               <div className="flex flex-wrap items-center gap-2">
-                                <StatusBadge tone={activationReviewStatus.tone}>
+                                      <StatusBadge
+                                        tone={activationReviewStatus.tone}
+                                      >
                                   {activationReviewStatus.label}
                                 </StatusBadge>
                                 <span className="text-muted-foreground">
@@ -4182,7 +4938,9 @@ function TenantDetail() {
                               );
                               const currentValue = reviewValue(
                                 field.key in tenant
-                                  ? tenant[field.key as keyof TenantRecord]
+                                        ? tenant[
+                                            field.key as keyof TenantRecord
+                                          ]
                                   : undefined,
                               );
                               const changed =
@@ -4193,7 +4951,8 @@ function TenantDetail() {
                                   key={field.key}
                                   className={cn(
                                     "rounded border border-border bg-white px-3 py-2",
-                                    changed && "border-primary/30 bg-primary/5",
+                                          changed &&
+                                            "border-primary/30 bg-primary/5",
                                   )}
                                 >
                                   <div className="flex items-center justify-between gap-2 text-muted-foreground">
@@ -4235,7 +4994,9 @@ function TenantDetail() {
                                   </span>
                                   <span className="flex shrink-0 items-center gap-2">
                                     <span className="text-muted-foreground">
-                                      {documentCategoryLabel(document.category)}
+                                            {documentCategoryLabel(
+                                              document.category,
+                                            )}
                                     </span>
                                     <StatusBadge
                                       tone={documentReviewStatusTone(
@@ -4282,7 +5043,9 @@ function TenantDetail() {
                                       </SecondaryButton>
                                     )}
                                     <a
-                                      href={documentDownloadUrl(document.id)}
+                                            href={documentDownloadUrl(
+                                              document.id,
+                                            )}
                                       className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-border bg-white transition hover:bg-muted"
                                       aria-label={`Download ${document.filename}`}
                                     >
@@ -4294,7 +5057,8 @@ function TenantDetail() {
                             })}
                             {onboardingDocuments.length === 0 ? (
                               <div className="rounded border border-border bg-white px-3 py-2 text-muted-foreground">
-                                No documents uploaded with this onboarding.
+                                      No documents uploaded with this
+                                      onboarding.
                               </div>
                             ) : null}
                           </div>
@@ -4368,7 +5132,9 @@ function TenantDetail() {
                         </div>
                         <StatusBadge
                           tone={
-                            lease.status === "active" ? "success" : "neutral"
+                                  lease.status === "active"
+                                    ? "success"
+                                    : "neutral"
                           }
                         >
                           {formatMoney(lease.annual_rent_cents)}
@@ -4426,7 +5192,9 @@ function TenantDetail() {
                                   activeOnboarding.id,
                                 )
                               }
-                              disabled={sendPortalInviteMutation.isPending}
+                                    disabled={
+                                      sendPortalInviteMutation.isPending
+                                    }
                             >
                               <Send size={16} />
                               {activeOnboarding.last_sent_at
@@ -4460,7 +5228,9 @@ function TenantDetail() {
                             <Button
                               type="button"
                               onClick={() =>
-                                createOnboardingMutation.mutate(lease.lease_id)
+                                      createOnboardingMutation.mutate(
+                                        lease.lease_id,
+                                      )
                               }
                             >
                               <Plus size={16} />
@@ -4496,10 +5266,16 @@ function TenantDetail() {
                 ) : null}
               </div>
             </SectionPanel>
+                </>
+              ) : null}
 
-            <SectionPanel id="activity" title="Activity">
+              {activeTenantTab === "activity" ? (
+                <>
+                  <SectionPanel title="Activity">
               <div className="grid gap-2 p-4 text-sm">
-                {(tenantDetail?.activity ?? []).slice(0, 10).map((item) => (
+                      {(tenantDetail?.activity ?? [])
+                        .slice(0, 10)
+                        .map((item) => (
                   <div
                     key={`${item.kind}-${item.related_id}-${item.occurred_at}`}
                     className="flex items-start justify-between gap-3"
@@ -4522,7 +5298,9 @@ function TenantDetail() {
                 ))}
                 {!tenantDetailQuery.isLoading &&
                 (tenantDetail?.activity ?? []).length === 0 ? (
-                  <div className="text-muted-foreground">No activity yet.</div>
+                        <div className="text-muted-foreground">
+                          No activity yet.
+                        </div>
                 ) : null}
               </div>
             </SectionPanel>
@@ -4565,7 +5343,10 @@ function TenantDetail() {
                   <SkeletonRows rows={2} />
                 ) : null}
                 {correspondenceEvents.slice(0, 5).map((event) => {
-                  const targetLink = correspondenceTargetLink(event, tenantId);
+                        const targetLink = correspondenceTargetLink(
+                          event,
+                          tenantId,
+                        );
                   return (
                     <div
                       key={event.id}
@@ -4578,7 +5359,9 @@ function TenantDetail() {
                             <span className="font-medium">
                               {correspondenceEventLabel(event)}
                             </span>
-                            <StatusBadge tone={correspondenceEventTone(event)}>
+                                  <StatusBadge
+                                    tone={correspondenceEventTone(event)}
+                                  >
                               {event.direction}
                             </StatusBadge>
                           </div>
@@ -4633,14 +5416,16 @@ function TenantDetail() {
                 ) : null}
                 {correspondenceQuery.data?.guardrails.length ? (
                   <div className="grid gap-2 p-4 text-xs text-muted-foreground">
-                    {correspondenceQuery.data.guardrails.map((guardrail) => (
+                          {correspondenceQuery.data.guardrails.map(
+                            (guardrail) => (
                       <div
                         key={guardrail}
                         className="rounded-md border border-border bg-muted/25 px-3 py-2"
                       >
                         {guardrail}
                       </div>
-                    ))}
+                            ),
+                          )}
                   </div>
                 ) : null}
                 {correspondenceQuery.error ? (
@@ -4673,6 +5458,8 @@ function TenantDetail() {
               emptyMessage="Reviewed onboarding changes, Smart Intake reviews, documents, and public enrichment citations will appear here."
               className="rounded-2xl"
             />
+                </>
+              ) : null}
           </div>
         </section>
 

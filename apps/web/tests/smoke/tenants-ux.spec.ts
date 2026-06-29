@@ -54,7 +54,9 @@ test("desktop tenant register filters and inline actions are touch-safe", async 
     "Cancelled",
   ]) {
     await expectTouchTarget(
-      await page.getByRole("button", { name: label, exact: true }).boundingBox(),
+      await page
+        .getByRole("button", { name: label, exact: true })
+        .boundingBox(),
     );
   }
 
@@ -97,9 +99,9 @@ test("tenant invite drawer close action stays touch-safe", async ({ page }) => {
 
   await page.goto("/tenants?action=invite");
 
-  await expect(
-    page.getByRole("heading", { name: "Send invite" }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Send invite" })).toBeVisible({
+    timeout: 15_000,
+  });
 
   await expectTouchTarget(
     await page.getByRole("button", { name: "Close send invite" }).boundingBox(),
@@ -115,7 +117,9 @@ test("tenant invite creation uses an explicit trust picker in all-entities mode"
   const tenantCreates: Array<Record<string, unknown>> = [];
   await page.route("**/api/v1/tenants", async (route) => {
     if (route.request().method() === "POST") {
-      tenantCreates.push(route.request().postDataJSON() as Record<string, unknown>);
+      tenantCreates.push(
+        route.request().postDataJSON() as Record<string, unknown>,
+      );
     }
     await route.fallback();
   });
@@ -131,14 +135,15 @@ test("tenant invite creation uses an explicit trust picker in all-entities mode"
   await expect(trustPicker).toBeVisible();
   await expect(trustPicker).toHaveValue("entity-1");
 
-  await invitePanel
-    .getByLabel(/^Property/)
-    .selectOption("property-1");
+  await invitePanel.getByLabel(/^Property/).selectOption("property-1");
   await invitePanel.getByLabel("Tenant name").fill("Action Picker Cafe");
   await invitePanel
     .getByLabel("Contact email")
     .fill("action-picker@example.test");
-  await invitePanel.locator("form").getByRole("button", { name: "Send invite" }).click();
+  await invitePanel
+    .locator("form")
+    .getByRole("button", { name: "Send invite" })
+    .click();
 
   expect(tenantCreates).toHaveLength(1);
   expect(tenantCreates[0].entity_id).toBe("entity-1");
@@ -153,7 +158,9 @@ test("tenant reminder sends require explicit approval", async ({ page }) => {
   await page.route(
     /\/api\/v1\/tenant-onboarding\/reminders\/run(?:\?.*)?$/,
     async (route) => {
-      reminderEntityIds.push(new URL(route.request().url()).searchParams.get("entity_id") ?? "");
+      reminderEntityIds.push(
+        new URL(route.request().url()).searchParams.get("entity_id") ?? "",
+      );
       await route.fulfill({
         contentType: "application/json",
         status: 200,
@@ -376,6 +383,7 @@ test("tenant detail correspondence export is touch-safe and local-only on mobile
   await expect(
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Activity" }).click();
 
   const correspondencePanel = page
     .locator("section")
@@ -460,6 +468,7 @@ test("tenant detail document review links stay touch-safe without document actio
   await expect(
     page.getByRole("heading", { name: "Bright Cafe" }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Documents" }).click();
 
   const openReviewLinks = page.getByRole("link", {
     exact: true,
@@ -481,6 +490,97 @@ test("tenant detail document review links stay touch-safe without document actio
       await documentDownloadLinks.nth(index).boundingBox(),
     );
   }
+});
+
+test("tenant detail uses tabs and sets up tenant invoice charges from lease billing", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const chargeCreates: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/charge-rules", async (route) => {
+    if (route.request().method() === "POST") {
+      chargeCreates.push(
+        route.request().postDataJSON() as Record<string, unknown>,
+      );
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/tenants/tenant-1?tab=lease-billing");
+  await expect(
+    page.getByRole("heading", { name: "Bright Cafe" }),
+  ).toBeVisible();
+
+  const tabs = page.getByRole("tablist", { name: "Tenant record sections" });
+  await expect(tabs).toBeVisible();
+  for (const label of [
+    "Overview",
+    "Lease & Billing",
+    "Portal",
+    "Documents",
+    "Activity",
+  ]) {
+    await expect(tabs.getByRole("tab", { name: label })).toBeVisible();
+  }
+
+  await expect(
+    tabs.getByRole("tab", { name: "Lease & Billing" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("heading", { name: "Lease & Billing" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Billing schedule" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Portal access" }),
+  ).toHaveCount(0);
+
+  const billingSchedule = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: "Billing schedule" }),
+    })
+    .first();
+  await billingSchedule.getByRole("combobox").nth(1).selectOption("outgoings");
+  await billingSchedule.getByLabel("Amount").fill("425");
+  await billingSchedule.getByLabel("Starts").fill("2026-08-01");
+  await billingSchedule.getByLabel("Invoice sent").fill("2026-07-15");
+  await billingSchedule.getByLabel("Next due").fill("2026-08-01");
+  await billingSchedule
+    .getByRole("button", { name: "Add schedule line" })
+    .click();
+
+  await expect.poll(() => chargeCreates.length).toBe(1);
+  expect(chargeCreates[0]).toMatchObject({
+    lease_id: "lease-1",
+    charge_type: "outgoings",
+    amount_cents: 42500,
+    frequency: "monthly",
+    gst_treatment: "taxable",
+    start_date: "2026-08-01",
+    next_invoice_date: "2026-07-15",
+    next_due_date: "2026-08-01",
+    arrears_or_advance: "advance",
+  });
+  expect(chargeCreates[0].metadata).toMatchObject({
+    billing_schedule_owner: "lease",
+    tenant_record_setup: true,
+    tenant_facing: true,
+  });
+  await expect(page.getByText(/Added Outgoings/)).toBeVisible();
+
+  await tabs.getByRole("tab", { name: "Portal" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Portal access" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Billing schedule" }),
+  ).toHaveCount(0);
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("tenant portal invoice PDF controls stay on the touch-target baseline", async () => {
@@ -526,6 +626,7 @@ test("mobile tenant portal recovery actions stay touch-safe", async ({
 
   await page.goto("/tenants/tenant-1");
 
+  await page.getByRole("tab", { name: "Portal" }).click();
   const portalAccess = page
     .locator("section")
     .filter({

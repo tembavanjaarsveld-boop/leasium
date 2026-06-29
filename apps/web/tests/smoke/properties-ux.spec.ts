@@ -323,11 +323,16 @@ test("desktop property billing confirms charge add and supports inline delete", 
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const mutationCalls: string[] = [];
+  const chargeRulePayloads: Array<Record<string, unknown>> = [];
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const method = request.method();
+    const path = new URL(request.url()).pathname;
     if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-      mutationCalls.push(`${method} ${new URL(request.url()).pathname}`);
+      mutationCalls.push(`${method} ${path}`);
+    }
+    if (method === "POST" && path === "/api/v1/charge-rules") {
+      chargeRulePayloads.push(request.postDataJSON() as Record<string, unknown>);
     }
     await route.fallback();
   });
@@ -341,8 +346,22 @@ test("desktop property billing confirms charge add and supports inline delete", 
 
   const chargeForm = page
     .locator("form")
-    .filter({ hasText: "Quick charge rule" });
+    .filter({ hasText: "Billing schedule" });
   await expect(chargeForm).toBeVisible();
+  await expect(
+    chargeForm.getByText(
+      "Lease-owned charges that feed the tenant invoice schedule.",
+    ),
+  ).toBeVisible();
+  await expect(
+    chargeForm.getByText("Tenant-facing", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    chargeForm.getByText("Property-informed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    chargeForm.getByText("Billing readiness checks the run", { exact: true }),
+  ).toBeVisible();
 
   // Frequency selector replaces the old hard-coded monthly behaviour.
   const frequencySelect = chargeForm.locator("select").filter({
@@ -356,24 +375,33 @@ test("desktop property billing confirms charge add and supports inline delete", 
   });
   await leaseSelect.selectOption({ index: 1 });
 
-  await expect(chargeForm.getByText("Charges on this lease")).toBeVisible();
+  await expect(chargeForm.getByText("Schedule on this lease")).toBeVisible();
   await expect(chargeForm.getByText("$8,000")).toBeVisible();
   await expect(
     chargeForm.getByText(/already has a Base rent charge/),
   ).toBeVisible();
+  await expect(chargeForm.getByLabel("Starts")).toBeVisible();
+  await expect(chargeForm.getByLabel("Ends")).toBeVisible();
 
   // Adding a charge surfaces an explicit success confirmation (the bug fix).
   await chargeForm.getByRole("spinbutton").fill("8000");
+  await chargeForm.getByLabel("Starts").fill("2026-05-01");
+  await chargeForm.getByLabel("Ends").fill("2027-04-30");
   await chargeForm.getByLabel("Invoice sent").fill("2026-05-15");
   await chargeForm.getByLabel("Next due").fill("2026-06-01");
-  await chargeForm.getByRole("button", { name: "Add charge" }).click();
+  await chargeForm.getByRole("button", { name: "Add schedule line" }).click();
   await expect(
     page
       .getByRole("status")
       .filter({
-        hasText: /invoice sent 15 May 2026, next due 01 (Jun|June) 2026/,
+        hasText:
+          /active from 01 May 2026 to 30 Apr 2027, invoice sent 15 May 2026, next due 01 (Jun|June) 2026/,
       }),
   ).toBeVisible();
+  expect(chargeRulePayloads[0]).toMatchObject({
+    start_date: "2026-05-01",
+    end_date: "2027-04-30",
+  });
 
   // The inline delete removes a rule and confirms it.
   await chargeForm

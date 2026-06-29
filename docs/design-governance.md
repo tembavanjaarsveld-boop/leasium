@@ -82,7 +82,7 @@ the core design. It has been promoted into the canonical pages:
   (with camera capture), Notifications·Mobile 59:594, Settings·Mobile 59:677,
   and Tenant portal·Mobile 61:1251.
 - **New surfaces** on 03: People (tenant/vendor cards), Money (billing readiness
-  + approve-run flow), Insights (value flow, compliance ring, what-changed
+  - approve-run flow), Insights (value flow, compliance ring, what-changed
   narrative), and Tenant portal·Mobile (balance/pay card, requests, documents).
 - **Form/overlay primitives** on 02: Input variant set (Default/Focus/Error/
   Disabled) 56:156, Select 56:157, Modal (approval confirm) 56:163, Drawer
@@ -107,7 +107,7 @@ Secondary × Default/Hover/Pressed/Disabled, 50:156), `Skeleton row` 50:157, and
 map for agents:
 
 | Figma component | Code location |
-|---|---|
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Leasium/Horizon/Sidebar 44:117 | `apps/web/src/components/app-shell.tsx` (desktop sidebar + mobile drawer) — Horizon app shell v1 |
 | Leasium/Horizon/Command bar 44:155 | `apps/web/src/components/app-shell.tsx` (command palette trigger) — new |
 | Leasium/Horizon/Hero focus card 44:179 | new component, target `apps/web/src/components/dashboard/` |
@@ -188,6 +188,18 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-29 · Lease billing schedule UX v1 · existing current-platform Property
+  detail / Billing panel; verified with the focused `properties-ux` billing
+  add/delete smoke flow at desktop width · fixes: renamed the quick charge rule
+  form to Billing schedule, made the lease-owned / tenant-facing /
+  property-informed ownership visible, exposed Starts/Ends lifecycle fields,
+  added promotion levy and utilities/solar presets, carried start/end dates
+  into the charge-rule payload, and reframed duplicate base rent as a future
+  replacement pattern for rent increases · no tenant email, Xero, payment,
+  reconciliation, or provider mutation path changed · deferral: the true primary
+  home should become the tenant/lease record after an approved record-page
+  design pass; this slice keeps the existing property Billing panel as the
+  working setup surface while making its ownership model clearer.
 - 2026-06-29 · Property Billing quick charge rule schedule dates · existing
   current-platform Property detail / Billing panel; verified with the
   `properties-ux` smoke file including the charge-rule add/delete flow and the
@@ -319,7 +331,7 @@ fixes · deferrals.
   selector in the drawer (reusing the inbox/billing picker pattern);
   edit/version stay on the row's own trust; stored-template preview is
   review-only so it stays available in all-entities mode · deferred: comms queue
-  + outbound-log CSV filename still records "undated" in all-entities mode
+  - outbound-log CSV filename still records "undated" in all-entities mode
   (separate Track-B export drift, tracked for the drift pass).
 - 2026-06-26 · Operations compliance + UX actions · existing desktop/mobile
   smoke surfaces checked through `operations-compliance`, `operations-ux`, and
@@ -554,7 +566,7 @@ fixes · deferrals.
   visual smoke `conversation-thread-visual.spec.ts` passed desktop/mobile
   no-overflow and clipped-action checks · deferred: full cross-page history
   surfacing/global drawer remains follow-up; v1 cut line is contextual launch
-  + persisted thread.
+  - persisted thread.
 - 2026-06-16 · Leasium AI review declutter + drop thinking-state · reused the
   approved conversation-first review pattern (no new surface, no token change);
   driven by operator feedback that the review buried the action under a
@@ -1108,7 +1120,7 @@ remove entries by shipping a slice whose UX pass covers them.
 - New modules should earn their own page when they become repeated work, not be squeezed into an existing page.
 - Leasium should feel like modern tooling for operators: calm, fast, clear, and confident.
 - **Navigation legibility is the standard (DoorLoop-informed, 2026-05-31):** organise around two spines — Properties → Units and a single People hub — with fewer destinations and consistent record pages. See the dated section below.
-- **Account operating mode gates the Owners hub (2026-05-31):** the People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are *managing-agent* framing. A self-managed owner-operator has no third-party owner and must not see the Owners hub — gate it on an account `operating_mode` (default `self_managed_owner`), set at onboarding; keep entity-grouped statements via Entities for owner-operators. **Shipped 2026-05-31 (prototype mode, no Remba gate):** People tab-set + default by mode, an owner/admin Settings operating-mode toggle, a "Your entities & trusts" Settings panel for self-managed owners, owner-statement palette/shortcut gating, Money/Statements dispatch gating with provider-call guard tests, and owner-portal preview/invite/account/document-download gating for self-managed accounts. Deeper disbursement/trust-accounting gates remain follow-ups once those route surfaces exist. Decision + sketch: [account-operating-mode-ia.md](account-operating-mode-ia.md).
+- **Account operating mode gates the Owners hub (2026-05-31):** the People → Owners hub + owner statements/disbursements/owner-portal/trust accounting are _managing-agent_ framing. A self-managed owner-operator has no third-party owner and must not see the Owners hub — gate it on an account `operating_mode` (default `self_managed_owner`), set at onboarding; keep entity-grouped statements via Entities for owner-operators. **Shipped 2026-05-31 (prototype mode, no Remba gate):** People tab-set + default by mode, an owner/admin Settings operating-mode toggle, a "Your entities & trusts" Settings panel for self-managed owners, owner-statement palette/shortcut gating, Money/Statements dispatch gating with provider-call guard tests, and owner-portal preview/invite/account/document-download gating for self-managed accounts. Deeper disbursement/trust-accounting gates remain follow-ups once those route surfaces exist. Decision + sketch: [account-operating-mode-ia.md](account-operating-mode-ia.md).
 - **Platform-admin `/admin` tier (2026-06-09, prototype mode, no Remba gate):**
   a Leasium-operated surface above the client orgs, gated on `is_platform_admin`.
   Two design-facing changes: (1) a new `/admin` route group with a Clients console
@@ -1873,7 +1885,7 @@ remove entries by shipping a slice whose UX pass covers them.
   automation activity, shareable snapshots, controls). Reuses the Operations `?tab=` pattern
   and tablist styling; tab state syncs to the URL. Read-only and provider-inert — no data,
   copy, or guardrail behaviour changed, only grouping and density. Verified by eslint + tsc
-  + the Insights Playwright smoke (rewritten to click through tabs).
+  - the Insights Playwright smoke (rewritten to click through tabs).
 - **Work queue urgency buckets (2026-06-03, prototype mode, no Remba gate):**
   the `/operations` Queue tab no longer renders every open item in one flat scroll. Open
   work now groups into collapsible **Overdue / Due soon / Scheduled / No date** buckets
@@ -1931,7 +1943,7 @@ remove entries by shipping a slice whose UX pass covers them.
 
 Source analysis: [`doorloop-benchmark-2026-05-31.md`](doorloop-benchmark-2026-05-31.md).
 Per the standing prototype-mode call ("forget Remba, just fling it"), this is recorded as
-design *direction*, not a gated review. We borrow DoorLoop's ease-of-navigation; we do not
+design _direction_, not a gated review. We borrow DoorLoop's ease-of-navigation; we do not
 clone its look or feature set.
 
 What we are taking from DoorLoop's UX:
@@ -1945,7 +1957,7 @@ What we are taking from DoorLoop's UX:
   §10.5.1 seven-item cap in the design source of truth.
 - **Consistent record pages.** Tenant, Owner, Vendor and Property share one shape:
   header → tabs (Overview / Financials / Tasks / Notes / Files / Activity) → the same
-  action patterns. Predictability *is* the simplicity.
+  action patterns. Predictability _is_ the simplicity.
 - **One Notes store + one Files store**, aggregated and searchable across the app, rather
   than notes/files trapped inside each individual record.
 - **Plain-English empty/loading/error states and obvious primary actions** — already in the
@@ -2406,9 +2418,9 @@ Progress notes:
 
 Remba decision:
 
-*(Closed 2026-06-12: this scan's verdict and fix queue are superseded by
+_(Closed 2026-06-12: this scan's verdict and fix queue are superseded by
 the Horizon redesign and the in-loop UX gate — see Remba Retirement +
-Queue Closure at the top. Preserved as history.)*
+Queue Closure at the top. Preserved as history.)_
 
 The platform is coherent enough for private pre-production work, but the
 current design-facing surfaces should remain marked `pending Remba review`
@@ -3355,7 +3367,7 @@ out the two cleanly-bounded panels that already had simple prop
 contracts:
 
 - `AskLeasiumPanel` (227 lines, including its citation-kind helper
-  + suggestion-chip constant) → `src/components/dashboard/AskLeasiumPanel.tsx`
+  - suggestion-chip constant) → `src/components/dashboard/AskLeasiumPanel.tsx`
 - `ActivityFeedPanel` (180 lines, including its action-kind tone
   map + relative-time/time-bucket helpers) →
   `src/components/dashboard/ActivityFeedPanel.tsx`
@@ -3435,7 +3447,7 @@ slice (commit bb65224).
 - [x] Added `Micro: 11px / 14px / 600 / 0.01em` step to Codex SoT §4
   Typography. New Tailwind utility `text-leasium-micro`. Migrated all 35
   ad-hoc `text-[11px]` and `text-[10px]` usages (13 files: app-shell,
-  property-workspace, dashboard, dashboard/*, saved-views-menu,
+      property-workspace, dashboard, dashboard/\*, saved-views-menu,
   property-occupancy, plus 6 page files). The 6 `text-[10px]` callers
   bumped up 1px to align on the new token — Remba confirmed the bump
   in chip/kbd contexts reads correctly.
@@ -3639,7 +3651,7 @@ for whenever design review resumes). A signed-in live walkthrough of
 leasium.ai (`docs/ux-review-2026-06-08.md`) produced 17 findings; all were
 implemented in one sweep across the web app. Numbered follow-ups:
 
-1. **Property rename affordance** — the Portfolio row *title* is no longer
+1. **Property rename affordance** — the Portfolio row _title_ is no longer
    an instant inline-edit; titles are plain text and rename lives behind the
    row pencil → property editor with explicit save. Street-address inline
    edit is unchanged. Remba: confirm the title/select interaction reads.
@@ -3732,6 +3744,8 @@ UX pass — 2026-06-27 · Smart Intake tenant setup path. Surfaces: Relby AI lea
 
 UX pass — 2026-06-27 · Smart Intake property duplicate guard. Surface: Relby AI matcher review card. Added an explicit hold under likely duplicate properties; Approve/Create buttons stay disabled until the operator chooses Link existing or Create new. Reuses the existing duplicate card, Button/SecondaryButton, and warning text styles; no new tokens or provider actions. Screens reviewed: matcher review smoke at desktop 1280 and mobile 390 viewports — hold copy stays readable, buttons lock/unlock cleanly, no overflow. Slop test: pass. Verified: ruff, focused pytest (9), frontend eslint, matcher-review Playwright smoke.
 
-UX pass — 2026-06-25 · Dark-mode rebalance of light-pinned public surfaces. Surfaces: Relby AI intake hero (/intake) + sign-in/welcome page (/welcome). Root cause: a few leasium-* utilities (bg-leasium-bg, bg-leasium-slate-50, text-leasium-navy-800) and the hero's hard-coded rgba(255,255,255,0.94) gradient stop have no [data-theme="dark"] override, so they stayed light in dark mode — a white hero slab that swallowed the light "Relby AI" title, and a welcome page rendering as light canvas + dark cards + invisible (dark-on-dark) headings. Fix: added a theme-aware --leasium-hero-wash-mid token + a .bg-gradient-to-r.via-white dark override; swapped welcome's hard-wired utilities to the theme-aware aliases the app already uses (text-foreground / text-muted-foreground / bg-muted / bg-leasium-canvas / bg-primary-soft / bg-accent-soft / text-primary). Settings was already clean (the de-facto "good" reference). Screens reviewed: desktop 1440 dark + light on local dev — welcome coherent in dark, pixel-identical in light (no regression); intake hero now a subtle dark wash with a visible title. Slop test: pass (token-only, no new decoration). Verified: eslint, tsc, next build, smoke (dashboard-empty passed; clerk-guard skipped by auth-mode) all green. Deferred to UX debt: the same latent bug on /account, onboarding, setup, access, and 404 — left untouched this slice.
+UX implementation note — 2026-06-29 · Tenant record tabs + Lease & Billing invoice setup. Surface: operator tenant detail. Replaced the People record anchor-jump navigation on tenant detail with controlled property-style tabs (Overview, Lease & Billing, Portal, Documents, Activity) and moved portal, document, correspondence, and source-history panels behind their matching tabs. Lease & Billing is now the first-time tenant invoice setup home: active lease context, billing email, recurring charge-rule form, schedule list, and delete action. Reuses existing Button/SecondaryButton/Select/Input/StatusBadge/SectionPanel primitives; no new tokens or provider actions. Verified: frontend eslint, tsc, tenant UX smoke (11). Pending Remba review of density/copy and live desktop/mobile screenshots.
 
-UX pass — 2026-06-25 · Dark-mode rebalance of sibling public/auth surfaces (follow-up to the welcome/hero slice). Surfaces: /account sign-in wrapper, 404 (not-found), tenant onboarding (/onboarding/[token]), first-setup (/setup), access gate (/access), public snapshots (/snapshots/[token]), and the operator-auth "Checking your session" screen. Same root cause + fix as the welcome page: hard-wired light leasium-* utilities with no [data-theme=dark] override swapped to theme-aware aliases (bg-leasium-canvas / bg-muted / text-foreground / text-muted-foreground / bg-primary-soft / bg-accent-soft / text-primary). Solid primary/navy buttons, borders, and bg-white cards left as-is (already flip). Light mode unchanged (aliases share the same light values). Screens reviewed: 404 at desktop dark on local dev — dark canvas, readable heading/body, correct card contrast. /account is Clerk-gated (its widget renders only in prod); the wrapper swaps are verified by grep + build, eyeball the Clerk widget live in dark post-deploy. Slop test: pass (token-only, no new decoration). Verified: eslint, tsc, next build all clean. Optional follow-up: the Clerk <SignIn> widget on /account uses its own theme — giving it a dark appearance is a separate change.
+UX pass — 2026-06-25 · Dark-mode rebalance of light-pinned public surfaces. Surfaces: Relby AI intake hero (/intake) + sign-in/welcome page (/welcome). Root cause: a few leasium-\* utilities (bg-leasium-bg, bg-leasium-slate-50, text-leasium-navy-800) and the hero's hard-coded rgba(255,255,255,0.94) gradient stop have no [data-theme="dark"] override, so they stayed light in dark mode — a white hero slab that swallowed the light "Relby AI" title, and a welcome page rendering as light canvas + dark cards + invisible (dark-on-dark) headings. Fix: added a theme-aware --leasium-hero-wash-mid token + a .bg-gradient-to-r.via-white dark override; swapped welcome's hard-wired utilities to the theme-aware aliases the app already uses (text-foreground / text-muted-foreground / bg-muted / bg-leasium-canvas / bg-primary-soft / bg-accent-soft / text-primary). Settings was already clean (the de-facto "good" reference). Screens reviewed: desktop 1440 dark + light on local dev — welcome coherent in dark, pixel-identical in light (no regression); intake hero now a subtle dark wash with a visible title. Slop test: pass (token-only, no new decoration). Verified: eslint, tsc, next build, smoke (dashboard-empty passed; clerk-guard skipped by auth-mode) all green. Deferred to UX debt: the same latent bug on /account, onboarding, setup, access, and 404 — left untouched this slice.
+
+UX pass — 2026-06-25 · Dark-mode rebalance of sibling public/auth surfaces (follow-up to the welcome/hero slice). Surfaces: /account sign-in wrapper, 404 (not-found), tenant onboarding (/onboarding/[token]), first-setup (/setup), access gate (/access), public snapshots (/snapshots/[token]), and the operator-auth "Checking your session" screen. Same root cause + fix as the welcome page: hard-wired light leasium-\* utilities with no [data-theme=dark] override swapped to theme-aware aliases (bg-leasium-canvas / bg-muted / text-foreground / text-muted-foreground / bg-primary-soft / bg-accent-soft / text-primary). Solid primary/navy buttons, borders, and bg-white cards left as-is (already flip). Light mode unchanged (aliases share the same light values). Screens reviewed: 404 at desktop dark on local dev — dark canvas, readable heading/body, correct card contrast. /account is Clerk-gated (its widget renders only in prod); the wrapper swaps are verified by grep + build, eyeball the Clerk widget live in dark post-deploy. Slop test: pass (token-only, no new decoration). Verified: eslint, tsc, next build all clean. Optional follow-up: the Clerk <SignIn> widget on /account uses its own theme — giving it a dark appearance is a separate change.
