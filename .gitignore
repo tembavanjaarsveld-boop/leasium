@@ -30,3 +30,5 @@ build/
 # Generated artifacts + local tooling state
 output/
 .superpowers/
+.worktrees
+.worktrees/
