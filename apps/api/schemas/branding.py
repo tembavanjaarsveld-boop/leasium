@@ -1,6 +1,10 @@
 """Per-entity invoice branding schemas (local config; no provider calls)."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
+
+InvoiceBrandingReadiness = Literal["not_started", "needs_details", "ready"]
 
 
 class EntityBrandingRead(BaseModel):
@@ -16,6 +20,8 @@ class EntityBrandingRead(BaseModel):
     payment_bank_bsb: str | None = None
     payment_bank_account: str | None = None
     footer_terms: str | None = None
+    readiness_status: InvoiceBrandingReadiness = "not_started"
+    readiness_missing: list[str] = []
 
 
 class EntityBrandingUpdate(BaseModel):

@@ -1,6 +1,6 @@
 # Leasium Design Governance
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 Design source of truth: [leasium-codex-design-source-of-truth.md](leasium-codex-design-source-of-truth.md). Use it for brand, tokens, component styling, app shell expectations, copy tone, and frontend implementation direction. This governance file holds the in-loop UX gate (checklist + mechanics), the UX pass log, the UX debt register, and the dated design-change history.
 
@@ -188,6 +188,21 @@ Checklist:
 One line per design-facing slice: date · surface · screens checked ·
 fixes · deferrals.
 
+- 2026-06-30 · Guided invoice setup v1 · screenshots reviewed at
+  `apps/web/output/playwright/guided-invoice-setup-settings-1440.png`,
+  `apps/web/output/playwright/guided-invoice-setup-settings-390.png`,
+  `apps/web/output/playwright/guided-invoice-setup-billing-nudge-1440.png`,
+  and
+  `apps/web/output/playwright/guided-invoice-setup-billing-nudge-390.png` ·
+  fixes: replaced the empty Settings Branding placeholder with a four-step
+  invoice setup checklist, live sample tax invoice preview, local save flow,
+  readiness state, save-failure copy, dirty-draft guard, inline legal name/ABN
+  local edit, and Billing Readiness nudge for incomplete setup; the 390px slop
+  pass also fixed the sample invoice sender header so long entity details wrap
+  instead of collapsing · no Xero write, tenant email, SMS, payment action,
+  reconciliation, or provider mutation path changed · deferral:
+  real logo upload and renderer replacement stay out of v1 until the approved
+  invoice frame requires them.
 - 2026-06-29 · Lease billing schedule UX v1 · existing current-platform Property
   detail / Billing panel; verified with the focused `properties-ux` billing
   add/delete smoke flow at desktop width · fixes: renamed the quick charge rule

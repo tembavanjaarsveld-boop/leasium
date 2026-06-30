@@ -17,6 +17,9 @@ from stewart.integrations.invoice_render import resolve_invoice_brand
 def _seed_entity_id(session: Session) -> str:
     entity = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
     assert entity is not None
+    if entity.abn is None:
+        entity.abn = "12 345 678 901"
+        session.flush()
     return str(entity.id)
 
 
@@ -74,3 +77,48 @@ def test_saved_branding_feeds_invoice_render(client: TestClient, session: Sessio
     brand = resolve_invoice_brand(draft, session)
     assert brand["accent"] == "#123456"
     assert any("PayID" in label for label, _ in brand["payment"])
+
+
+def test_entity_branding_reports_invoice_setup_readiness(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _seed_entity_id(session)
+
+    initial = client.get(f"/api/v1/entities/{entity_id}/branding")
+    assert initial.status_code == 200
+    initial_body = initial.json()
+    assert initial_body["readiness_status"] == "not_started"
+    assert set(initial_body["readiness_missing"]) == {
+        "business_address",
+        "contact",
+        "payment_method",
+    }
+
+    partial = client.put(
+        f"/api/v1/entities/{entity_id}/branding",
+        json={"business_address": "Level 2, 144 Edward St, Brisbane QLD 4000"},
+    )
+    assert partial.status_code == 200
+    partial_body = partial.json()
+    assert partial_body["readiness_status"] == "needs_details"
+    assert set(partial_body["readiness_missing"]) == {"contact", "payment_method"}
+
+    saved = client.put(
+        f"/api/v1/entities/{entity_id}/branding",
+        json={
+            "contact_email": "accounts@skjcapital.example",
+            "payment_payid": "accounts@skjcapital.example",
+            "footer_terms": "Payment due within 14 days.",
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["readiness_status"] == "ready"
+    assert saved.json()["readiness_missing"] == []
+
+
+def test_entity_branding_rejects_unknown_entity_for_user(
+    client: TestClient,
+) -> None:
+    missing = client.get("/api/v1/entities/00000000-0000-0000-0000-000000000000/branding")
+    assert missing.status_code in {403, 404}

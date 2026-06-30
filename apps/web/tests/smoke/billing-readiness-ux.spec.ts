@@ -788,3 +788,62 @@ test("supplier-sourced invoice links to the original supplier invoice", async ({
   // Viewing the supplier document is read-only.
   expect(mutationCalls).toEqual([]);
 });
+
+test("billing readiness nudges incomplete invoice setup before tenant documents", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/billing-readiness");
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+
+  await expect(
+    page.getByRole("heading", { name: "Finish invoice setup" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Finish invoice setup before preparing tenant-facing invoice documents.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Acme Holdings Pty Ltd is missing business address, payment method.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Finish invoice setup" }),
+  ).toHaveAttribute(
+    "href",
+    "/settings?tab=organisation&section=branding&entity_id=entity-1",
+  );
+});
+
+test("billing readiness nudges incomplete invoice setup for URL-selected entity", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  await page.goto("/billing-readiness?entity_id=entity-2");
+  await expect(
+    page.getByRole("heading", { name: "Billing Readiness" }),
+  ).toBeVisible();
+
+  await expect(
+    page.getByRole("heading", { name: "Finish invoice setup" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Secondary Holdings Pty Ltd is missing business address, contact details, payment method.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Finish invoice setup" }),
+  ).toHaveAttribute(
+    "href",
+    "/settings?tab=organisation&section=branding&entity_id=entity-2",
+  );
+});

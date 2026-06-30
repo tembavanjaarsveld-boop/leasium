@@ -21,6 +21,36 @@ export type Entity = {
   deleted_at: string | null;
 };
 
+export type EntityBrandingReadiness = "not_started" | "needs_details" | "ready";
+
+export type EntityBrandingRecord = {
+  accent_color: string | null;
+  business_address: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  payment_payid: string | null;
+  payment_bpay_biller: string | null;
+  payment_bpay_reference: string | null;
+  payment_bank_bsb: string | null;
+  payment_bank_account: string | null;
+  footer_terms: string | null;
+  readiness_status: EntityBrandingReadiness;
+  readiness_missing: string[];
+};
+
+export type EntityBrandingUpdatePayload = {
+  accent_color?: string | null;
+  business_address?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  payment_payid?: string | null;
+  payment_bpay_biller?: string | null;
+  payment_bpay_reference?: string | null;
+  payment_bank_bsb?: string | null;
+  payment_bank_account?: string | null;
+  footer_terms?: string | null;
+};
+
 const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   trust: "Trust",
   company: "Company",
@@ -1726,7 +1756,11 @@ export type RegisterImportDryRunRecord = {
   summary: string;
 };
 
-export type RegisterImportConfidenceBand = "high" | "medium" | "low" | "unknown";
+export type RegisterImportConfidenceBand =
+  | "high"
+  | "medium"
+  | "low"
+  | "unknown";
 
 export type RegisterImportReviewSummary = {
   total_action_items: number;
@@ -3474,6 +3508,36 @@ export function listEntities() {
   return request<Entity[]>("/entities");
 }
 
+export function getEntityBranding(entityId: string) {
+  return request<EntityBrandingRecord>(`/entities/${entityId}/branding`);
+}
+
+export function updateEntityBranding(
+  entityId: string,
+  payload: EntityBrandingUpdatePayload,
+) {
+  return request<EntityBrandingRecord>(`/entities/${entityId}/branding`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type EntityUpdatePayload = {
+  name?: string | null;
+  abn?: string | null;
+  gst_registered?: boolean | null;
+  entity_type?: EntityType | null;
+  is_managing_entity?: boolean | null;
+  notes?: string | null;
+};
+
+export function updateEntity(entityId: string, payload: EntityUpdatePayload) {
+  return request<Entity>(`/entities/${entityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type EntityCreatePayload = {
   organisation_id: string;
   name: string;
@@ -3599,9 +3663,7 @@ export type OwnershipSplitApplyResult = {
   notes: string[];
 };
 
-export function applyOwnershipSplit(
-  groups: OwnershipSplitApplyGroupPayload[],
-) {
+export function applyOwnershipSplit(groups: OwnershipSplitApplyGroupPayload[]) {
   return request<OwnershipSplitApplyResult>("/entities/ownership-split/apply", {
     method: "POST",
     body: JSON.stringify({ groups }),
@@ -5175,7 +5237,9 @@ export function listCalendarEvents(filters: {
   if (filters.entity_id) {
     params.set("entity_id", filters.entity_id);
   }
-  return request<CalendarEventRecord[]>(`/calendar/events?${params.toString()}`);
+  return request<CalendarEventRecord[]>(
+    `/calendar/events?${params.toString()}`,
+  );
 }
 
 export function listWorkflowRules(filters: {
@@ -6650,10 +6714,13 @@ export function applyPortfolioQaBulkFixes(payload: {
   issue_class: PortfolioQaBulkFixIssueClass;
   changes: Array<{ target_id: string; fields: Record<string, unknown> }>;
 }) {
-  return request<PortfolioQaBulkFixApplyRecord>("/portfolio-qa/bulk-fixes/apply", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return request<PortfolioQaBulkFixApplyRecord>(
+    "/portfolio-qa/bulk-fixes/apply",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function previewPropertyImages(payload: {
