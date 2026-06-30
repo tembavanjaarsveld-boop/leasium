@@ -31,7 +31,11 @@ from apps.api.deps import (
     get_session,
     readable_entity_ids,
 )
-from apps.api.schemas.branding import EntityBrandingRead, EntityBrandingUpdate
+from apps.api.schemas.branding import (
+    EntityBrandingRead,
+    EntityBrandingUpdate,
+    InvoiceBrandingReadiness,
+)
 from apps.api.schemas.register import (
     EntityCreate,
     EntityRead,
@@ -711,6 +715,51 @@ def _entity_branding(entity_id: UUID, session: Session) -> EntityBranding | None
     )
 
 
+def _has_text(value: str | None) -> bool:
+    return bool(value and value.strip())
+
+
+def _branding_payment_configured(record: EntityBranding | None) -> bool:
+    if record is None:
+        return False
+    return any(
+        [
+            _has_text(record.payment_payid),
+            _has_text(record.payment_bpay_biller),
+            _has_text(record.payment_bank_bsb) and _has_text(record.payment_bank_account),
+        ]
+    )
+
+
+def _entity_branding_read(entity: Entity, record: EntityBranding | None) -> EntityBrandingRead:
+    missing: list[str] = []
+    if not _has_text(entity.name):
+        missing.append("legal_name")
+    if not _has_text(entity.abn):
+        missing.append("abn")
+    if record is None or not _has_text(record.business_address):
+        missing.append("business_address")
+    if record is None or not (_has_text(record.contact_email) or _has_text(record.contact_phone)):
+        missing.append("contact")
+    if not _branding_payment_configured(record):
+        missing.append("payment_method")
+
+    if record is None:
+        readiness_status: InvoiceBrandingReadiness = "not_started"
+        data: dict[str, object] = {}
+    else:
+        readiness_status = "ready" if not missing else "needs_details"
+        data = EntityBrandingRead.model_validate(record).model_dump(
+            exclude={"readiness_status", "readiness_missing"}
+        )
+
+    return EntityBrandingRead(
+        **data,
+        readiness_status=readiness_status,
+        readiness_missing=missing,
+    )
+
+
 @router.get("/{entity_id}/branding", response_model=EntityBrandingRead)
 def get_entity_branding(
     entity_id: UUID,
@@ -720,9 +769,7 @@ def get_entity_branding(
     # get_entity enforces org + READ_ROLES access.
     entity = get_entity(entity_id, user, session)
     record = _entity_branding(entity.id, session)
-    if record is None:
-        return EntityBrandingRead()
-    return EntityBrandingRead.model_validate(record)
+    return _entity_branding_read(entity, record)
 
 
 @router.put("/{entity_id}/branding", response_model=EntityBrandingRead)
@@ -762,7 +809,7 @@ def update_entity_branding(
     )
     session.commit()
     session.refresh(record)
-    return EntityBrandingRead.model_validate(record)
+    return _entity_branding_read(entity, record)
 
 
 @router.delete("/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
