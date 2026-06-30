@@ -442,8 +442,8 @@ function SampleInvoicePreview({
       <div className="overflow-hidden rounded-xl border border-border bg-white shadow-leasiumSm">
         <div style={{ backgroundColor: accent }} className="h-2" />
         <div className="p-4 sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+            <div className="flex w-full min-w-0 items-center gap-3 sm:flex-1">
               <div
                 className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-base font-bold text-white"
                 style={{ backgroundColor: accent }}
@@ -465,7 +465,7 @@ function SampleInvoicePreview({
                 </div>
               </div>
             </div>
-            <div className="min-w-0 text-left sm:text-right">
+            <div className="w-full min-w-0 text-left sm:w-auto sm:text-right">
               <div
                 className="break-words text-xs font-bold uppercase tracking-wide"
                 style={{ color: accent }}
