@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -40,6 +45,7 @@ import {
   createInvoiceDraftFromBillingDraft,
   dispatchXeroInvoiceProviders,
   documentDownloadUrl,
+  getEntityBranding,
   getOwnerStatements,
   getXeroStatus,
   invoiceDraftPreviewUrl,
@@ -57,6 +63,7 @@ import {
   updateInvoiceDraftPaymentStatus,
   type BillingDraftRecord,
   type BillingDraftStatus,
+  type EntityBrandingRecord,
   type InvoiceDraftRecord,
   type InvoiceDraftStatus,
   type OwnerStatementsRecord,
@@ -1577,6 +1584,23 @@ function deliveryFilterMatches(
   }
 }
 
+const invoiceSetupMissingLabels: Record<string, string> = {
+  legal_name: "legal name",
+  abn: "ABN",
+  business_address: "business address",
+  contact: "contact details",
+  payment_method: "payment method",
+};
+
+function formatInvoiceSetupMissing(missing: string[] | undefined) {
+  if (!missing?.length) {
+    return "invoice setup details";
+  }
+  return missing
+    .map((item) => invoiceSetupMissingLabels[item] ?? item.replaceAll("_", " "))
+    .join(", ");
+}
+
 function invoiceRunGuideStepTone(state: InvoiceRunGuideStepState) {
   switch (state) {
     case "done":
@@ -2210,6 +2234,10 @@ function BillingReadinessWorkspace() {
     if (filter) {
       setDeliveryFilter(filter);
     }
+    const entityId = params.get("entity_id");
+    if (entityId) {
+      setBillingActionEntityOverride(entityId);
+    }
     setHighlightInvoiceDraftId(params.get("invoice_id") ?? "");
   }, []);
 
@@ -2224,8 +2252,24 @@ function BillingReadinessWorkspace() {
       ),
     [entitiesQuery.data],
   );
-  const billingActionEntityId =
-    billingActionEntityOverride || entitiesQuery.data?.[0]?.id || "";
+  const entityBrandingQueries = useQueries({
+    queries: (entitiesQuery.data ?? []).map((entity) => ({
+      queryKey: ["entity-branding", entity.id],
+      queryFn: () => getEntityBranding(entity.id),
+      enabled: Boolean(entity.id),
+    })),
+  });
+
+  const invoiceBrandingByEntityId = useMemo(() => {
+    const entries: Array<[string, EntityBrandingRecord]> = [];
+    (entitiesQuery.data ?? []).forEach((entity, index) => {
+      const branding = entityBrandingQueries[index]?.data;
+      if (branding) {
+        entries.push([entity.id, branding]);
+      }
+    });
+    return new Map(entries);
+  }, [entitiesQuery.data, entityBrandingQueries]);
 
   const rentRollQuery = useQuery({
     queryKey: ["billing-readiness-rent-roll", scopedEntityId, asOf],
@@ -2596,25 +2640,6 @@ function BillingReadinessWorkspace() {
       ),
     [rentRows],
   );
-  const draftableBillingRowsForAction = useMemo(
-    () =>
-      draftableBillingRows.filter(
-        (row) => row.entity_id === billingActionEntityId,
-      ),
-    [billingActionEntityId, draftableBillingRows],
-  );
-  const draftableBillingLeaseIds = useMemo(() => {
-    const leaseIds: string[] = [];
-    const seen = new Set<string>();
-    for (const row of draftableBillingRowsForAction) {
-      if (!row.lease_id || seen.has(row.lease_id)) {
-        continue;
-      }
-      seen.add(row.lease_id);
-      leaseIds.push(row.lease_id);
-    }
-    return leaseIds;
-  }, [draftableBillingRowsForAction]);
   const invoiceDrafts = useMemo(
     () =>
       allMode
@@ -2652,6 +2677,39 @@ function BillingReadinessWorkspace() {
         : null,
     [highlightInvoiceDraftId, invoiceDrafts],
   );
+  const billingActionEntityId =
+    billingActionEntityOverride ||
+    highlightedInvoiceDraft?.entity_id ||
+    entitiesQuery.data?.[0]?.id ||
+    "";
+  const invoiceSetupEntity = entitiesQuery.data?.find(
+    (entity) => entity.id === billingActionEntityId,
+  );
+  const invoiceSetupBranding = billingActionEntityId
+    ? invoiceBrandingByEntityId.get(billingActionEntityId)
+    : null;
+  const invoiceSetupNeedsAttention =
+    Boolean(invoiceSetupBranding) &&
+    invoiceSetupBranding?.readiness_status !== "ready";
+  const draftableBillingRowsForAction = useMemo(
+    () =>
+      draftableBillingRows.filter(
+        (row) => row.entity_id === billingActionEntityId,
+      ),
+    [billingActionEntityId, draftableBillingRows],
+  );
+  const draftableBillingLeaseIds = useMemo(() => {
+    const leaseIds: string[] = [];
+    const seen = new Set<string>();
+    for (const row of draftableBillingRowsForAction) {
+      if (!row.lease_id || seen.has(row.lease_id)) {
+        continue;
+      }
+      seen.add(row.lease_id);
+      leaseIds.push(row.lease_id);
+    }
+    return leaseIds;
+  }, [draftableBillingRowsForAction]);
   const highlightedMaintenanceWorkOrder = highlightedInvoiceDraft
     ? (maintenanceByInvoiceDraftId.get(highlightedInvoiceDraft.id) ?? null)
     : null;
@@ -3271,6 +3329,38 @@ function BillingReadinessWorkspace() {
 
         {selectedEntityId ? (
           <>
+            {invoiceSetupNeedsAttention && invoiceSetupEntity ? (
+              <SectionPanel
+                title="Finish invoice setup"
+                description="Finish invoice setup before preparing tenant-facing invoice documents."
+                icon={
+                  <AlertTriangle size={17} className="text-warning-strong" />
+                }
+                actions={
+                  <Link
+                    href={`/settings?tab=organisation&section=branding&entity_id=${invoiceSetupEntity.id}`}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-leasiumXs transition duration-200 ease-leasium hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
+                  >
+                    Finish invoice setup
+                  </Link>
+                }
+              >
+                <div className="grid gap-2 px-4 py-4 text-sm text-muted-foreground md:grid-cols-2">
+                  <div>
+                    {invoiceSetupEntity.name} is missing{" "}
+                    {formatInvoiceSetupMissing(
+                      invoiceSetupBranding?.readiness_missing,
+                    )}
+                    .
+                  </div>
+                  <div>
+                    Draft review can continue, but the tenant-facing invoice
+                    document should not be marked ready until setup is complete.
+                  </div>
+                </div>
+              </SectionPanel>
+            ) : null}
+
             <div
               className="grid gap-2 rounded-2xl border border-border bg-white p-2 shadow-leasiumXs md:grid-cols-3"
               role="tablist"
