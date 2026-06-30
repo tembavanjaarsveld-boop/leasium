@@ -1,6 +1,7 @@
 """Security and operator access API integration tests."""
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
@@ -142,6 +143,42 @@ def test_security_workspace_lists_current_operator_and_auth_boundary(
             "role": "owner",
         }
     ]
+
+
+def test_security_workspace_omits_archived_entity_roles(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity = _entity(session)
+    settings = get_settings()
+    archived_entity = Entity(
+        organisation_id=entity.organisation_id,
+        name="Archived Property Manager",
+        deleted_at=datetime(2026, 6, 30, tzinfo=UTC),
+    )
+    session.add(archived_entity)
+    session.flush()
+    session.add(
+        UserEntityRole(
+            user_id=settings.dev_user_id,
+            entity_id=archived_entity.id,
+            role=UserRole.owner,
+        )
+    )
+    session.commit()
+
+    response = client.get("/api/v1/security/workspace")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["current_user_roles"] == [
+        {
+            "entity_id": str(entity.id),
+            "entity_name": "SKJ Property Pty Ltd",
+            "role": "owner",
+        }
+    ]
+    assert body["members"][0]["roles"] == body["current_user_roles"]
 
 
 def test_first_workspace_bootstrap_creates_workspace_owner(

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from stewart.core.models import (
+    AppUser,
     AuditAction,
     Entity,
     Lease,
@@ -19,8 +20,11 @@ from stewart.core.models import (
     RentFrequency,
     TenancyUnit,
     Tenant,
+    UserEntityRole,
+    UserRole,
     XeroConnection,
 )
+from stewart.core.settings import get_settings
 
 
 def _entity_id(session: Session) -> str:
@@ -75,6 +79,75 @@ def test_entity_type_and_managing_flag_round_trip(
         },
     )
     assert invalid_response.status_code == 422
+
+
+def test_create_entity_grants_existing_security_managers_access(
+    client: TestClient,
+    session: Session,
+) -> None:
+    seed = session.scalar(select(Entity).where(Entity.name == "SKJ Property Pty Ltd"))
+    assert seed is not None
+    settings = get_settings()
+
+    admin = AppUser(
+        organisation_id=seed.organisation_id,
+        email="portfolio.admin@example.com",
+        display_name="Portfolio Admin",
+        auth_provider_id="dev-admin",
+    )
+    finance = AppUser(
+        organisation_id=seed.organisation_id,
+        email="finance.viewer@example.com",
+        display_name="Finance Viewer",
+        auth_provider_id="dev-finance",
+    )
+    archived_manager = AppUser(
+        organisation_id=seed.organisation_id,
+        email="archived.manager@example.com",
+        display_name="Archived Manager",
+        auth_provider_id="dev-archived",
+    )
+    archived_entity = Entity(
+        organisation_id=seed.organisation_id,
+        name="Archived Property Manager",
+        deleted_at=datetime(2026, 6, 30, tzinfo=UTC),
+    )
+    session.add_all([admin, finance, archived_manager, archived_entity])
+    session.flush()
+    session.add_all(
+        [
+            UserEntityRole(user_id=admin.id, entity_id=seed.id, role=UserRole.admin),
+            UserEntityRole(user_id=finance.id, entity_id=seed.id, role=UserRole.finance),
+            UserEntityRole(
+                user_id=archived_manager.id,
+                entity_id=archived_entity.id,
+                role=UserRole.owner,
+            ),
+        ]
+    )
+    session.commit()
+
+    response = client.post(
+        "/api/v1/entities",
+        json={
+            "organisation_id": str(seed.organisation_id),
+            "name": "SJI No 5 Discretionary Trust",
+            "entity_type": "trust",
+        },
+    )
+
+    assert response.status_code == 201
+    new_entity_id = UUID(response.json()["id"])
+    roles = {
+        role.user_id: role.role
+        for role in session.scalars(
+            select(UserEntityRole).where(UserEntityRole.entity_id == new_entity_id)
+        )
+    }
+    assert roles[settings.dev_user_id] == UserRole.owner
+    assert roles[admin.id] == UserRole.admin
+    assert finance.id not in roles
+    assert archived_manager.id not in roles
 
 
 def test_entities_xero_overview_reports_status_and_counts(

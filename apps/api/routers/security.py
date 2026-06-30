@@ -156,7 +156,7 @@ def _role_rows(
     rows = session.execute(
         select(UserEntityRole.user_id, UserEntityRole.entity_id, Entity.name, UserEntityRole.role)
         .join(Entity, Entity.id == UserEntityRole.entity_id)
-        .where(Entity.organisation_id == organisation_id)
+        .where(Entity.organisation_id == organisation_id, Entity.deleted_at.is_(None))
         .order_by(Entity.name)
     ).all()
     grouped: dict[UUID, list[SecurityEntityRoleRead]] = {}

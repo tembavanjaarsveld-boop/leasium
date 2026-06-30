@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
 from stewart.core.models import (
+    AppUser,
     Entity,
     EntityBranding,
     Lease,
@@ -55,6 +56,7 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 
 READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, UserRole.viewer}
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
+MANAGE_ROLES = {UserRole.owner, UserRole.admin}
 
 
 def _as_aware(value: datetime | None) -> datetime | None:
@@ -100,6 +102,37 @@ def _property_owning_label(prop: Property) -> str | None:
     return None
 
 
+def _grant_manager_access_to_new_entity(
+    session: Session,
+    organisation_id: UUID,
+    entity_id: UUID,
+    creator_user_id: UUID,
+) -> None:
+    grants: dict[UUID, UserRole] = {}
+    for user_id, role in session.execute(
+        select(UserEntityRole.user_id, UserEntityRole.role)
+        .join(Entity, Entity.id == UserEntityRole.entity_id)
+        .join(AppUser, AppUser.id == UserEntityRole.user_id)
+        .where(
+            Entity.organisation_id == organisation_id,
+            Entity.deleted_at.is_(None),
+            AppUser.organisation_id == organisation_id,
+            AppUser.is_active.is_(True),
+            UserEntityRole.role.in_(MANAGE_ROLES),
+        )
+    ):
+        if grants.get(user_id) != UserRole.owner:
+            grants[user_id] = role
+    grants[creator_user_id] = UserRole.owner
+
+    for user_id, role in grants.items():
+        existing = session.get(UserEntityRole, (user_id, entity_id))
+        if existing is None:
+            session.add(UserEntityRole(user_id=user_id, entity_id=entity_id, role=role))
+        elif existing.role != UserRole.owner:
+            existing.role = role
+
+
 @router.get("", response_model=list[EntityRead])
 def list_entities(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -127,7 +160,12 @@ def create_entity(
     entity = Entity(**payload.model_dump())
     session.add(entity)
     session.flush()
-    session.add(UserEntityRole(user_id=user.id, entity_id=entity.id, role=UserRole.owner))
+    _grant_manager_access_to_new_entity(
+        session,
+        payload.organisation_id,
+        entity.id,
+        user.id,
+    )
     audit_log(
         session,
         actor=user.actor,
@@ -421,8 +459,11 @@ def entities_ownership_split_apply(
             )
             session.add(target)
             session.flush()
-            session.add(
-                UserEntityRole(user_id=user.id, entity_id=target.id, role=UserRole.owner)
+            _grant_manager_access_to_new_entity(
+                session,
+                user.organisation_id,
+                target.id,
+                user.id,
             )
             entity_by_norm_name[norm_name] = target
             entity_by_id[target.id] = target
