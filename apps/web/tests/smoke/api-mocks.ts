@@ -2549,9 +2549,7 @@ function jsonClone<T>(value: T): T {
 }
 
 // Platform-admin tier fixtures (docs/platform-admin-tier-ia.md).
-const platformMember = (
-  overrides: Partial<Record<string, unknown>> = {},
-) => ({
+const platformMember = (overrides: Partial<Record<string, unknown>> = {}) => ({
   id: "client-operator-1",
   email: "owner@harbourlane.example",
   display_name: "Harbour Lane Owner",
@@ -3122,8 +3120,7 @@ export async function mockLeasiumApi(
       "Tenant says the kitchen tap is leaking and the cabinet is starting to swell.\n\nRaw email provenance is stored for operator review.",
     body_html: null,
     raw_email_document_id: "raw-email-doc-trusted",
-    raw_email_download_path:
-      "/api/v1/documents/raw-email-doc-trusted/download",
+    raw_email_download_path: "/api/v1/documents/raw-email-doc-trusted/download",
   });
   const mailboxQuarantineOneDetail = () => {
     const trusted = trustedMailboxMessageIds.has("mailbox-quarantine-1");
@@ -3435,9 +3432,7 @@ export async function mockLeasiumApi(
           issuer_name: "SJI No 1 Pty Ltd",
         },
         warnings: [],
-        missing_information: [
-          "No structured invoice fields were extracted.",
-        ],
+        missing_information: ["No structured invoice fields were extracted."],
       },
       review_data: {},
       openai_response_id: "resp-zero-field-invoice-smoke",
@@ -4138,7 +4133,8 @@ export async function mockLeasiumApi(
       // "need attention" path is exercisable.
       const hasFee = index === 0;
       const feeExGst = hasFee ? Math.round((rentCollected * feePct) / 100) : 0;
-      const feeGst = hasFee && entityGstRegistered ? Math.round(feeExGst * 0.1) : 0;
+      const feeGst =
+        hasFee && entityGstRegistered ? Math.round(feeExGst * 0.1) : 0;
       const feeIncGst = feeExGst + feeGst;
       return {
         owner_id: hasFee ? "owner-distribution-1" : null,
@@ -4682,9 +4678,7 @@ export async function mockLeasiumApi(
     consent_link: options.basiqConsentReady
       ? "https://consent.basiq.test/authorize"
       : null,
-    expires_at: options.basiqConsentReady
-      ? "2026-06-09T00:00:00.000Z"
-      : null,
+    expires_at: options.basiqConsentReady ? "2026-06-09T00:00:00.000Z" : null,
     missing_config: options.basiqConsentReady
       ? []
       : ["BASIQ_ENABLED", "BASIQ_API_KEY"],
@@ -5638,6 +5632,21 @@ export async function mockLeasiumApi(
       return;
     }
 
+    const entityRecordMatch = path.match(/^\/entities\/([^/]+)$/);
+    if (entityRecordMatch && method === "PATCH") {
+      const entity = entities.find(
+        (candidate) => candidate.id === entityRecordMatch[1],
+      );
+      if (!entity) {
+        await fulfillJson(route, { detail: "Entity denied." }, 403);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      Object.assign(entity, payload);
+      await fulfillJson(route, entity);
+      return;
+    }
+
     const entityBrandingMatch = path.match(/^\/entities\/([^/]+)\/branding$/);
     if (entityBrandingMatch && method === "GET") {
       const entity = entities.find(
@@ -5882,9 +5891,10 @@ export async function mockLeasiumApi(
             ? {
                 ...org,
                 is_active: payload.is_active ?? org.is_active,
-                suspended_at: (payload.is_active ?? org.is_active)
-                  ? null
-                  : "2026-06-09T00:00:00.000Z",
+                suspended_at:
+                  (payload.is_active ?? org.is_active)
+                    ? null
+                    : "2026-06-09T00:00:00.000Z",
               }
             : org,
         );
@@ -6345,7 +6355,8 @@ export async function mockLeasiumApi(
             body: "Hi Bright Cafe team, your lease activation is waiting on an OpenSign retry review. We are checking the signing request status now and will confirm the next step before anything is sent.",
             severity: "danger",
             due_at: "2026-05-28T00:00:00.000Z",
-            detail: "OpenSign retry review: signing request stalled before activation",
+            detail:
+              "OpenSign retry review: signing request stalled before activation",
             generated_at: "2026-05-27T02:00:00.000Z",
           },
           {
@@ -6588,9 +6599,15 @@ export async function mockLeasiumApi(
         email?: string;
         label?: string | null;
       };
-      const email = String(payload.email ?? "").trim().toLowerCase();
+      const email = String(payload.email ?? "")
+        .trim()
+        .toLowerCase();
       if (!email) {
-        await fulfillJson(route, { detail: "Trusted sender email is invalid." }, 422);
+        await fulfillJson(
+          route,
+          { detail: "Trusted sender email is invalid." },
+          422,
+        );
         return;
       }
       const existing = trustedSenders.find((sender) => sender.email === email);
@@ -7071,8 +7088,16 @@ export async function mockLeasiumApi(
             unit_count: 3,
             lease_count: 2,
             properties: [
-              { id: "prop-grhq-1", name: "Leitchs B4", address: "B4 Leitchs Rd, Brendale QLD" },
-              { id: "prop-grhq-2", name: "Leitchs B6 U4", address: "U4 B6 Leitchs Rd, Brendale QLD" },
+              {
+                id: "prop-grhq-1",
+                name: "Leitchs B4",
+                address: "B4 Leitchs Rd, Brendale QLD",
+              },
+              {
+                id: "prop-grhq-2",
+                name: "Leitchs B6 U4",
+                address: "U4 B6 Leitchs Rd, Brendale QLD",
+              },
             ],
           },
           {
@@ -7082,7 +7107,11 @@ export async function mockLeasiumApi(
             unit_count: 1,
             lease_count: 1,
             properties: [
-              { id: "prop-sji-1", name: "Leitchs U1B3", address: "U1 B3 Leitchs Rd, Brendale QLD" },
+              {
+                id: "prop-sji-1",
+                name: "Leitchs U1B3",
+                address: "U1 B3 Leitchs Rd, Brendale QLD",
+              },
             ],
           },
         ],
@@ -7746,7 +7775,9 @@ export async function mockLeasiumApi(
       await fulfillJson(
         route,
         requestedEntityId
-          ? properties.filter((record) => record.entity_id === requestedEntityId)
+          ? properties.filter(
+              (record) => record.entity_id === requestedEntityId,
+            )
           : properties,
       );
       return;
@@ -7757,9 +7788,7 @@ export async function mockLeasiumApi(
       const requestedEntityId = byEntityMatch[1];
       await fulfillJson(
         route,
-        properties.filter(
-          (record) => record.entity_id === requestedEntityId,
-        ),
+        properties.filter((record) => record.entity_id === requestedEntityId),
       );
       return;
     }
@@ -7836,9 +7865,9 @@ export async function mockLeasiumApi(
               "ownership_split",
             ]
           : ["contact_name", "contact_email", "billing_email", "abn"];
-      const records = (
-        issueClass === "owner_billing" ? properties : tenants
-      ) as unknown as Array<Record<string, JsonBody>>;
+      const records = (issueClass === "owner_billing"
+        ? properties
+        : tenants) as unknown as Array<Record<string, JsonBody>>;
       const changes = Array.isArray(payload.changes) ? payload.changes : [];
       const applied: JsonBody[] = [];
       const skipped: JsonBody[] = [];
@@ -8146,7 +8175,9 @@ export async function mockLeasiumApi(
 
     const contractorMatch = path.match(/^\/contractors\/([^/]+)$/);
     if (method === "GET" && contractorMatch) {
-      const contractor = contractors.find((item) => item.id === contractorMatch[1]);
+      const contractor = contractors.find(
+        (item) => item.id === contractorMatch[1],
+      );
       if (contractor) {
         await fulfillJson(route, contractor);
         return;
@@ -9176,7 +9207,8 @@ export async function mockLeasiumApi(
           },
           link: "/operations?tab=compliance#compliance-check-compliance-check-fire-1",
           chip: "Compliance",
-          description: "QFES statement needs certificate evidence before rollover.",
+          description:
+            "QFES statement needs certificate evidence before rollover.",
         },
         {
           id: "obligation-obligation-1",
@@ -9192,7 +9224,8 @@ export async function mockLeasiumApi(
           source: { table: "obligations", id: "obligation-1" },
           link: "/operations?tab=compliance#compliance-obligation-obligation-1",
           chip: "Obligation",
-          description: "Tenant needs to provide updated public liability certificate.",
+          description:
+            "Tenant needs to provide updated public liability certificate.",
         },
         {
           id: "invoice-due-invoice-draft-1",
@@ -9305,7 +9338,11 @@ export async function mockLeasiumApi(
         (item) => item.id === complianceCheckEvidenceLink[1],
       );
       if (!check) {
-        await fulfillJson(route, { detail: "Compliance check not found." }, 404);
+        await fulfillJson(
+          route,
+          { detail: "Compliance check not found." },
+          404,
+        );
         return;
       }
       const payload = request.postDataJSON() as Record<string, JsonBody>;
@@ -9350,7 +9387,11 @@ export async function mockLeasiumApi(
         (item) => item.id === complianceCheckCompletion[1],
       );
       if (!check) {
-        await fulfillJson(route, { detail: "Compliance check not found." }, 404);
+        await fulfillJson(
+          route,
+          { detail: "Compliance check not found." },
+          404,
+        );
         return;
       }
       const payload = request.postDataJSON() as Record<string, JsonBody>;
@@ -10073,8 +10114,9 @@ export async function mockLeasiumApi(
           },
         ],
         contractor_delivery: {
-          ...(jsonRecord(maintenanceWorkOrders[0].metadata.contractor_delivery) ??
-            {}),
+          ...(jsonRecord(
+            maintenanceWorkOrders[0].metadata.contractor_delivery,
+          ) ?? {}),
           email: {
             send: {
               status: emailStatus,
@@ -10231,7 +10273,9 @@ export async function mockLeasiumApi(
       await fulfillJson(
         route,
         hasEntityId
-          ? arrearsCases.filter((record) => record.entity_id === requestedEntityId)
+          ? arrearsCases.filter(
+              (record) => record.entity_id === requestedEntityId,
+            )
           : arrearsCases,
       );
       return;
@@ -10853,7 +10897,8 @@ export async function mockLeasiumApi(
     }
 
     if (method === "GET" && path === "/branded-communication-templates") {
-      const includeInactive = url.searchParams.get("include_inactive") === "true";
+      const includeInactive =
+        url.searchParams.get("include_inactive") === "true";
       // The real endpoint scopes to one entity (entity_id is required); mirror
       // that so the org-wide catalog fan-out merges per-entity lists without
       // double-counting shared rows.
@@ -10912,7 +10957,9 @@ export async function mockLeasiumApi(
             : null,
         body_template: String(payload.body_template ?? ""),
         action_label:
-          typeof payload.action_label === "string" ? payload.action_label : null,
+          typeof payload.action_label === "string"
+            ? payload.action_label
+            : null,
         action_url_template:
           typeof payload.action_url_template === "string"
             ? payload.action_url_template
@@ -11506,7 +11553,9 @@ export async function mockLeasiumApi(
       await fulfillJson(
         route,
         hasEntityId
-          ? billingDrafts.filter((draft) => draft.entity_id === requestedEntityId)
+          ? billingDrafts.filter(
+              (draft) => draft.entity_id === requestedEntityId,
+            )
           : billingDrafts,
       );
       return;
@@ -11623,10 +11672,7 @@ export async function mockLeasiumApi(
       return;
     }
 
-    if (
-      method === "GET" &&
-      path === "/owners/distributions/dispatch-review"
-    ) {
+    if (method === "GET" && path === "/owners/distributions/dispatch-review") {
       await fulfillJson(
         route,
         ownerDistributionDispatchReview(
@@ -11715,7 +11761,11 @@ export async function mockLeasiumApi(
         (item) => item.id === distributionId,
       );
       if (!record) {
-        await fulfillJson(route, { detail: "Owner distribution not found." }, 404);
+        await fulfillJson(
+          route,
+          { detail: "Owner distribution not found." },
+          404,
+        );
         return;
       }
       if (payload.approve !== true) {
@@ -11790,7 +11840,8 @@ export async function mockLeasiumApi(
       const initialTurn = jsonRecord(payload.initial_turn);
       const initialPayload = jsonRecord(initialTurn.payload);
       const turns: MockConversationTurn[] =
-        typeof initialTurn.role === "string" && typeof initialTurn.kind === "string"
+        typeof initialTurn.role === "string" &&
+        typeof initialTurn.kind === "string"
           ? [
               {
                 id: `turn-created-${conversationTurnSequence}`,
@@ -11839,7 +11890,11 @@ export async function mockLeasiumApi(
         (item) => item.id === conversationThreadTurn[1],
       );
       if (!thread) {
-        await fulfillJson(route, { detail: "Conversation thread not found." }, 404);
+        await fulfillJson(
+          route,
+          { detail: "Conversation thread not found." },
+          404,
+        );
         return;
       }
       const payload = request.postDataJSON() as Record<string, JsonBody>;
@@ -11865,7 +11920,9 @@ export async function mockLeasiumApi(
       return;
     }
 
-    const conversationThreadDetail = path.match(/^\/conversation-threads\/([^/]+)$/);
+    const conversationThreadDetail = path.match(
+      /^\/conversation-threads\/([^/]+)$/,
+    );
     if (method === "GET" && conversationThreadDetail) {
       const thread = conversationThreads.find(
         (item) => item.id === conversationThreadDetail[1],
@@ -11946,9 +12003,7 @@ export async function mockLeasiumApi(
       const opportunitiesWithDecisions = opportunities.map((opportunity) => {
         const decision = decisions
           .map((item) => jsonRecord(item))
-          .find(
-            (item) => jsonText(item.opportunity_id) === opportunity.id,
-          );
+          .find((item) => jsonText(item.opportunity_id) === opportunity.id);
         return decision
           ? {
               ...opportunity,
@@ -12288,7 +12343,10 @@ export async function mockLeasiumApi(
     if (method === "GET" && path === "/charge-rules") {
       await fulfillJson(
         route,
-        rentRoll[0].charge_rules.map((rule) => ({ ...rule, lease_id: leaseId })),
+        rentRoll[0].charge_rules.map((rule) => ({
+          ...rule,
+          lease_id: leaseId,
+        })),
       );
       return;
     }

@@ -1756,7 +1756,11 @@ export type RegisterImportDryRunRecord = {
   summary: string;
 };
 
-export type RegisterImportConfidenceBand = "high" | "medium" | "low" | "unknown";
+export type RegisterImportConfidenceBand =
+  | "high"
+  | "medium"
+  | "low"
+  | "unknown";
 
 export type RegisterImportReviewSummary = {
   total_action_items: number;
@@ -3518,6 +3522,22 @@ export function updateEntityBranding(
   });
 }
 
+export type EntityUpdatePayload = {
+  name?: string | null;
+  abn?: string | null;
+  gst_registered?: boolean | null;
+  entity_type?: EntityType | null;
+  is_managing_entity?: boolean | null;
+  notes?: string | null;
+};
+
+export function updateEntity(entityId: string, payload: EntityUpdatePayload) {
+  return request<Entity>(`/entities/${entityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type EntityCreatePayload = {
   organisation_id: string;
   name: string;
@@ -3643,9 +3663,7 @@ export type OwnershipSplitApplyResult = {
   notes: string[];
 };
 
-export function applyOwnershipSplit(
-  groups: OwnershipSplitApplyGroupPayload[],
-) {
+export function applyOwnershipSplit(groups: OwnershipSplitApplyGroupPayload[]) {
   return request<OwnershipSplitApplyResult>("/entities/ownership-split/apply", {
     method: "POST",
     body: JSON.stringify({ groups }),
@@ -5219,7 +5237,9 @@ export function listCalendarEvents(filters: {
   if (filters.entity_id) {
     params.set("entity_id", filters.entity_id);
   }
-  return request<CalendarEventRecord[]>(`/calendar/events?${params.toString()}`);
+  return request<CalendarEventRecord[]>(
+    `/calendar/events?${params.toString()}`,
+  );
 }
 
 export function listWorkflowRules(filters: {
@@ -6694,10 +6714,13 @@ export function applyPortfolioQaBulkFixes(payload: {
   issue_class: PortfolioQaBulkFixIssueClass;
   changes: Array<{ target_id: string; fields: Record<string, unknown> }>;
 }) {
-  return request<PortfolioQaBulkFixApplyRecord>("/portfolio-qa/bulk-fixes/apply", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return request<PortfolioQaBulkFixApplyRecord>(
+    "/portfolio-qa/bulk-fixes/apply",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function previewPropertyImages(payload: {

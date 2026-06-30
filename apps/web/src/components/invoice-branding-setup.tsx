@@ -14,6 +14,7 @@ import type {
   Entity,
   EntityBrandingRecord,
   EntityBrandingUpdatePayload,
+  EntityUpdatePayload,
 } from "@/lib/api";
 
 type Props = {
@@ -23,11 +24,19 @@ type Props = {
   isSaving: boolean;
   error: unknown;
   saveError?: unknown;
-  onSave: (payload: EntityBrandingUpdatePayload) => void;
+  onSave: (
+    payload: EntityBrandingUpdatePayload,
+    entityPayload?: EntityUpdatePayload,
+  ) => void;
 };
 
 type Draft = {
   [Key in keyof Required<EntityBrandingUpdatePayload>]: string;
+};
+
+type EntityDraft = {
+  name: string;
+  abn: string;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -47,6 +56,13 @@ const DRAFT_KEYS = Object.keys(EMPTY_DRAFT) as Array<keyof Draft>;
 
 function valueOrEmpty(value: string | null | undefined) {
   return value ?? "";
+}
+
+function entityDraftFromEntity(entity: Entity | null | undefined): EntityDraft {
+  return {
+    name: valueOrEmpty(entity?.name),
+    abn: valueOrEmpty(entity?.abn),
+  };
 }
 
 function draftFromBranding(
@@ -83,6 +99,22 @@ function draftMatchesBranding(
   const submitted = cleanPayload(draft);
   const saved = cleanPayload(draftFromBranding(branding));
   return DRAFT_KEYS.every((key) => (submitted[key] ?? null) === saved[key]);
+}
+
+function cleanEntityPayload(
+  draft: EntityDraft,
+  entity: Entity,
+): EntityUpdatePayload | undefined {
+  const payload: EntityUpdatePayload = {};
+  const name = draft.name.trim();
+  const abn = draft.abn.trim();
+  if (name !== entity.name.trim()) {
+    payload.name = name || null;
+  }
+  if (abn !== valueOrEmpty(entity.abn).trim()) {
+    payload.abn = abn || null;
+  }
+  return Object.keys(payload).length ? payload : undefined;
 }
 
 function monogram(name: string | null | undefined) {
@@ -158,6 +190,9 @@ export function InvoiceBrandingSetup({
   onSave,
 }: Props) {
   const [draft, setDraft] = useState<Draft>(() => draftFromBranding(branding));
+  const [entityDraft, setEntityDraft] = useState<EntityDraft>(() =>
+    entityDraftFromEntity(entity),
+  );
   const [isDirty, setIsDirty] = useState(false);
   const entityId = entity?.id ?? null;
   const previousEntityIdRef = useRef<string | null>(entityId);
@@ -174,6 +209,7 @@ export function InvoiceBrandingSetup({
       dirtyRevisionRef.current = 0;
       submittedDraftRef.current = null;
       setDraft(nextDraft);
+      setEntityDraft(entityDraftFromEntity(entity));
       setIsDirty(false);
       return;
     }
@@ -192,7 +228,7 @@ export function InvoiceBrandingSetup({
       setDraft(nextDraft);
       setIsDirty(false);
     }
-  }, [branding, entityId, isDirty]);
+  }, [branding, entity, entityId, isDirty]);
 
   const updateDraft = (updates: Partial<Draft>) => {
     dirtyRevisionRef.current += 1;
@@ -201,16 +237,21 @@ export function InvoiceBrandingSetup({
     setDraft((current) => ({ ...current, ...updates }));
   };
 
+  const updateEntityDraft = (updates: Partial<EntityDraft>) => {
+    setEntityDraft((current) => ({ ...current, ...updates }));
+  };
+
   const handleSave = () => {
+    if (!entity) return;
     submittedDraftRef.current = {
       draft: { ...draft },
       revision: dirtyRevisionRef.current,
     };
-    onSave(cleanPayload(draft));
+    onSave(cleanPayload(draft), cleanEntityPayload(entityDraft, entity));
   };
 
-  const missingLegalName = !entity?.name.trim();
-  const missingAbn = !entity?.abn?.trim();
+  const missingLegalName = !entityDraft.name.trim();
+  const missingAbn = !entityDraft.abn.trim();
   const missingEntityDetails = [
     missingLegalName ? "Legal name" : null,
     missingAbn ? "ABN" : null,
@@ -226,7 +267,9 @@ export function InvoiceBrandingSetup({
       {
         label: "Sender details",
         done: Boolean(
-          entity?.name && entity?.abn && draft.business_address.trim(),
+          entityDraft.name.trim() &&
+          entityDraft.abn.trim() &&
+          draft.business_address.trim(),
         ),
       },
       {
@@ -242,7 +285,7 @@ export function InvoiceBrandingSetup({
         done: true,
       },
     ],
-    [draft, entity?.abn, entity?.name],
+    [draft, entityDraft.abn, entityDraft.name],
   );
 
   if (!entity) {
@@ -288,10 +331,20 @@ export function InvoiceBrandingSetup({
         >
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Legal name">
-              <Input value={entity.name} readOnly />
+              <Input
+                value={entityDraft.name}
+                onChange={(event) =>
+                  updateEntityDraft({ name: event.target.value })
+                }
+              />
             </Field>
             <Field label="ABN">
-              <Input value={entity.abn ?? ""} readOnly />
+              <Input
+                value={entityDraft.abn}
+                onChange={(event) =>
+                  updateEntityDraft({ abn: event.target.value })
+                }
+              />
             </Field>
           </div>
           {missingEntityDetails.length ? (
@@ -306,19 +359,20 @@ export function InvoiceBrandingSetup({
                 </p>
                 <p className="mt-1 leading-6 text-muted-foreground">
                   {missingEntityDetails.join(" and ")}{" "}
-                  {missingEntityDetails.length > 1 ? "come" : "comes"} from
-                  Organisation → Entities, not this invoice setup.
+                  {missingEntityDetails.length > 1 ? "are" : "is"} required on
+                  AU tax invoices. Add the missing detail here, then save this
+                  invoice setup.
                 </p>
                 <p className="mt-1 leading-6 text-muted-foreground">
                   {missingAbn
-                    ? "Open entity details to add it, or confirm with the operator if this entity should not have an ABN."
-                    : "Open entity details to add it before marking invoice setup ready."}
+                    ? "If you need to check the source record first, review entity details before saving."
+                    : "Review entity details first if the legal sender name needs confirming."}
                 </p>
                 <a
                   href={entityDetailsHref}
                   className="mt-2 inline-flex min-h-11 items-center rounded-md text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
                 >
-                  Open entity details
+                  Review entity details
                 </a>
               </div>
             </div>
@@ -507,16 +561,22 @@ export function InvoiceBrandingSetup({
         </div>
       </div>
 
-      <SampleInvoicePreview entity={entity} draft={draft} />
+      <SampleInvoicePreview
+        entity={entity}
+        entityDraft={entityDraft}
+        draft={draft}
+      />
     </div>
   );
 }
 
 function SampleInvoicePreview({
   entity,
+  entityDraft,
   draft,
 }: {
   entity: Entity;
+  entityDraft: EntityDraft;
   draft: Draft;
 }) {
   const accent = draft.accent_color || "#15565a";
@@ -535,14 +595,14 @@ function SampleInvoicePreview({
                 className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-base font-bold text-white"
                 style={{ backgroundColor: accent }}
               >
-                {monogram(entity.name)}
+                {monogram(entityDraft.name || entity.name)}
               </div>
               <div className="min-w-0">
                 <div className="break-words font-semibold text-foreground">
-                  {entity.name}
+                  {entityDraft.name || entity.name}
                 </div>
                 <div className="break-words text-xs leading-5 text-muted-foreground">
-                  ABN {entity.abn ?? "Add ABN"} -{" "}
+                  ABN {entityDraft.abn || "Add ABN"} -{" "}
                   {draft.business_address || "Add business address"}
                 </div>
                 <div className="break-words text-xs leading-5 text-muted-foreground">

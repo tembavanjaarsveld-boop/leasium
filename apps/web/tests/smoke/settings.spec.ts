@@ -125,7 +125,9 @@ test("settings render the Horizon operator controls without provider mutation on
   await expect(
     page.getByRole("heading", { name: "Organisation profile" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Account type" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Account type" }),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "Provider changes are review-first — nothing connects or sends without you.",
@@ -140,10 +142,9 @@ test("settings notifications tab opens the Horizon operator controls directly", 
   await page.goto("/settings?tab=notifications");
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Notifications" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(
+    page.getByRole("tab", { name: "Notifications" }),
+  ).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText(/WORK NOTIFICATIONS/i)).toBeVisible();
   await expect(page.getByText("Assignment email").first()).toBeVisible();
   await expect(page.getByText("Assignment SMS").first()).toBeVisible();
@@ -209,7 +210,9 @@ test("settings activity audit shows sixty days of read-only history", async ({
   expect(activityFeedUrl?.searchParams.get("limit")).toBe("60");
 });
 
-test("settings manages AI mailbox trusted senders locally", async ({ page }) => {
+test("settings manages AI mailbox trusted senders locally", async ({
+  page,
+}) => {
   const forbiddenRequests = watchForbiddenTrustedSenderSettingsRequests(page);
 
   await page.goto("/settings");
@@ -234,7 +237,9 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
   await expect(
     trustedSendersPanel.getByRole("link", { name: "Review mailbox" }),
   ).toHaveAttribute("href", "/inbox");
-  await expect(trustedSendersPanel.getByText("temba@leasium.test")).toBeVisible();
+  await expect(
+    trustedSendersPanel.getByText("temba@leasium.test"),
+  ).toBeVisible();
   await expect(
     trustedSendersPanel.getByText("Operator forwarder"),
   ).toBeVisible();
@@ -270,7 +275,9 @@ test("settings manages AI mailbox trusted senders locally", async ({ page }) => 
   expect(forbiddenRequests).toEqual([]);
 });
 
-test("mobile settings keeps the clean section picker touch-safe", async ({ page }) => {
+test("mobile settings keeps the clean section picker touch-safe", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");
 
@@ -491,7 +498,8 @@ test("settings Work notification preferences stay inside the desktop viewport", 
     {
       id: "operator-4",
       email: "very.long.operator.identity.for.settings@skjcapital.example",
-      display_name: "very.long.operator.identity.for.settings@skjcapital.example",
+      display_name:
+        "very.long.operator.identity.for.settings@skjcapital.example",
       role: "finance",
       phone: null,
     },
@@ -774,7 +782,9 @@ test("settings exports communication template override review CSV", async ({
     .getByRole("article")
     .filter({ hasText: "Invoice delivery" })
     .first();
-  await invoiceDeliveryRow.getByRole("button", { name: "Edit wording" }).click();
+  await invoiceDeliveryRow
+    .getByRole("button", { name: "Edit wording" })
+    .click();
   const editorDrawer = page.getByRole("dialog", {
     name: "Edit SKJ invoice delivery",
   });
@@ -786,7 +796,9 @@ test("settings exports communication template override review CSV", async ({
 
   await page.getByRole("tab", { name: "Advanced" }).click();
   await expect(page.getByText("Stored template overrides")).toBeVisible();
-  await expect(page.getByText("tenant_onboarding_invite").first()).toBeVisible();
+  await expect(
+    page.getByText("tenant_onboarding_invite").first(),
+  ).toBeVisible();
   await expect(
     page.getByText("Runtime keys, versions, override coverage, and exports."),
   ).toBeVisible();
@@ -884,7 +896,9 @@ test("settings edits message template wording locally without provider dispatch"
     .getByRole("article")
     .filter({ hasText: "Invoice delivery" })
     .first();
-  await invoiceDeliveryRow.getByRole("button", { name: "Edit wording" }).click();
+  await invoiceDeliveryRow
+    .getByRole("button", { name: "Edit wording" })
+    .click();
 
   const editorDrawer = page.getByRole("dialog", {
     name: "Edit SKJ invoice delivery",
@@ -987,9 +1001,7 @@ test("settings keeps account type read-only without orphaning self-managed owner
   });
   await expect(splitPanel.getByText("GRHQ Pty Ltd")).toBeVisible();
   await splitPanel.getByRole("button", { name: "Apply split…" }).click();
-  await splitPanel
-    .getByRole("button", { name: /Confirm — create/ })
-    .click();
+  await splitPanel.getByRole("button", { name: /Confirm — create/ }).click();
   await expect(
     splitPanel.getByText(/Created 2 entities, moved 3 properties/),
   ).toBeVisible();
@@ -1020,11 +1032,44 @@ test("settings account type stays read-only without manage-security", async ({
   ).toHaveCount(0);
 });
 
-test("settings guides invoice setup to entity details when ABN is missing", async ({
+test("settings guides invoice setup to save missing ABN locally", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page);
+
+  const entityWithoutAbn = {
+    id: "entity-1",
+    organisation_id: "org-1",
+    name: "Acme Holdings Pty Ltd",
+    abn: null as string | null,
+    gst_registered: true,
+    entity_type: "company",
+    is_managing_entity: true,
+    xero_tenant_id: null,
+    xero_connected_at: null,
+    xero_last_sync_at: null,
+    notes: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    deleted_at: null,
+  };
+  const savedBranding = {
+    accent_color: "#15565a",
+    business_address: "Level 2, 144 Edward St, Brisbane QLD 4000",
+    contact_email: "accounts@acme.example",
+    contact_phone: null,
+    payment_payid: "accounts@acme.example",
+    payment_bpay_biller: null,
+    payment_bpay_reference: null,
+    payment_bank_bsb: null,
+    payment_bank_account: null,
+    footer_terms: "Payment due within 14 days.",
+  };
+  const brandingRead = () => ({
+    ...savedBranding,
+    readiness_status: entityWithoutAbn.abn ? "ready" : "needs_details",
+    readiness_missing: entityWithoutAbn.abn ? [] : ["abn"],
+  });
 
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -1033,23 +1078,7 @@ test("settings guides invoice setup to entity details when ABN is missing", asyn
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([
-          {
-            id: "entity-1",
-            organisation_id: "org-1",
-            name: "Acme Holdings Pty Ltd",
-            abn: null,
-            gst_registered: true,
-            entity_type: "company",
-            is_managing_entity: true,
-            xero_tenant_id: null,
-            xero_connected_at: null,
-            xero_last_sync_at: null,
-            notes: null,
-            created_at: "2026-05-01T00:00:00.000Z",
-            deleted_at: null,
-          },
-        ]),
+        body: JSON.stringify([entityWithoutAbn]),
       });
       return;
     }
@@ -1057,20 +1086,25 @@ test("settings guides invoice setup to entity details when ABN is missing", asyn
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          accent_color: "#15565a",
-          business_address: "Level 2, 144 Edward St, Brisbane QLD 4000",
-          contact_email: "accounts@acme.example",
-          contact_phone: null,
-          payment_payid: "accounts@acme.example",
-          payment_bpay_biller: null,
-          payment_bpay_reference: null,
-          payment_bank_bsb: null,
-          payment_bank_account: null,
-          footer_terms: "Payment due within 14 days.",
-          readiness_status: "needs_details",
-          readiness_missing: ["abn"],
-        }),
+        body: JSON.stringify(brandingRead()),
+      });
+      return;
+    }
+    if (request.method() === "PATCH" && path === "/entities/entity-1") {
+      Object.assign(entityWithoutAbn, request.postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(entityWithoutAbn),
+      });
+      return;
+    }
+    if (request.method() === "PUT" && path === "/entities/entity-1/branding") {
+      Object.assign(savedBranding, request.postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(brandingRead()),
       });
       return;
     }
@@ -1084,19 +1118,44 @@ test("settings guides invoice setup to entity details when ABN is missing", asyn
   await expect(page.getByText("Entity profile needs attention")).toBeVisible();
   await expect(
     page.getByText(
-      "ABN comes from Organisation → Entities, not this invoice setup.",
+      "ABN is required on AU tax invoices. Add the missing detail here, then save this invoice setup.",
     ),
   ).toBeVisible();
-  const entityDetailsLink = page.getByRole("link", {
-    name: "Open entity details",
-  });
-  await expect(entityDetailsLink).toHaveAttribute(
+  await expect(
+    page.getByRole("link", { name: "Review entity details" }),
+  ).toHaveAttribute(
     "href",
     "/settings?tab=organisation&section=entities&entity_id=entity-1",
   );
-  await entityDetailsLink.click();
+
+  const senderSection = page.locator(".rounded-xl").filter({
+    hasText: "1. Who sends the invoice?",
+  });
+  await senderSection.getByLabel("ABN").fill("12123123123");
+  await expect(senderSection.getByLabel("ABN")).toHaveValue("12123123123");
+  await expect(page.getByText(/ABN 12123123123/)).toBeVisible();
+  const entitySaveRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" &&
+      requestPath(request.url()) === "/entities/entity-1",
+  );
+  await page.getByRole("button", { name: "Use this invoice style" }).click();
+  const entitySaveRequest = await entitySaveRequestPromise;
+  expect(entitySaveRequest.postDataJSON()).toMatchObject({
+    abn: "12123123123",
+  });
+
+  await expect(page.getByText("Entity profile needs attention")).toHaveCount(0);
+  const invoiceSetupPanel = page.locator(".rounded-xl").filter({
+    has: page.getByRole("heading", { name: "Invoice setup" }),
+  });
   await expect(
-    page.getByRole("heading", { name: "Your entities & properties" }),
+    invoiceSetupPanel.getByText("Ready", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "ABN 12123123123 - Level 2, 144 Edward St, Brisbane QLD 4000",
+    ),
   ).toBeVisible();
 });
 
@@ -1167,7 +1226,9 @@ test("settings guides invoice setup with live preview and local save", async ({
   await page.getByRole("button", { name: "Use this invoice style" }).click();
 
   await expect(
-    page.getByText("Invoice setup could not save. Nothing was sent to providers."),
+    page.getByText(
+      "Invoice setup could not save. Nothing was sent to providers.",
+    ),
   ).toBeVisible();
 
   const brandingSaveRequestPromise = page.waitForRequest(
@@ -1183,7 +1244,9 @@ test("settings guides invoice setup with live preview and local save", async ({
     payment_payid: "payid@queenstreet.example",
   });
   await expect(
-    page.getByText("Invoice setup could not save. Nothing was sent to providers."),
+    page.getByText(
+      "Invoice setup could not save. Nothing was sent to providers.",
+    ),
   ).toHaveCount(0);
 
   await page.goto("/settings?tab=security");
@@ -1198,6 +1261,8 @@ test("settings guides invoice setup with live preview and local save", async ({
   const invoiceSetupPanel = page.locator(".rounded-xl").filter({
     has: page.getByRole("heading", { name: "Invoice setup" }),
   });
-  await expect(invoiceSetupPanel.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(
+    invoiceSetupPanel.getByText("Ready", { exact: true }),
+  ).toBeVisible();
   expect(forbiddenCalls).toEqual([]);
 });
