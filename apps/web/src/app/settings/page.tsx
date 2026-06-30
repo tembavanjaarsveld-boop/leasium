@@ -45,6 +45,7 @@ import {
   type CommsTemplateEditorAction,
 } from "@/components/comms-template-editor-drawer";
 import { DetailDrawer } from "@/components/detail-drawer";
+import { InvoiceBrandingSetup } from "@/components/invoice-branding-setup";
 import { OwnersDirectory } from "@/components/owners-directory";
 import { PropertyEntityReassignDrawer } from "@/components/property-entity-reassign";
 import { QueryProvider } from "@/components/query-provider";
@@ -85,6 +86,7 @@ import {
   deleteBrandedCommunicationTemplate,
   getBasiqConnectionStatus,
   getSecurityWorkspace,
+  getEntityBranding,
   getWorkAssignmentNotificationTemplates,
   getXeroConnectionDiagnostics,
   getXeroExceptionQueue,
@@ -116,6 +118,7 @@ import {
   startXeroOAuth,
   updatePaymentInstructions,
   updateBrandedCommunicationTemplate,
+  updateEntityBranding,
   updateSecurityMember,
   updateChargeRule,
   unlinkSecurityMemberLogin,
@@ -138,6 +141,9 @@ import {
   type XeroAccountingFreshnessRecord,
   type XeroConnectionDiagnosticsRecord,
   type BrandedCommunicationTemplateRecord,
+  type Entity,
+  type EntityBrandingRecord,
+  type EntityBrandingUpdatePayload,
   type SecurityMemberRecord,
   type SecurityMemberUpdatePayload,
   type SecurityNotificationPreferences,
@@ -2007,9 +2013,16 @@ function MessageTemplatesPanel({
   runtimeTemplates,
   brandedTemplates,
   coverage,
+  selectedEntity,
+  branding,
+  brandingLoading,
+  brandingSaving,
+  brandingError,
+  brandingSaveError,
   entityName,
   activeTab,
   onTabChange,
+  onSaveBranding,
   onPreviewRuntime,
   onEditTemplate,
   onCopy,
@@ -2021,9 +2034,16 @@ function MessageTemplatesPanel({
   runtimeTemplates: CommunicationTemplateCard[];
   brandedTemplates: BrandedCommunicationTemplateRecord[];
   coverage: TemplateOverrideCoverage;
+  selectedEntity: Entity | null | undefined;
+  branding: EntityBrandingRecord | null | undefined;
+  brandingLoading: boolean;
+  brandingSaving: boolean;
+  brandingError: unknown;
+  brandingSaveError: unknown;
   entityName: string;
   activeTab: MessageTemplateTab;
   onTabChange: (tab: MessageTemplateTab) => void;
+  onSaveBranding: (payload: EntityBrandingUpdatePayload) => void;
   onPreviewRuntime: (template: CommunicationTemplateCard) => void;
   onEditTemplate: (template: BrandedCommunicationTemplateRecord) => void;
   onCopy: () => void | Promise<void>;
@@ -2120,10 +2140,14 @@ function MessageTemplatesPanel({
 
       {activeTab === "branding" ? (
         <div className="p-4">
-          <EmptyState
-            icon={<FileText size={18} />}
-            title="Branding defaults use the trust profile"
-            description={`Sender, reply-to, and signature defaults still come from ${entityName}.`}
+          <InvoiceBrandingSetup
+            entity={selectedEntity}
+            branding={branding}
+            isLoading={brandingLoading}
+            isSaving={brandingSaving}
+            error={brandingError}
+            saveError={brandingSaveError}
+            onSave={onSaveBranding}
           />
         </div>
       ) : null}
@@ -3132,6 +3156,7 @@ function SettingsWorkspace() {
     const hasXeroCallback =
       params.get("xero_connected") === "1" || params.has("xero_error");
     const requestedTab = params.get("tab");
+    const requestedSection = params.get("section");
     if (requestedTab === "security") {
       setActiveTab("security");
     } else if (requestedTab === "organisation") {
@@ -3146,6 +3171,11 @@ function SettingsWorkspace() {
       hasXeroCallback
     ) {
       setActiveTab("connect");
+    }
+    if (requestedSection === "branding" || params.get("setup") === "invoice") {
+      setActiveTab("organisation");
+      setActiveOrganisationTab("comms");
+      setMessageTemplateTab("branding");
     }
     const entityId = params.get("entity_id");
     if (entityId) {
@@ -3300,6 +3330,30 @@ function SettingsWorkspace() {
         includeInactive: true,
       }),
     enabled: Boolean(selectedEntityId) && activeTab === "organisation",
+  });
+  const entityBrandingQuery = useQuery({
+    queryKey: ["entity-branding", selectedEntityId],
+    queryFn: () => getEntityBranding(selectedEntityId),
+    enabled: Boolean(selectedEntityId) && activeTab === "organisation",
+  });
+
+  const updateEntityBrandingMutation = useMutation({
+    mutationFn: ({
+      entityId,
+      payload,
+    }: {
+      entityId: string;
+      payload: EntityBrandingUpdatePayload;
+    }) => updateEntityBranding(entityId, payload),
+    onSuccess: (branding, variables) => {
+      queryClient.setQueryData(
+        ["entity-branding", variables.entityId],
+        branding,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["entity-branding", variables.entityId],
+      });
+    },
   });
 
   const communicationTemplates = useMemo(
@@ -6435,6 +6489,12 @@ function SettingsWorkspace() {
                   runtimeTemplates={communicationTemplates}
                   brandedTemplates={brandedTemplates}
                   coverage={brandedTemplateCoverage}
+                  selectedEntity={selectedEntity}
+                  branding={entityBrandingQuery.data}
+                  brandingLoading={entityBrandingQuery.isLoading}
+                  brandingSaving={updateEntityBrandingMutation.isPending}
+                  brandingError={entityBrandingQuery.error}
+                  brandingSaveError={updateEntityBrandingMutation.error}
                   entityName={
                     selectedEntity?.name ??
                     securityQuery.data?.organisation.name ??
@@ -6442,6 +6502,13 @@ function SettingsWorkspace() {
                   }
                   activeTab={messageTemplateTab}
                   onTabChange={setMessageTemplateTab}
+                  onSaveBranding={(payload) => {
+                    if (!selectedEntityId) return;
+                    updateEntityBrandingMutation.mutate({
+                      entityId: selectedEntityId,
+                      payload,
+                    });
+                  }}
                   onPreviewRuntime={setRuntimeTemplatePreview}
                   onEditTemplate={(template) =>
                     setTemplateEditorState({ mode: "edit", template })

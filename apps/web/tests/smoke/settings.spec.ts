@@ -1019,3 +1019,105 @@ test("settings account type stays read-only without manage-security", async ({
     page.getByRole("combobox", { name: "Account operating mode" }),
   ).toHaveCount(0);
 });
+
+test("settings guides invoice setup with live preview and local save", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+
+  const forbiddenCalls: string[] = [];
+  let failNextBrandingSave = true;
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = requestPath(request.url());
+    const method = request.method();
+    if (
+      failNextBrandingSave &&
+      method === "PUT" &&
+      path === "/entities/entity-1/branding"
+    ) {
+      failNextBrandingSave = false;
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "brand save failed in smoke test" }),
+      });
+      return;
+    }
+    if (
+      method !== "GET" &&
+      /sendgrid|twilio|send-delivery-email|send-email|send-sms|record-delivery|provider-dispatch|comms\/dispatch|xero|basiq|payment|reconciliation/i.test(
+        path,
+      )
+    ) {
+      forbiddenCalls.push(`${method} ${path}`);
+      await route.fulfill({
+        status: 418,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "provider call blocked in invoice setup test",
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(
+    "/settings?tab=organisation&section=branding&entity_id=entity-1",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Invoice setup" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Complete these steps and Relby will make your tax invoice look professional.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Live sample invoice")).toBeVisible();
+
+  await page
+    .getByLabel("Business address")
+    .fill("Level 4, 88 Creek St, Brisbane QLD 4000");
+  await page
+    .getByLabel("Contact email")
+    .fill("invoice-setup@queenstreet.example");
+  await page.getByLabel("PayID").fill("payid@queenstreet.example");
+  await page.getByRole("button", { name: "Use this invoice style" }).click();
+
+  await expect(
+    page.getByText("Invoice setup could not save. Nothing was sent to providers."),
+  ).toBeVisible();
+
+  const brandingSaveRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      requestPath(request.url()) === "/entities/entity-1/branding",
+  );
+  await page.getByRole("button", { name: "Use this invoice style" }).click();
+  const brandingSaveRequest = await brandingSaveRequestPromise;
+  expect(brandingSaveRequest.postDataJSON()).toMatchObject({
+    business_address: "Level 4, 88 Creek St, Brisbane QLD 4000",
+    contact_email: "invoice-setup@queenstreet.example",
+    payment_payid: "payid@queenstreet.example",
+  });
+  await expect(
+    page.getByText("Invoice setup could not save. Nothing was sent to providers."),
+  ).toHaveCount(0);
+
+  await page.goto("/settings?tab=security");
+  await page.goto(
+    "/settings?tab=organisation&section=branding&entity_id=entity-1",
+  );
+
+  await expect(
+    page.getByText("Level 4, 88 Creek St, Brisbane QLD 4000"),
+  ).toBeVisible();
+  await expect(page.getByText("payid@queenstreet.example")).toBeVisible();
+  const invoiceSetupPanel = page.locator(".rounded-xl").filter({
+    has: page.getByRole("heading", { name: "Invoice setup" }),
+  });
+  await expect(invoiceSetupPanel.getByText("Ready", { exact: true })).toBeVisible();
+  expect(forbiddenCalls).toEqual([]);
+});

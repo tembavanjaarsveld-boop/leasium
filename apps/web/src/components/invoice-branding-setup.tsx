@@ -22,6 +22,7 @@ type Props = {
   isLoading: boolean;
   isSaving: boolean;
   error: unknown;
+  saveError?: unknown;
   onSave: (payload: EntityBrandingUpdatePayload) => void;
 };
 
@@ -143,6 +144,7 @@ export function InvoiceBrandingSetup({
   isLoading,
   isSaving,
   error,
+  saveError,
   onSave,
 }: Props) {
   const [draft, setDraft] = useState<Draft>(() => draftFromBranding(branding));
@@ -409,6 +411,12 @@ export function InvoiceBrandingSetup({
               Logo upload can come later. Initials are enough for this setup.
             </p>
           </div>
+          {saveError ? (
+            <div className="mt-3 flex gap-2 rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+              <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+              Invoice setup could not save. Nothing was sent to providers.
+            </div>
+          ) : null}
         </div>
       </div>
 
