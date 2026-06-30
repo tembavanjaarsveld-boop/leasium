@@ -21,6 +21,36 @@ export type Entity = {
   deleted_at: string | null;
 };
 
+export type EntityBrandingReadiness = "not_started" | "needs_details" | "ready";
+
+export type EntityBrandingRecord = {
+  accent_color: string | null;
+  business_address: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  payment_payid: string | null;
+  payment_bpay_biller: string | null;
+  payment_bpay_reference: string | null;
+  payment_bank_bsb: string | null;
+  payment_bank_account: string | null;
+  footer_terms: string | null;
+  readiness_status: EntityBrandingReadiness;
+  readiness_missing: string[];
+};
+
+export type EntityBrandingUpdatePayload = {
+  accent_color?: string | null;
+  business_address?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  payment_payid?: string | null;
+  payment_bpay_biller?: string | null;
+  payment_bpay_reference?: string | null;
+  payment_bank_bsb?: string | null;
+  payment_bank_account?: string | null;
+  footer_terms?: string | null;
+};
+
 const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   trust: "Trust",
   company: "Company",
@@ -3472,6 +3502,20 @@ async function publicRequestForm<T>(
 
 export function listEntities() {
   return request<Entity[]>("/entities");
+}
+
+export function getEntityBranding(entityId: string) {
+  return request<EntityBrandingRecord>(`/entities/${entityId}/branding`);
+}
+
+export function updateEntityBranding(
+  entityId: string,
+  payload: EntityBrandingUpdatePayload,
+) {
+  return request<EntityBrandingRecord>(`/entities/${entityId}/branding`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 export type EntityCreatePayload = {

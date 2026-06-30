@@ -1,5 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 
+import type { EntityBrandingRecord } from "../../src/lib/api";
+
 type JsonBody =
   | null
   | boolean
@@ -151,6 +153,25 @@ const initialEntities = [
   },
 ];
 let entities = jsonClone(initialEntities);
+
+const initialEntityBrandingByEntityId: Record<
+  string,
+  Record<string, JsonBody>
+> = {
+  [entityId]: {
+    accent_color: "#15565a",
+    business_address: null,
+    contact_email: null,
+    contact_phone: "(07) 3000 0000",
+    payment_payid: null,
+    payment_bpay_biller: null,
+    payment_bpay_reference: null,
+    payment_bank_bsb: null,
+    payment_bank_account: null,
+    footer_terms: "Payment due within 14 days.",
+  },
+};
+let entityBrandingByEntityId = jsonClone(initialEntityBrandingByEntityId);
 
 const initialProperties = [
   {
@@ -2906,6 +2927,72 @@ function multipartFilename(body: string) {
   return match?.[1] ?? "tenant-portal-upload";
 }
 
+function hasMockText(value: JsonBody | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function mockEntityBrandingRead(
+  entity: (typeof initialEntities)[number],
+): EntityBrandingRecord {
+  const hasBrandingRecord = Object.prototype.hasOwnProperty.call(
+    entityBrandingByEntityId,
+    entity.id,
+  );
+  const raw = hasBrandingRecord
+    ? (entityBrandingByEntityId[entity.id] ?? {})
+    : {};
+  const missing: string[] = [];
+  if (!entity.name.trim()) missing.push("legal_name");
+  if (!entity.abn?.trim()) missing.push("abn");
+  if (!hasMockText(raw.business_address)) missing.push("business_address");
+  if (!hasMockText(raw.contact_email) && !hasMockText(raw.contact_phone)) {
+    missing.push("contact");
+  }
+  if (
+    !hasMockText(raw.payment_payid) &&
+    !hasMockText(raw.payment_bpay_biller) &&
+    !(
+      hasMockText(raw.payment_bank_bsb) && hasMockText(raw.payment_bank_account)
+    )
+  ) {
+    missing.push("payment_method");
+  }
+  return {
+    accent_color:
+      typeof raw.accent_color === "string" ? raw.accent_color : null,
+    business_address:
+      typeof raw.business_address === "string" ? raw.business_address : null,
+    contact_email:
+      typeof raw.contact_email === "string" ? raw.contact_email : null,
+    contact_phone:
+      typeof raw.contact_phone === "string" ? raw.contact_phone : null,
+    payment_payid:
+      typeof raw.payment_payid === "string" ? raw.payment_payid : null,
+    payment_bpay_biller:
+      typeof raw.payment_bpay_biller === "string"
+        ? raw.payment_bpay_biller
+        : null,
+    payment_bpay_reference:
+      typeof raw.payment_bpay_reference === "string"
+        ? raw.payment_bpay_reference
+        : null,
+    payment_bank_bsb:
+      typeof raw.payment_bank_bsb === "string" ? raw.payment_bank_bsb : null,
+    payment_bank_account:
+      typeof raw.payment_bank_account === "string"
+        ? raw.payment_bank_account
+        : null,
+    footer_terms:
+      typeof raw.footer_terms === "string" ? raw.footer_terms : null,
+    readiness_status: missing.length
+      ? hasBrandingRecord
+        ? "needs_details"
+        : "not_started"
+      : "ready",
+    readiness_missing: missing,
+  };
+}
+
 type MockLeasiumApiOptions = {
   apiHealthUnavailable?: boolean;
   opensignDemoEndpoints?: boolean;
@@ -2953,6 +3040,7 @@ export async function mockLeasiumApi(
   options: MockLeasiumApiOptions = {},
 ) {
   entities = jsonClone(initialEntities);
+  entityBrandingByEntityId = jsonClone(initialEntityBrandingByEntityId);
   properties = jsonClone(initialProperties);
   tenants = jsonClone(initialTenants);
   maintenanceWorkOrders = jsonClone(initialMaintenanceWorkOrders);
@@ -5547,6 +5635,36 @@ export async function mockLeasiumApi(
       };
       entities.push(created);
       await fulfillJson(route, created, 201);
+      return;
+    }
+
+    const entityBrandingMatch = path.match(/^\/entities\/([^/]+)\/branding$/);
+    if (entityBrandingMatch && method === "GET") {
+      const entity = entities.find(
+        (candidate) => candidate.id === entityBrandingMatch[1],
+      );
+      if (!entity) {
+        await fulfillJson(route, { detail: "Entity denied." }, 403);
+        return;
+      }
+      await fulfillJson(route, mockEntityBrandingRead(entity));
+      return;
+    }
+
+    if (entityBrandingMatch && method === "PUT") {
+      const entity = entities.find(
+        (candidate) => candidate.id === entityBrandingMatch[1],
+      );
+      if (!entity) {
+        await fulfillJson(route, { detail: "Entity denied." }, 403);
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, JsonBody>;
+      entityBrandingByEntityId[entity.id] = {
+        ...(entityBrandingByEntityId[entity.id] ?? {}),
+        ...payload,
+      };
+      await fulfillJson(route, mockEntityBrandingRead(entity));
       return;
     }
 
