@@ -196,10 +196,11 @@ fixes · deferrals.
   `apps/web/output/playwright/guided-invoice-setup-billing-nudge-390.png` ·
   fixes: replaced the empty Settings Branding placeholder with a four-step
   invoice setup checklist, live sample tax invoice preview, local save flow,
-  readiness state, save-failure copy, and Billing Readiness nudge for incomplete
-  setup; the 390px slop pass also fixed the sample invoice sender header so long
-  entity details wrap instead of collapsing · no Xero write, tenant email, SMS,
-  payment action, reconciliation, or provider mutation path changed · deferral:
+  readiness state, save-failure copy, dirty-draft guard, missing entity-profile
+  handoff, and Billing Readiness nudge for incomplete setup; the 390px slop pass
+  also fixed the sample invoice sender header so long entity details wrap instead
+  of collapsing · no Xero write, tenant email, SMS, payment action,
+  reconciliation, or provider mutation path changed · deferral:
   real logo upload and renderer replacement stay out of v1 until the approved
   invoice frame requires them.
 - 2026-06-29 · Lease billing schedule UX v1 · existing current-platform Property
