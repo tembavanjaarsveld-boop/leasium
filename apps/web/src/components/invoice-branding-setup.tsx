@@ -7,7 +7,7 @@ import {
   FileText,
   Palette,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Button, EmptyState, Field, Input, StatusBadge } from "@/components/ui";
 import type {
@@ -43,6 +43,7 @@ const EMPTY_DRAFT: Draft = {
   footer_terms:
     "Payment due within 14 days. Please use the invoice number as your reference.",
 };
+const DRAFT_KEYS = Object.keys(EMPTY_DRAFT) as Array<keyof Draft>;
 
 function valueOrEmpty(value: string | null | undefined) {
   return value ?? "";
@@ -73,6 +74,15 @@ function cleanPayload(draft: Draft): EntityBrandingUpdatePayload {
       value.trim() ? value.trim() : null,
     ]),
   ) as EntityBrandingUpdatePayload;
+}
+
+function draftMatchesBranding(
+  draft: Draft,
+  branding: EntityBrandingRecord | null | undefined,
+) {
+  const submitted = cleanPayload(draft);
+  const saved = cleanPayload(draftFromBranding(branding));
+  return DRAFT_KEYS.every((key) => (submitted[key] ?? null) === saved[key]);
 }
 
 function monogram(name: string | null | undefined) {
@@ -148,10 +158,68 @@ export function InvoiceBrandingSetup({
   onSave,
 }: Props) {
   const [draft, setDraft] = useState<Draft>(() => draftFromBranding(branding));
+  const [isDirty, setIsDirty] = useState(false);
+  const entityId = entity?.id ?? null;
+  const previousEntityIdRef = useRef<string | null>(entityId);
+  const dirtyRevisionRef = useRef(0);
+  const submittedDraftRef = useRef<{
+    draft: Draft;
+    revision: number;
+  } | null>(null);
 
   useEffect(() => {
-    setDraft(draftFromBranding(branding));
-  }, [branding]);
+    const nextDraft = draftFromBranding(branding);
+    if (previousEntityIdRef.current !== entityId) {
+      previousEntityIdRef.current = entityId;
+      dirtyRevisionRef.current = 0;
+      submittedDraftRef.current = null;
+      setDraft(nextDraft);
+      setIsDirty(false);
+      return;
+    }
+
+    const submittedDraft = submittedDraftRef.current;
+    const savedSubmittedDraft =
+      isDirty &&
+      submittedDraft &&
+      submittedDraft.revision === dirtyRevisionRef.current &&
+      draftMatchesBranding(submittedDraft.draft, branding);
+
+    if (!isDirty || savedSubmittedDraft) {
+      if (savedSubmittedDraft) {
+        submittedDraftRef.current = null;
+      }
+      setDraft(nextDraft);
+      setIsDirty(false);
+    }
+  }, [branding, entityId, isDirty]);
+
+  const updateDraft = (updates: Partial<Draft>) => {
+    dirtyRevisionRef.current += 1;
+    submittedDraftRef.current = null;
+    setIsDirty(true);
+    setDraft((current) => ({ ...current, ...updates }));
+  };
+
+  const handleSave = () => {
+    submittedDraftRef.current = {
+      draft: { ...draft },
+      revision: dirtyRevisionRef.current,
+    };
+    onSave(cleanPayload(draft));
+  };
+
+  const missingLegalName = !entity?.name.trim();
+  const missingAbn = !entity?.abn?.trim();
+  const missingEntityDetails = [
+    missingLegalName ? "Legal name" : null,
+    missingAbn ? "ABN" : null,
+  ].filter((label): label is string => Boolean(label));
+  const entityDetailsHref = entity
+    ? `/settings?tab=organisation&section=entities&entity_id=${encodeURIComponent(
+        entity.id,
+      )}`
+    : "/settings?tab=organisation&section=entities";
 
   const checks = useMemo(
     () => [
@@ -226,14 +294,42 @@ export function InvoiceBrandingSetup({
               <Input value={entity.abn ?? ""} readOnly />
             </Field>
           </div>
+          {missingEntityDetails.length ? (
+            <div className="flex gap-3 rounded-lg border border-warning/30 bg-warning-soft p-3 text-sm">
+              <AlertTriangle
+                className="mt-0.5 shrink-0 text-warning-strong"
+                size={16}
+              />
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground">
+                  Entity profile needs attention
+                </p>
+                <p className="mt-1 leading-6 text-muted-foreground">
+                  {missingEntityDetails.join(" and ")}{" "}
+                  {missingEntityDetails.length > 1 ? "come" : "comes"} from
+                  Organisation → Entities, not this invoice setup.
+                </p>
+                <p className="mt-1 leading-6 text-muted-foreground">
+                  {missingAbn
+                    ? "Open entity details to add it, or confirm with the operator if this entity should not have an ABN."
+                    : "Open entity details to add it before marking invoice setup ready."}
+                </p>
+                <a
+                  href={entityDetailsHref}
+                  className="mt-2 inline-flex min-h-11 items-center rounded-md text-sm font-semibold text-primary hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2"
+                >
+                  Open entity details
+                </a>
+              </div>
+            </div>
+          ) : null}
           <Field label="Business address">
             <Input
               value={draft.business_address}
               onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
+                updateDraft({
                   business_address: event.target.value,
-                }))
+                })
               }
               placeholder="Level 2, 144 Edward St, Brisbane QLD 4000"
             />
@@ -244,10 +340,9 @@ export function InvoiceBrandingSetup({
                 type="email"
                 value={draft.contact_email}
                 onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
+                  updateDraft({
                     contact_email: event.target.value,
-                  }))
+                  })
                 }
                 placeholder="accounts@example.com"
               />
@@ -256,10 +351,9 @@ export function InvoiceBrandingSetup({
               <Input
                 value={draft.contact_phone}
                 onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
+                  updateDraft({
                     contact_phone: event.target.value,
-                  }))
+                  })
                 }
                 placeholder="(07) 3000 0000"
               />
@@ -285,10 +379,9 @@ export function InvoiceBrandingSetup({
                 <Input
                   value={draft.accent_color}
                   onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
+                    updateDraft({
                       accent_color: event.target.value,
-                    }))
+                    })
                   }
                   placeholder="#15565a"
                 />
@@ -297,10 +390,9 @@ export function InvoiceBrandingSetup({
                 <Input
                   value={draft.footer_terms}
                   onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
+                    updateDraft({
                       footer_terms: event.target.value,
-                    }))
+                    })
                   }
                 />
               </Field>
@@ -316,10 +408,9 @@ export function InvoiceBrandingSetup({
             <Input
               value={draft.payment_payid}
               onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
+                updateDraft({
                   payment_payid: event.target.value,
-                }))
+                })
               }
               placeholder="accounts@example.com"
             />
@@ -329,10 +420,9 @@ export function InvoiceBrandingSetup({
               <Input
                 value={draft.payment_bpay_biller}
                 onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
+                  updateDraft({
                     payment_bpay_biller: event.target.value,
-                  }))
+                  })
                 }
               />
             </Field>
@@ -340,10 +430,9 @@ export function InvoiceBrandingSetup({
               <Input
                 value={draft.payment_bpay_reference}
                 onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
+                  updateDraft({
                     payment_bpay_reference: event.target.value,
-                  }))
+                  })
                 }
               />
             </Field>
@@ -353,10 +442,9 @@ export function InvoiceBrandingSetup({
               <Input
                 value={draft.payment_bank_bsb}
                 onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
+                  updateDraft({
                     payment_bank_bsb: event.target.value,
-                  }))
+                  })
                 }
               />
             </Field>
@@ -364,10 +452,9 @@ export function InvoiceBrandingSetup({
               <Input
                 value={draft.payment_bank_account}
                 onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
+                  updateDraft({
                     payment_bank_account: event.target.value,
-                  }))
+                  })
                 }
               />
             </Field>
@@ -403,7 +490,7 @@ export function InvoiceBrandingSetup({
             <Button
               type="button"
               disabled={isLoading || isSaving || Boolean(error)}
-              onClick={() => onSave(cleanPayload(draft))}
+              onClick={handleSave}
             >
               {isSaving ? "Saving invoice style..." : "Use this invoice style"}
             </Button>

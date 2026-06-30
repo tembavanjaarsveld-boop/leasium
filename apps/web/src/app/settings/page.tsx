@@ -3176,6 +3176,9 @@ function SettingsWorkspace() {
       setActiveTab("organisation");
       setActiveOrganisationTab("comms");
       setMessageTemplateTab("branding");
+    } else if (requestedSection === "entities") {
+      setActiveTab("organisation");
+      setActiveOrganisationTab("entities");
     }
     const entityId = params.get("entity_id");
     if (entityId) {

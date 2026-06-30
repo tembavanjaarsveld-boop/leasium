@@ -1020,6 +1020,86 @@ test("settings account type stays read-only without manage-security", async ({
   ).toHaveCount(0);
 });
 
+test("settings guides invoice setup to entity details when ABN is missing", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockLeasiumApi(page);
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = requestPath(request.url());
+    if (request.method() === "GET" && path === "/entities") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "entity-1",
+            organisation_id: "org-1",
+            name: "Acme Holdings Pty Ltd",
+            abn: null,
+            gst_registered: true,
+            entity_type: "company",
+            is_managing_entity: true,
+            xero_tenant_id: null,
+            xero_connected_at: null,
+            xero_last_sync_at: null,
+            notes: null,
+            created_at: "2026-05-01T00:00:00.000Z",
+            deleted_at: null,
+          },
+        ]),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/entities/entity-1/branding") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          accent_color: "#15565a",
+          business_address: "Level 2, 144 Edward St, Brisbane QLD 4000",
+          contact_email: "accounts@acme.example",
+          contact_phone: null,
+          payment_payid: "accounts@acme.example",
+          payment_bpay_biller: null,
+          payment_bpay_reference: null,
+          payment_bank_bsb: null,
+          payment_bank_account: null,
+          footer_terms: "Payment due within 14 days.",
+          readiness_status: "needs_details",
+          readiness_missing: ["abn"],
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(
+    "/settings?tab=organisation&section=branding&entity_id=entity-1",
+  );
+
+  await expect(page.getByText("Entity profile needs attention")).toBeVisible();
+  await expect(
+    page.getByText(
+      "ABN comes from Organisation → Entities, not this invoice setup.",
+    ),
+  ).toBeVisible();
+  const entityDetailsLink = page.getByRole("link", {
+    name: "Open entity details",
+  });
+  await expect(entityDetailsLink).toHaveAttribute(
+    "href",
+    "/settings?tab=organisation&section=entities&entity_id=entity-1",
+  );
+  await entityDetailsLink.click();
+  await expect(
+    page.getByRole("heading", { name: "Your entities & properties" }),
+  ).toBeVisible();
+});
+
 test("settings guides invoice setup with live preview and local save", async ({
   page,
 }) => {
