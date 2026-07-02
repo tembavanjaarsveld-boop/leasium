@@ -799,10 +799,28 @@ export type TenantDetailRecord = {
   reviewed_changes: TenantReviewedChangeRecord[];
 };
 
+export type UnitApportionmentStrategy = "percent" | "area" | "manual_amount";
+
+export type LeaseUnitRecord = {
+  id: string;
+  lease_id: string;
+  tenancy_unit_id: string;
+  unit_label: string | null;
+  property_id: string | null;
+  apportionment_percent: number | null;
+  apportionment_area_sqm: number | null;
+  manual_amount_cents: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  deleted_at: string | null;
+};
+
 export type LeaseRecord = {
   id: string;
   tenancy_unit_id: string;
   tenant_id: string;
+  unit_apportionment_strategy?: UnitApportionmentStrategy;
+  units?: LeaseUnitRecord[];
   status: string;
   commencement_date: string | null;
   expiry_date: string | null;
@@ -815,7 +833,18 @@ export type LeaseRecord = {
   notes: string | null;
 };
 
-export type LeasePayload = Omit<LeaseRecord, "id">;
+export type LeaseUnitPayload = {
+  tenancy_unit_id: string;
+  apportionment_percent?: number | null;
+  apportionment_area_sqm?: number | null;
+  manual_amount_cents?: number | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type LeasePayload = Omit<LeaseRecord, "id" | "units"> & {
+  unit_apportionment_strategy?: UnitApportionmentStrategy;
+  units?: LeaseUnitPayload[];
+};
 
 export type TenantOnboardingRecord = {
   id: string;

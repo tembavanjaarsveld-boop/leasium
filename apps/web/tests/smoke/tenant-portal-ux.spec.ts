@@ -134,6 +134,7 @@ test("tenant portal operator preview keeps service failures unavailable", async 
 test("tenant portal operator preview rechecks cached previews on return", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-06-20T12:00:00.000Z"));
   await mockLeasiumApi(page);
 
   await page.goto("/tenants/tenant-1/portal-preview/onboarding-1");
@@ -144,6 +145,7 @@ test("tenant portal operator preview rechecks cached previews on return", async 
 
   await page.getByRole("link", { name: "Back to tenant" }).click();
   await expect(page).toHaveURL(/\/tenants\/tenant-1$/);
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
   await page.route(
     "**/api/v1/tenant-portal/operator-preview/onboarding-1",
     async (route) => {

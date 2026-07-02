@@ -215,6 +215,7 @@ test("mobile tenant rows expose invite actions without raw loading placeholders"
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-06-20T12:00:00.000Z"));
   await page.addInitScript(() => {
     window.localStorage.setItem("leasium.demo_mode", "false");
     window.localStorage.setItem("leasium.entity_id", "entity-1");
@@ -692,6 +693,7 @@ test("mobile tenant portal recovery actions stay touch-safe", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-06-20T12:00:00.000Z"));
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,

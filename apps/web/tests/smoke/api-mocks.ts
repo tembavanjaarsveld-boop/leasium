@@ -2077,6 +2077,22 @@ const leases = [
     id: leaseId,
     tenancy_unit_id: unitId,
     tenant_id: tenantId,
+    unit_apportionment_strategy: "percent",
+    units: [
+      {
+        id: "lease-unit-1",
+        lease_id: leaseId,
+        tenancy_unit_id: unitId,
+        unit_label: "Shop 3",
+        property_id: propertyId,
+        apportionment_percent: 100,
+        apportionment_area_sqm: null,
+        manual_amount_cents: null,
+        metadata: {},
+        created_at: "2026-05-01T00:00:00.000Z",
+        deleted_at: null,
+      },
+    ],
     status: "active",
     commencement_date: "2025-07-01",
     expiry_date: "2028-06-30",
@@ -12302,10 +12318,67 @@ export async function mockLeasiumApi(
 
     if (method === "POST" && path === "/leases") {
       const payload = request.postDataJSON() as Record<string, JsonBody>;
+      const createdId = `lease-created-${leases.length + 1}`;
+      const payloadUnits = Array.isArray(payload.units)
+        ? (payload.units.filter(
+            (item): item is Record<string, JsonBody> =>
+              item !== null &&
+              typeof item === "object" &&
+              !Array.isArray(item),
+          ) as Array<Record<string, JsonBody>>)
+        : [];
+      const linkedUnits = (
+        payloadUnits.length
+          ? payloadUnits
+          : [
+              {
+                tenancy_unit_id: payload.tenancy_unit_id ?? unitId,
+                apportionment_percent: 100,
+              },
+            ]
+      ).map((unitPayload, index) => {
+        const tenancyUnitId = String(unitPayload.tenancy_unit_id ?? unitId);
+        const tenancyUnit = tenancyUnits.find(
+          (unit) => unit.id === tenancyUnitId,
+        );
+        return {
+          id: `lease-unit-created-${leases.length + 1}-${index + 1}`,
+          lease_id: createdId,
+          tenancy_unit_id: tenancyUnitId,
+          unit_label: tenancyUnit?.unit_label ?? null,
+          property_id: tenancyUnit?.property_id ?? null,
+          apportionment_percent:
+            typeof unitPayload.apportionment_percent === "number"
+              ? unitPayload.apportionment_percent
+              : null,
+          apportionment_area_sqm:
+            typeof unitPayload.apportionment_area_sqm === "number"
+              ? unitPayload.apportionment_area_sqm
+              : null,
+          manual_amount_cents:
+            typeof unitPayload.manual_amount_cents === "number"
+              ? unitPayload.manual_amount_cents
+              : null,
+          metadata:
+            unitPayload.metadata &&
+            typeof unitPayload.metadata === "object" &&
+            !Array.isArray(unitPayload.metadata)
+              ? unitPayload.metadata
+              : {},
+          created_at: "2026-05-21T00:00:00.000Z",
+          deleted_at: null,
+        };
+      });
       const created = {
-        id: `lease-created-${leases.length + 1}`,
+        id: createdId,
         tenancy_unit_id: String(payload.tenancy_unit_id ?? unitId),
         tenant_id: String(payload.tenant_id ?? tenantId),
+        unit_apportionment_strategy:
+          payload.unit_apportionment_strategy === "area" ||
+          payload.unit_apportionment_strategy === "manual_amount"
+            ? payload.unit_apportionment_strategy
+            : "percent",
+        units: linkedUnits,
         status: String(payload.status ?? "pending"),
         commencement_date:
           typeof payload.commencement_date === "string"

@@ -296,17 +296,43 @@ const propertyDetailTabs: Array<{ id: PropertyDetailTab; label: string }> = [
   { id: "activity", label: "Activity" },
 ];
 
-const unitSchema = z.object({
-  unit_label: z.string().min(1, "Unit label is required"),
-  sqm: optionalNumber,
-  parking_spaces: optionalInteger,
-});
+const mergedUnitLabelMessage =
+  "Keep units atomic. Select existing units on the lease instead of creating a combined unit label.";
+
+function looksLikeMergedUnitLabel(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+  const unitTokens = normalized.match(/\b[A-Za-z]*\d+[A-Za-z]*\b/g) ?? [];
+  if (unitTokens.length < 2) {
+    return false;
+  }
+  if (/[+,&/]/.test(normalized) || /\b(?:and|to)\b/i.test(normalized)) {
+    return true;
+  }
+  return /\b[A-Za-z]*\d+[A-Za-z]*\s+[A-Za-z]*\d+[A-Za-z]*\b/.test(
+    normalized,
+  );
+}
+
+const unitSchema = z
+  .object({
+    unit_label: z.string().min(1, "Unit label is required"),
+    sqm: optionalNumber,
+    parking_spaces: optionalInteger,
+  })
+  .refine((values) => !looksLikeMergedUnitLabel(values.unit_label), {
+    message: mergedUnitLabelMessage,
+    path: ["unit_label"],
+  });
 
 type UnitFormValues = z.infer<typeof unitSchema>;
 
 const leaseSchema = z
   .object({
     tenancy_unit_id: z.string().min(1, "Unit is required"),
+    tenancy_unit_ids: z.array(z.string()).min(1, "Select at least one unit"),
     tenant_id: z.string().optional(),
     new_tenant_legal_name: z.string().optional(),
     new_tenant_trading_name: z.string().optional(),
@@ -332,6 +358,15 @@ const leaseSchema = z
     {
       message: "Select a tenant or enter a new tenant name",
       path: ["tenant_id"],
+    },
+  )
+  .refine(
+    (values) =>
+      !values.tenancy_unit_id ||
+      values.tenancy_unit_ids.includes(values.tenancy_unit_id),
+    {
+      message: "Primary unit must stay selected",
+      path: ["tenancy_unit_ids"],
     },
   );
 
@@ -398,6 +433,7 @@ const defaultUnitFormValues: UnitFormValues = {
 
 const defaultLeaseFormValues: LeaseFormValues = {
   tenancy_unit_id: "",
+  tenancy_unit_ids: [],
   tenant_id: "",
   new_tenant_legal_name: "",
   new_tenant_trading_name: "",
@@ -1500,9 +1536,65 @@ function leaseSortValue(lease: LeaseRecord) {
   return 3;
 }
 
+function leaseUnitIds(lease: LeaseRecord) {
+  const linkedUnitIds =
+    lease.units
+      ?.filter((unit) => !unit.deleted_at)
+      .map((unit) => unit.tenancy_unit_id) ?? [];
+  return normalizeLeaseUnitIds(lease.tenancy_unit_id, linkedUnitIds);
+}
+
+function normalizeLeaseUnitIds(primaryUnitId: string, unitIds: string[]) {
+  const normalized = new Set<string>();
+  if (primaryUnitId) {
+    normalized.add(primaryUnitId);
+  }
+  for (const unitId of unitIds) {
+    if (unitId) {
+      normalized.add(unitId);
+    }
+  }
+  return Array.from(normalized);
+}
+
+function leaseUnitPayloads(unitIds: string[]) {
+  const percent = unitIds.length
+    ? Number((100 / unitIds.length).toFixed(6))
+    : 100;
+  return unitIds.map((unitId) => ({
+    tenancy_unit_id: unitId,
+    apportionment_percent: percent,
+    metadata: {},
+  }));
+}
+
+function leaseUnitLabel(
+  lease: LeaseRecord,
+  unitId: string,
+  unitsById: Map<string, TenancyUnitRecord>,
+) {
+  return (
+    lease.units?.find(
+      (unit) => !unit.deleted_at && unit.tenancy_unit_id === unitId,
+    )?.unit_label ??
+    unitsById.get(unitId)?.unit_label ??
+    null
+  );
+}
+
+function leaseCoverageLabel(
+  lease: LeaseRecord,
+  unitsById: Map<string, TenancyUnitRecord>,
+) {
+  const labels = leaseUnitIds(lease)
+    .map((unitId) => leaseUnitLabel(lease, unitId, unitsById))
+    .filter(Boolean);
+  return labels.length ? labels.join(", ") : "Unit";
+}
+
 function pickUnitLease(leases: LeaseRecord[] | undefined, unitId: string) {
   return [...(leases ?? [])]
-    .filter((lease) => lease.tenancy_unit_id === unitId)
+    .filter((lease) => leaseUnitIds(lease).includes(unitId))
     .sort((a, b) => {
       const statusDelta = leaseSortValue(a) - leaseSortValue(b);
       if (statusDelta !== 0) {
@@ -2711,6 +2803,9 @@ function Workspace({
   const selectedPropertyLeaseUnit = selectedPropertyCurrentLease
     ? unitsById.get(selectedPropertyCurrentLease.tenancy_unit_id)
     : undefined;
+  const selectedPropertyLeaseCoverage = selectedPropertyCurrentLease
+    ? leaseCoverageLabel(selectedPropertyCurrentLease, unitsById)
+    : "";
   const selectedPropertyTenant = selectedPropertyCurrentLease
     ? tenantsById.get(selectedPropertyCurrentLease.tenant_id)
     : undefined;
@@ -3239,7 +3334,10 @@ function Workspace({
         setUnitEditorOpen(false);
         unitForm.reset(defaultUnitFormValues);
       }
-      if (leaseForm.getValues("tenancy_unit_id") === unitId) {
+      if (
+        leaseForm.getValues("tenancy_unit_id") === unitId ||
+        leaseForm.getValues("tenancy_unit_ids").includes(unitId)
+      ) {
         setEditingLease(null);
         setLeaseEditorOpen(false);
         leaseForm.reset(defaultLeaseFormValues);
@@ -3265,9 +3363,15 @@ function Workspace({
           })
         ).id;
 
+      const unitIds = normalizeLeaseUnitIds(
+        values.tenancy_unit_id,
+        values.tenancy_unit_ids,
+      );
       const payload = {
         tenancy_unit_id: values.tenancy_unit_id,
         tenant_id: tenantId,
+        unit_apportionment_strategy: "percent" as const,
+        units: leaseUnitPayloads(unitIds),
         status: values.status,
         commencement_date: values.commencement_date ?? null,
         expiry_date: values.expiry_date ?? null,
@@ -3761,6 +3865,7 @@ function Workspace({
       lease
         ? {
             tenancy_unit_id: lease.tenancy_unit_id,
+            tenancy_unit_ids: leaseUnitIds(lease),
             tenant_id: lease.tenant_id,
             new_tenant_legal_name: "",
             new_tenant_trading_name: "",
@@ -3789,6 +3894,7 @@ function Workspace({
         : {
             ...defaultLeaseFormValues,
             tenancy_unit_id: unit.id,
+            tenancy_unit_ids: [unit.id],
           },
     );
   }
@@ -3817,9 +3923,11 @@ function Workspace({
       const lease = leasesQuery.data?.find(
         (item) => item.id === obligation.lease_id,
       );
-      const unit = lease ? unitsById.get(lease.tenancy_unit_id) : undefined;
       const tenant = lease ? tenantsById.get(lease.tenant_id) : undefined;
-      return [unit?.unit_label, tenant ? tenantDisplayName(tenant) : null]
+      return [
+        lease ? leaseCoverageLabel(lease, unitsById) : null,
+        tenant ? tenantDisplayName(tenant) : null,
+      ]
         .filter(Boolean)
         .join(" - ");
     }
@@ -3830,9 +3938,11 @@ function Workspace({
   }
 
   function leaseOptionLabel(lease: LeaseRecord) {
-    const unit = unitsById.get(lease.tenancy_unit_id);
     const tenant = tenantsById.get(lease.tenant_id);
-    return [unit?.unit_label ?? "Unit", tenant ? tenantDisplayName(tenant) : ""]
+    return [
+      leaseCoverageLabel(lease, unitsById),
+      tenant ? tenantDisplayName(tenant) : "",
+    ]
       .filter(Boolean)
       .join(" - ");
   }
@@ -4016,8 +4126,13 @@ function Workspace({
     leaseIntakeMutation.variables?.name ??
     "Lease file";
   const leaseEditorUnitId = leaseForm.watch("tenancy_unit_id");
+  const leaseEditorUnitIds = leaseForm.watch("tenancy_unit_ids");
   const leaseEditorTenantId = leaseForm.watch("tenant_id");
   const leaseEditorRentFrequency = leaseForm.watch("rent_frequency");
+  const leaseEditorSelectedUnitIds = normalizeLeaseUnitIds(
+    leaseEditorUnitId,
+    leaseEditorUnitIds ?? [],
+  );
   const leaseEditorUnit = leaseEditorUnitId
     ? unitsById.get(leaseEditorUnitId)
     : undefined;
@@ -4031,6 +4146,22 @@ function Workspace({
     : leaseEditorTenantId
       ? tenantsById.get(leaseEditorTenantId)
       : undefined;
+  function setLeaseUnitSelected(unitId: string, selected: boolean) {
+    const current = normalizeLeaseUnitIds(
+      leaseEditorUnitId,
+      leaseForm.getValues("tenancy_unit_ids"),
+    );
+    const next = selected
+      ? normalizeLeaseUnitIds(leaseEditorUnitId, [...current, unitId])
+      : normalizeLeaseUnitIds(
+          leaseEditorUnitId,
+          current.filter((item) => item !== unitId),
+        );
+    leaseForm.setValue("tenancy_unit_ids", next, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
   const propertyDirectoryHref = selectedEntityId
     ? `/properties?entity_id=${encodeURIComponent(selectedEntityId)}`
     : "/properties";
@@ -4262,6 +4393,7 @@ function Workspace({
               activeTab={activePropertyDetailTab}
               currentLease={selectedPropertyCurrentLease}
               currentLeaseUnit={selectedPropertyLeaseUnit}
+              currentLeaseCoverage={selectedPropertyLeaseCoverage}
               currentTenant={selectedPropertyTenant}
               monthlyRentCents={selectedPropertyMonthlyRentCents}
               readinessBlockers={selectedPropertyReadinessBlockers}
@@ -7137,6 +7269,10 @@ function Workspace({
                               const canCopyOnboarding =
                                 onboarding?.status === "sent" &&
                                 !isExpiredDateTime(onboarding.expires_at);
+                              const multiUnitCoverage =
+                                lease && leaseUnitIds(lease).length > 1
+                                  ? leaseCoverageLabel(lease, unitsById)
+                                  : "";
                               const isOccupied =
                                 lease &&
                                 ["active", "holding_over", "pending"].includes(
@@ -7190,6 +7326,11 @@ function Workspace({
                                       <div className="mt-1 text-xs text-primary">
                                         Onboarding{" "}
                                         {onboarding.status.replaceAll("_", " ")}
+                                      </div>
+                                    ) : null}
+                                    {multiUnitCoverage ? (
+                                      <div className="mt-1 text-xs text-muted-foreground">
+                                        Covers {multiUnitCoverage}
                                       </div>
                                     ) : null}
                                   </td>
@@ -7444,23 +7585,72 @@ function Workspace({
 
                 <div className="grid gap-5">
                   <section className="grid gap-3">
-                    <h4 className="text-sm font-semibold">Tenant</h4>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Field
-                        label="Unit"
-                        error={
-                          leaseForm.formState.errors.tenancy_unit_id?.message
+                    <h4 className="text-sm font-semibold">Lease units</h4>
+                    <fieldset
+                      className="grid gap-2"
+                      aria-invalid={
+                        leaseForm.formState.errors.tenancy_unit_ids
+                          ? "true"
+                          : undefined
+                      }
+                    >
+                      <legend className="sr-only">Lease units</legend>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {tenancyUnitsQuery.data?.map((unit) => {
+                          const selected =
+                            leaseEditorSelectedUnitIds.includes(unit.id);
+                          const primary = unit.id === leaseEditorUnitId;
+                          return (
+                            <label
+                              key={unit.id}
+                              className={cn(
+                                "flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm transition",
+                                selected
+                                  ? "border-primary/40 bg-primary/5 text-foreground"
+                                  : "border-border bg-white text-muted-foreground hover:border-primary/30 hover:bg-muted/40",
+                              )}
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 shrink-0 accent-primary"
+                                  checked={selected}
+                                  disabled={primary}
+                                  onChange={(event) =>
+                                    setLeaseUnitSelected(
+                                      unit.id,
+                                      event.target.checked,
+                                    )
+                                  }
+                                />
+                                <span className="truncate font-medium">
+                                  {unit.unit_label}
+                                </span>
+                              </span>
+                              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                                {primary
+                                  ? "Primary unit"
+                                  : selected
+                                    ? "Linked"
+                                    : "Add"}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                    {leaseForm.formState.errors.tenancy_unit_ids?.message ? (
+                      <p className="text-xs text-danger">
+                        {
+                          leaseForm.formState.errors.tenancy_unit_ids
+                            .message
                         }
-                      >
-                        <Select {...leaseForm.register("tenancy_unit_id")}>
-                          <option value="">Select unit</option>
-                          {tenancyUnitsQuery.data?.map((unit) => (
-                            <option key={unit.id} value={unit.id}>
-                              {unit.unit_label}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
+                      </p>
+                    ) : null}
+                  </section>
+                  <section className="grid gap-3">
+                    <h4 className="text-sm font-semibold">Tenant</h4>
+                    <div className="grid gap-3">
                       <Field
                         label="Tenant"
                         error={leaseForm.formState.errors.tenant_id?.message}
@@ -8192,6 +8382,7 @@ function PropertyDetailOverview({
   activeTab,
   currentLease,
   currentLeaseUnit,
+  currentLeaseCoverage,
   currentTenant,
   monthlyRentCents,
   readinessBlockers,
@@ -8212,6 +8403,7 @@ function PropertyDetailOverview({
   activeTab: PropertyDetailTab;
   currentLease: LeaseRecord | null;
   currentLeaseUnit?: TenancyUnitRecord;
+  currentLeaseCoverage: string;
   currentTenant?: TenantRecord;
   monthlyRentCents: number;
   readinessBlockers: string[];
@@ -8387,7 +8579,9 @@ function PropertyDetailOverview({
                         )} - ${formatDetailDate(
                           currentLease.expiry_date,
                         )} · ${
-                          currentLeaseUnit?.unit_label ?? "Unit not set"
+                          currentLeaseCoverage ||
+                          currentLeaseUnit?.unit_label ||
+                          "Unit not set"
                         } · ${
                           currentLease.security_summary ??
                           currentLease.option_summary ??

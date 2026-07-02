@@ -17,6 +17,19 @@ async function expectTouchTarget(locator: Locator, minSize = 44) {
   expect(box.height).toBeGreaterThanOrEqual(minSize);
 }
 
+function leaseYearSummary(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86_400_000);
+  const totalYears = Math.max(1, Math.round(totalDays / 365));
+  const elapsedDays = Math.max(0, (Date.now() - start.getTime()) / 86_400_000);
+  const currentYear = Math.min(
+    totalYears,
+    Math.max(1, Math.floor(elapsedDays / 365) + 1),
+  );
+  return `Year ${currentYear} of ${totalYears}`;
+}
+
 test.beforeEach(async ({ page }) => {
   await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
@@ -41,6 +54,19 @@ async function openBillingScheduleForm(page: Page) {
   await leaseSelect.selectOption({ index: 1 });
 
   return chargeForm;
+}
+
+async function createAtomicUnitFromLeaseTab(page: Page, label: string) {
+  await page.getByRole("button", { name: "Add unit" }).first().click();
+  const unitDialog = page.getByRole("dialog", { name: "Add unit" });
+  await unitDialog.getByLabel("Unit label").fill(label);
+  await unitDialog.getByRole("button", { name: "Add unit" }).click();
+  await expect(page.getByRole("row").filter({ hasText: label })).toBeVisible();
+  await unitDialog
+    .getByRole("button", { name: "Close unit editor" })
+    .last()
+    .click();
+  await expect(unitDialog).toBeHidden();
 }
 
 test("properties action=new opens the new-property drawer", async ({ page }) => {
@@ -186,7 +212,9 @@ test("desktop selected property opens on the Horizon detail frame", async ({
   await expect(page.getByText("Rent", { exact: true })).toBeVisible();
   await expect(page.getByText("$8,000 / mo").last()).toBeVisible();
   await expect(page.getByText("Lease term")).toBeVisible();
-  await expect(page.getByText("Year 1 of 3")).toBeVisible();
+  await expect(
+    page.getByText(leaseYearSummary("2025-07-01", "2028-06-30")),
+  ).toBeVisible();
   await expect(page.getByText("Arrears", { exact: true })).toBeVisible();
   await expect(page.getByText("Compliance", { exact: true })).toBeVisible();
   await expect(page.getByText("Current lease")).toBeVisible();
@@ -360,6 +388,89 @@ test("mobile lease editor scrolls to rent amount controls", async ({ page }) => 
   expect(box).not.toBeNull();
   expect(box?.y ?? 0).toBeGreaterThanOrEqual(0);
   expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(844);
+});
+
+test("unit editor blocks merged labels before creating a unit", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const unitPostPayloads: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/tenancy-units", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      unitPostPayloads.push(request.postDataJSON() as Record<string, unknown>);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Lease" }).click();
+  await page.getByRole("button", { name: "Add unit" }).click();
+
+  const unitDialog = page.getByRole("dialog", { name: "Add unit" });
+  await unitDialog.getByLabel("Unit label").fill("T101 T103");
+  await unitDialog.getByRole("button", { name: "Add unit" }).click();
+
+  await expect(
+    unitDialog.getByText(
+      "Keep units atomic. Select existing units on the lease instead of creating a combined unit label.",
+    ),
+  ).toBeVisible();
+  expect(unitPostPayloads).toEqual([]);
+});
+
+test("lease editor can link one lease to multiple existing units", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  const leasePostPayloads: Array<Record<string, unknown>> = [];
+  await page.route("**/api/v1/leases", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      leasePostPayloads.push(request.postDataJSON() as Record<string, unknown>);
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Lease" }).click();
+
+  await createAtomicUnitFromLeaseTab(page, "Shop 4");
+  await createAtomicUnitFromLeaseTab(page, "Shop 5");
+
+  await page
+    .getByRole("row")
+    .filter({ hasText: "Shop 4" })
+    .getByRole("button", { name: "Add lease" })
+    .click();
+
+  const leaseDialog = page.getByRole("dialog", { name: /Add lease/ });
+  await expect(
+    leaseDialog.getByRole("group", { name: "Lease units" }),
+  ).toBeVisible();
+  await expect(leaseDialog.getByText("Primary unit")).toBeVisible();
+  await leaseDialog.getByLabel("Shop 5").check();
+  await leaseDialog.getByLabel("Legal name").fill("Multi Shop Tenant Pty Ltd");
+  await leaseDialog.getByLabel("Rent amount").fill("12000");
+  await leaseDialog.getByRole("button", { name: "Add lease" }).click();
+
+  await expect.poll(() => leasePostPayloads).toHaveLength(1);
+  expect(leasePostPayloads[0]).toMatchObject({
+    tenancy_unit_id: "unit-created-2",
+    unit_apportionment_strategy: "percent",
+    units: [
+      { tenancy_unit_id: "unit-created-2", apportionment_percent: 50 },
+      { tenancy_unit_id: "unit-created-3", apportionment_percent: 50 },
+    ],
+  });
 });
 
 test("desktop Properties cards keep portfolio metrics after billing filters", async ({
