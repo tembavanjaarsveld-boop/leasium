@@ -16,6 +16,12 @@ Design-facing changes go through the in-loop UX gate (Figma-first design + same-
 
 ## Built
 
+- [x] **2026-07-02 Exact-cent invoice amount display:** Billing Readiness
+  invoice review, Property Billing schedule confirmations, and Tenant Lease &
+  Billing schedule confirmations now show cents whenever cents exist, so
+  non-whole accounting values such as `$1,000.01` and `-$1,015.28` are not
+  rounded away. This is display-only; no tenant email, Xero, payment,
+  reconciliation, or provider path changed.
 - [x] **2026-06-29 Lease billing schedule UX v1:** Property Billing now frames
       charge setup as a lease-owned billing schedule rather than a generic quick
       charge rule. The schedule form shows tenant-facing/property-informed context,

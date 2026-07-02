@@ -154,6 +154,7 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Recent Feature Commits
 
+- `ba5d998` Show exact cents on invoice amounts
 - `c611773` Add tenant lease billing setup
 - `0e418f9` Add charge rule invoice dates
 - `34a20d4` Record Relby current-platform Figma cleanup
@@ -199,6 +200,13 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
   and before outgoings, reducing the total. Property Billing and tenant Lease &
   Billing forms accept signed amounts. Migration
   `20260702_0053_rental_incentive_charge_type.py` adds the Postgres enum value.
+- Exact-cent invoice amount display is on `main` at `ba5d998`. Billing
+  Readiness invoice review and the Property/Tenant billing schedule notices now
+  show cents whenever cents exist, so `100001` cents renders as `$1,000.01` and
+  a monthly rental incentive renders as `-$1,015.28`. No Xero write, tenant
+  email, SendGrid, Twilio, payment, or reconciliation action was added or run.
+  Focused billing-readiness, property, and tenant smoke tests plus frontend
+  eslint/build passed locally.
 
 ## Next Actions Now
 
