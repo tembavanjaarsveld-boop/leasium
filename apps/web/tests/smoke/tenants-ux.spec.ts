@@ -597,8 +597,11 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
     }),
   ).toHaveCount(1);
 
-  await billingSchedule.getByRole("combobox").nth(1).selectOption("outgoings");
-  await billingSchedule.getByLabel("Amount").fill("425");
+  await billingSchedule
+    .getByRole("combobox")
+    .nth(1)
+    .selectOption("rental_incentive");
+  await billingSchedule.getByLabel("Amount").fill("-1015.28");
   await billingSchedule.getByLabel("Charge starts").fill("2026-08-01");
   await billingSchedule.getByLabel("Next invoice date").fill("2026-07-15");
   await billingSchedule.getByLabel("Next payment due").fill("2026-08-01");
@@ -610,8 +613,8 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
   await expect.poll(() => chargeCreates.length).toBe(1);
   expect(chargeCreates[0]).toMatchObject({
     lease_id: "lease-1",
-    charge_type: "outgoings",
-    amount_cents: 42500,
+    charge_type: "rental_incentive",
+    amount_cents: -101528,
     frequency: "monthly",
     gst_treatment: "taxable",
     xero_tax_type: "OUTPUT",
@@ -625,7 +628,7 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
     tenant_record_setup: true,
     tenant_facing: true,
   });
-  await expect(page.getByText(/Added Outgoings/)).toBeVisible();
+  await expect(page.getByText(/Added Rental incentive/)).toBeVisible();
   await expect(addLineToggle).toHaveAttribute("aria-expanded", "false");
   await expect(billingEditor).toHaveAttribute("aria-hidden", "true");
   await expect

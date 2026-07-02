@@ -136,6 +136,7 @@ class RentFrequency(enum.StrEnum):
 
 class RentChargeType(enum.StrEnum):
     base_rent = "base_rent"
+    rental_incentive = "rental_incentive"
     outgoings = "outgoings"
     promotion_levy = "promotion_levy"
     utilities = "utilities"

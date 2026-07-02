@@ -183,6 +183,7 @@ const defaultTenantChargeRuleForm: TenantChargeRuleForm = {
 
 const chargeTypes = [
   { value: "base_rent", label: "Base rent" },
+  { value: "rental_incentive", label: "Rental incentive" },
   { value: "outgoings", label: "Outgoings" },
   { value: "promotion_levy", label: "Promotion levy" },
   { value: "utilities", label: "Utilities / solar" },
@@ -223,9 +224,7 @@ function frequencyLabel(value: string | null | undefined) {
 
 function chargeAmountCents(value: string) {
   const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0
-    ? Math.round(amount * 100)
-    : null;
+  return Number.isFinite(amount) ? Math.round(amount * 100) : null;
 }
 
 function formFromTenant(tenant: TenantRecord): TenantForm {
@@ -3812,7 +3811,6 @@ function TenantDetail() {
                         <Field label="Amount">
                           <Input
                             type="number"
-                            min="0"
                             step="0.01"
                             value={chargeRuleForm.amount}
                             onChange={(event) =>

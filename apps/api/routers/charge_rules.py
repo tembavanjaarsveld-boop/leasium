@@ -25,6 +25,7 @@ from stewart.core.models import (
     LeaseUnit,
     Property,
     RentChargeRule,
+    RentChargeType,
     StoredDocument,
     TenancyUnit,
     Tenant,
@@ -75,6 +76,36 @@ READ_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops, Us
 WRITE_ROLES = {UserRole.owner, UserRole.admin, UserRole.finance, UserRole.ops}
 PROPERTY_OWNER_BILLING_STRUCTURES = {"property_owner", "trust", "split"}
 BILLING_DRAFT_CHARGE_RULE_SOURCE = "charge_rule_batch"
+CHARGE_RULE_DISPLAY_ORDER = {
+    RentChargeType.base_rent: 0,
+    RentChargeType.rental_incentive: 1,
+    RentChargeType.outgoings: 2,
+    RentChargeType.promotion_levy: 3,
+    RentChargeType.utilities: 4,
+    RentChargeType.parking: 5,
+    RentChargeType.storage: 6,
+    RentChargeType.other: 7,
+}
+
+
+def _charge_rule_sort_key(rule: RentChargeRule) -> tuple[int, object]:
+    return (
+        CHARGE_RULE_DISPLAY_ORDER.get(rule.charge_type, len(CHARGE_RULE_DISPLAY_ORDER)),
+        rule.created_at,
+    )
+
+
+def _charge_rule_amount_validation_detail(
+    charge_type: RentChargeType,
+    amount_cents: int | None,
+) -> str | None:
+    if amount_cents is None:
+        return None
+    if amount_cents < 0 and charge_type != RentChargeType.rental_incentive:
+        return "Only rental incentive charge rules can be negative."
+    if amount_cents > 0 and charge_type == RentChargeType.rental_incentive:
+        return "Rental incentive charge rules must be entered as a negative amount."
+    return None
 
 
 def _property_for_access(
@@ -1510,7 +1541,11 @@ def create_billing_drafts_from_charge_rules(
     existing_count = 0
     drafts: list[BillingDraft] = []
     for prop, unit, lease, tenant in lease_rows:
-        charge_rules = [rule for rule in rules_by_lease.get(lease.id, []) if rule.amount_cents > 0]
+        charge_rules = [
+            rule
+            for rule in sorted(rules_by_lease.get(lease.id, []), key=_charge_rule_sort_key)
+            if rule.amount_cents != 0
+        ]
         if not charge_rules:
             skipped_rows.append(
                 BillingDraftBatchSkippedRead(
@@ -1523,13 +1558,25 @@ def create_billing_drafts_from_charge_rules(
             )
             continue
 
+        total_cents = sum(rule.amount_cents for rule in charge_rules)
+        if total_cents <= 0:
+            skipped_rows.append(
+                BillingDraftBatchSkippedRead(
+                    lease_id=lease.id,
+                    tenant_name=tenant.trading_name or tenant.legal_name,
+                    property_name=prop.name,
+                    unit_label=unit.unit_label,
+                    reason="Lease charge total is not positive.",
+                )
+            )
+            continue
+
         existing = existing_by_lease.get(lease.id)
         if existing is not None:
             existing_count += 1
             drafts.append(existing)
             continue
 
-        total_cents = sum(rule.amount_cents for rule in charge_rules)
         invoice_dates = [
             rule.next_invoice_date for rule in charge_rules if rule.next_invoice_date is not None
         ]
@@ -2276,10 +2323,14 @@ def create_charge_rule(
     session: Annotated[Session, Depends(get_session)],
 ) -> RentChargeRule:
     _, entity_id = _lease_for_access(payload.lease_id, user, session, WRITE_ROLES)
-    if payload.amount_cents < 0:
+    validation_detail = _charge_rule_amount_validation_detail(
+        payload.charge_type,
+        payload.amount_cents,
+    )
+    if validation_detail is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Charge amount cannot be negative.",
+            detail=validation_detail,
         )
     data = payload.model_dump()
     _normalise_charge_rule_metadata(data)
@@ -2311,10 +2362,16 @@ def update_charge_rule(
         charge_rule_id, user, session, WRITE_ROLES
     )
     data = payload.model_dump(exclude_unset=True)
-    if "amount_cents" in data and data["amount_cents"] is not None and data["amount_cents"] < 0:
+    next_charge_type = data.get("charge_type", charge_rule.charge_type)
+    next_amount_cents = data.get("amount_cents", charge_rule.amount_cents)
+    validation_detail = _charge_rule_amount_validation_detail(
+        next_charge_type,
+        next_amount_cents,
+    )
+    if validation_detail is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Charge amount cannot be negative.",
+            detail=validation_detail,
         )
     metadata_patch: dict[str, Any] = {}
     if "metadata" in data or "split_by_unit" in data or "unit_amount_overrides_cents" in data:
@@ -2440,7 +2497,11 @@ def rent_roll(
         # rather than surfacing the removed tenant or its rent/charges.
         if lease is not None and tenant is None:
             lease = None
-        charge_rules = rules_by_lease.get(lease.id, []) if lease is not None else []
+        charge_rules = (
+            sorted(rules_by_lease.get(lease.id, []), key=_charge_rule_sort_key)
+            if lease is not None
+            else []
+        )
         total_charge_cents = sum(rule.amount_cents for rule in charge_rules)
         due_dates = [rule.next_due_date for rule in charge_rules if rule.next_due_date is not None]
         next_due_date = min(due_dates) if due_dates else None
@@ -2471,7 +2532,7 @@ def rent_roll(
         if tenant is not None and not tenant.billing_email and not tenant.contact_email:
             invoice_blockers.append("Tenant is missing a billing email.")
         for rule in charge_rules:
-            if rule.amount_cents <= 0:
+            if rule.amount_cents == 0:
                 invoice_blockers.append(f"{rule.charge_type.replace('_', ' ')} has no amount.")
             if rule.next_due_date is None:
                 invoice_blockers.append(

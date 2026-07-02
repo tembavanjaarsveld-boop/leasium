@@ -192,6 +192,13 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
   integration files, focused split-by-unit and Xero-flag tests, focused and
   full touched billing/properties smoke, tenant billing smoke, backend ruff,
   frontend eslint, frontend tsc, and `git diff --check`.
+- Recurring rental incentive discounts are implemented in code but not yet
+  production-proven. Charge schedules include `rental_incentive`, which can be
+  negative while ordinary charge types still reject negative amounts. Billing
+  drafts and invoice drafts place the negative incentive line after base rent
+  and before outgoings, reducing the total. Property Billing and tenant Lease &
+  Billing forms accept signed amounts. Migration
+  `20260702_0053_rental_incentive_charge_type.py` adds the Postgres enum value.
 
 ## Next Actions Now
 
