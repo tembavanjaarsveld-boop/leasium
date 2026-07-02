@@ -2068,6 +2068,164 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     )
 
 
+def test_split_by_unit_charge_rule_creates_itemised_billing_and_invoice_lines(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "A&G Billing Arcade",
+            "street_address": "1642 Anzac Avenue",
+            "suburb": "North Lakes",
+            "state": "QLD",
+            "postcode": "4509",
+            "property_type": "commercial_retail",
+            "invoice_issuer_name": "SKJ Property Pty Ltd",
+            "owner_abn": "12 345 678 901",
+            "xero_contact_id": "xero-property-contact",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_one_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "T101", "sqm": 75},
+    )
+    unit_two_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "T103", "sqm": 55},
+    )
+    assert unit_one_response.status_code == 201
+    assert unit_two_response.status_code == 201
+    unit_one_id = unit_one_response.json()["id"]
+    unit_two_id = unit_two_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={
+            "entity_id": entity_id,
+            "legal_name": "Auto & General Pty Ltd",
+            "billing_email": "accounts@autogeneral.example",
+        },
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenant_id": tenant_id,
+            "status": "active",
+            "unit_apportionment_strategy": "percent",
+            "commencement_date": "2026-01-01",
+            "expiry_date": "2028-12-31",
+            "units": [
+                {"tenancy_unit_id": unit_one_id, "apportionment_percent": 60},
+                {"tenancy_unit_id": unit_two_id, "apportionment_percent": 40},
+            ],
+        },
+    )
+    assert lease_response.status_code == 201
+    lease_id = lease_response.json()["id"]
+
+    charge_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_id,
+            "charge_type": "base_rent",
+            "amount_cents": 100001,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+            "xero_account_code": "200",
+            "xero_tax_type": "OUTPUT",
+            "next_invoice_date": "2026-05-15",
+            "next_due_date": "2026-06-01",
+            "split_by_unit": True,
+            "metadata": {"source": "test"},
+        },
+    )
+    assert charge_response.status_code == 201
+    charge_body = charge_response.json()
+    assert charge_body["split_by_unit"] is True
+    assert charge_body["unit_amount_overrides_cents"] == {}
+
+    billing_batch_response = client.post(
+        "/api/v1/billing-drafts/from-charge-rules",
+        json={"entity_id": entity_id, "lease_ids": [lease_id], "as_of": "2026-06-01"},
+    )
+    assert billing_batch_response.status_code == 200
+    billing_draft = billing_batch_response.json()["drafts"][0]
+    assert billing_draft["total_cents"] == 100001
+    assert billing_draft["metadata"]["itemised_by_unit"] is True
+    assert billing_draft["metadata"]["itemised_unit_line_count"] == 2
+    assert [(line["description"], line["amount_cents"]) for line in billing_draft["lines"]] == [
+        ("Base Rent - T101", 60000),
+        ("Base Rent - T103", 40001),
+    ]
+    assert {
+        line["metadata"]["unit_label"]: line["metadata"]["tenancy_unit_id"]
+        for line in billing_draft["lines"]
+    } == {"T101": unit_one_id, "T103": unit_two_id}
+    assert all(line["metadata"]["split_by_unit"] is True for line in billing_draft["lines"])
+
+    override_response = client.patch(
+        f"/api/v1/charge-rules/{charge_body['id']}",
+        json={
+            "unit_amount_overrides_cents": {
+                unit_one_id: 61000,
+                unit_two_id: 39000,
+            }
+        },
+    )
+    assert override_response.status_code == 200
+    assert override_response.json()["unit_amount_overrides_cents"] == {
+        unit_one_id: 61000,
+        unit_two_id: 39000,
+    }
+    void_response = client.patch(
+        f"/api/v1/billing-drafts/{billing_draft['id']}",
+        json={"status": "void"},
+    )
+    assert void_response.status_code == 200
+
+    override_batch_response = client.post(
+        "/api/v1/billing-drafts/from-charge-rules",
+        json={"entity_id": entity_id, "lease_ids": [lease_id], "as_of": "2026-06-01"},
+    )
+    assert override_batch_response.status_code == 200
+    override_billing_draft = override_batch_response.json()["drafts"][0]
+    assert override_billing_draft["total_cents"] == 100001
+    assert [
+        (line["description"], line["amount_cents"], line["metadata"]["unit_amount_override"])
+        for line in override_billing_draft["lines"]
+    ] == [
+        ("Base Rent - T101", 61000, True),
+        ("Base Rent - T103", 39001, True),
+    ]
+
+    approve_response = client.patch(
+        f"/api/v1/billing-drafts/{override_billing_draft['id']}",
+        json={"status": "approved"},
+    )
+    assert approve_response.status_code == 200
+    invoice_response = client.post(
+        f"/api/v1/billing-drafts/{override_billing_draft['id']}/invoice-drafts"
+    )
+    assert invoice_response.status_code == 201
+    invoice_body = invoice_response.json()
+    assert invoice_body["subtotal_cents"] == 100001
+    assert invoice_body["total_cents"] == 100001
+    assert [(line["description"], line["amount_cents"]) for line in invoice_body["lines"]] == [
+        ("Base Rent - T101", 61000),
+        ("Base Rent - T103", 39001),
+    ]
+    assert all(line["metadata"]["split_by_unit"] is True for line in invoice_body["lines"])
+
+
 def test_lease_intake_upload_and_apply_creates_register_records(
     client: TestClient,
     session: Session,

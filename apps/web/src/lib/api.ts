@@ -2047,6 +2047,8 @@ export type RentRollRow = {
     next_invoice_date: string | null;
     next_due_date: string | null;
     arrears_or_advance: string;
+    split_by_unit?: boolean;
+    unit_amount_overrides_cents?: Record<string, number>;
   }>;
   charge_rules_total_cents: number | null;
   next_due_date: string | null;
@@ -2069,6 +2071,8 @@ export type ChargeRuleRecord = {
   start_date?: string | null;
   end_date?: string | null;
   arrears_or_advance?: string | null;
+  split_by_unit?: boolean;
+  unit_amount_overrides_cents?: Record<string, number>;
   description?: string | null;
   metadata?: Record<string, unknown>;
 };
