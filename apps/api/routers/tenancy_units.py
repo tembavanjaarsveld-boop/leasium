@@ -8,7 +8,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from stewart.core.audit import audit_log
 from stewart.core.db import utcnow
-from stewart.core.models import Lease, Obligation, Property, RentChargeRule, TenancyUnit, UserRole
+from stewart.core.models import (
+    Lease,
+    LeaseUnit,
+    Obligation,
+    Property,
+    RentChargeRule,
+    TenancyUnit,
+    UserRole,
+)
 
 from apps.api.deps import CurrentUser, assert_entity_role, get_current_user, get_session
 from apps.api.schemas.register import TenancyUnitCreate, TenancyUnitRead, TenancyUnitUpdate
@@ -84,18 +92,38 @@ def _get_unit_for_user(
 
 def _soft_delete_unit_cascade(unit: TenancyUnit, session: Session) -> None:
     now = utcnow()
-    lease_ids = list(
+    legacy_lease_ids = list(
         session.scalars(select(Lease.id).where(Lease.tenancy_unit_id == unit.id))
     )
-    live_leases = list(
+    linked_lease_ids = list(
         session.scalars(
-            select(Lease).where(
-                Lease.tenancy_unit_id == unit.id,
-                Lease.deleted_at.is_(None),
+            select(LeaseUnit.lease_id).where(
+                LeaseUnit.tenancy_unit_id == unit.id,
+                LeaseUnit.deleted_at.is_(None),
             )
         )
     )
+    lease_ids = list(set(legacy_lease_ids + linked_lease_ids))
+    live_leases = (
+        list(
+            session.scalars(
+                select(Lease).where(
+                    Lease.id.in_(lease_ids),
+                    Lease.deleted_at.is_(None),
+                )
+            )
+        )
+        if lease_ids
+        else []
+    )
     if lease_ids:
+        for link in session.scalars(
+            select(LeaseUnit).where(
+                LeaseUnit.lease_id.in_(lease_ids),
+                LeaseUnit.deleted_at.is_(None),
+            )
+        ):
+            link.deleted_at = now
         for rule in session.scalars(
             select(RentChargeRule).where(
                 RentChargeRule.lease_id.in_(lease_ids),
