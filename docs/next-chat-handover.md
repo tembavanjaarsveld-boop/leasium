@@ -1,6 +1,6 @@
 # Relby Next Chat Handover
 
-Last updated: 2026-06-29
+Last updated: 2026-07-02
 
 Generated from Obsidian: `/Users/tembavanjaarsveld/Documents/Temba OS/10_Projects/Relby`
 Generator: `scripts/generate_obsidian_handover.py`
@@ -169,6 +169,20 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Current Local Implementation
 
+- RELBY-MODEL-001 Phase 3 is implemented locally on the current branch but not
+  yet shipped. Smart Intake match candidates now include existing unit
+  candidates; the Relby AI matcher review card proposes one lease linked to
+  multiple existing units for extracted labels such as `T101 T103`; and Apply
+  sends reviewed `tenancy_unit_ids` so the lease creates multiple `lease_unit`
+  links with equal percentage apportionment.
+- This Phase 3 work is proposal/matching-layer only. It does not change
+  extraction prompts, schema, model selection, OCR, or the approve-fetch path.
+  Apply remains the only mutation gate and still creates internal records only;
+  no Xero, SendGrid, Twilio, tenant email, payment, or reconciliation path was
+  added.
+- Local Phase 3 verification passed: backend document-intake suite, focused
+  lease-intake/register lease tests, frontend intake-conversation smoke, backend
+  ruff, frontend eslint, frontend tsc, and `git diff --check`.
 - RELBY-UX-007 is implemented locally but not shipped. Property Billing and
   tenant Lease & Billing schedule-line forms now show Charge starts, Charge
   ends, Next invoice date, and Next payment due with the approved helper text.

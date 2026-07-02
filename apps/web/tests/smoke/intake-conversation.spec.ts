@@ -212,6 +212,145 @@ const matcherCandidates = {
   },
 };
 
+const multiUnitIntakeId = "intake-multi-unit-lease-1";
+const multiUnitProperty = {
+  id: "property-anzac-1642",
+  entity_id: "entity-1",
+  name: "1642 Anzac Avenue",
+  street_address: "1642 Anzac Avenue",
+  suburb: "North Lakes",
+  state: "QLD",
+  postcode: "4509",
+};
+const multiUnitTenant = {
+  id: "tenant-auto-general",
+  entity_id: "entity-1",
+  legal_name: "Auto & General Services Pty Ltd",
+  trading_name: "Auto & General",
+  abn: "11222333444",
+};
+const multiUnitUnits = [
+  {
+    id: "unit-anzac-t101",
+    property_id: multiUnitProperty.id,
+    unit_label: "T101",
+    sqm: 75,
+    parking_spaces: null,
+    metadata: {},
+    created_at: "2026-07-01T00:00:00.000Z",
+    deleted_at: null,
+  },
+  {
+    id: "unit-anzac-t103",
+    property_id: multiUnitProperty.id,
+    unit_label: "T103",
+    sqm: 55,
+    parking_spaces: null,
+    metadata: {},
+    created_at: "2026-07-01T00:00:00.000Z",
+    deleted_at: null,
+  },
+];
+const multiUnitExtraction = {
+  document_type: "lease",
+  summary:
+    "Retail lease for Auto & General Services Pty Ltd at 1642 Anzac Avenue covering T101 and T103.",
+  confidence: 0.93,
+  parties: [
+    {
+      name: "Auto & General Services Pty Ltd",
+      role: "tenant",
+      abn: "11 222 333 444",
+      confidence: 0.94,
+    },
+  ],
+  properties: [
+    {
+      name: "1642 Anzac Avenue",
+      address: "1642 Anzac Avenue",
+      unit_label: "T101 T103",
+      confidence: 0.93,
+    },
+  ],
+  key_dates: [
+    { label: "Lease start", date: "2026-07-01", confidence: 0.92 },
+    { label: "Lease expiry", date: "2031-06-30", confidence: 0.91 },
+  ],
+  money_amounts: [
+    {
+      label: "Annual rent",
+      amount: 168000,
+      currency: "$",
+      frequency: "year",
+      confidence: 0.91,
+    },
+  ],
+  obligations: [],
+  inspection_findings: [],
+  suggested_links: {},
+  warnings: [],
+  missing_information: [],
+};
+const multiUnitIntake = {
+  id: multiUnitIntakeId,
+  entity_id: "entity-1",
+  document_id: "document-multi-unit-lease-1",
+  status: "ready_for_review",
+  document_type: "lease",
+  summary: multiUnitExtraction.summary,
+  confidence: 0.93,
+  extracted_data: multiUnitExtraction,
+  review_data: {},
+  openai_response_id: "resp-multi-unit-lease",
+  error_message: null,
+  reviewed_at: null,
+  reviewed_by_user_id: null,
+  applied_at: null,
+  applied_by_user_id: null,
+  created_at: "2026-07-02T02:00:00.000Z",
+  updated_at: "2026-07-02T02:00:00.000Z",
+  filename: "A&G T101 T103 lease.pdf",
+  content_type: "application/pdf",
+  byte_size: 7890,
+  category: "lease",
+  suggested_entity_id: null as string | null,
+};
+const multiUnitCandidates = {
+  property_candidates: [
+    {
+      property_id: multiUnitProperty.id,
+      score: 0.98,
+      reason: "name + street match",
+      duplicate: true,
+      name: multiUnitProperty.name,
+      street_address: multiUnitProperty.street_address,
+      suburb: multiUnitProperty.suburb,
+      state: multiUnitProperty.state,
+      postcode: multiUnitProperty.postcode,
+    },
+  ],
+  tenant_candidates: [
+    {
+      tenant_id: multiUnitTenant.id,
+      score: 1,
+      reason: "ABN match",
+      duplicate: true,
+      legal_name: multiUnitTenant.legal_name,
+      trading_name: multiUnitTenant.trading_name,
+      abn: multiUnitTenant.abn,
+    },
+  ],
+  unit_candidates: multiUnitUnits.map((unit) => ({
+    tenancy_unit_id: unit.id,
+    property_id: unit.property_id,
+    unit_label: unit.unit_label,
+    score: 1,
+    reason: "unit label match",
+    duplicate: true,
+  })),
+  document_duplicate: null,
+};
+
 function multipartField(body: string, name: string) {
   const match = body.match(
     new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]*)`),
@@ -941,6 +1080,122 @@ test("matcher review surfaces candidates, holds blockers, and links approved cho
     tenant_id: matcherTenant.id,
     tenant_setup_path: "existing",
   });
+});
+
+test("matcher review proposes one lease linked to multiple existing units", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  let applyPayload: Record<string, unknown> | null = null;
+
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/api\/v1/, "");
+
+    if (request.method() === "GET" && path === "/document-intakes") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([multiUnitIntake]),
+      });
+      return;
+    }
+    if (
+      request.method() === "GET" &&
+      path === `/document-intakes/${multiUnitIntakeId}/match-candidates`
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(multiUnitCandidates),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/properties") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([multiUnitProperty]),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/tenants") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([multiUnitTenant]),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === "/tenancy-units") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(multiUnitUnits),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      path === `/document-intakes/${multiUnitIntakeId}/apply`
+    ) {
+      applyPayload = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...multiUnitIntake,
+          status: "applied",
+          applied_at: "2026-07-02T02:05:00.000Z",
+          applied_by_user_id: "operator-1",
+          updated_at: "2026-07-02T02:05:00.000Z",
+          review_data: {
+            applied: {
+              property_id: multiUnitProperty.id,
+              property_name: multiUnitProperty.name,
+              tenancy_unit_ids: multiUnitUnits.map((unit) => unit.id),
+              tenancy_unit_count: 2,
+              created_lease_count: 1,
+              tenant_id: multiUnitTenant.id,
+              tenant_name: multiUnitTenant.legal_name,
+              obligation_count: 0,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.goto("/intake");
+  await page
+    .getByTestId(`review-intake-${multiUnitIntakeId}`)
+    .getByRole("button", { name: "Review" })
+    .click();
+
+  const unitProposal = page.getByTestId("intake-unit-proposal");
+  await expect(unitProposal).toContainText("One lease covers 2 existing units");
+  await expect(unitProposal).toContainText("T101");
+  await expect(unitProposal).toContainText("T103");
+  await expect(unitProposal).toContainText("Matched against 1642 Anzac Avenue");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(unitProposal).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.getByTestId("intake-create-all").click();
+  await expect(page.getByTestId("intake-created")).toBeVisible();
+
+  expect(applyPayload).toMatchObject({
+    property_id: multiUnitProperty.id,
+    tenant_id: multiUnitTenant.id,
+    tenant_setup_path: "existing",
+    tenancy_unit_ids: multiUnitUnits.map((unit) => unit.id),
+  });
+  expect(applyPayload).not.toHaveProperty("tenancy_unit_id");
 });
 
 test("matcher approve-all applies when backend reports a clean pass", async ({

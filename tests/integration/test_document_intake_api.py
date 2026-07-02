@@ -21,6 +21,7 @@ from stewart.core.models import (
     InvoiceDraft,
     Lease,
     LeaseIntake,
+    LeaseUnit,
     MaintenanceWorkOrder,
     Obligation,
     Organisation,
@@ -3364,6 +3365,126 @@ def test_document_intake_duplicate_link_reuses_selected_records(
     assert applied["tenant_id"] == str(existing_tenant.id)
     assert _row_count(session, Property) == property_before + 1
     assert _row_count(session, Tenant) == tenant_before + 1
+    assert _provider_mutation_audit_rows(session) == []
+
+
+def test_document_intake_apply_lease_links_multiple_existing_units(
+    client: TestClient,
+    session: Session,
+    monkeypatch: Any,
+) -> None:
+    entity_id = UUID(_entity_id(session))
+    existing_property = Property(
+        entity_id=entity_id,
+        name="1642 Anzac Avenue",
+        street_address="1642 Anzac Avenue",
+        suburb="North Lakes",
+        state="QLD",
+        postcode="4509",
+        country_code="AU",
+        property_type="commercial_retail",
+        has_solar_pv=False,
+    )
+    existing_tenant = Tenant(
+        entity_id=entity_id,
+        legal_name="Auto & General Services Pty Ltd",
+        trading_name="Auto & General",
+        abn="11 222 333 444",
+    )
+    session.add_all([existing_property, existing_tenant])
+    session.flush()
+    unit_t101 = TenancyUnit(property_id=existing_property.id, unit_label="T101")
+    unit_t103 = TenancyUnit(property_id=existing_property.id, unit_label="T103")
+    session.add_all([unit_t101, unit_t103])
+    session.commit()
+
+    extraction = _fake_smart_lease_extraction()
+    extraction["summary"] = "Lease for Auto & General over T101 and T103."
+    extraction["parties"][0] = {
+        **extraction["parties"][0],
+        "name": "Auto & General Services Pty Ltd",
+        "abn": "11 222 333 444",
+        "confidence": 0.94,
+    }
+    extraction["properties"][0] = {
+        **extraction["properties"][0],
+        "name": "1642 Anzac Avenue",
+        "address": "1642 Anzac Avenue",
+        "unit_label": "T101 T103",
+        "confidence": 0.93,
+    }
+
+    def fake_extract_document_file(
+        *,
+        file_data: bytes,
+        filename: str,
+        content_type: str | None,
+        settings: Settings,
+    ) -> tuple[dict[str, Any], str]:
+        return extraction, "resp_multi_unit_lease"
+
+    monkeypatch.setattr(
+        "apps.api.routers.document_intakes.extract_document_file",
+        fake_extract_document_file,
+    )
+
+    create_response = client.post(
+        "/api/v1/document-intakes",
+        data={"entity_id": str(entity_id)},
+        files={"file": ("ag-t101-t103-lease.txt", b"retail lease", "text/plain")},
+    )
+    assert create_response.status_code == 201
+    intake_id = create_response.json()["id"]
+
+    candidates_response = client.get(f"/api/v1/document-intakes/{intake_id}/match-candidates")
+    assert candidates_response.status_code == 200
+    candidates = candidates_response.json()
+    assert [
+        (row["unit_label"], row["tenancy_unit_id"]) for row in candidates["unit_candidates"]
+    ] == [
+        ("T101", str(unit_t101.id)),
+        ("T103", str(unit_t103.id)),
+    ]
+
+    apply_response = client.post(
+        f"/api/v1/document-intakes/{intake_id}/apply",
+        json={
+            "review_data": extraction,
+            "property_id": str(existing_property.id),
+            "tenant_id": str(existing_tenant.id),
+            "tenancy_unit_ids": [str(unit_t101.id), str(unit_t103.id)],
+            "tenant_setup_path": "existing",
+        },
+    )
+
+    assert apply_response.status_code == 200
+    body = apply_response.json()
+    assert body["status"] == "applied"
+    applied = body["review_data"]["applied"]
+    assert applied["tenancy_unit_ids"] == [str(unit_t101.id), str(unit_t103.id)]
+    assert applied["tenancy_unit_count"] == 2
+    lease = session.get(Lease, UUID(applied["lease_id"]))
+    assert lease is not None
+    assert lease.tenancy_unit_id == unit_t101.id
+    links = session.scalars(
+        select(LeaseUnit).where(
+            LeaseUnit.lease_id == lease.id,
+            LeaseUnit.deleted_at.is_(None),
+        )
+    ).all()
+    assert {link.tenancy_unit_id for link in links} == {unit_t101.id, unit_t103.id}
+    assert {
+        link.tenancy_unit_id: float(link.apportionment_percent or 0) for link in links
+    } == {unit_t101.id: 50.0, unit_t103.id: 50.0}
+    assert (
+        session.scalar(
+            select(TenancyUnit).where(
+                TenancyUnit.property_id == existing_property.id,
+                func.lower(TenancyUnit.unit_label) == "t101 t103",
+            )
+        )
+        is None
+    )
     assert _provider_mutation_audit_rows(session) == []
 
 

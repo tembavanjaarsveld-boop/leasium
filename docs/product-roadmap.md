@@ -1,6 +1,6 @@
 # Relby Product Roadmap
 
-Last updated: 2026-06-29
+Last updated: 2026-07-02
 
 Relby is being shaped around a simple operating promise: documents should turn into work with as little re-keying as possible. Drop the contract, lease, invoice, certificate, or guarantee; Relby reads it, matches it to the portfolio, suggests the changed fields, and only asks a human to review and approve.
 
@@ -2095,3 +2095,5 @@ Shipped 2026-06-27 — Smart Intake tenant setup path: lease review now asks Exi
 Shipped 2026-06-29 — Tenant record tabs + Lease & Billing invoice setup: tenant detail moved from anchor-jump sections to property-style tabs (Overview, Lease & Billing, Portal, Documents, Activity). Lease & Billing now owns the operator path for tenant invoice setup while the data stays lease-owned: operators can add recurring base rent, outgoings, promotion levy, utilities/solar, parking, storage, and other charge rules against the selected lease. Rent increases are handled as future-dated base-rent schedule lines, with old lines retained or ended for history. The UI creates local charge-rule records only; it does not create invoice drafts, send tenant email/SMS, write Xero, take payment, or reconcile anything.
 
 Implemented locally 2026-07-02, pending CI/prod proof - RELBY-UX-007 billing schedule labels + tax type dropdown: property and tenant billing schedule forms now use the approved Charge starts/Charge ends/Next invoice date/Next payment due labels, Schedule and Next cycle groups, and a Tax type Select that stores the existing Xero code and preserves legacy values. No API/DB/payload field names changed and no Xero write path was added. Not marked Shipped until CI and production verification are recorded.
+
+Implemented locally 2026-07-02, pending CI/prod proof - RELBY-MODEL-001 Phase 3 Smart Intake multi-unit lease proposal: lease review matching now returns existing unit candidates alongside property and tenant candidates. The Relby AI matcher review card proposes one lease linked to multiple existing units when the document references labels such as `T101 T103`, and Apply sends reviewed `tenancy_unit_ids` so one lease gets multiple `lease_unit` links with equal percentage apportionment. Extraction prompts/schema/model choices were not changed. Apply remains the only mutation gate and creates internal records only; no Xero, SendGrid, Twilio, tenant email, payment, or reconciliation path was added.

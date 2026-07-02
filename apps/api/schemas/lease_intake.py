@@ -13,6 +13,7 @@ from apps.api.schemas.common import ApiModel
 class LeaseIntakeApplyRequest(BaseModel):
     property_id: UUID | None = None
     tenancy_unit_id: UUID | None = None
+    tenancy_unit_ids: list[UUID] = Field(default_factory=list)
     tenant_id: UUID | None = None
     reviewed_data: dict[str, Any] | None = None
 
