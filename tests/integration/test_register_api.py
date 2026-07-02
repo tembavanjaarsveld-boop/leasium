@@ -2226,6 +2226,166 @@ def test_split_by_unit_charge_rule_creates_itemised_billing_and_invoice_lines(
     assert all(line["metadata"]["split_by_unit"] is True for line in invoice_body["lines"])
 
 
+def test_charge_rules_allow_monthly_rental_incentive_discount_lines(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "T207 Incentive Centre",
+            "street_address": "1642 Anzac Avenue",
+            "suburb": "North Lakes",
+            "state": "QLD",
+            "postcode": "4509",
+            "property_type": "commercial_retail",
+            "invoice_issuer_name": "SJI No 5 Pty Ltd",
+            "owner_abn": "64 116 312 840",
+            "xero_contact_id": "xero-property-contact",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "T207", "sqm": 120},
+    )
+    assert unit_response.status_code == 201
+    unit_id = unit_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={
+            "entity_id": entity_id,
+            "legal_name": "MEGT (Australia) Pty Ltd",
+            "billing_email": "admin@skjproperty.com.au",
+        },
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    lease_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenancy_unit_id": unit_id,
+            "tenant_id": tenant_id,
+            "status": "active",
+            "commencement_date": "2026-03-01",
+            "expiry_date": "2028-02-29",
+            "annual_rent_cents": 9198960,
+            "rent_frequency": "monthly",
+        },
+    )
+    assert lease_response.status_code == 201
+    lease_id = lease_response.json()["id"]
+
+    base_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_id,
+            "charge_type": "base_rent",
+            "amount_cents": 766580,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+            "xero_account_code": "220",
+            "xero_tax_type": "OUTPUT",
+            "start_date": "2026-03-01",
+            "next_invoice_date": "2026-03-01",
+            "next_due_date": "2026-03-01",
+        },
+    )
+    assert base_response.status_code == 201
+
+    incentive_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_id,
+            "charge_type": "rental_incentive",
+            "amount_cents": -101528,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+            "xero_account_code": "220",
+            "xero_tax_type": "OUTPUT",
+            "start_date": "2026-03-01",
+            "next_invoice_date": "2026-03-01",
+            "next_due_date": "2026-03-01",
+        },
+    )
+    assert incentive_response.status_code == 201
+    assert incentive_response.json()["amount_cents"] == -101528
+    assert incentive_response.json()["charge_type"] == "rental_incentive"
+
+    outgoings_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_id,
+            "charge_type": "outgoings",
+            "amount_cents": 192612,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+            "xero_account_code": "220",
+            "xero_tax_type": "OUTPUT",
+            "start_date": "2026-03-01",
+            "next_invoice_date": "2026-03-01",
+            "next_due_date": "2026-03-01",
+        },
+    )
+    assert outgoings_response.status_code == 201
+
+    negative_base_response = client.post(
+        "/api/v1/charge-rules",
+        json={
+            "lease_id": lease_id,
+            "charge_type": "base_rent",
+            "amount_cents": -100,
+            "frequency": "monthly",
+            "gst_treatment": "taxable",
+        },
+    )
+    assert negative_base_response.status_code == 422
+
+    rent_roll_response = client.get(
+        f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}&as_of=2026-03-01"
+    )
+    assert rent_roll_response.status_code == 200
+    rent_roll_body = rent_roll_response.json()
+    assert rent_roll_body[0]["charge_rules_total_cents"] == 857664
+    assert rent_roll_body[0]["invoice_readiness_blockers"] == []
+
+    billing_batch_response = client.post(
+        "/api/v1/billing-drafts/from-charge-rules",
+        json={"entity_id": entity_id, "lease_ids": [lease_id], "as_of": "2026-03-01"},
+    )
+    assert billing_batch_response.status_code == 200
+    billing_draft = billing_batch_response.json()["drafts"][0]
+    assert billing_draft["total_cents"] == 857664
+    assert [(line["description"], line["amount_cents"]) for line in billing_draft["lines"]] == [
+        ("Base Rent", 766580),
+        ("Rental Incentive", -101528),
+        ("Outgoings", 192612),
+    ]
+
+    approve_response = client.patch(
+        f"/api/v1/billing-drafts/{billing_draft['id']}",
+        json={"status": "approved"},
+    )
+    assert approve_response.status_code == 200
+    invoice_response = client.post(
+        f"/api/v1/billing-drafts/{billing_draft['id']}/invoice-drafts"
+    )
+    assert invoice_response.status_code == 201
+    invoice_body = invoice_response.json()
+    assert invoice_body["subtotal_cents"] == 857664
+    assert [(line["description"], line["amount_cents"]) for line in invoice_body["lines"]] == [
+        ("Base Rent", 766580),
+        ("Rental Incentive", -101528),
+        ("Outgoings", 192612),
+    ]
+
+
 def test_lease_intake_upload_and_apply_creates_register_records(
     client: TestClient,
     session: Session,

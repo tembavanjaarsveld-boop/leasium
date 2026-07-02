@@ -572,7 +572,11 @@ test("desktop property billing confirms charge add and supports inline delete", 
   ).toBeVisible();
 
   // Adding a charge surfaces an explicit success confirmation (the bug fix).
-  await chargeForm.getByRole("spinbutton").fill("8000");
+  await chargeForm
+    .locator("select")
+    .filter({ has: page.getByRole("option", { name: "Rental incentive" }) })
+    .selectOption("rental_incentive");
+  await chargeForm.getByRole("spinbutton").fill("-1015.28");
   await chargeForm.getByLabel("Charge starts").fill("2026-05-01");
   await chargeForm.getByLabel("Charge ends").fill("2027-04-30");
   await chargeForm.getByLabel("Next invoice date").fill("2026-05-15");
@@ -599,6 +603,8 @@ test("desktop property billing confirms charge add and supports inline delete", 
       }),
   ).toBeVisible();
   expect(chargeRulePayloads[0]).toMatchObject({
+    charge_type: "rental_incentive",
+    amount_cents: -101528,
     start_date: "2026-05-01",
     end_date: "2027-04-30",
     split_by_unit: true,

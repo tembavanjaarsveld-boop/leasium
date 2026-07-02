@@ -199,6 +199,11 @@ const optionalNumber = z.preprocess(
   z.coerce.number().nonnegative().optional(),
 );
 
+const optionalSignedNumber = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  z.coerce.number().optional(),
+);
+
 const optionalInteger = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),
   z.coerce.number().int().nonnegative().optional(),
@@ -386,7 +391,7 @@ type ObligationFormValues = z.infer<typeof obligationSchema>;
 
 const chargeRuleSchema = z.object({
   lease_id: z.string().min(1, "Lease is required"),
-  amount: optionalNumber,
+  amount: optionalSignedNumber,
   charge_type: z.string().min(1, "Charge type is required"),
   frequency: z.enum(["annual", "monthly", "weekly"]),
   gst_treatment: z.enum(["taxable", "gst_free", "input_taxed", "out_of_scope"]),
@@ -531,6 +536,7 @@ const obligationOwnerRoles = [
 
 const chargeTypes = [
   { value: "base_rent", label: "Base rent" },
+  { value: "rental_incentive", label: "Rental incentive" },
   { value: "outgoings", label: "Outgoings" },
   { value: "promotion_levy", label: "Promotion levy" },
   { value: "utilities", label: "Utilities / solar" },
@@ -6001,7 +6007,6 @@ function Workspace({
                     >
                       <Input
                         type="number"
-                        min="0"
                         step="0.01"
                         {...chargeRuleForm.register("amount")}
                       />
