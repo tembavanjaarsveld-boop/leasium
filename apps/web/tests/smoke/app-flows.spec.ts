@@ -9,6 +9,12 @@ import { mkdir, readFile } from "node:fs/promises";
 
 import { mockLeasiumApi, seedPrimaryEntitySelection } from "./api-mocks";
 
+const STABLE_ONBOARDING_NOW = new Date("2026-06-01T12:00:00.000Z");
+
+async function freezeStableOnboardingClock(page: Page) {
+  await page.clock.setFixedTime(STABLE_ONBOARDING_NOW);
+}
+
 function watchForbiddenXeroProviderRequests(page: Page) {
   const requests: string[] = [];
   page.on("request", (request) => {
@@ -2717,6 +2723,7 @@ test("settings Activity Audit groups recent audit rows", async ({ page }) => {
 test("portfolio QA guides cleanup fixes and source trails", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   await page.goto("/portfolio-qa");
 
   await expect(
@@ -4922,11 +4929,13 @@ test("tenant action panels post their selected action entity", async ({
 });
 
 test("tenant detail shows portal access recovery actions", async ({ page }) => {
+  await freezeStableOnboardingClock(page);
   await page.goto("/tenants/tenant-1");
 
   await expect(
     page.getByRole("heading", { name: /Bright Cafe/ }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Portal" }).click();
   await expect(
     page.getByRole("heading", { name: "Portal access" }),
   ).toBeVisible();
@@ -4936,6 +4945,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   await expect(page.getByText("Portal invite sent.")).toBeVisible();
   await expect(page.getByText("tenant-subject-one")).toBeVisible();
   await expect(page.getByRole("button", { name: "Revoke" })).toBeVisible();
+  await page.getByRole("tab", { name: "Activity" }).click();
   await expect(
     page.getByRole("heading", { name: "Source history" }),
   ).toBeVisible();
@@ -4955,6 +4965,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
     sourceHistory.getByTestId("evidence-audit-row").first(),
   ).toBeVisible();
   await expect(page.getByText("Tenant onboarding applied")).toBeVisible();
+  await page.getByRole("tab", { name: "Overview" }).click();
   await expect(page.getByText("Billing email").first()).toBeVisible();
   await expect(page.getByText("accounts@bright.example").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Insurance" })).toBeVisible();
@@ -4966,6 +4977,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
     "href",
     "/intake?entity_id=entity-1&review=intake-insurance-1",
   );
+  await page.getByRole("tab", { name: "Activity" }).click();
   await expect(
     page.getByRole("heading", { name: "Correspondence" }),
   ).toBeVisible();
@@ -5029,6 +5041,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
     "Review-only export: copying or downloading this file does not send email or SMS",
   );
   await expect(page.getByText("Applied ABN")).toBeVisible();
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
   await expect(
     page.getByRole("link", { name: "Preview portal" }),
   ).toBeVisible();
@@ -5074,6 +5087,7 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
   ).toHaveCount(0);
   await page.getByRole("link", { name: "Back to tenant" }).first().click();
   await expect(page).toHaveURL(/\/tenants\/tenant-1$/);
+  await page.getByRole("tab", { name: "Portal" }).click();
 
   await page.getByRole("button", { name: "Revoke" }).click();
   await expect(
@@ -5097,8 +5111,10 @@ test("tenant detail shows portal access recovery actions", async ({ page }) => {
 test("tenant source history keeps provenance and changes inside mobile width", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Activity" }).click();
 
   const sourceHistory = page
     .getByTestId("evidence-source-trail")
@@ -5122,12 +5138,14 @@ test("tenant source history keeps provenance and changes inside mobile width", a
 test("tenant detail keeps provider detail in one responsive surface", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tenants/tenant-1");
 
   await expect(
     page.getByRole("heading", { name: /Bright Cafe/ }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
   const providerDetail = page.getByTestId("provider-detail");
   const providerSummary = providerDetail
     .locator("summary")
@@ -5342,6 +5360,7 @@ test("smart intake lease review no longer exposes direct accept-match actions", 
 test("tenant detail sends lease pack after onboarding approval", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   type SmokeOnboardingRow = Record<string, unknown> & {
     delivery_data: Record<string, unknown>;
     review_data: Record<string, unknown>;
@@ -5562,6 +5581,7 @@ test("tenant detail sends lease pack after onboarding approval", async ({
   );
 
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
 
   await page.getByRole("button", { name: "Approve & apply" }).click();
   await expect.poll(() => reviewed).toBe(true);
@@ -5656,6 +5676,7 @@ test("tenant detail sends lease pack after onboarding approval", async ({
 test("tenant detail labels tenant-uploaded lease activation review", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   let activated = false;
   let onboardingRow = {
     id: "onboarding-1",
@@ -5765,6 +5786,7 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
   );
 
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
 
   await expect(page.getByText("Lease signing complete")).toBeVisible();
   await expect(page.getByText("Tenant upload accepted").first()).toBeVisible();
@@ -5793,6 +5815,7 @@ test("tenant detail labels tenant-uploaded lease activation review", async ({
 test("tenant detail blocks onboarding apply until lease questions are resolved", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   type SmokeOnboardingRow = Record<string, unknown> & {
     delivery_data: Record<string, unknown>;
     review_data: Record<string, unknown>;
@@ -5984,6 +6007,7 @@ test("tenant detail blocks onboarding apply until lease questions are resolved",
   );
 
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
 
   await expect(page.getByText("Questions open").first()).toBeVisible();
   await expect(
@@ -6011,9 +6035,11 @@ test("tenant detail blocks onboarding apply until lease questions are resolved",
 test("tenant detail shows skipped OpenSign setup after lease pack send", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   await mockLeasiumApi(page, { opensignSkippedLeasePack: true });
 
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
 
   await expect(page.getByText("custom-lease.pdf").first()).toBeVisible();
   await page.getByRole("button", { name: "Send lease pack" }).click();
@@ -6035,9 +6061,11 @@ test("tenant detail shows skipped OpenSign setup after lease pack send", async (
 test("tenant detail reports signed OpenSign delivery instead of Not sent", async ({
   page,
 }) => {
+  await freezeStableOnboardingClock(page);
   await mockLeasiumApi(page, { opensignSignedLeasePackNoEmail: true });
 
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
 
   await expect(page.getByText("Signed via OpenSign").first()).toBeVisible();
   await expect(
@@ -6053,6 +6081,7 @@ test("tenant detail reports signed OpenSign delivery instead of Not sent", async
 });
 
 test("tenant detail flags declined OpenSign signing request", async ({ page }) => {
+  await freezeStableOnboardingClock(page);
   await page.unroute("**/api/v1/**");
   await mockLeasiumApi(page, { tenantPortalLeaseReady: true });
   let onboardingRow = {
@@ -6178,6 +6207,7 @@ test("tenant detail flags declined OpenSign signing request", async ({ page }) =
   );
 
   await page.goto("/tenants/tenant-1");
+  await page.getByRole("tab", { name: "Lease & Billing" }).click();
 
   await expect(
     page.getByText("OpenSign needs attention").first(),
