@@ -1,6 +1,6 @@
 """Register API integration tests using a real app and database session."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +13,7 @@ from stewart.core.models import (
     AuditAction,
     Entity,
     Lease,
+    LeaseUnit,
     Obligation,
     Property,
     RentChargeRule,
@@ -381,9 +382,7 @@ def _reassign_target_entity(client: TestClient, session: Session, name: str) -> 
     return response.json()["id"]
 
 
-def _reassign_make_property(
-    client: TestClient, entity_id: str, name: str, **extra: Any
-) -> str:
+def _reassign_make_property(client: TestClient, entity_id: str, name: str, **extra: Any) -> str:
     payload: dict[str, Any] = {
         "entity_id": entity_id,
         "name": name,
@@ -1162,6 +1161,10 @@ def test_lease_crud_inherits_unit_property_and_tenant_scope(
     lease_id = lease_body["id"]
     assert lease_body["status"] == "active"
     assert lease_body["annual_rent_cents"] == 12000000
+    assert lease_body["unit_apportionment_strategy"] == "percent"
+    assert [
+        (row["tenancy_unit_id"], row["apportionment_percent"]) for row in lease_body["units"]
+    ] == [(unit_id, 100.0)]
 
     by_entity_response = client.get(f"/api/v1/leases?entity_id={entity_id}")
     assert by_entity_response.status_code == 200
@@ -1197,6 +1200,100 @@ def test_lease_crud_inherits_unit_property_and_tenant_scope(
     ).all()
     assert [row.action for row in audit_rows] == ["create", "update", "delete"]
     assert session.scalar(select(Lease).where(Lease.id == UUID(lease_id))) is not None
+
+
+def test_lease_create_accepts_multiple_units_and_filters_by_linked_unit(
+    client: TestClient,
+    session: Session,
+) -> None:
+    entity_id = _entity_id(session)
+    property_response = client.post(
+        "/api/v1/properties",
+        json={
+            "entity_id": entity_id,
+            "name": "Anzac Multi Unit Arcade",
+            "street_address": "1642 Anzac Avenue",
+            "suburb": "North Lakes",
+            "state": "QLD",
+            "postcode": "4509",
+            "property_type": "commercial_retail",
+        },
+    )
+    assert property_response.status_code == 201
+    property_id = property_response.json()["id"]
+
+    unit_one_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "T101", "sqm": 75},
+    )
+    unit_two_response = client.post(
+        "/api/v1/tenancy-units",
+        json={"property_id": property_id, "unit_label": "T103", "sqm": 55},
+    )
+    assert unit_one_response.status_code == 201
+    assert unit_two_response.status_code == 201
+    unit_one_id = unit_one_response.json()["id"]
+    unit_two_id = unit_two_response.json()["id"]
+
+    tenant_response = client.post(
+        "/api/v1/tenants",
+        json={"entity_id": entity_id, "legal_name": "A&G Multi Unit Pty Ltd"},
+    )
+    assert tenant_response.status_code == 201
+    tenant_id = tenant_response.json()["id"]
+
+    create_response = client.post(
+        "/api/v1/leases",
+        json={
+            "tenant_id": tenant_id,
+            "status": "active",
+            "unit_apportionment_strategy": "percent",
+            "units": [
+                {
+                    "tenancy_unit_id": unit_one_id,
+                    "apportionment_percent": 60,
+                    "metadata": {"source": "reviewed"},
+                },
+                {"tenancy_unit_id": unit_two_id, "apportionment_percent": 40},
+            ],
+        },
+    )
+    assert create_response.status_code == 201
+    lease_body = create_response.json()
+    lease_id = lease_body["id"]
+    assert lease_body["tenancy_unit_id"] == unit_one_id
+    assert lease_body["unit_apportionment_strategy"] == "percent"
+    assert {row["tenancy_unit_id"] for row in lease_body["units"]} == {
+        unit_one_id,
+        unit_two_id,
+    }
+    assert {
+        row["tenancy_unit_id"]: row["apportionment_percent"] for row in lease_body["units"]
+    } == {unit_one_id: 60.0, unit_two_id: 40.0}
+
+    links = session.scalars(
+        select(LeaseUnit).where(
+            LeaseUnit.lease_id == UUID(lease_id),
+            LeaseUnit.deleted_at.is_(None),
+        )
+    ).all()
+    assert {str(link.tenancy_unit_id) for link in links} == {unit_one_id, unit_two_id}
+    assert {
+        str(link.tenancy_unit_id): float(link.apportionment_percent or 0) for link in links
+    } == {unit_one_id: 60.0, unit_two_id: 40.0}
+
+    by_linked_unit_response = client.get(f"/api/v1/leases?tenancy_unit_id={unit_two_id}")
+    assert by_linked_unit_response.status_code == 200
+    assert [row["id"] for row in by_linked_unit_response.json()] == [lease_id]
+
+    delete_unit_response = client.delete(f"/api/v1/tenancy-units/{unit_two_id}")
+    assert delete_unit_response.status_code == 204
+    session.expire_all()
+    assert session.get(Lease, UUID(lease_id)).deleted_at is not None
+    assert all(
+        link.deleted_at is not None
+        for link in session.scalars(select(LeaseUnit).where(LeaseUnit.lease_id == UUID(lease_id)))
+    )
 
 
 def test_obligation_crud_filters_scope_and_writes_audit(
@@ -1780,9 +1877,7 @@ def test_deleting_tenant_cascades_lease_and_clears_rent_roll(
         },
     ).json()["id"]
 
-    before = client.get(
-        f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}"
-    ).json()
+    before = client.get(f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}").json()
     assert len(before) == 1
     assert before[0]["tenant_id"] == tenant_id
     assert before[0]["lease_id"] == lease_id
@@ -1793,9 +1888,7 @@ def test_deleting_tenant_cascades_lease_and_clears_rent_roll(
     assert lease is not None and lease.deleted_at is not None
 
     # The unit now reads as vacant — no ghost tenant, no orphaned lease/rent.
-    after = client.get(
-        f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}"
-    ).json()
+    after = client.get(f"/api/v1/rent-roll?entity_id={entity_id}&property_id={property_id}").json()
     assert len(after) == 1
     assert after[0]["tenant_id"] is None
     assert after[0]["tenant_name"] is None
@@ -1898,9 +1991,7 @@ def test_charge_rules_and_rent_roll_surface_billing_readiness(
     assert rent_roll_body[0]["charge_rules"][0]["next_invoice_date"] == "2026-05-15"
     assert rent_roll_body[0]["next_due_date"] == "2026-06-01"
     assert rent_roll_body[0]["invoice_readiness_blockers"] == []
-    assert rent_roll_body[0]["xero_readiness_blockers"] == [
-        "Entity is not connected to Xero."
-    ]
+    assert rent_roll_body[0]["xero_readiness_blockers"] == ["Entity is not connected to Xero."]
 
     billing_batch_response = client.post(
         "/api/v1/billing-drafts/from-charge-rules",
@@ -1983,6 +2074,7 @@ def test_lease_intake_upload_and_apply_creates_register_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     entity_id = _entity_id(session)
+    future_obligation_due = (date.today() + timedelta(days=30)).isoformat()
 
     extracted = {
         "property": {
@@ -2024,7 +2116,7 @@ def test_lease_intake_upload_and_apply_creates_register_records(
             {
                 "title": "Insurance certificate",
                 "category": "insurance",
-                "due_date": "2026-07-01",
+                "due_date": future_obligation_due,
                 "priority": 2,
                 "owner_role": "ops",
                 "notes": "Tenant to provide before possession.",
@@ -2072,9 +2164,7 @@ def test_lease_intake_upload_and_apply_creates_register_records(
     assert tenant is not None
     assert tenant.legal_name == "Intake Retail Pty Ltd"
 
-    obligations = session.scalars(
-        select(Obligation).where(Obligation.lease_id == lease.id)
-    ).all()
+    obligations = session.scalars(select(Obligation).where(Obligation.lease_id == lease.id)).all()
     assert {row.title for row in obligations} == {
         "Insurance certificate",
         "Rent review",

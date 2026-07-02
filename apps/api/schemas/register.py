@@ -16,6 +16,7 @@ from stewart.core.models import (
     PropertyType,
     RentChargeType,
     RentFrequency,
+    UnitApportionmentStrategy,
     UserRole,
 )
 
@@ -475,9 +476,36 @@ class TenantDetailRead(BaseModel):
     reviewed_changes: list[TenantReviewedChangeRead] = Field(default_factory=list)
 
 
-class LeaseCreate(BaseModel):
+class LeaseUnitWrite(BaseModel):
     tenancy_unit_id: UUID
+    apportionment_percent: float | None = None
+    apportionment_area_sqm: float | None = None
+    manual_amount_cents: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class LeaseUnitRead(ApiModel):
+    id: UUID
+    lease_id: UUID
+    tenancy_unit_id: UUID
+    unit_label: str | None = None
+    property_id: UUID | None = None
+    apportionment_percent: float | None
+    apportionment_area_sqm: float | None
+    manual_amount_cents: int | None
+    metadata: dict[str, Any] = Field(
+        validation_alias=AliasChoices("link_metadata", "metadata"),
+        serialization_alias="metadata",
+    )
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class LeaseCreate(BaseModel):
+    tenancy_unit_id: UUID | None = None
     tenant_id: UUID
+    unit_apportionment_strategy: UnitApportionmentStrategy = UnitApportionmentStrategy.percent
+    units: list[LeaseUnitWrite] | None = None
     status: LeaseStatus = LeaseStatus.pending
     commencement_date: date | None = None
     expiry_date: date | None = None
@@ -494,6 +522,8 @@ class LeaseCreate(BaseModel):
 class LeaseUpdate(BaseModel):
     tenancy_unit_id: UUID | None = None
     tenant_id: UUID | None = None
+    unit_apportionment_strategy: UnitApportionmentStrategy | None = None
+    units: list[LeaseUnitWrite] | None = None
     status: LeaseStatus | None = None
     commencement_date: date | None = None
     expiry_date: date | None = None
@@ -511,6 +541,11 @@ class LeaseRead(ApiModel):
     id: UUID
     tenancy_unit_id: UUID
     tenant_id: UUID
+    unit_apportionment_strategy: UnitApportionmentStrategy
+    units: list[LeaseUnitRead] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("active_unit_links", "unit_links", "units"),
+    )
     status: LeaseStatus
     commencement_date: date | None
     expiry_date: date | None

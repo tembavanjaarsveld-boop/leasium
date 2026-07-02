@@ -121,6 +121,12 @@ class LeaseStatus(enum.StrEnum):
     terminated = "terminated"
 
 
+class UnitApportionmentStrategy(enum.StrEnum):
+    percent = "percent"
+    area = "area"
+    manual_amount = "manual_amount"
+
+
 class RentFrequency(enum.StrEnum):
     weekly = "weekly"
     monthly = "monthly"
@@ -862,6 +868,7 @@ class TenancyUnit(Base):
 
     property: Mapped[Property] = relationship(back_populates="tenancy_units")
     leases: Mapped[list["Lease"]] = relationship(back_populates="tenancy_unit")
+    lease_unit_links: Mapped[list["LeaseUnit"]] = relationship(back_populates="tenancy_unit")
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="tenancy_unit")
 
 
@@ -920,6 +927,11 @@ class Lease(Base):
     tenant_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("tenant.id"), nullable=False
     )
+    unit_apportionment_strategy: Mapped[UnitApportionmentStrategy] = mapped_column(
+        Enum(UnitApportionmentStrategy, name="unit_apportionment_strategy"),
+        nullable=False,
+        default=UnitApportionmentStrategy.percent,
+    )
     status: Mapped[LeaseStatus] = mapped_column(
         Enum(LeaseStatus, name="lease_status"), nullable=False, default=LeaseStatus.pending
     )
@@ -947,14 +959,68 @@ class Lease(Base):
 
     tenancy_unit: Mapped[TenancyUnit] = relationship(back_populates="leases")
     tenant: Mapped[Tenant] = relationship(back_populates="leases")
+    unit_links: Mapped[list["LeaseUnit"]] = relationship(back_populates="lease")
     charge_rules: Mapped[list["RentChargeRule"]] = relationship(back_populates="lease")
     obligations: Mapped[list["Obligation"]] = relationship(back_populates="lease")
     tenant_onboardings: Mapped[list["TenantOnboarding"]] = relationship(back_populates="lease")
     documents: Mapped[list["StoredDocument"]] = relationship(back_populates="lease")
 
+    @property
+    def active_unit_links(self) -> list["LeaseUnit"]:
+        return [link for link in self.unit_links if link.deleted_at is None]
+
 
 Index("lease_tenancy_unit_idx", Lease.tenancy_unit_id, postgresql_where=Lease.deleted_at.is_(None))
 Index("lease_tenant_idx", Lease.tenant_id, postgresql_where=Lease.deleted_at.is_(None))
+
+
+class LeaseUnit(Base):
+    __tablename__ = "lease_unit"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid7)
+    lease_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("lease.id"), nullable=False
+    )
+    tenancy_unit_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenancy_unit.id"), nullable=False
+    )
+    apportionment_percent: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    apportionment_area_sqm: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    manual_amount_cents: Mapped[int | None] = mapped_column(Integer)
+    link_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JsonbCompat, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    lease: Mapped[Lease] = relationship(back_populates="unit_links")
+    tenancy_unit: Mapped[TenancyUnit] = relationship(back_populates="lease_unit_links")
+
+    @property
+    def unit_label(self) -> str | None:
+        return self.tenancy_unit.unit_label if self.tenancy_unit is not None else None
+
+    @property
+    def property_id(self) -> UUID | None:
+        return self.tenancy_unit.property_id if self.tenancy_unit is not None else None
+
+
+Index("lease_unit_lease_idx", LeaseUnit.lease_id, postgresql_where=LeaseUnit.deleted_at.is_(None))
+Index(
+    "lease_unit_tenancy_unit_idx",
+    LeaseUnit.tenancy_unit_id,
+    postgresql_where=LeaseUnit.deleted_at.is_(None),
+)
+Index(
+    "lease_unit_active_unique_idx",
+    LeaseUnit.lease_id,
+    LeaseUnit.tenancy_unit_id,
+    unique=True,
+    postgresql_where=LeaseUnit.deleted_at.is_(None),
+    sqlite_where=LeaseUnit.deleted_at.is_(None),
+)
 
 
 class RentChargeRule(Base):
