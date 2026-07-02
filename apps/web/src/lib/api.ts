@@ -1657,6 +1657,15 @@ export type DocumentIntakeTenantCandidateRecord = {
   abn?: string | null;
 };
 
+export type DocumentIntakeUnitCandidateRecord = {
+  tenancy_unit_id: string;
+  property_id: string;
+  unit_label: string;
+  score: number;
+  reason: string;
+  duplicate: boolean;
+};
+
 export type DocumentIntakeDocumentDuplicateRecord = {
   document_id: string;
   intake_id?: string | null;
@@ -1668,6 +1677,7 @@ export type DocumentIntakeDocumentDuplicateRecord = {
 export type DocumentIntakeMatchCandidatesRecord = {
   property_candidates: DocumentIntakePropertyCandidateRecord[];
   tenant_candidates: DocumentIntakeTenantCandidateRecord[];
+  unit_candidates?: DocumentIntakeUnitCandidateRecord[];
   document_duplicate?: DocumentIntakeDocumentDuplicateRecord | null;
 };
 
@@ -6414,6 +6424,7 @@ export function applyDocumentIntake(
     reviewData?: DocumentIntakeExtraction | null;
     propertyId?: string | null;
     tenancyUnitId?: string | null;
+    tenancyUnitIds?: string[] | null;
     tenantId?: string | null;
     leaseId?: string | null;
     threadId?: string | null;
@@ -6433,6 +6444,10 @@ export function applyDocumentIntake(
       review_data: payload.reviewData ?? undefined,
       property_id: payload.propertyId || undefined,
       tenancy_unit_id: payload.tenancyUnitId || undefined,
+      tenancy_unit_ids:
+        payload.tenancyUnitIds && payload.tenancyUnitIds.length > 0
+          ? payload.tenancyUnitIds
+          : undefined,
       tenant_id: payload.tenantId || undefined,
       lease_id: payload.leaseId || undefined,
       thread_id: payload.threadId || undefined,

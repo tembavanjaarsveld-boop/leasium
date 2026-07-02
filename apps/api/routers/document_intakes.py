@@ -101,6 +101,7 @@ from apps.api.schemas.document_intake import (
     DocumentIntakeRead,
     DocumentIntakeReviewRequest,
     DocumentIntakeTenantCandidateRead,
+    DocumentIntakeUnitCandidateRead,
 )
 from apps.api.schemas.lease_intake import LeaseIntakeApplyRequest
 from apps.api.tenant_lease_agreement import lease_agreement_section, mark_lease_agreement_signed
@@ -599,6 +600,100 @@ def _tenant_candidate_read(
     )
 
 
+_UNIT_LABEL_TOKEN_RE = re.compile(
+    r"\b(?:(?:unit|suite|shop|lot|tenancy)\s+)?[A-Z]?\d+[A-Z]?\b",
+    re.IGNORECASE,
+)
+
+
+def _normalise_unit_label(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _unit_labels_from_text(value: Any) -> list[str]:
+    text = _str(value)
+    if text is None:
+        return []
+    normalised = _normalise_unit_label(text)
+    tokens = [
+        _normalise_unit_label(match.group(0))
+        for match in _UNIT_LABEL_TOKEN_RE.finditer(text)
+    ]
+    unique_tokens = list(dict.fromkeys(tokens))
+    if len(unique_tokens) > 1:
+        return unique_tokens
+    return [normalised]
+
+
+def _extracted_unit_labels(data: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+    for row in [
+        _dict(data.get("tenancy_unit")),
+        *_records(data.get("tenancy_units")),
+        *_records(data.get("units")),
+        *_records(data.get("properties")),
+    ]:
+        for key in ("unit_label", "label"):
+            for label in _unit_labels_from_text(row.get(key)):
+                if label.lower() not in {existing.lower() for existing in labels}:
+                    labels.append(label)
+    return labels
+
+
+def _unit_candidates_read(
+    data: dict[str, Any],
+    property_candidates: list[DocumentIntakePropertyCandidateRead],
+    property_by_id: dict[UUID, Property],
+    session: Session,
+) -> list[DocumentIntakeUnitCandidateRead]:
+    labels = _extracted_unit_labels(data)
+    if not labels:
+        return []
+    scoped_property_ids = [
+        candidate.property_id
+        for candidate in property_candidates
+        if candidate.score >= DUPLICATE_THRESHOLD
+    ]
+    if not scoped_property_ids:
+        scoped_property_ids = list(property_by_id)
+    units = list(
+        session.scalars(
+            select(TenancyUnit).where(
+                TenancyUnit.property_id.in_(scoped_property_ids),
+                TenancyUnit.deleted_at.is_(None),
+            )
+        )
+    )
+    units_by_key = {
+        (unit.property_id, unit.unit_label.lower()): unit
+        for unit in units
+    }
+    reads: list[DocumentIntakeUnitCandidateRead] = []
+    for label in labels:
+        label_key = label.lower()
+        matched = next(
+            (
+                units_by_key[(property_id, label_key)]
+                for property_id in scoped_property_ids
+                if (property_id, label_key) in units_by_key
+            ),
+            None,
+        )
+        if matched is None:
+            continue
+        reads.append(
+            DocumentIntakeUnitCandidateRead(
+                tenancy_unit_id=matched.id,
+                property_id=matched.property_id,
+                unit_label=matched.unit_label,
+                score=1.0,
+                reason="unit label match",
+                duplicate=True,
+            )
+        )
+    return reads
+
+
 def _document_duplicate_candidate(
     intake: DocumentIntake,
     session: Session,
@@ -665,6 +760,12 @@ def _match_candidates_read(
     return DocumentIntakeMatchCandidatesRead(
         property_candidates=property_candidates,
         tenant_candidates=tenant_candidates,
+        unit_candidates=_unit_candidates_read(
+            data,
+            property_candidates,
+            property_by_id,
+            session,
+        ),
         document_duplicate=_document_duplicate_candidate(intake, session, user),
     )
 
@@ -744,6 +845,27 @@ def _approve_high_confidence_payload(
         elif candidates.tenant_candidates:
             blockers.append("Likely duplicate tenant needs link/new review.")
 
+    tenancy_unit_ids = list(payload.tenancy_unit_ids)
+    unit_labels = _extracted_unit_labels(reviewed)
+    if (
+        payload.tenancy_unit_id is None
+        and not tenancy_unit_ids
+        and len(unit_labels) > 1
+    ):
+        candidate_by_label = {
+            candidate.unit_label.lower(): candidate
+            for candidate in candidates.unit_candidates
+        }
+        matched_unit_ids = [
+            candidate_by_label[label.lower()].tenancy_unit_id
+            for label in unit_labels
+            if label.lower() in candidate_by_label
+        ]
+        if len(matched_unit_ids) == len(unit_labels):
+            tenancy_unit_ids = matched_unit_ids
+        else:
+            blockers.append("Multiple units need link/new review.")
+
     metadata = {
         "applied": False,
         "threshold": HIGH_CONFIDENCE_THRESHOLD,
@@ -753,6 +875,9 @@ def _approve_high_confidence_payload(
         ],
         "tenant_candidates": [
             candidate.model_dump(mode="json") for candidate in candidates.tenant_candidates
+        ],
+        "unit_candidates": [
+            candidate.model_dump(mode="json") for candidate in candidates.unit_candidates
         ],
         "document_duplicate": (
             candidates.document_duplicate.model_dump(mode="json")
@@ -766,6 +891,7 @@ def _approve_high_confidence_payload(
         payload.model_copy(
             update={
                 "property_id": property_id,
+                "tenancy_unit_ids": tenancy_unit_ids,
                 "tenant_id": tenant_id,
                 "approve_high_confidence": False,
             }
@@ -1684,6 +1810,7 @@ def _apply_lease_document_intake(
         LeaseIntakeApplyRequest(
             property_id=payload.property_id,
             tenancy_unit_id=payload.tenancy_unit_id,
+            tenancy_unit_ids=payload.tenancy_unit_ids,
             tenant_id=payload.tenant_id,
             reviewed_data=lease_data,
         ),
@@ -3987,6 +4114,10 @@ def apply_document_intake(
             "lease_intake_id": str(lease_intake.id),
             "property_id": str(prop.id),
             "tenancy_unit_id": str(unit.id),
+            "tenancy_unit_ids": [
+                str(link.tenancy_unit_id) for link in lease.active_unit_links
+            ],
+            "tenancy_unit_count": len(lease.active_unit_links) or 1,
             "tenant_id": str(tenant.id),
             "tenant_name": tenant.legal_name,
             "lease_id": str(lease.id),
@@ -4020,6 +4151,9 @@ def apply_document_intake(
             "applied_document_intake_id": str(intake.id),
             "applied_lease_intake_id": str(lease_intake.id),
             "applied_lease_id": str(lease.id),
+            "applied_tenancy_unit_ids": [
+                str(link.tenancy_unit_id) for link in lease.active_unit_links
+            ],
             "applied_document_type": document_type,
         }
         audit_log(

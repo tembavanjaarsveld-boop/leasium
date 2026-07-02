@@ -61,6 +61,7 @@ class DocumentIntakeApplyRequest(ApiModel):
     review_data: dict[str, Any] | None = None
     property_id: UUID | None = None
     tenancy_unit_id: UUID | None = None
+    tenancy_unit_ids: list[UUID] = Field(default_factory=list)
     tenant_id: UUID | None = None
     lease_id: UUID | None = None
     thread_id: UUID | None = None
@@ -92,6 +93,15 @@ class DocumentIntakeTenantCandidateRead(ApiModel):
     abn: str | None = None
 
 
+class DocumentIntakeUnitCandidateRead(ApiModel):
+    tenancy_unit_id: UUID
+    property_id: UUID
+    unit_label: str
+    score: float
+    reason: str
+    duplicate: bool
+
+
 class DocumentIntakeDocumentDuplicateRead(ApiModel):
     document_id: UUID
     intake_id: UUID | None = None
@@ -103,6 +113,7 @@ class DocumentIntakeDocumentDuplicateRead(ApiModel):
 class DocumentIntakeMatchCandidatesRead(ApiModel):
     property_candidates: list[DocumentIntakePropertyCandidateRead] = Field(default_factory=list)
     tenant_candidates: list[DocumentIntakeTenantCandidateRead] = Field(default_factory=list)
+    unit_candidates: list[DocumentIntakeUnitCandidateRead] = Field(default_factory=list)
     document_duplicate: DocumentIntakeDocumentDuplicateRead | None = None
 
 

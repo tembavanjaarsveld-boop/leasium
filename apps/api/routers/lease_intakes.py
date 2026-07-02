@@ -26,6 +26,7 @@ from stewart.core.models import (
     LeaseIntake,
     LeaseIntakeStatus,
     LeaseStatus,
+    LeaseUnit,
     Obligation,
     ObligationCategory,
     ObligationStatus,
@@ -34,6 +35,7 @@ from stewart.core.models import (
     RentFrequency,
     TenancyUnit,
     Tenant,
+    UnitApportionmentStrategy,
     UserRole,
 )
 from stewart.core.settings import get_settings
@@ -175,7 +177,7 @@ def _apply_validation_errors(
         errors.append("Choose an existing property or confirm a property name/address.")
 
     unit_label = _str(unit_data.get("unit_label")) or _str(unit_data.get("label"))
-    if payload.tenancy_unit_id is None and not unit_label:
+    if payload.tenancy_unit_id is None and not payload.tenancy_unit_ids and not unit_label:
         errors.append("Choose an existing unit or confirm a unit label.")
 
     tenant_name = _str(tenant_data.get("legal_name")) or _str(tenant_data.get("name"))
@@ -567,11 +569,21 @@ def _apply_lease_records(
         )
     intake.extracted_data = extracted
     prop = _find_or_create_property(payload.property_id, intake, extracted, user, session)
-    unit = _find_or_create_unit(payload.tenancy_unit_id, prop, extracted, intake, session)
-    _clear_orphaned_unit_leases(unit, prop.entity_id, user, session)
-    _assert_no_overlapping_lease(unit, extracted, session)
+    units = _find_or_create_units(
+        payload.tenancy_unit_ids,
+        payload.tenancy_unit_id,
+        prop,
+        extracted,
+        intake,
+        session,
+    )
+    unit = units[0]
+    for linked_unit in units:
+        _clear_orphaned_unit_leases(linked_unit, prop.entity_id, user, session)
+        _assert_no_overlapping_lease(linked_unit, extracted, session)
     tenant = _find_or_create_tenant(payload.tenant_id, intake, extracted, user, session)
     lease = _create_lease(unit, tenant, intake, extracted, session)
+    _create_lease_unit_links(lease, units, intake, session)
     obligations = _create_obligations(intake, prop, unit, lease, extracted, session)
     return prop, unit, tenant, lease, obligations
 
@@ -776,6 +788,54 @@ def _find_or_create_unit(
     return unit
 
 
+def _find_or_create_units(
+    unit_ids: list[UUID],
+    primary_unit_id: UUID | None,
+    prop: Property,
+    extracted: dict[str, Any],
+    intake: LeaseIntake,
+    session: Session,
+) -> list[TenancyUnit]:
+    selected_ids = list(
+        dict.fromkeys([*(unit_ids or []), *([primary_unit_id] if primary_unit_id else [])])
+    )
+    if selected_ids:
+        return [
+            _find_or_create_unit(unit_id, prop, extracted, intake, session)
+            for unit_id in selected_ids
+        ]
+    return [_find_or_create_unit(primary_unit_id, prop, extracted, intake, session)]
+
+
+def _equal_unit_link_percentages(unit_count: int) -> list[float]:
+    if unit_count <= 0:
+        return []
+    if unit_count == 1:
+        return [100.0]
+    share = round(100.0 / unit_count, 4)
+    values = [share for _ in range(unit_count - 1)]
+    values.append(round(100.0 - sum(values), 4))
+    return values
+
+
+def _create_lease_unit_links(
+    lease: Lease,
+    units: list[TenancyUnit],
+    intake: LeaseIntake,
+    session: Session,
+) -> None:
+    percentages = _equal_unit_link_percentages(len(units))
+    for unit, percent in zip(units, percentages, strict=True):
+        lease.unit_links.append(
+            LeaseUnit(
+                tenancy_unit_id=unit.id,
+                apportionment_percent=percent,
+                link_metadata={"source": "lease_intake", "lease_intake_id": str(intake.id)},
+            )
+        )
+    session.flush()
+
+
 def _find_or_create_tenant(
     tenant_id: UUID | None,
     intake: LeaseIntake,
@@ -836,6 +896,7 @@ def _create_lease(
     lease = Lease(
         tenancy_unit_id=unit.id,
         tenant_id=tenant.id,
+        unit_apportionment_strategy=UnitApportionmentStrategy.percent,
         status=_enum(LeaseStatus, data.get("status"), LeaseStatus.pending),
         commencement_date=_date(data.get("commencement_date")),
         expiry_date=_date(data.get("expiry_date")),

@@ -44,6 +44,7 @@ import {
   type DocumentIntakePropertyCandidateRecord,
   type DocumentIntakeRecord,
   type DocumentIntakeTenantCandidateRecord,
+  type DocumentIntakeUnitCandidateRecord,
   type PropertyRecord,
   type TenantSetupPath,
   type TenantRecord,
@@ -372,6 +373,9 @@ function highConfidenceReviewFrom(
       : [],
     tenant_candidates: Array.isArray(value.tenant_candidates)
       ? (value.tenant_candidates as DocumentIntakeTenantCandidateRecord[])
+      : [],
+    unit_candidates: Array.isArray(value.unit_candidates)
+      ? (value.unit_candidates as DocumentIntakeUnitCandidateRecord[])
       : [],
     document_duplicate: isRecord(value.document_duplicate)
       ? (value.document_duplicate as DocumentIntakeDocumentDuplicateRecord)
@@ -1013,6 +1017,40 @@ function DuplicateCandidateCard({
   );
 }
 
+function UnitProposalCard({
+  units,
+  propertyLabel,
+}: {
+  units: DocumentIntakeUnitCandidateRecord[];
+  propertyLabel: string;
+}) {
+  if (units.length < 2) return null;
+  return (
+    <div
+      data-testid="intake-unit-proposal"
+      className="rounded-xl border border-accent/25 bg-accent-soft/60 px-3 py-3 text-sm leading-6 text-leasium-teal-strong"
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <DoorOpen size={16} className="mt-1 shrink-0" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="font-semibold">One lease covers {units.length} existing units</p>
+          <p className="text-xs text-leasium-teal-strong/80">
+            Matched against {propertyLabel}. These units will be linked to one
+            lease, not created as a merged unit label.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {units.map((unit) => (
+              <StatusBadge key={unit.tenancy_unit_id} tone="neutral" className="text-xs">
+                {unit.unit_label}
+              </StatusBadge>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HighConfidenceBlockers({ blockers }: { blockers: string[] }) {
   if (blockers.length === 0) return null;
   return (
@@ -1115,6 +1153,17 @@ export function IntakeConversationPanel({
   }, [intake]);
   const matchCandidates = highConfidenceReview ?? matchCandidatesQuery.data ?? null;
   const documentDuplicate = matchCandidates?.document_duplicate ?? null;
+  const unitCandidates = useMemo(
+    () => matchCandidates?.unit_candidates ?? [],
+    [matchCandidates],
+  );
+  const matchedUnitIds = useMemo(
+    () =>
+      unitCandidates
+        .map((candidate) => text(candidate.tenancy_unit_id))
+        .filter((id): id is string => Boolean(id)),
+    [unitCandidates],
+  );
   const autoProperty = useMemo(
     () => autoPropertyCandidate(matchCandidates?.property_candidates ?? []),
     [matchCandidates],
@@ -1230,6 +1279,11 @@ export function IntakeConversationPanel({
     () => (linkTenant ? tenantMatch : null),
     [linkTenant, tenantMatch],
   );
+  const unitProposalPropertyLabel =
+    effectivePropertyMatch?.label ??
+    selectedManualProperty?.name ??
+    propertyMatch?.label ??
+    "the matched property";
   const defaultTenantSetupPath = useMemo<TenantSetupPath>(
     () => (leaseReview ? inferredTenantSetupPath(data, tenantMatch) : "new"),
     [data, leaseReview, tenantMatch],
@@ -1494,6 +1548,7 @@ export function IntakeConversationPanel({
       Boolean(effectivePropertyMatch),
       Boolean(effectiveTenantMatch),
     );
+    const hasMultiUnitMatch = matchedUnitIds.length > 1;
     try {
       const currentThread = await ensureThread();
       if (!currentThread) {
@@ -1511,10 +1566,12 @@ export function IntakeConversationPanel({
         propertyId:
           effectivePropertyMatch?.id ??
           (linkProperty ? text(links.property_id) : undefined),
-        tenancyUnitId:
-          !manualPropertyId && linkProperty
+        tenancyUnitId: hasMultiUnitMatch
+          ? undefined
+          : !manualPropertyId && linkProperty
             ? text(links.tenancy_unit_id)
             : undefined,
+        tenancyUnitIds: hasMultiUnitMatch ? matchedUnitIds : undefined,
         tenantId: effectiveTenantMatch?.id ?? (linkTenant ? text(links.tenant_id) : undefined),
         leaseId:
           !manualPropertyId && linkProperty ? text(links.lease_id) : undefined,
@@ -1952,6 +2009,14 @@ export function IntakeConversationPanel({
                   linked={linkTenant}
                   onLink={() => chooseTenantLink(true)}
                   onCreate={() => chooseTenantLink(false)}
+                />
+              </div>
+            ) : null}
+            {unitCandidates.length > 1 ? (
+              <div className="mb-3">
+                <UnitProposalCard
+                  units={unitCandidates}
+                  propertyLabel={unitProposalPropertyLabel}
                 />
               </div>
             ) : null}
