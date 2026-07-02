@@ -1,5 +1,6 @@
 """Lease intake API tests with OpenAI extraction monkeypatched."""
 
+from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +26,7 @@ def _entity_id(session: Session) -> str:
 
 
 def _fake_extraction() -> dict[str, Any]:
+    future_obligation_due = (date.today() + timedelta(days=30)).isoformat()
     return {
         "property": {
             "name": "AI House",
@@ -78,7 +80,7 @@ def _fake_extraction() -> dict[str, Any]:
             {
                 "title": "Bank guarantee review",
                 "category": "bank_guarantee",
-                "due_date": "2026-07-01",
+                "due_date": future_obligation_due,
                 "priority": 1,
                 "owner_role": "finance",
                 "notes": "Confirm guarantee is held before commencement.",
