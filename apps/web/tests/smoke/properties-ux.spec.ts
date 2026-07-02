@@ -533,6 +533,10 @@ test("desktop property billing confirms charge add and supports inline delete", 
   await expect(
     chargeForm.getByText("Billing readiness checks the run", { exact: true }),
   ).toBeVisible();
+  const splitByUnit = chargeForm.getByRole("checkbox", {
+    name: "Split by unit",
+  });
+  await expect(splitByUnit).toBeVisible();
 
   // Frequency selector replaces the old hard-coded monthly behaviour.
   const frequencySelect = chargeForm.locator("select").filter({
@@ -579,6 +583,7 @@ test("desktop property billing confirms charge add and supports inline delete", 
     taxTypeSelect.getByRole("option", { name: "GST on Income" }),
   ).toHaveCount(1);
   await taxTypeSelect.selectOption("OUTPUT");
+  await splitByUnit.check();
   await mkdir("../../output/playwright", { recursive: true });
   await page.screenshot({
     path: "../../output/playwright/billing-schedule-labels-1440.png",
@@ -596,6 +601,7 @@ test("desktop property billing confirms charge add and supports inline delete", 
   expect(chargeRulePayloads[0]).toMatchObject({
     start_date: "2026-05-01",
     end_date: "2027-04-30",
+    split_by_unit: true,
     xero_tax_type: "OUTPUT",
   });
 

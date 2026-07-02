@@ -1899,6 +1899,57 @@ def test_xero_invoice_draft_create_requires_explicit_posting_approval_before_wri
     assert "xero_sync" not in invoice_draft.invoice_metadata
 
 
+def test_xero_invoice_draft_create_blocks_itemised_unit_lines_when_flag_off(
+    client: TestClient,
+    session: Session,
+    monkeypatch,
+) -> None:
+    settings = _provider_settings()
+    _override_settings(settings)
+    _fake_xero_provider(monkeypatch)
+    entity_id = _entity_id(session)
+    invoice_draft = _create_approved_invoice_fixture(client, session, entity_id)
+    invoice_line = session.scalar(
+        select(InvoiceDraftLine).where(InvoiceDraftLine.invoice_draft_id == invoice_draft.id)
+    )
+    assert invoice_line is not None
+    invoice_line.description = "Base Rent - T101"
+    invoice_line.line_metadata = {
+        **(invoice_line.line_metadata or {}),
+        "split_by_unit": True,
+        "unit_label": "T101",
+        "tenancy_unit_id": str(invoice_draft.tenancy_unit_id),
+    }
+    session.commit()
+
+    approval_response = client.post(
+        f"/api/v1/xero/invoices/{invoice_draft.id}/posting-approval",
+        json={"approved": True, "idempotency_key": "itemised-unit-build"},
+    )
+    assert approval_response.status_code == 200
+    assert approval_response.json()["status"] == "approved"
+
+    state = _start_xero_oauth(client, entity_id)
+    _finish_xero_oauth(client, state)
+
+    create_calls: list[dict[str, object]] = []
+    _fake_xero_invoice_dependencies(monkeypatch, create_calls)
+
+    create_response = client.post(
+        f"/api/v1/xero/invoices/draft-create/{entity_id}",
+        json={"invoice_draft_ids": [str(invoice_draft.id)]},
+    )
+    assert create_response.status_code == 200
+    create_body = create_response.json()
+    assert create_body["created_count"] == 0
+    assert create_body["blocked_count"] == 1
+    assert "Itemised unit Xero payloads are disabled" in create_body["results"][0]["reason"]
+    assert create_calls == []
+
+    session.refresh(invoice_draft)
+    assert "xero_sync" not in invoice_draft.invoice_metadata
+
+
 def test_xero_posting_approval_then_draft_create_is_idempotent(
     client: TestClient,
     session: Session,

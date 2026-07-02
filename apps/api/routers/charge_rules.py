@@ -1,7 +1,8 @@
 """Rent charge rule and rent roll routes."""
 
 from datetime import date
-from typing import Annotated, cast
+from decimal import ROUND_FLOOR, Decimal
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -21,11 +22,13 @@ from stewart.core.models import (
     InvoiceDraftLine,
     InvoiceDraftStatus,
     Lease,
+    LeaseUnit,
     Property,
     RentChargeRule,
     StoredDocument,
     TenancyUnit,
     Tenant,
+    UnitApportionmentStrategy,
     UserRole,
 )
 from stewart.core.settings import Settings, get_settings
@@ -197,6 +200,38 @@ def _source_hint_from_charge_rule(rule: RentChargeRule) -> str:
     return "Lease charge rule"
 
 
+def _normalise_charge_rule_metadata(data: dict[str, Any]) -> None:
+    metadata = dict(data.pop("metadata", {}) or {})
+    if "split_by_unit" in data:
+        if data.pop("split_by_unit") is True:
+            metadata["split_by_unit"] = True
+        else:
+            metadata.pop("split_by_unit", None)
+    if "unit_amount_overrides_cents" in data:
+        raw_overrides = data.pop("unit_amount_overrides_cents") or {}
+        overrides: dict[str, int] = {}
+        for unit_id, value in raw_overrides.items():
+            try:
+                parsed_unit_id = str(unit_id if isinstance(unit_id, UUID) else UUID(str(unit_id)))
+                amount = int(value)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Unit amount overrides must use tenancy unit ids and cent amounts.",
+                ) from None
+            if amount < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Unit amount overrides cannot be negative.",
+                )
+            overrides[parsed_unit_id] = amount
+        if overrides:
+            metadata["unit_amount_overrides_cents"] = overrides
+        else:
+            metadata.pop("unit_amount_overrides_cents", None)
+    data["charge_rule_metadata"] = metadata
+
+
 def _billing_prep_filename(unit: TenancyUnit, tenant: Tenant, period_key: str) -> str:
     safe_parts = [
         "".join(char for char in tenant.legal_name if char.isalnum() or char in (" ", "-", "_"))
@@ -210,6 +245,181 @@ def _billing_prep_filename(unit: TenancyUnit, tenant: Tenant, period_key: str) -
     ]
     safe_name = "-".join(part for part in safe_parts if part)[:80] or "tenant"
     return f"billing-prep-{period_key}-{safe_name}.txt"
+
+
+def _charge_rule_base_metadata(rule: RentChargeRule) -> dict[str, object | None]:
+    return {
+        "source": BILLING_DRAFT_CHARGE_RULE_SOURCE,
+        "charge_rule_id": str(rule.id),
+        "charge_type": rule.charge_type.value,
+        "frequency": rule.frequency.value,
+        "gst_treatment": rule.gst_treatment.value,
+        "xero_account_code": rule.xero_account_code,
+        "xero_tax_type": rule.xero_tax_type,
+        "start_date": rule.start_date.isoformat() if rule.start_date else None,
+        "end_date": rule.end_date.isoformat() if rule.end_date else None,
+        "next_invoice_date": rule.next_invoice_date.isoformat()
+        if rule.next_invoice_date
+        else None,
+        "next_due_date": rule.next_due_date.isoformat() if rule.next_due_date else None,
+    }
+
+
+def _charge_rule_line_description(rule: RentChargeRule) -> str:
+    return rule.charge_type.value.replace("_", " ").title()
+
+
+def _active_lease_unit_links(lease: Lease) -> list[LeaseUnit]:
+    return [
+        link
+        for link in sorted(lease.active_unit_links, key=lambda item: item.created_at)
+        if link.tenancy_unit is not None and link.tenancy_unit.deleted_at is None
+    ]
+
+
+def _lease_unit_weight(lease: Lease, link: LeaseUnit) -> Decimal:
+    if lease.unit_apportionment_strategy == UnitApportionmentStrategy.area:
+        return Decimal(link.apportionment_area_sqm or 0)
+    if lease.unit_apportionment_strategy == UnitApportionmentStrategy.manual_amount:
+        return Decimal(link.manual_amount_cents or 0)
+    return Decimal(link.apportionment_percent or 0)
+
+
+def _allocate_split_amounts(
+    *,
+    total_cents: int,
+    lease: Lease,
+    links: list[LeaseUnit],
+    overrides: dict[UUID, int],
+) -> dict[UUID, int]:
+    amounts: dict[UUID, int] = {}
+    auto_links: list[LeaseUnit] = []
+    override_total = 0
+    for link in links:
+        override = overrides.get(link.tenancy_unit_id)
+        if override is None:
+            auto_links.append(link)
+            continue
+        amounts[link.tenancy_unit_id] = override
+        override_total += override
+
+    if override_total > total_cents:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Unit amount overrides cannot exceed the charge amount.",
+        )
+
+    remaining = total_cents - override_total
+    if not auto_links:
+        if remaining > 0 and links:
+            last_link = links[-1]
+            amounts[last_link.tenancy_unit_id] = (
+                amounts.get(last_link.tenancy_unit_id, 0) + remaining
+            )
+        return amounts
+
+    weights = [_lease_unit_weight(lease, link) for link in auto_links]
+    if sum(weights, Decimal("0")) <= 0:
+        weights = [Decimal("1") for _ in auto_links]
+    total_weight = sum(weights, Decimal("0"))
+    allocated = 0
+    for index, link in enumerate(auto_links):
+        if index == len(auto_links) - 1:
+            amount = remaining - allocated
+        else:
+            amount = int(
+                (Decimal(remaining) * weights[index] / total_weight).to_integral_value(
+                    rounding=ROUND_FLOOR
+                )
+            )
+            allocated += amount
+        amounts[link.tenancy_unit_id] = amount
+    return amounts
+
+
+def _billing_line_payloads_from_charge_rule(
+    *,
+    rule: RentChargeRule,
+    lease: Lease,
+    billing_draft_id: UUID,
+) -> list[dict[str, Any]]:
+    base_description = _charge_rule_line_description(rule)
+    base_metadata = _charge_rule_base_metadata(rule)
+    if not rule.split_by_unit:
+        return [
+            {
+                "billing_draft_id": billing_draft_id,
+                "description": base_description,
+                "amount_cents": rule.amount_cents,
+                "currency": "AUD",
+                "source_hint": _source_hint_from_charge_rule(rule),
+                "confidence": 1.0,
+                "line_metadata": base_metadata,
+            }
+        ]
+
+    links = _active_lease_unit_links(lease)
+    if not links:
+        return [
+            {
+                "billing_draft_id": billing_draft_id,
+                "description": base_description,
+                "amount_cents": rule.amount_cents,
+                "currency": "AUD",
+                "source_hint": _source_hint_from_charge_rule(rule),
+                "confidence": 1.0,
+                "line_metadata": {
+                    **base_metadata,
+                    "split_by_unit": True,
+                    "source_charge_amount_cents": rule.amount_cents,
+                    "apportionment_strategy": lease.unit_apportionment_strategy.value,
+                },
+            }
+        ]
+
+    amounts = _allocate_split_amounts(
+        total_cents=rule.amount_cents,
+        lease=lease,
+        links=links,
+        overrides=rule.unit_amount_overrides_cents,
+    )
+    payloads: list[dict[str, Any]] = []
+    for link in links:
+        unit = link.tenancy_unit
+        unit_label = unit.unit_label if unit is not None else str(link.tenancy_unit_id)
+        override_amount = rule.unit_amount_overrides_cents.get(link.tenancy_unit_id)
+        payloads.append(
+            {
+                "billing_draft_id": billing_draft_id,
+                "description": f"{base_description} - {unit_label}",
+                "amount_cents": amounts.get(link.tenancy_unit_id, 0),
+                "currency": "AUD",
+                "source_hint": _source_hint_from_charge_rule(rule),
+                "confidence": 1.0,
+                "line_metadata": {
+                    **base_metadata,
+                    "split_by_unit": True,
+                    "source_charge_amount_cents": rule.amount_cents,
+                    "lease_unit_id": str(link.id),
+                    "tenancy_unit_id": str(link.tenancy_unit_id),
+                    "unit_label": unit_label,
+                    "apportionment_strategy": lease.unit_apportionment_strategy.value,
+                    "apportionment_percent": (
+                        float(link.apportionment_percent)
+                        if link.apportionment_percent is not None
+                        else None
+                    ),
+                    "apportionment_area_sqm": (
+                        float(link.apportionment_area_sqm)
+                        if link.apportionment_area_sqm is not None
+                        else None
+                    ),
+                    "manual_amount_cents": link.manual_amount_cents,
+                    "unit_amount_override": override_amount is not None,
+                },
+            }
+        )
+    return payloads
 
 
 def _invoice_draft_blockers(
@@ -1398,36 +1608,30 @@ def create_billing_drafts_from_charge_rules(
         session.add(draft)
         session.flush()
 
+        line_payloads: list[dict[str, Any]] = []
         for rule in charge_rules:
-            session.add(
-                BillingDraftLine(
+            line_payloads.extend(
+                _billing_line_payloads_from_charge_rule(
+                    rule=rule,
+                    lease=lease,
                     billing_draft_id=draft.id,
-                    description=rule.charge_type.value.replace("_", " ").title(),
-                    amount_cents=rule.amount_cents,
-                    currency="AUD",
-                    source_hint=_source_hint_from_charge_rule(rule),
-                    confidence=1.0,
-                    line_metadata={
-                        "source": BILLING_DRAFT_CHARGE_RULE_SOURCE,
-                        "charge_rule_id": str(rule.id),
-                        "charge_type": rule.charge_type.value,
-                        "frequency": rule.frequency.value,
-                        "gst_treatment": rule.gst_treatment.value,
-                        "xero_account_code": rule.xero_account_code,
-                        "xero_tax_type": rule.xero_tax_type,
-                        "start_date": rule.start_date.isoformat() if rule.start_date else None,
-                        "end_date": rule.end_date.isoformat() if rule.end_date else None,
-                        "next_invoice_date": (
-                            rule.next_invoice_date.isoformat()
-                            if rule.next_invoice_date
-                            else None
-                        ),
-                        "next_due_date": (
-                            rule.next_due_date.isoformat() if rule.next_due_date else None
-                        ),
-                    },
                 )
             )
+        for line_payload in line_payloads:
+            session.add(BillingDraftLine(**line_payload))
+
+        if any(
+            (line["line_metadata"] or {}).get("split_by_unit") is True
+            for line in line_payloads
+        ):
+            draft_metadata = dict(draft.billing_metadata or {})
+            draft_metadata["itemised_by_unit"] = True
+            draft_metadata["itemised_unit_line_count"] = sum(
+                1
+                for line in line_payloads
+                if (line["line_metadata"] or {}).get("split_by_unit") is True
+            )
+            draft.billing_metadata = draft_metadata
 
         audit_log(
             session,
@@ -2078,7 +2282,7 @@ def create_charge_rule(
             detail="Charge amount cannot be negative.",
         )
     data = payload.model_dump()
-    data["charge_rule_metadata"] = data.pop("metadata")
+    _normalise_charge_rule_metadata(data)
     charge_rule = RentChargeRule(**data)
     session.add(charge_rule)
     session.flush()
@@ -2112,8 +2316,17 @@ def update_charge_rule(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Charge amount cannot be negative.",
         )
-    if "metadata" in data:
-        data["charge_rule_metadata"] = data.pop("metadata")
+    metadata_patch: dict[str, Any] = {}
+    if "metadata" in data or "split_by_unit" in data or "unit_amount_overrides_cents" in data:
+        metadata_patch["metadata"] = data.pop("metadata", charge_rule.charge_rule_metadata or {})
+        if "split_by_unit" in data:
+            metadata_patch["split_by_unit"] = data.pop("split_by_unit")
+        if "unit_amount_overrides_cents" in data:
+            metadata_patch["unit_amount_overrides_cents"] = data.pop(
+                "unit_amount_overrides_cents"
+            )
+        _normalise_charge_rule_metadata(metadata_patch)
+        data["charge_rule_metadata"] = metadata_patch["charge_rule_metadata"]
     for key, value in data.items():
         setattr(charge_rule, key, value)
     audit_log(

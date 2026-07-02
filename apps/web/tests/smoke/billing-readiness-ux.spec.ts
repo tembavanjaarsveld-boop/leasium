@@ -461,6 +461,174 @@ test("empty billing draft review can create local drafts from ready charge rules
   ]);
 });
 
+test("billing draft review surfaces split-by-unit invoice preview lines", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockLeasiumApi(page);
+
+  const itemisedDraft = {
+    id: "billing-draft-ag-unit-split",
+    entity_id: "entity-1",
+    property_id: "property-1",
+    tenancy_unit_id: "unit-t101",
+    tenant_id: "tenant-ag",
+    lease_id: "lease-ag",
+    document_id: "document-ag",
+    document_intake_id: null,
+    status: "needs_review",
+    title: "Billing draft - Auto & General Pty Ltd - T101, T103",
+    currency: "AUD",
+    issue_date: "2026-05-15",
+    due_date: "2026-06-01",
+    total_cents: 100001,
+    notes:
+      "Prepared from existing Relby charge rules. No PDF, tenant email, or Xero sync has run.",
+    metadata: {
+      source: "charge_rule_batch",
+      itemised_by_unit: true,
+      itemised_unit_line_count: 2,
+      guardrail:
+        "No invoice PDF, tenant email, or Xero sync runs from this batch step.",
+    },
+    lines: [
+      {
+        id: "billing-line-t101",
+        billing_draft_id: "billing-draft-ag-unit-split",
+        description: "Base Rent - T101",
+        amount_cents: 60000,
+        currency: "AUD",
+        source_hint: "Lease charge rule",
+        confidence: 1,
+        metadata: {
+          split_by_unit: true,
+          unit_label: "T101",
+          tenancy_unit_id: "unit-t101",
+          charge_rule_id: "charge-ag",
+        },
+        created_at: "2026-06-23T00:00:00.000Z",
+        deleted_at: null,
+      },
+      {
+        id: "billing-line-t103",
+        billing_draft_id: "billing-draft-ag-unit-split",
+        description: "Base Rent - T103",
+        amount_cents: 40001,
+        currency: "AUD",
+        source_hint: "Lease charge rule",
+        confidence: 1,
+        metadata: {
+          split_by_unit: true,
+          unit_label: "T103",
+          tenancy_unit_id: "unit-t103",
+          charge_rule_id: "charge-ag",
+        },
+        created_at: "2026-06-23T00:00:00.000Z",
+        deleted_at: null,
+      },
+    ],
+    created_at: "2026-06-23T00:00:00.000Z",
+    updated_at: "2026-06-23T00:00:00.000Z",
+    deleted_at: null,
+  };
+
+  await page.route("**/api/v1/rent-roll?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          entity_id: "entity-1",
+          entity_name: "Acme Holdings Pty Ltd",
+          property_id: "property-1",
+          property_name: "Queen Street Retail Centre",
+          tenancy_unit_id: "unit-t101",
+          unit_label: "T101",
+          lease_id: "lease-ag",
+          tenant_id: "tenant-ag",
+          tenant_name: "Auto & General Pty Ltd",
+          lease_status: "active",
+          commencement_date: "2026-01-01",
+          expiry_date: "2028-12-31",
+          tenant_billing_email: "accounts@autogeneral.example",
+          annual_rent_cents: 1200000,
+          rent_frequency: "monthly",
+          charge_rules: [
+            {
+              id: "charge-ag",
+              charge_type: "base_rent",
+              amount_cents: 100001,
+              frequency: "monthly",
+              gst_treatment: "taxable",
+              xero_account_code: "200",
+              xero_tax_type: "OUTPUT",
+              start_date: "2026-01-01",
+              end_date: null,
+              next_invoice_date: "2026-05-15",
+              next_due_date: "2026-06-01",
+              arrears_or_advance: "advance",
+              split_by_unit: true,
+              unit_amount_overrides_cents: {},
+            },
+          ],
+          charge_rules_total_cents: 100001,
+          next_due_date: "2026-06-01",
+          gst_readiness_blockers: [],
+          xero_readiness_blockers: [],
+          invoice_readiness_blockers: [],
+        },
+      ]),
+    });
+  });
+  await page.route("**/api/v1/billing-drafts?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([itemisedDraft]),
+    });
+  });
+  await page.route("**/api/v1/invoice-drafts?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  const mutationCalls: string[] = [];
+  page.on("request", (request) => {
+    const method = request.method();
+    const path = new URL(request.url()).pathname;
+    if (
+      path.startsWith("/api/v1/") &&
+      !["GET", "HEAD", "OPTIONS"].includes(method)
+    ) {
+      mutationCalls.push(`${method} ${path}`);
+    }
+  });
+
+  await page.goto("/billing-readiness?entity_id=entity-1&tab=billing-drafts");
+  const row = page
+    .getByRole("row")
+    .filter({ hasText: "Auto & General Pty Ltd" });
+  await expect(row.getByText("Split by unit")).toBeVisible();
+  await expect(row.getByText("2 unit lines: T101, T103")).toBeVisible();
+  await expect(row.getByText("$1,000")).toBeVisible();
+  expect(mutationCalls).toEqual([]);
+});
+
 test("voided charge-rule billing draft can be recreated locally", async ({
   page,
 }) => {

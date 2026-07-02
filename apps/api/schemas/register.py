@@ -578,6 +578,8 @@ class RentChargeRuleCreate(BaseModel):
     next_invoice_date: date | None = None
     next_due_date: date | None = None
     arrears_or_advance: str = "advance"
+    split_by_unit: bool = False
+    unit_amount_overrides_cents: dict[UUID, int] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -593,6 +595,8 @@ class RentChargeRuleUpdate(BaseModel):
     next_invoice_date: date | None = None
     next_due_date: date | None = None
     arrears_or_advance: str | None = None
+    split_by_unit: bool | None = None
+    unit_amount_overrides_cents: dict[UUID, int] | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -610,6 +614,8 @@ class RentChargeRuleRead(ApiModel):
     next_invoice_date: date | None
     next_due_date: date | None
     arrears_or_advance: str
+    split_by_unit: bool
+    unit_amount_overrides_cents: dict[UUID, int]
     metadata: dict[str, Any] = Field(
         validation_alias=AliasChoices("charge_rule_metadata", "metadata"),
         serialization_alias="metadata",
@@ -632,6 +638,8 @@ class RentRollChargeRuleRead(ApiModel):
     next_invoice_date: date | None
     next_due_date: date | None
     arrears_or_advance: str
+    split_by_unit: bool
+    unit_amount_overrides_cents: dict[UUID, int]
 
 
 class RentRollRowRead(BaseModel):

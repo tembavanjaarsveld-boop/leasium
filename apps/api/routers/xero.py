@@ -1310,6 +1310,10 @@ def _invoice_line_posting_preview(
     return line_preview, payload_line, blockers
 
 
+def _invoice_line_is_itemised_unit(line: Any) -> bool:
+    return (line.line_metadata or {}).get("split_by_unit") is True
+
+
 def _xero_invoice_posting_result(
     *,
     draft: InvoiceDraft,
@@ -1317,6 +1321,7 @@ def _xero_invoice_posting_result(
     contacts_by_id: dict[str, dict[str, Any]],
     accounts_by_code: dict[str, dict[str, Any]],
     tax_rates_by_type: dict[str, dict[str, Any]],
+    itemised_unit_lines_enabled: bool,
 ) -> XeroInvoicePostingPreviewResultRead:
     tenant = session.get(Tenant, draft.tenant_id) if draft.tenant_id else None
     xero_contact_id = _tenant_xero_contact_id(tenant)
@@ -1340,6 +1345,13 @@ def _xero_invoice_posting_result(
         blockers.append("Invoice draft has no line items.")
     if draft.total_cents <= 0:
         blockers.append("Invoice amount missing.")
+    if not itemised_unit_lines_enabled and any(
+        _invoice_line_is_itemised_unit(line) for line in active_lines
+    ):
+        blockers.append(
+            "Itemised unit Xero payloads are disabled; enable the explicit feature flag "
+            "after local review before creating Xero drafts."
+        )
 
     charge_rules = _charge_rule_lookup_for_invoice(session, draft)
     line_items: list[XeroInvoicePostingPreviewLineRead] = []
@@ -3076,6 +3088,7 @@ def preview_xero_invoice_posting(
             contacts_by_id=contacts_by_id,
             accounts_by_code=accounts_by_code,
             tax_rates_by_type=tax_rates_by_type,
+            itemised_unit_lines_enabled=settings.xero_itemised_unit_lines_enabled,
         )
         for draft in invoice_drafts
     ]
@@ -3436,6 +3449,7 @@ def create_approved_xero_invoice_drafts(
                 contacts_by_id=contacts_by_id,
                 accounts_by_code=accounts_by_code,
                 tax_rates_by_type=tax_rates_by_type,
+                itemised_unit_lines_enabled=settings.xero_itemised_unit_lines_enabled,
             )
             idempotency_key = _xero_draft_create_key(draft, payload.idempotency_key)
             if preview.status == "blocked":
@@ -3731,6 +3745,7 @@ def dispatch_approved_invoice_providers(
                 contacts_by_id=contacts_by_id,
                 accounts_by_code=accounts_by_code,
                 tax_rates_by_type=tax_rates_by_type,
+                itemised_unit_lines_enabled=settings.xero_itemised_unit_lines_enabled,
             )
             idempotency_key = _xero_draft_create_key(draft, payload.idempotency_key)
             if preview.status == "blocked":

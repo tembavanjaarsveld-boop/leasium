@@ -362,6 +362,16 @@ function billingDraftSourceContext(draft: BillingDraftRecord) {
   const lineSources = draft.lines
     .map((line) => line.source_hint)
     .filter((value): value is string => Boolean(value));
+  const itemisedUnitLines = draft.lines.filter(
+    (line) => line.metadata?.split_by_unit === true,
+  );
+  const itemisedUnitLabels = Array.from(
+    new Set(
+      itemisedUnitLines
+        .map((line) => metadataText(line.metadata?.unit_label))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
   const primarySource = lineSources[0] ?? "Smart Intake source document";
   const extraSources = Math.max(new Set(lineSources).size - 1, 0);
   const documentId = shortId(draft.document_id);
@@ -372,6 +382,8 @@ function billingDraftSourceContext(draft: BillingDraftRecord) {
     documentId,
     intakeId,
     lineCount: draft.lines.length,
+    itemisedUnitLineCount: itemisedUnitLines.length,
+    itemisedUnitLabels,
   };
 }
 
@@ -3516,6 +3528,18 @@ function BillingReadinessWorkspace() {
                                 : ""}
                             </span>
                           </div>
+                          {source.itemisedUnitLineCount ? (
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <StatusBadge tone="primary">Split by unit</StatusBadge>
+                              <span>
+                                {source.itemisedUnitLineCount} unit line
+                                {source.itemisedUnitLineCount === 1 ? "" : "s"}
+                                {source.itemisedUnitLabels.length
+                                  ? `: ${source.itemisedUnitLabels.join(", ")}`
+                                  : ""}
+                              </span>
+                            </div>
+                          ) : null}
                           {draft.notes ? (
                             <p className="line-clamp-2 text-xs text-muted-foreground">
                               {draft.notes}
@@ -3611,6 +3635,22 @@ function BillingReadinessWorkspace() {
                                     }`
                                   : ""}
                               </div>
+                              {source.itemisedUnitLineCount ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-muted-foreground">
+                                  <StatusBadge tone="primary">
+                                    Split by unit
+                                  </StatusBadge>
+                                  <span>
+                                    {source.itemisedUnitLineCount} unit line
+                                    {source.itemisedUnitLineCount === 1
+                                      ? ""
+                                      : "s"}
+                                    {source.itemisedUnitLabels.length
+                                      ? `: ${source.itemisedUnitLabels.join(", ")}`
+                                      : ""}
+                                  </span>
+                                </div>
+                              ) : null}
                               <div className="mt-1 flex flex-wrap gap-2 text-muted-foreground">
                                 {source.intakeId && draft.document_intake_id ? (
                                   <Link

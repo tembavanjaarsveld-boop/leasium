@@ -169,39 +169,29 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 
 ## Current Local Implementation
 
-- RELBY-MODEL-001 Phase 3 is implemented locally on the current branch but not
-  yet shipped. Smart Intake match candidates now include existing unit
-  candidates; the Relby AI matcher review card proposes one lease linked to
-  multiple existing units for extracted labels such as `T101 T103`; and Apply
-  sends reviewed `tenancy_unit_ids` so the lease creates multiple `lease_unit`
-  links with equal percentage apportionment.
-- This Phase 3 work is proposal/matching-layer only. It does not change
-  extraction prompts, schema, model selection, OCR, or the approve-fetch path.
-  Apply remains the only mutation gate and still creates internal records only;
-  no Xero, SendGrid, Twilio, tenant email, payment, or reconciliation path was
-  added.
-- Local Phase 3 verification passed: backend document-intake suite, focused
-  lease-intake/register lease tests, frontend intake-conversation smoke, backend
-  ruff, frontend eslint, frontend tsc, and `git diff --check`.
-- RELBY-UX-007 is implemented locally but not shipped. Property Billing and
-  tenant Lease & Billing schedule-line forms now show Charge starts, Charge
-  ends, Next invoice date, and Next payment due with the approved helper text.
-  The fields are grouped into Schedule and Next cycle sections.
-- Tax type is now a Select storing the existing Xero code. Static AU Xero
-  options are used because the existing provider-backed tax-rate source is the
-  chart/tax POST preview, not a simple read-only dropdown endpoint. Existing
-  legacy values render as selected legacy options.
-- No API, DB, migration, or payload key was renamed. `next_invoice_date`,
-  `next_due_date`, and `xero_tax_type` stay unchanged. No Xero write or
-  mutation path was added.
-- Local verification passed: frontend `tsc`, focused property/tenant billing
-  Playwright smoke, frontend eslint, production web build, backend ruff, and
-  backend pytest. Full Playwright smoke is not green: 394 passed, 16 skipped,
-  19 failed outside the billing slice. One isolated nearby failure is
-  date-sensitive (`Year 1 of 3` expected while the July 2, 2026 screen shows
-  `Year 2 of 3`); other failures are tenant portal/list/operations/app-flow
-  expectation drift. CI run id/link and production verification are still
-  pending, so do not mark RELBY-UX-007 Shipped yet.
+- RELBY-MODEL-001 Phase 3 is merged to `main` via PR #11. Smart Intake match
+  candidates include existing unit candidates; the Relby AI matcher review card
+  proposes one lease linked to multiple existing units for extracted labels such
+  as `T101 T103`; and Apply sends reviewed `tenancy_unit_ids` so the lease
+  creates multiple `lease_unit` links with equal percentage apportionment.
+- RELBY-MODEL-001 Phase 4 is implemented in code but not yet
+  production-proven. Charge rules now support `split_by_unit` and
+  `unit_amount_overrides_cents` as metadata-backed typed API fields, with no DB
+  migration.
+- Billing drafts from charge rules produce one invoice draft per lease and one
+  invoice line per linked unit when Split by unit is enabled. The split uses the
+  lease apportionment strategy, preserves exact cents, and carries unit metadata
+  into invoice draft lines for operator review.
+- Property Billing and tenant Lease & Billing schedule forms expose the Split
+  by unit checkbox. Billing Readiness preview surfaces the split badge and unit
+  labels before approval.
+- Xero itemised unit draft creation is blocked behind
+  `xero_itemised_unit_lines_enabled`, default OFF. No Xero write, tenant email,
+  SendGrid, Twilio, payment, or reconciliation action was added or run.
+- Local Phase 4 verification passed before handoff: backend register/xero
+  integration files, focused split-by-unit and Xero-flag tests, focused and
+  full touched billing/properties smoke, tenant billing smoke, backend ruff,
+  frontend eslint, frontend tsc, and `git diff --check`.
 
 ## Next Actions Now
 

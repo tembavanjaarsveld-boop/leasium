@@ -396,6 +396,7 @@ const chargeRuleSchema = z.object({
   end_date: z.string().optional(),
   next_invoice_date: z.string().min(1, "Invoice sent date is required"),
   next_due_date: z.string().min(1, "Next due is required"),
+  split_by_unit: z.boolean().default(false),
 });
 
 type ChargeRuleFormValues = z.infer<typeof chargeRuleSchema>;
@@ -471,6 +472,7 @@ const defaultChargeRuleFormValues: ChargeRuleFormValues = {
   end_date: "",
   next_invoice_date: dateOnly(new Date()),
   next_due_date: dateOnly(new Date()),
+  split_by_unit: false,
 };
 
 const propertyTypes: { value: PropertyType; label: string }[] = [
@@ -3438,6 +3440,7 @@ function Workspace({
         next_invoice_date: values.next_invoice_date,
         next_due_date: values.next_due_date,
         arrears_or_advance: "advance",
+        split_by_unit: values.split_by_unit,
         metadata: {
           billing_schedule_owner: "lease",
           tenant_facing: true,
@@ -3472,6 +3475,7 @@ function Workspace({
         end_date: "",
         next_invoice_date: values.next_invoice_date,
         next_due_date: values.next_due_date,
+        split_by_unit: values.split_by_unit,
       });
     },
   });
@@ -6022,6 +6026,21 @@ function Workspace({
                         ))}
                       </Select>
                     </Field>
+                    <label className="flex min-h-11 items-center gap-2 rounded-md border border-border bg-muted/25 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        {...chargeRuleForm.register("split_by_unit")}
+                      />
+                      <span className="grid gap-0.5">
+                        <span className="font-medium text-foreground">
+                          Split by unit
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Preview one invoice line per linked unit.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                   <fieldset className="grid gap-3">
                     <legend className="text-xs font-semibold uppercase text-muted-foreground">

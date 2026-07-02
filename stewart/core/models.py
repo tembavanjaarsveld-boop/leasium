@@ -1060,6 +1060,26 @@ class RentChargeRule(Base):
 
     lease: Mapped[Lease] = relationship(back_populates="charge_rules")
 
+    @property
+    def split_by_unit(self) -> bool:
+        return (self.charge_rule_metadata or {}).get("split_by_unit") is True
+
+    @property
+    def unit_amount_overrides_cents(self) -> dict[UUID, int]:
+        raw = (self.charge_rule_metadata or {}).get("unit_amount_overrides_cents")
+        if not isinstance(raw, dict):
+            return {}
+        parsed: dict[UUID, int] = {}
+        for key, value in raw.items():
+            try:
+                unit_id = key if isinstance(key, UUID) else UUID(str(key))
+                amount = int(value)
+            except (TypeError, ValueError):
+                continue
+            if amount >= 0:
+                parsed[unit_id] = amount
+        return parsed
+
 
 Index(
     "rent_charge_rule_lease_idx",

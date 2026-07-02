@@ -90,6 +90,9 @@ class Settings(BaseSettings):
         "offline_access accounting.contacts.read accounting.settings.read accounting.invoices"
     )
     xero_http_timeout_seconds: float = 15.0
+    # Multi-unit itemised invoice payloads stay local-review only until Temba
+    # explicitly enables Xero draft creation for one-invoice/many-line unit splits.
+    xero_itemised_unit_lines_enabled: bool = False
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = ""
     sendgrid_from_name: str = "Relby"
