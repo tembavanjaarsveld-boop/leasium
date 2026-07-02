@@ -282,10 +282,12 @@ function formatMoney(cents: number | null | undefined) {
   if (cents === null || cents === undefined) {
     return "-";
   }
+  const hasCents = Math.abs(cents) % 100 !== 0;
   return new Intl.NumberFormat("en-AU", {
     style: "currency",
     currency: "AUD",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
   }).format(cents / 100);
 }
 

@@ -598,6 +598,13 @@ test("desktop property billing confirms charge add and supports inline delete", 
     page
       .getByRole("status")
       .filter({
+        hasText: "Added Rental incentive — -$1,015.28 Monthly",
+      }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({
         hasText:
           /active from 01 May 2026 to 30 Apr 2027, invoice sent 15 May 2026, next due 01 (Jun|June) 2026/,
       }),

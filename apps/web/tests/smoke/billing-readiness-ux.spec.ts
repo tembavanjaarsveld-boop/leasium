@@ -625,7 +625,7 @@ test("billing draft review surfaces split-by-unit invoice preview lines", async 
     .filter({ hasText: "Auto & General Pty Ltd" });
   await expect(row.getByText("Split by unit")).toBeVisible();
   await expect(row.getByText("2 unit lines: T101, T103")).toBeVisible();
-  await expect(row.getByText("$1,000")).toBeVisible();
+  await expect(row.getByText("$1,000.01", { exact: true })).toBeVisible();
   expect(mutationCalls).toEqual([]);
 });
 

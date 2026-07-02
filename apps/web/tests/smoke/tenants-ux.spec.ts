@@ -628,7 +628,9 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
     tenant_record_setup: true,
     tenant_facing: true,
   });
-  await expect(page.getByText(/Added Rental incentive/)).toBeVisible();
+  await expect(
+    page.getByText(/Added Rental incentive - -\$1,015\.28 Monthly/),
+  ).toBeVisible();
   await expect(addLineToggle).toHaveAttribute("aria-expanded", "false");
   await expect(billingEditor).toHaveAttribute("aria-hidden", "true");
   await expect
