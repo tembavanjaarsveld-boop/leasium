@@ -98,6 +98,7 @@ test("operations calendar filters events and opens a read-only preview", async (
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.clock.setFixedTime(new Date("2026-06-20T12:00:00.000Z"));
   await mockLeasiumApi(page);
   await page.goto("/operations?tab=calendar");
 

@@ -51,7 +51,7 @@ test("migrated applied onboarding shows send + copy portal invite on the lease",
     });
   });
 
-  await page.goto("/tenants/tenant-1");
+  await page.goto("/tenants/tenant-1?tab=lease-billing");
   await expect(page.getByRole("heading", { name: "Bright Cafe" })).toBeVisible();
 
   const leases = page.locator("#financials");
@@ -82,7 +82,7 @@ test("lease without onboarding offers set up portal login", async ({ page }) => 
     await route.fulfill({ contentType: "application/json", body: "[]" });
   });
 
-  await page.goto("/tenants/tenant-1");
+  await page.goto("/tenants/tenant-1?tab=lease-billing");
   await expect(page.getByRole("heading", { name: "Bright Cafe" })).toBeVisible();
 
   const leases = page.locator("#financials");
