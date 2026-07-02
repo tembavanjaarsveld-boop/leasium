@@ -219,6 +219,24 @@ test("people hub All entities merges tenants and vendors across entities", async
   await expect(page.getByRole("link", { name: "Add vendor" })).toBeVisible();
 });
 
+test("people tenant card returns to warning when billing email is removed", async ({
+  page,
+}) => {
+  await mockLeasiumApi(page, { operatingMode: "self_managed_owner" });
+
+  await page.goto("/people?tab=tenants");
+
+  const tenantCard = page
+    .locator("li")
+    .filter({ hasText: "Northwind Fitness Pty Ltd" });
+  await expect(tenantCard).toBeVisible();
+  await expect(tenantCard.getByText("Needs billing")).toBeVisible();
+  await expect(tenantCard.getByText("Billing email missing")).toBeVisible();
+  await expect(tenantCard.getByText("Billing email not set")).toBeVisible();
+  await expect(tenantCard.locator(".bg-warning").first()).toBeVisible();
+  await expect(tenantCard.locator(".bg-warning-soft").first()).toBeVisible();
+});
+
 test("mobile people hub tabs stay touch-safe", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockLeasiumApi(page, { operatingMode: "managing_agent" });

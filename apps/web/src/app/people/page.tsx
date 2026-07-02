@@ -114,11 +114,11 @@ function tenantStatus(tenant: TenantRecord) {
     };
   }
   return {
-    tone: "primary" as const,
-    label: "Contact ready",
+    tone: "warning" as const,
+    label: "Needs billing",
     detail: "Billing email missing",
-    avatarClass: "bg-primary text-white",
-    railClass: "",
+    avatarClass: "bg-warning text-white",
+    railClass: "bg-warning",
   };
 }
 
