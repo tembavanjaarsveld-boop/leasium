@@ -68,6 +68,10 @@ import { defaultEntitySelection } from "@/lib/entity-selection";
 import { useUnmountDelay } from "@/lib/use-unmount-delay";
 import { cn, friendlyError as baseFriendlyError } from "@/lib/utils";
 import {
+  xeroTaxTypeOptionLabel,
+  xeroTaxTypeOptionsForValue,
+} from "@/lib/xero-tax-types";
+import {
   Button,
   EmptyState,
   Field,
@@ -3384,12 +3388,40 @@ function Workspace({
 
   const chargeRuleLeaseId = chargeRuleForm.watch("lease_id");
   const chargeRuleType = chargeRuleForm.watch("charge_type");
-  const leaseChargeRules = (chargeRulesQuery.data ?? []).filter(
-    (rule) => rule.lease_id === chargeRuleLeaseId,
+  const chargeRuleTaxType = chargeRuleForm.watch("xero_tax_type");
+  const lastTaxPrefillLeaseId = useRef<string | null>(null);
+  const leaseChargeRules = useMemo(
+    () =>
+      (chargeRulesQuery.data ?? []).filter(
+        (rule) => rule.lease_id === chargeRuleLeaseId,
+      ),
+    [chargeRuleLeaseId, chargeRulesQuery.data],
   );
   const duplicateChargeType =
     Boolean(chargeRuleLeaseId) &&
     leaseChargeRules.some((rule) => rule.charge_type === chargeRuleType);
+  const chargeRuleTaxTypeOptions =
+    xeroTaxTypeOptionsForValue(chargeRuleTaxType);
+
+  useEffect(() => {
+    if (
+      !chargeRuleLeaseId ||
+      lastTaxPrefillLeaseId.current === chargeRuleLeaseId ||
+      chargeRuleForm.getValues("xero_tax_type")
+    ) {
+      return;
+    }
+    const existingTaxType = leaseChargeRules.find(
+      (rule) => rule.xero_tax_type,
+    )?.xero_tax_type;
+    if (!existingTaxType) {
+      return;
+    }
+    lastTaxPrefillLeaseId.current = chargeRuleLeaseId;
+    chargeRuleForm.setValue("xero_tax_type", existingTaxType, {
+      shouldDirty: false,
+    });
+  }, [chargeRuleForm, chargeRuleLeaseId, leaseChargeRules]);
 
   const obligationMutation = useMutation({
     mutationFn: (values: ObligationFormValues) => {
@@ -5849,15 +5881,6 @@ function Workspace({
                     </p>
                   ) : null}
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Frequency">
-                      <Select {...chargeRuleForm.register("frequency")}>
-                        {rentFrequencies.map((frequency) => (
-                          <option key={frequency.value} value={frequency.value}>
-                            {frequency.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </Field>
                     <Field label="GST">
                       <Select {...chargeRuleForm.register("gst_treatment")}>
                         {gstTreatments.map((treatment) => (
@@ -5868,48 +5891,78 @@ function Workspace({
                       </Select>
                     </Field>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="Starts"
-                      error={chargeRuleForm.formState.errors.start_date?.message}
-                    >
-                      <Input
-                        type="date"
-                        {...chargeRuleForm.register("start_date")}
-                      />
-                    </Field>
-                    <Field label="Ends">
-                      <Input
-                        type="date"
-                        {...chargeRuleForm.register("end_date")}
-                      />
-                    </Field>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="Invoice sent"
-                      error={
-                        chargeRuleForm.formState.errors.next_invoice_date
-                          ?.message
-                      }
-                    >
-                      <Input
-                        type="date"
-                        {...chargeRuleForm.register("next_invoice_date")}
-                      />
-                    </Field>
-                    <Field
-                      label="Next due"
-                      error={
-                        chargeRuleForm.formState.errors.next_due_date?.message
-                      }
-                    >
-                      <Input
-                        type="date"
-                        {...chargeRuleForm.register("next_due_date")}
-                      />
-                    </Field>
-                  </div>
+                  <fieldset className="grid gap-3">
+                    <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                      Schedule
+                    </legend>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Frequency">
+                        <Select {...chargeRuleForm.register("frequency")}>
+                          {rentFrequencies.map((frequency) => (
+                            <option
+                              key={frequency.value}
+                              value={frequency.value}
+                            >
+                              {frequency.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field
+                        label="Charge starts"
+                        helper="First billing period begins"
+                        error={
+                          chargeRuleForm.formState.errors.start_date?.message
+                        }
+                      >
+                        <Input
+                          type="date"
+                          {...chargeRuleForm.register("start_date")}
+                        />
+                      </Field>
+                      <Field
+                        label="Charge ends"
+                        helper="Leave blank to bill indefinitely"
+                      >
+                        <Input
+                          type="date"
+                          {...chargeRuleForm.register("end_date")}
+                        />
+                      </Field>
+                    </div>
+                  </fieldset>
+                  <fieldset className="grid gap-3">
+                    <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                      Next cycle
+                    </legend>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field
+                        label="Next invoice date"
+                        helper="When the next invoice is issued"
+                        error={
+                          chargeRuleForm.formState.errors.next_invoice_date
+                            ?.message
+                        }
+                      >
+                        <Input
+                          type="date"
+                          {...chargeRuleForm.register("next_invoice_date")}
+                        />
+                      </Field>
+                      <Field
+                        label="Next payment due"
+                        helper="When payment for that invoice is due"
+                        error={
+                          chargeRuleForm.formState.errors.next_due_date?.message
+                        }
+                      >
+                        <Input
+                          type="date"
+                          {...chargeRuleForm.register("next_due_date")}
+                        />
+                      </Field>
+                    </div>
+                  </fieldset>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Xero account">
                       <Input
@@ -5918,10 +5971,14 @@ function Workspace({
                       />
                     </Field>
                     <Field label="Tax type">
-                      <Input
-                        placeholder="OUTPUT"
-                        {...chargeRuleForm.register("xero_tax_type")}
-                      />
+                      <Select {...chargeRuleForm.register("xero_tax_type")}>
+                        <option value="">No tax type</option>
+                        {chargeRuleTaxTypeOptions.map((option) => (
+                          <option key={option.code} value={option.code}>
+                            {xeroTaxTypeOptionLabel(option)}
+                          </option>
+                        ))}
+                      </Select>
                     </Field>
                   </div>
                   <Button

@@ -68,10 +68,12 @@ export function Select({
 
 export function Field({
   label,
+  helper,
   error,
   children,
 }: {
   label: string;
+  helper?: string;
   error?: string;
   children: React.ReactNode;
 }) {
@@ -79,6 +81,9 @@ export function Field({
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium text-foreground">{label}</span>
       {children}
+      {helper ? (
+        <span className="text-xs text-muted-foreground">{helper}</span>
+      ) : null}
       {error ? <span className="text-xs text-danger">{error}</span> : null}
     </label>
   );

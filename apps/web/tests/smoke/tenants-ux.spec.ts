@@ -496,7 +496,7 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await mockLeasiumApi(page);
+  await mockLeasiumApi(page, { initialChargeTaxType: "LEGACYTAX" });
 
   const chargeCreates: Array<Record<string, unknown>> = [];
   await page.route("**/api/v1/charge-rules", async (route) => {
@@ -566,12 +566,42 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
     .poll(async () => (await billingEditor.boundingBox())?.height ?? 0)
     .toBeGreaterThan(300);
   await expect(billingSchedule.getByLabel("Amount")).toBeVisible();
+  const scheduleGroup = billingSchedule.getByRole("group", {
+    name: "Schedule",
+  });
+  await expect(scheduleGroup.getByLabel("Charge starts")).toBeVisible();
+  await expect(
+    scheduleGroup.getByText("First billing period begins"),
+  ).toBeVisible();
+  await expect(scheduleGroup.getByLabel("Charge ends")).toBeVisible();
+  await expect(
+    scheduleGroup.getByText("Leave blank to bill indefinitely"),
+  ).toBeVisible();
+  const nextCycleGroup = billingSchedule.getByRole("group", {
+    name: "Next cycle",
+  });
+  await expect(nextCycleGroup.getByLabel("Next invoice date")).toBeVisible();
+  await expect(
+    nextCycleGroup.getByText("When the next invoice is issued"),
+  ).toBeVisible();
+  await expect(nextCycleGroup.getByLabel("Next payment due")).toBeVisible();
+  await expect(
+    nextCycleGroup.getByText("When payment for that invoice is due"),
+  ).toBeVisible();
+  const taxTypeSelect = billingSchedule.getByLabel("Tax type");
+  await expect(taxTypeSelect).toHaveValue("LEGACYTAX");
+  await expect(
+    taxTypeSelect.getByRole("option", {
+      name: "Legacy tax type: LEGACYTAX",
+    }),
+  ).toHaveCount(1);
 
   await billingSchedule.getByRole("combobox").nth(1).selectOption("outgoings");
   await billingSchedule.getByLabel("Amount").fill("425");
-  await billingSchedule.getByLabel("Starts").fill("2026-08-01");
-  await billingSchedule.getByLabel("Invoice sent").fill("2026-07-15");
-  await billingSchedule.getByLabel("Next due").fill("2026-08-01");
+  await billingSchedule.getByLabel("Charge starts").fill("2026-08-01");
+  await billingSchedule.getByLabel("Next invoice date").fill("2026-07-15");
+  await billingSchedule.getByLabel("Next payment due").fill("2026-08-01");
+  await taxTypeSelect.selectOption("OUTPUT");
   await billingSchedule
     .getByRole("button", { name: "Add schedule line" })
     .click();
@@ -583,6 +613,7 @@ test("tenant detail uses tabs and sets up tenant invoice charges from lease bill
     amount_cents: 42500,
     frequency: "monthly",
     gst_treatment: "taxable",
+    xero_tax_type: "OUTPUT",
     start_date: "2026-08-01",
     next_invoice_date: "2026-07-15",
     next_due_date: "2026-08-01",

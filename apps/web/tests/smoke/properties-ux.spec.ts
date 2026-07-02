@@ -1,4 +1,5 @@
-import { expect, type Locator, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
 
 import type { PropertyRecord } from "../../src/lib/api";
 import {
@@ -20,6 +21,27 @@ test.beforeEach(async ({ page }) => {
   await seedPrimaryEntitySelection(page);
   await mockLeasiumApi(page);
 });
+
+async function openBillingScheduleForm(page: Page) {
+  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
+  await expect(
+    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
+  ).toBeVisible();
+
+  await page.getByRole("tab", { name: "Billing" }).click();
+
+  const chargeForm = page
+    .locator("form")
+    .filter({ hasText: "Billing schedule" });
+  await expect(chargeForm).toBeVisible();
+
+  const leaseSelect = chargeForm.locator("select").filter({
+    has: page.getByRole("option", { name: "Select lease" }),
+  });
+  await leaseSelect.selectOption({ index: 1 });
+
+  return chargeForm;
+}
 
 test("properties action=new opens the new-property drawer", async ({ page }) => {
   await page.goto("/properties?action=new");
@@ -385,17 +407,7 @@ test("desktop property billing confirms charge add and supports inline delete", 
     await route.fallback();
   });
 
-  await page.goto("/properties?entity_id=entity-1&property_id=property-1");
-  await expect(
-    page.getByRole("heading", { name: "Queen Street Retail Centre" }),
-  ).toBeVisible();
-
-  await page.getByRole("tab", { name: "Billing" }).click();
-
-  const chargeForm = page
-    .locator("form")
-    .filter({ hasText: "Billing schedule" });
-  await expect(chargeForm).toBeVisible();
+  const chargeForm = await openBillingScheduleForm(page);
   await expect(
     chargeForm.getByText(
       "Lease-owned charges that feed the tenant invoice schedule.",
@@ -418,25 +430,49 @@ test("desktop property billing confirms charge add and supports inline delete", 
   await expect(frequencySelect).toBeVisible();
 
   // Selecting the lease reveals its existing rules and a duplicate warning.
-  const leaseSelect = chargeForm.locator("select").filter({
-    has: page.getByRole("option", { name: "Select lease" }),
-  });
-  await leaseSelect.selectOption({ index: 1 });
-
   await expect(chargeForm.getByText("Schedule on this lease")).toBeVisible();
   await expect(chargeForm.getByText("$8,000")).toBeVisible();
   await expect(
     chargeForm.getByText(/already has a Base rent charge/),
   ).toBeVisible();
-  await expect(chargeForm.getByLabel("Starts")).toBeVisible();
-  await expect(chargeForm.getByLabel("Ends")).toBeVisible();
+  const scheduleGroup = chargeForm.getByRole("group", { name: "Schedule" });
+  await expect(scheduleGroup).toBeVisible();
+  await expect(scheduleGroup.getByLabel("Charge starts")).toBeVisible();
+  await expect(
+    scheduleGroup.getByText("First billing period begins"),
+  ).toBeVisible();
+  await expect(scheduleGroup.getByLabel("Charge ends")).toBeVisible();
+  await expect(
+    scheduleGroup.getByText("Leave blank to bill indefinitely"),
+  ).toBeVisible();
+  const nextCycleGroup = chargeForm.getByRole("group", { name: "Next cycle" });
+  await expect(nextCycleGroup).toBeVisible();
+  await expect(nextCycleGroup.getByLabel("Next invoice date")).toBeVisible();
+  await expect(
+    nextCycleGroup.getByText("When the next invoice is issued"),
+  ).toBeVisible();
+  await expect(nextCycleGroup.getByLabel("Next payment due")).toBeVisible();
+  await expect(
+    nextCycleGroup.getByText("When payment for that invoice is due"),
+  ).toBeVisible();
 
   // Adding a charge surfaces an explicit success confirmation (the bug fix).
   await chargeForm.getByRole("spinbutton").fill("8000");
-  await chargeForm.getByLabel("Starts").fill("2026-05-01");
-  await chargeForm.getByLabel("Ends").fill("2027-04-30");
-  await chargeForm.getByLabel("Invoice sent").fill("2026-05-15");
-  await chargeForm.getByLabel("Next due").fill("2026-06-01");
+  await chargeForm.getByLabel("Charge starts").fill("2026-05-01");
+  await chargeForm.getByLabel("Charge ends").fill("2027-04-30");
+  await chargeForm.getByLabel("Next invoice date").fill("2026-05-15");
+  await chargeForm.getByLabel("Next payment due").fill("2026-06-01");
+  const taxTypeSelect = chargeForm.getByLabel("Tax type");
+  await expect(taxTypeSelect).toHaveValue("");
+  await expect(
+    taxTypeSelect.getByRole("option", { name: "GST on Income" }),
+  ).toHaveCount(1);
+  await taxTypeSelect.selectOption("OUTPUT");
+  await mkdir("../../output/playwright", { recursive: true });
+  await page.screenshot({
+    path: "../../output/playwright/billing-schedule-labels-1440.png",
+    fullPage: true,
+  });
   await chargeForm.getByRole("button", { name: "Add schedule line" }).click();
   await expect(
     page
@@ -449,6 +485,7 @@ test("desktop property billing confirms charge add and supports inline delete", 
   expect(chargeRulePayloads[0]).toMatchObject({
     start_date: "2026-05-01",
     end_date: "2027-04-30",
+    xero_tax_type: "OUTPUT",
   });
 
   // The inline delete removes a rule and confirms it.
@@ -464,6 +501,30 @@ test("desktop property billing confirms charge add and supports inline delete", 
     "POST /api/v1/charge-rules",
     "DELETE /api/v1/charge-rules/charge-1",
   ]);
+});
+
+test("mobile property billing schedule labels and tax dropdown fit", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const chargeForm = await openBillingScheduleForm(page);
+  const scheduleGroup = chargeForm.getByRole("group", { name: "Schedule" });
+  await expect(scheduleGroup.getByLabel("Charge starts")).toBeVisible();
+  await expect(scheduleGroup.getByLabel("Charge ends")).toBeVisible();
+  const nextCycleGroup = chargeForm.getByRole("group", { name: "Next cycle" });
+  await expect(nextCycleGroup.getByLabel("Next invoice date")).toBeVisible();
+  await expect(nextCycleGroup.getByLabel("Next payment due")).toBeVisible();
+  const taxTypeSelect = chargeForm.getByLabel("Tax type");
+  await expect(taxTypeSelect).toBeVisible();
+  await taxTypeSelect.selectOption("OUTPUT");
+  await expect(taxTypeSelect).toHaveValue("OUTPUT");
+
+  await mkdir("../../output/playwright", { recursive: true });
+  await page.screenshot({
+    path: "../../output/playwright/billing-schedule-labels-390.png",
+    fullPage: true,
+  });
 });
 
 test("legacy properties calendar URL falls back to cards", async ({

@@ -147,7 +147,10 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 ## Local Git State
 
 - ` M CLAUDE.md`
+- `?? docs/client-billing-per-tenant-2026-06-30.md`
 - `?? docs/codex-brief-matcher-review-ui-2026-06-27.md`
+- `?? docs/commercial-residential-split-2026-06-30.md`
+- `?? docs/operating-mode-pm-split-2026-06-30.md`
 
 ## Recent Feature Commits
 
@@ -163,6 +166,28 @@ The old Remba queue is retired. Do not re-open historical Remba-pending work.
 - `a457b38` Refresh Obsidian handover mirror
 - `991c6bc` Add Obsidian handover mirror
 - `a34696c` Stabilize Relby smoke handoffs
+
+## Current Local Implementation
+
+- RELBY-UX-007 is implemented locally but not shipped. Property Billing and
+  tenant Lease & Billing schedule-line forms now show Charge starts, Charge
+  ends, Next invoice date, and Next payment due with the approved helper text.
+  The fields are grouped into Schedule and Next cycle sections.
+- Tax type is now a Select storing the existing Xero code. Static AU Xero
+  options are used because the existing provider-backed tax-rate source is the
+  chart/tax POST preview, not a simple read-only dropdown endpoint. Existing
+  legacy values render as selected legacy options.
+- No API, DB, migration, or payload key was renamed. `next_invoice_date`,
+  `next_due_date`, and `xero_tax_type` stay unchanged. No Xero write or
+  mutation path was added.
+- Local verification passed: frontend `tsc`, focused property/tenant billing
+  Playwright smoke, frontend eslint, production web build, backend ruff, and
+  backend pytest. Full Playwright smoke is not green: 394 passed, 16 skipped,
+  19 failed outside the billing slice. One isolated nearby failure is
+  date-sensitive (`Year 1 of 3` expected while the July 2, 2026 screen shows
+  `Year 2 of 3`); other failures are tenant portal/list/operations/app-flow
+  expectation drift. CI run id/link and production verification are still
+  pending, so do not mark RELBY-UX-007 Shipped yet.
 
 ## Next Actions Now
 

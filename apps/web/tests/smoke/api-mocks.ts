@@ -3022,6 +3022,7 @@ type MockLeasiumApiOptions = {
   includeReadingInvoiceIntake?: boolean;
   includeUploadedInvoiceIntake?: boolean;
   documentIntakeOpportunitySessionUnavailable?: boolean;
+  initialChargeTaxType?: string | null;
 };
 
 // The fixture has two entities, so a fresh workspace defaults to the
@@ -3270,7 +3271,7 @@ export async function mockLeasiumApi(
   let xeroConnectedAt: string | null = null;
   let xeroProviderConnected = false;
   let chargeAccountCode: string | null = "401";
-  let chargeTaxType: string | null = null;
+  let chargeTaxType: string | null = options.initialChargeTaxType ?? null;
   let operatingMode = options.operatingMode ?? "self_managed_owner";
   const canManageSecurity = options.canManageSecurity ?? true;
   const isPlatformAdmin = options.platformAdmin ?? false;
@@ -12346,6 +12347,8 @@ export async function mockLeasiumApi(
         rentRoll[0].charge_rules.map((rule) => ({
           ...rule,
           lease_id: leaseId,
+          xero_account_code: chargeAccountCode,
+          xero_tax_type: chargeTaxType,
         })),
       );
       return;

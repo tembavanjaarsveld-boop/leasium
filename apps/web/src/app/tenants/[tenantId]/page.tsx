@@ -55,6 +55,10 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import {
+  xeroTaxTypeOptionLabel,
+  xeroTaxTypeOptionsForValue,
+} from "@/lib/xero-tax-types";
+import {
   activateTenantOnboardingLease,
   applyPublicEnrichment,
   applyTenantContactChangeRequest,
@@ -1701,6 +1705,7 @@ function TenantDetail() {
   const [chargeRuleForm, setChargeRuleForm] = useState<TenantChargeRuleForm>(
     defaultTenantChargeRuleForm,
   );
+  const lastTaxPrefillBillingLeaseId = useRef<string | null>(null);
   const [billingScheduleEditorOpen, setBillingScheduleEditorOpen] =
     useState(false);
   const [chargeRuleNotice, setChargeRuleNotice] = useState<string | null>(null);
@@ -1978,13 +1983,19 @@ function TenantDetail() {
     queryFn: () => listChargeRules({ lease_id: billingLeaseId }),
     enabled: Boolean(tenantId && billingLeaseId),
   });
-  const billingChargeRules = chargeRulesQuery.data ?? [];
+  const billingChargeRules = useMemo(
+    () => chargeRulesQuery.data ?? [],
+    [chargeRulesQuery.data],
+  );
   const billingScheduleHasLines = billingChargeRules.length > 0;
   const billingScheduleEditorExpanded =
     !chargeRulesQuery.isLoading &&
     (!billingScheduleHasLines || billingScheduleEditorOpen);
   const duplicateChargeType = billingChargeRules.some(
     (rule) => rule.charge_type === chargeRuleForm.charge_type,
+  );
+  const chargeRuleTaxTypeOptions = xeroTaxTypeOptionsForValue(
+    chargeRuleForm.xero_tax_type,
   );
 
   useEffect(() => {
@@ -2000,6 +2011,28 @@ function TenantDetail() {
       next_due_date: current.next_due_date || leaseStart || today,
     }));
   }, [billingLeaseId, selectedBillingLease?.commencement_date]);
+
+  useEffect(() => {
+    if (
+      !billingLeaseId ||
+      lastTaxPrefillBillingLeaseId.current === billingLeaseId ||
+      chargeRuleForm.xero_tax_type
+    ) {
+      return;
+    }
+    const existingTaxType = billingChargeRules.find(
+      (rule) => rule.xero_tax_type,
+    )?.xero_tax_type;
+    if (!existingTaxType) {
+      return;
+    }
+    lastTaxPrefillBillingLeaseId.current = billingLeaseId;
+    setChargeRuleForm((current) =>
+      current.xero_tax_type
+        ? current
+        : { ...current, xero_tax_type: existingTaxType },
+    );
+  }, [billingChargeRules, billingLeaseId, chargeRuleForm.xero_tax_type]);
 
   const updateMutation = useMutation({
     mutationFn: (values: TenantForm) => {
@@ -3800,27 +3833,6 @@ function TenantDetail() {
                         </p>
                       ) : null}
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="Frequency">
-                          <Select
-                            value={chargeRuleForm.frequency}
-                            onChange={(event) =>
-                              updateChargeRuleField(
-                                "frequency",
-                                event.target
-                                  .value as TenantChargeRuleForm["frequency"],
-                              )
-                            }
-                          >
-                            {rentFrequencies.map((frequency) => (
-                              <option
-                                key={frequency.value}
-                                value={frequency.value}
-                              >
-                                {frequency.label}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
                         <Field label="GST">
                           <Select
                             value={chargeRuleForm.gst_treatment}
@@ -3843,58 +3855,101 @@ function TenantDetail() {
                           </Select>
                         </Field>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="Starts">
-                          <Input
-                            type="date"
-                            value={chargeRuleForm.start_date}
-                            onChange={(event) =>
-                              updateChargeRuleField(
-                                "start_date",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                        <Field label="Ends">
-                          <Input
-                            type="date"
-                            value={chargeRuleForm.end_date}
-                            onChange={(event) =>
-                              updateChargeRuleField(
-                                "end_date",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="Invoice sent">
-                          <Input
-                            type="date"
-                            value={chargeRuleForm.next_invoice_date}
-                            onChange={(event) =>
-                              updateChargeRuleField(
-                                "next_invoice_date",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                        <Field label="Next due">
-                          <Input
-                            type="date"
-                            value={chargeRuleForm.next_due_date}
-                            onChange={(event) =>
-                              updateChargeRuleField(
-                                "next_due_date",
-                                event.target.value,
-                              )
-                            }
-                          />
-                        </Field>
-                      </div>
+                      <fieldset className="grid gap-3">
+                        <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                          Schedule
+                        </legend>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field label="Frequency">
+                            <Select
+                              value={chargeRuleForm.frequency}
+                              onChange={(event) =>
+                                updateChargeRuleField(
+                                  "frequency",
+                                  event.target
+                                    .value as TenantChargeRuleForm["frequency"],
+                                )
+                              }
+                            >
+                              {rentFrequencies.map((frequency) => (
+                                <option
+                                  key={frequency.value}
+                                  value={frequency.value}
+                                >
+                                  {frequency.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                          <Field
+                            label="Charge starts"
+                            helper="First billing period begins"
+                          >
+                            <Input
+                              type="date"
+                              value={chargeRuleForm.start_date}
+                              onChange={(event) =>
+                                updateChargeRuleField(
+                                  "start_date",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field
+                            label="Charge ends"
+                            helper="Leave blank to bill indefinitely"
+                          >
+                            <Input
+                              type="date"
+                              value={chargeRuleForm.end_date}
+                              onChange={(event) =>
+                                updateChargeRuleField(
+                                  "end_date",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </fieldset>
+                      <fieldset className="grid gap-3">
+                        <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                          Next cycle
+                        </legend>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Field
+                            label="Next invoice date"
+                            helper="When the next invoice is issued"
+                          >
+                            <Input
+                              type="date"
+                              value={chargeRuleForm.next_invoice_date}
+                              onChange={(event) =>
+                                updateChargeRuleField(
+                                  "next_invoice_date",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                          <Field
+                            label="Next payment due"
+                            helper="When payment for that invoice is due"
+                          >
+                            <Input
+                              type="date"
+                              value={chargeRuleForm.next_due_date}
+                              onChange={(event) =>
+                                updateChargeRuleField(
+                                  "next_due_date",
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </fieldset>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="Xero account">
                           <Input
@@ -3909,8 +3964,7 @@ function TenantDetail() {
                           />
                         </Field>
                         <Field label="Tax type">
-                          <Input
-                            placeholder="OUTPUT"
+                          <Select
                             value={chargeRuleForm.xero_tax_type}
                             onChange={(event) =>
                               updateChargeRuleField(
@@ -3918,7 +3972,14 @@ function TenantDetail() {
                                 event.target.value,
                               )
                             }
-                          />
+                          >
+                            <option value="">No tax type</option>
+                            {chargeRuleTaxTypeOptions.map((option) => (
+                              <option key={option.code} value={option.code}>
+                                {xeroTaxTypeOptionLabel(option)}
+                              </option>
+                            ))}
+                          </Select>
                         </Field>
                       </div>
                       <Button
